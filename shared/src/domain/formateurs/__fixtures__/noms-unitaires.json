@@ -1,0 +1,787 @@
+{
+    "genereLe": "2026-08-14T21:25:47+02:00",
+    "source": "includes/functions.php (getBaseName, getFormattedName)",
+    "total": 156,
+    "cas": [
+        {
+            "entree": "AAJLIYE ABDESALAM",
+            "getBaseName": "ABDESALAM",
+            "getFormattedName": "ABDESALAM"
+        },
+        {
+            "entree": "ABDELATI LAARASS",
+            "getBaseName": "LAARASS",
+            "getFormattedName": "LAARASS"
+        },
+        {
+            "entree": "ABDELAZIZ BEN-OMAR",
+            "getBaseName": "BEN-OMAR",
+            "getFormattedName": "BEN-OMAR"
+        },
+        {
+            "entree": "ABDELGHANI AIT MOULAY",
+            "getBaseName": "AIT MOULAY",
+            "getFormattedName": "AIT MOULAY"
+        },
+        {
+            "entree": "ABDELGHANI LAASAL",
+            "getBaseName": "LAASAL",
+            "getFormattedName": "LAASAL"
+        },
+        {
+            "entree": "ABDELHADI AISSI",
+            "getBaseName": "AISSI",
+            "getFormattedName": "AISSI"
+        },
+        {
+            "entree": "ABDELHADI GHAICHAT",
+            "getBaseName": "GHAICHAT",
+            "getFormattedName": "GHAICHAT"
+        },
+        {
+            "entree": "ABDELHAK SABEK",
+            "getBaseName": "SABEK",
+            "getFormattedName": "SABEK"
+        },
+        {
+            "entree": "ABDELILAH ASABAN",
+            "getBaseName": "ASABAN",
+            "getFormattedName": "ASABAN"
+        },
+        {
+            "entree": "ABDELJALIL KARMACHI",
+            "getBaseName": "KARMACHI",
+            "getFormattedName": "KARMACHI"
+        },
+        {
+            "entree": "ABDELKADER TAHANA",
+            "getBaseName": "TAHANA",
+            "getFormattedName": "TAHANA"
+        },
+        {
+            "entree": "ABDELLAH HOFR",
+            "getBaseName": "HOFR",
+            "getFormattedName": "HOFR"
+        },
+        {
+            "entree": "ABDELLATI MAHTAJ",
+            "getBaseName": "MAHTAJ",
+            "getFormattedName": "MAHTAJ"
+        },
+        {
+            "entree": "ABDELMOULA NOUNI",
+            "getBaseName": "NOUNI",
+            "getFormattedName": "NOUNI"
+        },
+        {
+            "entree": "ABDELWAHED KHALFI",
+            "getBaseName": "KHALFI",
+            "getFormattedName": "KHALFI"
+        },
+        {
+            "entree": "ABDERRAHIM HARIT",
+            "getBaseName": "HARIT",
+            "getFormattedName": "HARIT"
+        },
+        {
+            "entree": "ABDERRAZZAK EL YAKOUTI",
+            "getBaseName": "EL YAKOUTI",
+            "getFormattedName": "EL YAKOUTI"
+        },
+        {
+            "entree": "ABDESALAM AAJLIYE",
+            "getBaseName": "AAJLIYE",
+            "getFormattedName": "AAJLIYE"
+        },
+        {
+            "entree": "ABDESLAM BOUARIB",
+            "getBaseName": "BOUARIB",
+            "getFormattedName": "BOUARIB"
+        },
+        {
+            "entree": "ABDESSAMAD AIT TALEB",
+            "getBaseName": "AIT TALEB",
+            "getFormattedName": "AIT TALEB"
+        },
+        {
+            "entree": "ABIR NEJDAOUI",
+            "getBaseName": "NEJDAOUI",
+            "getFormattedName": "NEJDAOUI"
+        },
+        {
+            "entree": "ABLAZIZ BOUKAL",
+            "getBaseName": "BOUKAL",
+            "getFormattedName": "BOUKAL"
+        },
+        {
+            "entree": "ABOULKACEM LAMGHARI",
+            "getBaseName": "LAMGHARI",
+            "getFormattedName": "LAMGHARI"
+        },
+        {
+            "entree": "ABOULKACIM LAMGHARI",
+            "getBaseName": "LAMGHARI",
+            "getFormattedName": "LAMGHARI"
+        },
+        {
+            "entree": "ACHRAF SAHEL",
+            "getBaseName": "SAHEL",
+            "getFormattedName": "SAHEL"
+        },
+        {
+            "entree": "ADIL KHOUIDA",
+            "getBaseName": "KHOUIDA",
+            "getFormattedName": "KHOUIDA"
+        },
+        {
+            "entree": "ADIL SOUKRI",
+            "getBaseName": "SOUKRI",
+            "getFormattedName": "SOUKRI"
+        },
+        {
+            "entree": "AFIF ABDELJABBAR",
+            "getBaseName": "ABDELJABBAR",
+            "getFormattedName": "ABDELJABBAR"
+        },
+        {
+            "entree": "AHMED BELKHADIM",
+            "getBaseName": "BELKHADIM",
+            "getFormattedName": "BELKHADIM"
+        },
+        {
+            "entree": "AHMED GALLAB",
+            "getBaseName": "GALLAB",
+            "getFormattedName": "GALLAB"
+        },
+        {
+            "entree": "AHMED TAIA",
+            "getBaseName": "TAIA",
+            "getFormattedName": "TAIA"
+        },
+        {
+            "entree": "AICHA FAHI",
+            "getBaseName": "FAHI",
+            "getFormattedName": "FAHI"
+        },
+        {
+            "entree": "AICHA ISLAH",
+            "getBaseName": "ISLAH",
+            "getFormattedName": "ISLAH"
+        },
+        {
+            "entree": "AISSI ABDELHADI",
+            "getBaseName": "ABDELHADI",
+            "getFormattedName": "ABDELHADI"
+        },
+        {
+            "entree": "AIT EL CADI AYOUB",
+            "getBaseName": "AYOUB",
+            "getFormattedName": "EL CADI"
+        },
+        {
+            "entree": "AIT TALEB ABDESSAMAD",
+            "getBaseName": "ABDESSAMAD",
+            "getFormattedName": "ABDESSAMAD"
+        },
+        {
+            "entree": "AKRACH HASSAN",
+            "getBaseName": "HASSAN",
+            "getFormattedName": "HASSAN"
+        },
+        {
+            "entree": "ALI FSAHI",
+            "getBaseName": "FSAHI",
+            "getFormattedName": "FSAHI"
+        },
+        {
+            "entree": "AMINE JOUHARI",
+            "getBaseName": "JOUHARI",
+            "getFormattedName": "JOUHARI"
+        },
+        {
+            "entree": "ANASS AHIL",
+            "getBaseName": "AHIL",
+            "getFormattedName": "AHIL"
+        },
+        {
+            "entree": "ASMAA SADAK",
+            "getBaseName": "SADAK",
+            "getFormattedName": "SADAK"
+        },
+        {
+            "entree": "ASSIYA NAIM",
+            "getBaseName": "NAIM",
+            "getFormattedName": "NAIM"
+        },
+        {
+            "entree": "AYOUB KHATIB",
+            "getBaseName": "KHATIB",
+            "getFormattedName": "KHATIB"
+        },
+        {
+            "entree": "AZIZ LAHLY",
+            "getBaseName": "LAHLY",
+            "getFormattedName": "LAHLY"
+        },
+        {
+            "entree": "AZIZ MHAIMER",
+            "getBaseName": "MHAIMER",
+            "getFormattedName": "MHAIMER"
+        },
+        {
+            "entree": "AZIZ RAFA",
+            "getBaseName": "RAFA",
+            "getFormattedName": "RAFA"
+        },
+        {
+            "entree": "AZIZI SOUFIANE",
+            "getBaseName": "SOUFIANE",
+            "getFormattedName": "SOUFIANE"
+        },
+        {
+            "entree": "BADR-EDDINE HADRI",
+            "getBaseName": "HADRI",
+            "getFormattedName": "HADRI"
+        },
+        {
+            "entree": "BOUCHAIB MAATOUK",
+            "getBaseName": "MAATOUK",
+            "getFormattedName": "MAATOUK"
+        },
+        {
+            "entree": "BOUCHAIB MATOUK",
+            "getBaseName": "MATOUK",
+            "getFormattedName": "MATOUK"
+        },
+        {
+            "entree": "BOUTAINA TOUHTOUH",
+            "getBaseName": "TOUHTOUH",
+            "getFormattedName": "TOUHTOUH"
+        },
+        {
+            "entree": "BRAHIM LOURID",
+            "getBaseName": "LOURID",
+            "getFormattedName": "LOURID"
+        },
+        {
+            "entree": "CHARKAOUI ABDELHAK",
+            "getBaseName": "ABDELHAK",
+            "getFormattedName": "ABDELHAK"
+        },
+        {
+            "entree": "DALLI AMINE",
+            "getBaseName": "AMINE",
+            "getFormattedName": "AMINE"
+        },
+        {
+            "entree": "EL MOSTAFA ASRI",
+            "getBaseName": "ASRI",
+            "getFormattedName": "ASRI"
+        },
+        {
+            "entree": "EL OMARI ZINEB",
+            "getBaseName": "ZINEB",
+            "getFormattedName": "ZINEB"
+        },
+        {
+            "entree": "ERRAFIY IKRAM",
+            "getBaseName": "IKRAM",
+            "getFormattedName": "IKRAM"
+        },
+        {
+            "entree": "FAHD FATIH",
+            "getBaseName": "FATIH",
+            "getFormattedName": "FATIH"
+        },
+        {
+            "entree": "FATIMA EZZAHRA BETTAH",
+            "getBaseName": "BETTAH",
+            "getFormattedName": "BETTAH"
+        },
+        {
+            "entree": "FATIMA EZZAHRA NOUROUN",
+            "getBaseName": "NOUROUN",
+            "getFormattedName": "NOUROUN"
+        },
+        {
+            "entree": "FATIMA MOUSTATI",
+            "getBaseName": "MOUSTATI",
+            "getFormattedName": "MOUSTATI"
+        },
+        {
+            "entree": "FATIMA ZAHRA ETRICHI",
+            "getBaseName": "ETRICHI",
+            "getFormattedName": "ETRICHI"
+        },
+        {
+            "entree": "FERDAOUSS ABOUDDAFRE",
+            "getBaseName": "ABOUDDAFRE",
+            "getFormattedName": "ABOUDDAFRE"
+        },
+        {
+            "entree": "FOUAD NOUZRI",
+            "getBaseName": "NOUZRI",
+            "getFormattedName": "NOUZRI"
+        },
+        {
+            "entree": "FOUAD SAROUI",
+            "getBaseName": "SAROUI",
+            "getFormattedName": "SAROUI"
+        },
+        {
+            "entree": "GHITA CHERTI",
+            "getBaseName": "CHERTI",
+            "getFormattedName": "CHERTI"
+        },
+        {
+            "entree": "GHITA TISLA",
+            "getBaseName": "TISLA",
+            "getFormattedName": "TISLA"
+        },
+        {
+            "entree": "GHIZLANE CHOUA",
+            "getBaseName": "CHOUA",
+            "getFormattedName": "CHOUA"
+        },
+        {
+            "entree": "GHIZLANE KHATTARI",
+            "getBaseName": "KHATTARI",
+            "getFormattedName": "KHATTARI"
+        },
+        {
+            "entree": "HAJAR LAKHDAR",
+            "getBaseName": "LAKHDAR",
+            "getFormattedName": "LAKHDAR"
+        },
+        {
+            "entree": "HAMZA BOULAFKHOUDA",
+            "getBaseName": "BOULAFKHOUDA",
+            "getFormattedName": "BOULAFKHOUDA"
+        },
+        {
+            "entree": "HASSAN LAGHRABI",
+            "getBaseName": "LAGHRABI",
+            "getFormattedName": "LAGHRABI"
+        },
+        {
+            "entree": "HASSAN MRICHA",
+            "getBaseName": "MRICHA",
+            "getFormattedName": "MRICHA"
+        },
+        {
+            "entree": "HASSAN OUADI",
+            "getBaseName": "OUADI",
+            "getFormattedName": "OUADI"
+        },
+        {
+            "entree": "HIND BEY",
+            "getBaseName": "BEY",
+            "getFormattedName": "BEY"
+        },
+        {
+            "entree": "HOUDA ABIDA",
+            "getBaseName": "ABIDA",
+            "getFormattedName": "ABIDA"
+        },
+        {
+            "entree": "IBRAHIM KOUNDI",
+            "getBaseName": "KOUNDI",
+            "getFormattedName": "KOUNDI"
+        },
+        {
+            "entree": "IKRAM ERRAFIY",
+            "getBaseName": "ERRAFIY",
+            "getFormattedName": "ERRAFIY"
+        },
+        {
+            "entree": "ILHAME HOUSNI",
+            "getBaseName": "HOUSNI",
+            "getFormattedName": "HOUSNI"
+        },
+        {
+            "entree": "ISMAIL CHARIKI",
+            "getBaseName": "CHARIKI",
+            "getFormattedName": "CHARIKI"
+        },
+        {
+            "entree": "JAMAL KHALILY",
+            "getBaseName": "KHALILY",
+            "getFormattedName": "KHALILY"
+        },
+        {
+            "entree": "JOUHARI AMINE",
+            "getBaseName": "AMINE",
+            "getFormattedName": "AMINE"
+        },
+        {
+            "entree": "KARIM ERRIDAOUI",
+            "getBaseName": "ERRIDAOUI",
+            "getFormattedName": "ERRIDAOUI"
+        },
+        {
+            "entree": "KARIMA TISLA",
+            "getBaseName": "TISLA",
+            "getFormattedName": "TISLA"
+        },
+        {
+            "entree": "KARIMA WAHID",
+            "getBaseName": "WAHID",
+            "getFormattedName": "WAHID"
+        },
+        {
+            "entree": "KARTAF MARIAM",
+            "getBaseName": "MARIAM",
+            "getFormattedName": "MARIAM"
+        },
+        {
+            "entree": "KBABRA MERYEM",
+            "getBaseName": "MERYEM",
+            "getFormattedName": "MERYEM"
+        },
+        {
+            "entree": "KHADIJA BOUTERRAKA",
+            "getBaseName": "BOUTERRAKA",
+            "getFormattedName": "BOUTERRAKA"
+        },
+        {
+            "entree": "KHADIJA FATH",
+            "getBaseName": "FATH",
+            "getFormattedName": "FATH"
+        },
+        {
+            "entree": "KHADIJA KHATTARI",
+            "getBaseName": "KHATTARI",
+            "getFormattedName": "KHATTARI"
+        },
+        {
+            "entree": "KHADIJA SAHIL",
+            "getBaseName": "SAHIL",
+            "getFormattedName": "SAHIL"
+        },
+        {
+            "entree": "KHADIJA TIKA",
+            "getBaseName": "TIKA",
+            "getFormattedName": "TIKA"
+        },
+        {
+            "entree": "KHADIJA TOUNSSI",
+            "getBaseName": "TOUNSSI",
+            "getFormattedName": "TOUNSSI"
+        },
+        {
+            "entree": "KHALID ALICHAR",
+            "getBaseName": "ALICHAR",
+            "getFormattedName": "ALICHAR"
+        },
+        {
+            "entree": "LAASAL ABDELGHANI",
+            "getBaseName": "ABDELGHANI",
+            "getFormattedName": "ABDELGHANI"
+        },
+        {
+            "entree": "LAGHSSINI YOUSSEF",
+            "getBaseName": "YOUSSEF",
+            "getFormattedName": "YOUSSEF"
+        },
+        {
+            "entree": "LAMGHARI ABOULKACEM",
+            "getBaseName": "ABOULKACEM",
+            "getFormattedName": "ABOULKACEM"
+        },
+        {
+            "entree": "LOURID BRAHIM",
+            "getBaseName": "BRAHIM",
+            "getFormattedName": "BRAHIM"
+        },
+        {
+            "entree": "M'BAREK MECHMACHI",
+            "getBaseName": "MECHMACHI",
+            "getFormattedName": "MECHMACHI"
+        },
+        {
+            "entree": "MARIA LABIED",
+            "getBaseName": "LABIED",
+            "getFormattedName": "LABIED"
+        },
+        {
+            "entree": "MARIAM KARTAF",
+            "getBaseName": "KARTAF",
+            "getFormattedName": "KARTAF"
+        },
+        {
+            "entree": "MERYEM KBABRA",
+            "getBaseName": "KBABRA",
+            "getFormattedName": "KBABRA"
+        },
+        {
+            "entree": "MGHARI OTHMANE",
+            "getBaseName": "OTHMANE",
+            "getFormattedName": "OTHMANE"
+        },
+        {
+            "entree": "MOHAMED AIT TAHAR",
+            "getBaseName": "AIT TAHAR",
+            "getFormattedName": "AIT TAHAR"
+        },
+        {
+            "entree": "MOHAMED ARDY",
+            "getBaseName": "ARDY",
+            "getFormattedName": "ARDY"
+        },
+        {
+            "entree": "MOHAMED AWAM",
+            "getBaseName": "AWAM",
+            "getFormattedName": "AWAM"
+        },
+        {
+            "entree": "MOHAMED CHAFOUAI",
+            "getBaseName": "CHAFOUAI",
+            "getFormattedName": "CHAFOUAI"
+        },
+        {
+            "entree": "MOHAMED CHARRAB",
+            "getBaseName": "CHARRAB",
+            "getFormattedName": "CHARRAB"
+        },
+        {
+            "entree": "MOHAMED KHACHAFI",
+            "getBaseName": "KHACHAFI",
+            "getFormattedName": "KHACHAFI"
+        },
+        {
+            "entree": "MOHAMED OTMANI IDRISSI",
+            "getBaseName": "IDRISSI",
+            "getFormattedName": "IDRISSI"
+        },
+        {
+            "entree": "MOHAMED SERBOUT",
+            "getBaseName": "SERBOUT",
+            "getFormattedName": "SERBOUT"
+        },
+        {
+            "entree": "MOHAMMED HAIRANE",
+            "getBaseName": "HAIRANE",
+            "getFormattedName": "HAIRANE"
+        },
+        {
+            "entree": "MOSTAFA CHAJADINE",
+            "getBaseName": "CHAJADINE",
+            "getFormattedName": "CHAJADINE"
+        },
+        {
+            "entree": "MOUAD NOUZRI",
+            "getBaseName": "NOUZRI",
+            "getFormattedName": "NOUZRI"
+        },
+        {
+            "entree": "MOUZG OMAR",
+            "getBaseName": "OMAR",
+            "getFormattedName": "OMAR"
+        },
+        {
+            "entree": "MUSTAPHA BELGHAZI",
+            "getBaseName": "BELGHAZI",
+            "getFormattedName": "BELGHAZI"
+        },
+        {
+            "entree": "MUSTAPHA ZOUBIR",
+            "getBaseName": "ZOUBIR",
+            "getFormattedName": "ZOUBIR"
+        },
+        {
+            "entree": "Mohamed CHAWKI",
+            "getBaseName": "CHAWKI",
+            "getFormattedName": "CHAWKI"
+        },
+        {
+            "entree": "NABIL AIT SBYI",
+            "getBaseName": "AIT SBYI",
+            "getFormattedName": "AIT SBYI"
+        },
+        {
+            "entree": "NADIA RACHIDI",
+            "getBaseName": "RACHIDI",
+            "getFormattedName": "RACHIDI"
+        },
+        {
+            "entree": "NAJAT EL JAAFARI",
+            "getBaseName": "EL JAAFARI",
+            "getFormattedName": "EL JAAFARI"
+        },
+        {
+            "entree": "NAZHA EL YAZAMI",
+            "getBaseName": "EL YAZAMI",
+            "getFormattedName": "EL YAZAMI"
+        },
+        {
+            "entree": "NOURA AIBOUS",
+            "getBaseName": "AIBOUS",
+            "getFormattedName": "AIBOUS"
+        },
+        {
+            "entree": "NOUREDDINE BADIR",
+            "getBaseName": "BADIR",
+            "getFormattedName": "BADIR"
+        },
+        {
+            "entree": "NOUZRI FOUAD",
+            "getBaseName": "FOUAD",
+            "getFormattedName": "FOUAD"
+        },
+        {
+            "entree": "OMAR AMMARI",
+            "getBaseName": "AMMARI",
+            "getFormattedName": "AMMARI"
+        },
+        {
+            "entree": "OMAR MOUZG",
+            "getBaseName": "MOUZG",
+            "getFormattedName": "MOUZG"
+        },
+        {
+            "entree": "OTHMANE MGHARI",
+            "getBaseName": "MGHARI",
+            "getFormattedName": "MGHARI"
+        },
+        {
+            "entree": "OUKHAYYI YASSINE",
+            "getBaseName": "YASSINE",
+            "getFormattedName": "YASSINE"
+        },
+        {
+            "entree": "RACHID EL ALAOUI",
+            "getBaseName": "EL ALAOUI",
+            "getFormattedName": "EL ALAOUI"
+        },
+        {
+            "entree": "RACHID LAASSAL",
+            "getBaseName": "LAASSAL",
+            "getFormattedName": "LAASSAL"
+        },
+        {
+            "entree": "RACHID MABCHOUR",
+            "getBaseName": "MABCHOUR",
+            "getFormattedName": "MABCHOUR"
+        },
+        {
+            "entree": "RACHID NICHLY",
+            "getBaseName": "NICHLY",
+            "getFormattedName": "NICHLY"
+        },
+        {
+            "entree": "RAJA OUBENYOUSSEF",
+            "getBaseName": "OUBENYOUSSEF",
+            "getFormattedName": "OUBENYOUSSEF"
+        },
+        {
+            "entree": "SAHEL ACHRAF",
+            "getBaseName": "ACHRAF",
+            "getFormattedName": "ACHRAF"
+        },
+        {
+            "entree": "SALMA ABERCHANE",
+            "getBaseName": "ABERCHANE",
+            "getFormattedName": "ABERCHANE"
+        },
+        {
+            "entree": "SAMIR ABID",
+            "getBaseName": "ABID",
+            "getFormattedName": "ABID"
+        },
+        {
+            "entree": "SAMIR BOUHAJA",
+            "getBaseName": "BOUHAJA",
+            "getFormattedName": "BOUHAJA"
+        },
+        {
+            "entree": "SAMIR BOUHMIDA",
+            "getBaseName": "BOUHMIDA",
+            "getFormattedName": "BOUHMIDA"
+        },
+        {
+            "entree": "SAMIR EL ACHOURI",
+            "getBaseName": "EL ACHOURI",
+            "getFormattedName": "EL ACHOURI"
+        },
+        {
+            "entree": "SANAA CHNAF",
+            "getBaseName": "CHNAF",
+            "getFormattedName": "CHNAF"
+        },
+        {
+            "entree": "SMAIL LAMDINI",
+            "getBaseName": "LAMDINI",
+            "getFormattedName": "LAMDINI"
+        },
+        {
+            "entree": "SOUAD MARHTERE",
+            "getBaseName": "MARHTERE",
+            "getFormattedName": "MARHTERE"
+        },
+        {
+            "entree": "SOUFIANE AZHAR",
+            "getBaseName": "AZHAR",
+            "getFormattedName": "AZHAR"
+        },
+        {
+            "entree": "TAHAR KANOUR",
+            "getBaseName": "KANOUR",
+            "getFormattedName": "KANOUR"
+        },
+        {
+            "entree": "TAIA Ahmed",
+            "getBaseName": "AHMED",
+            "getFormattedName": "AHMED"
+        },
+        {
+            "entree": "TOUFIK BEJGANNA",
+            "getBaseName": "BEJGANNA",
+            "getFormattedName": "BEJGANNA"
+        },
+        {
+            "entree": "WAHIBA BOUZYAN",
+            "getBaseName": "BOUZYAN",
+            "getFormattedName": "BOUZYAN"
+        },
+        {
+            "entree": "XXXXX",
+            "getBaseName": "XXXXX",
+            "getFormattedName": "XXXXX"
+        },
+        {
+            "entree": "YASSINE OUKHAYYI",
+            "getBaseName": "OUKHAYYI",
+            "getFormattedName": "OUKHAYYI"
+        },
+        {
+            "entree": "YOUNES AHANNACH",
+            "getBaseName": "AHANNACH",
+            "getFormattedName": "AHANNACH"
+        },
+        {
+            "entree": "YOUNES ALLOUN",
+            "getBaseName": "ALLOUN",
+            "getFormattedName": "ALLOUN"
+        },
+        {
+            "entree": "YOUNES EL ABBADI",
+            "getBaseName": "EL ABBADI",
+            "getFormattedName": "EL ABBADI"
+        },
+        {
+            "entree": "YOUSSEF AIT HAMDANE",
+            "getBaseName": "AIT HAMDANE",
+            "getFormattedName": "AIT HAMDANE"
+        },
+        {
+            "entree": "YOUSSEF LAGHSSINI",
+            "getBaseName": "LAGHSSINI",
+            "getFormattedName": "LAGHSSINI"
+        },
+        {
+            "entree": "ZINEB EL OMARI",
+            "getBaseName": "EL OMARI",
+            "getFormattedName": "EL OMARI"
+        }
+    ]
+}

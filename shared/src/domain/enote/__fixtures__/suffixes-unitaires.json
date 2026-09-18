@@ -1,0 +1,563 @@
+{
+    "genereLe": "2026-08-15T13:04:17+02:00",
+    "source": "includes/parse_base_rows.php (pb_stripSuffixeGroupe)",
+    "total": 139,
+    "cas": [
+        {
+            "entree": "AA101_I0",
+            "pb_stripSuffixeGroupe": "AA101_I0"
+        },
+        {
+            "entree": "AAOG201_I0",
+            "pb_stripSuffixeGroupe": "AAOG201_I0"
+        },
+        {
+            "entree": "AAOG301_I0",
+            "pb_stripSuffixeGroupe": "AAOG301_I0"
+        },
+        {
+            "entree": "ACADA101",
+            "pb_stripSuffixeGroupe": "ACADA101"
+        },
+        {
+            "entree": "ACADA101 (FQ)",
+            "pb_stripSuffixeGroupe": "ACADA101"
+        },
+        {
+            "entree": "ACADI101",
+            "pb_stripSuffixeGroupe": "ACADI101"
+        },
+        {
+            "entree": "ACADI101 (FQ)",
+            "pb_stripSuffixeGroupe": "ACADI101"
+        },
+        {
+            "entree": "AG101",
+            "pb_stripSuffixeGroupe": "AG101"
+        },
+        {
+            "entree": "AG101 (FQ)",
+            "pb_stripSuffixeGroupe": "AG101"
+        },
+        {
+            "entree": "CC101",
+            "pb_stripSuffixeGroupe": "CC101"
+        },
+        {
+            "entree": "DEV101",
+            "pb_stripSuffixeGroupe": "DEV101"
+        },
+        {
+            "entree": "DEV102",
+            "pb_stripSuffixeGroupe": "DEV102"
+        },
+        {
+            "entree": "DEVOWFS201",
+            "pb_stripSuffixeGroupe": "DEVOWFS201"
+        },
+        {
+            "entree": "DEVOWFS202",
+            "pb_stripSuffixeGroupe": "DEVOWFS202"
+        },
+        {
+            "entree": "EB101_I0",
+            "pb_stripSuffixeGroupe": "EB101_I0"
+        },
+        {
+            "entree": "EB102_I0",
+            "pb_stripSuffixeGroupe": "EB102_I0"
+        },
+        {
+            "entree": "EB103_I0",
+            "pb_stripSuffixeGroupe": "EB103_I0"
+        },
+        {
+            "entree": "EEI101",
+            "pb_stripSuffixeGroupe": "EEI101"
+        },
+        {
+            "entree": "EEI201",
+            "pb_stripSuffixeGroupe": "EEI201"
+        },
+        {
+            "entree": "EI101",
+            "pb_stripSuffixeGroupe": "EI101"
+        },
+        {
+            "entree": "EI102",
+            "pb_stripSuffixeGroupe": "EI102"
+        },
+        {
+            "entree": "EI103",
+            "pb_stripSuffixeGroupe": "EI103"
+        },
+        {
+            "entree": "EI201",
+            "pb_stripSuffixeGroupe": "EI201"
+        },
+        {
+            "entree": "EI202",
+            "pb_stripSuffixeGroupe": "EI202"
+        },
+        {
+            "entree": "EI203",
+            "pb_stripSuffixeGroupe": "EI203"
+        },
+        {
+            "entree": "EM101",
+            "pb_stripSuffixeGroupe": "EM101"
+        },
+        {
+            "entree": "EM102",
+            "pb_stripSuffixeGroupe": "EM102"
+        },
+        {
+            "entree": "EM201",
+            "pb_stripSuffixeGroupe": "EM201"
+        },
+        {
+            "entree": "EM202",
+            "pb_stripSuffixeGroupe": "EM202"
+        },
+        {
+            "entree": "EMI101",
+            "pb_stripSuffixeGroupe": "EMI101"
+        },
+        {
+            "entree": "EMI102",
+            "pb_stripSuffixeGroupe": "EMI102"
+        },
+        {
+            "entree": "EMI201",
+            "pb_stripSuffixeGroupe": "EMI201"
+        },
+        {
+            "entree": "EMI202",
+            "pb_stripSuffixeGroupe": "EMI202"
+        },
+        {
+            "entree": "ESA101",
+            "pb_stripSuffixeGroupe": "ESA101"
+        },
+        {
+            "entree": "ESA102",
+            "pb_stripSuffixeGroupe": "ESA102"
+        },
+        {
+            "entree": "ESA103",
+            "pb_stripSuffixeGroupe": "ESA103"
+        },
+        {
+            "entree": "ESA104",
+            "pb_stripSuffixeGroupe": "ESA104"
+        },
+        {
+            "entree": "ESA105",
+            "pb_stripSuffixeGroupe": "ESA105"
+        },
+        {
+            "entree": "ESA106",
+            "pb_stripSuffixeGroupe": "ESA106"
+        },
+        {
+            "entree": "ESA201",
+            "pb_stripSuffixeGroupe": "ESA201"
+        },
+        {
+            "entree": "ESA202",
+            "pb_stripSuffixeGroupe": "ESA202"
+        },
+        {
+            "entree": "ESA203",
+            "pb_stripSuffixeGroupe": "ESA203"
+        },
+        {
+            "entree": "ESA204",
+            "pb_stripSuffixeGroupe": "ESA204"
+        },
+        {
+            "entree": "GE101",
+            "pb_stripSuffixeGroupe": "GE101"
+        },
+        {
+            "entree": "GE101_I0",
+            "pb_stripSuffixeGroupe": "GE101_I0"
+        },
+        {
+            "entree": "GE102",
+            "pb_stripSuffixeGroupe": "GE102"
+        },
+        {
+            "entree": "GE102_I0",
+            "pb_stripSuffixeGroupe": "GE102_I0"
+        },
+        {
+            "entree": "GE103",
+            "pb_stripSuffixeGroupe": "GE103"
+        },
+        {
+            "entree": "GE104",
+            "pb_stripSuffixeGroupe": "GE104"
+        },
+        {
+            "entree": "GE105",
+            "pb_stripSuffixeGroupe": "GE105"
+        },
+        {
+            "entree": "GEOCF201",
+            "pb_stripSuffixeGroupe": "GEOCF201"
+        },
+        {
+            "entree": "GEOCF202",
+            "pb_stripSuffixeGroupe": "GEOCF202"
+        },
+        {
+            "entree": "GEOCF301",
+            "pb_stripSuffixeGroupe": "GEOCF301"
+        },
+        {
+            "entree": "GEOCM201",
+            "pb_stripSuffixeGroupe": "GEOCM201"
+        },
+        {
+            "entree": "GEOCM201_I0",
+            "pb_stripSuffixeGroupe": "GEOCM201_I0"
+        },
+        {
+            "entree": "GEOCM202",
+            "pb_stripSuffixeGroupe": "GEOCM202"
+        },
+        {
+            "entree": "GEOCM301",
+            "pb_stripSuffixeGroupe": "GEOCM301"
+        },
+        {
+            "entree": "GEOCM301_I0",
+            "pb_stripSuffixeGroupe": "GEOCM301_I0"
+        },
+        {
+            "entree": "GEOCM302",
+            "pb_stripSuffixeGroupe": "GEOCM302"
+        },
+        {
+            "entree": "GEOESA201",
+            "pb_stripSuffixeGroupe": "GEOESA201"
+        },
+        {
+            "entree": "GEOESA202",
+            "pb_stripSuffixeGroupe": "GEOESA202"
+        },
+        {
+            "entree": "GEOESA203",
+            "pb_stripSuffixeGroupe": "GEOESA203"
+        },
+        {
+            "entree": "GEOESA204",
+            "pb_stripSuffixeGroupe": "GEOESA204"
+        },
+        {
+            "entree": "GEOM201",
+            "pb_stripSuffixeGroupe": "GEOM201"
+        },
+        {
+            "entree": "GEOM202",
+            "pb_stripSuffixeGroupe": "GEOM202"
+        },
+        {
+            "entree": "GEOOM201",
+            "pb_stripSuffixeGroupe": "GEOOM201"
+        },
+        {
+            "entree": "GEOOM301",
+            "pb_stripSuffixeGroupe": "GEOOM301"
+        },
+        {
+            "entree": "GM101",
+            "pb_stripSuffixeGroupe": "GM101"
+        },
+        {
+            "entree": "GM102",
+            "pb_stripSuffixeGroupe": "GM102"
+        },
+        {
+            "entree": "GM103",
+            "pb_stripSuffixeGroupe": "GM103"
+        },
+        {
+            "entree": "GMOEMCM201",
+            "pb_stripSuffixeGroupe": "GMOEMCM201"
+        },
+        {
+            "entree": "GMOEMCM202",
+            "pb_stripSuffixeGroupe": "GMOEMCM202"
+        },
+        {
+            "entree": "GMOEMFM201",
+            "pb_stripSuffixeGroupe": "GMOEMFM201"
+        },
+        {
+            "entree": "GMOEMFM202",
+            "pb_stripSuffixeGroupe": "GMOEMFM202"
+        },
+        {
+            "entree": "ID101",
+            "pb_stripSuffixeGroupe": "ID101"
+        },
+        {
+            "entree": "ID101_I0",
+            "pb_stripSuffixeGroupe": "ID101_I0"
+        },
+        {
+            "entree": "ID102",
+            "pb_stripSuffixeGroupe": "ID102"
+        },
+        {
+            "entree": "ID102_I0",
+            "pb_stripSuffixeGroupe": "ID102_I0"
+        },
+        {
+            "entree": "IDOSR201",
+            "pb_stripSuffixeGroupe": "IDOSR201"
+        },
+        {
+            "entree": "IDOSR201_I0",
+            "pb_stripSuffixeGroupe": "IDOSR201_I0"
+        },
+        {
+            "entree": "IDOSR202",
+            "pb_stripSuffixeGroupe": "IDOSR202"
+        },
+        {
+            "entree": "MA101_I0",
+            "pb_stripSuffixeGroupe": "MA101_I0"
+        },
+        {
+            "entree": "MA102_I0",
+            "pb_stripSuffixeGroupe": "MA102_I0"
+        },
+        {
+            "entree": "MA103_I0",
+            "pb_stripSuffixeGroupe": "MA103_I0"
+        },
+        {
+            "entree": "OFM101",
+            "pb_stripSuffixeGroupe": "OFM101"
+        },
+        {
+            "entree": "OFM201",
+            "pb_stripSuffixeGroupe": "OFM201"
+        },
+        {
+            "entree": "OPCM101",
+            "pb_stripSuffixeGroupe": "OPCM101"
+        },
+        {
+            "entree": "OPCM102",
+            "pb_stripSuffixeGroupe": "OPCM102"
+        },
+        {
+            "entree": "OPCM201",
+            "pb_stripSuffixeGroupe": "OPCM201"
+        },
+        {
+            "entree": "OPCM202",
+            "pb_stripSuffixeGroupe": "OPCM202"
+        },
+        {
+            "entree": "OQE101",
+            "pb_stripSuffixeGroupe": "OQE101"
+        },
+        {
+            "entree": "OQE102",
+            "pb_stripSuffixeGroupe": "OQE102"
+        },
+        {
+            "entree": "OQEOEE201",
+            "pb_stripSuffixeGroupe": "OQEOEE201"
+        },
+        {
+            "entree": "OQEOEM201",
+            "pb_stripSuffixeGroupe": "OQEOEM201"
+        },
+        {
+            "entree": "PIE101",
+            "pb_stripSuffixeGroupe": "PIE101"
+        },
+        {
+            "entree": "PIE102",
+            "pb_stripSuffixeGroupe": "PIE102"
+        },
+        {
+            "entree": "PIE103",
+            "pb_stripSuffixeGroupe": "PIE103"
+        },
+        {
+            "entree": "PIE201",
+            "pb_stripSuffixeGroupe": "PIE201"
+        },
+        {
+            "entree": "PIE201 (FQ)",
+            "pb_stripSuffixeGroupe": "PIE201"
+        },
+        {
+            "entree": "PIE202",
+            "pb_stripSuffixeGroupe": "PIE202"
+        },
+        {
+            "entree": "PIE202 (FQ)",
+            "pb_stripSuffixeGroupe": "PIE202"
+        },
+        {
+            "entree": "PM101",
+            "pb_stripSuffixeGroupe": "PM101"
+        },
+        {
+            "entree": "PM102",
+            "pb_stripSuffixeGroupe": "PM102"
+        },
+        {
+            "entree": "PM103",
+            "pb_stripSuffixeGroupe": "PM103"
+        },
+        {
+            "entree": "PMOCM201",
+            "pb_stripSuffixeGroupe": "PMOCM201"
+        },
+        {
+            "entree": "PMOCM202",
+            "pb_stripSuffixeGroupe": "PMOCM202"
+        },
+        {
+            "entree": "PMORFM201",
+            "pb_stripSuffixeGroupe": "PMORFM201"
+        },
+        {
+            "entree": "PRMOCN101",
+            "pb_stripSuffixeGroupe": "PRMOCN101"
+        },
+        {
+            "entree": "SME101",
+            "pb_stripSuffixeGroupe": "SME101"
+        },
+        {
+            "entree": "SME103",
+            "pb_stripSuffixeGroupe": "SME103"
+        },
+        {
+            "entree": "SMP101",
+            "pb_stripSuffixeGroupe": "SMP101"
+        },
+        {
+            "entree": "SMP102",
+            "pb_stripSuffixeGroupe": "SMP102"
+        },
+        {
+            "entree": "SMP201",
+            "pb_stripSuffixeGroupe": "SMP201"
+        },
+        {
+            "entree": "SMP202",
+            "pb_stripSuffixeGroupe": "SMP202"
+        },
+        {
+            "entree": "SMW101",
+            "pb_stripSuffixeGroupe": "SMW101"
+        },
+        {
+            "entree": "SMW103",
+            "pb_stripSuffixeGroupe": "SMW103"
+        },
+        {
+            "entree": "TC101_I0",
+            "pb_stripSuffixeGroupe": "TC101_I0"
+        },
+        {
+            "entree": "TC201_I0",
+            "pb_stripSuffixeGroupe": "TC201_I0"
+        },
+        {
+            "entree": "TCM101",
+            "pb_stripSuffixeGroupe": "TCM101"
+        },
+        {
+            "entree": "TCM201",
+            "pb_stripSuffixeGroupe": "TCM201"
+        },
+        {
+            "entree": "TFM101",
+            "pb_stripSuffixeGroupe": "TFM101"
+        },
+        {
+            "entree": "TFM102",
+            "pb_stripSuffixeGroupe": "TFM102"
+        },
+        {
+            "entree": "TFM201",
+            "pb_stripSuffixeGroupe": "TFM201"
+        },
+        {
+            "entree": "TFM202",
+            "pb_stripSuffixeGroupe": "TFM202"
+        },
+        {
+            "entree": "TSBECM101",
+            "pb_stripSuffixeGroupe": "TSBECM101"
+        },
+        {
+            "entree": "TSBECM102",
+            "pb_stripSuffixeGroupe": "TSBECM102"
+        },
+        {
+            "entree": "TSBECM103",
+            "pb_stripSuffixeGroupe": "TSBECM103"
+        },
+        {
+            "entree": "TSBECM104",
+            "pb_stripSuffixeGroupe": "TSBECM104"
+        },
+        {
+            "entree": "TSBECM201",
+            "pb_stripSuffixeGroupe": "TSBECM201"
+        },
+        {
+            "entree": "TSBECM202",
+            "pb_stripSuffixeGroupe": "TSBECM202"
+        },
+        {
+            "entree": "TSBECM203",
+            "pb_stripSuffixeGroupe": "TSBECM203"
+        },
+        {
+            "entree": "TSBECM204",
+            "pb_stripSuffixeGroupe": "TSBECM204"
+        },
+        {
+            "entree": "TSMFM101",
+            "pb_stripSuffixeGroupe": "TSMFM101"
+        },
+        {
+            "entree": "TSMFM102",
+            "pb_stripSuffixeGroupe": "TSMFM102"
+        },
+        {
+            "entree": "TSMFM103",
+            "pb_stripSuffixeGroupe": "TSMFM103"
+        },
+        {
+            "entree": "TSMFM104",
+            "pb_stripSuffixeGroupe": "TSMFM104"
+        },
+        {
+            "entree": "TSMFM201",
+            "pb_stripSuffixeGroupe": "TSMFM201"
+        },
+        {
+            "entree": "TSMFM202",
+            "pb_stripSuffixeGroupe": "TSMFM202"
+        },
+        {
+            "entree": "TSMFM203",
+            "pb_stripSuffixeGroupe": "TSMFM203"
+        }
+    ]
+}

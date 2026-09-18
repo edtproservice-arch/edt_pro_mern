@@ -1,0 +1,25 @@
+{
+  "genereLe": "2026-08-14T19:28:41.638Z",
+  "divergences": [
+    {
+      "entree": "AIT EL CADI AYOUB",
+      "mots": 4,
+      "resultats": {
+        "PHP getBaseName": "AYOUB",
+        "PHP getFormattedName": "EL CADI",
+        "JS getBaseNameJS": "AYOUB",
+        "JS getFormattedName": "AYOUB"
+      }
+    },
+    {
+      "entree": "TAIA Ahmed",
+      "mots": 2,
+      "resultats": {
+        "PHP getBaseName": "AHMED",
+        "PHP getFormattedName": "AHMED",
+        "JS getBaseNameJS": "AHMED",
+        "JS getFormattedName": "Ahmed"
+      }
+    }
+  ]
+}

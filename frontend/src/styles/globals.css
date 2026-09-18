@@ -1,0 +1,429 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==========================================================================
+   NOTION-STYLE DESIGN SYSTEM
+   CSS variables mapped to shadcn/ui's expected token names.
+   Values sourced from the Notion design analysis (colors, type, radius).
+   ========================================================================== */
+
+@layer base {
+  :root {
+    /* ---- Core surfaces ---- */
+    /* Fond de page en BLANC PUR — décision du 2026-08-14, elle remplace le
+       canvas-soft de la charte Notion d'origine. `--muted` conserve le gris
+       doux pour les surfaces secondaires (blocs, zones inertes), sinon elles
+       deviendraient invisibles. Les cards se détachent désormais par leur
+       hairline + une ombre discrète, plus par le contraste de fond. */
+    --background: 0 0% 100%;        /* blanc pur #ffffff */
+    --foreground: 0 0% 0%;          /* ink #000000 */
+
+    --card: 0 0% 100%;              /* surface #ffffff */
+    --card-foreground: 0 0% 0%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 0%;
+
+    /* ---- Brand ---- */
+    --primary: 209 100% 43%;        /* Notion blue #0075de */
+    --primary-foreground: 0 0% 100%;
+    --primary-active: 208 100% 34%; /* pressed blue #005bab */
+
+    /* ═══ ⚠️ GRIS, PAS L'INDIGO (2026-08-26, demande du porteur) ═══
+       `secondary` portait l'indigo profond #213183 — le « moment fort » de la
+       charte. Or shadcn lui donne partout un rôle DISCRET : c'est la teinte du
+       bouton qu'on ne veut PAS mettre en avant, « Annuler » en tête. Avec
+       l'indigo, un bouton d'annulation devenait l'élément le plus visible de la
+       boîte de dialogue — l'inverse de ce qu'il doit être.
+       Il prend donc le gris de `--muted`, pour que les deux surfaces neutres de
+       l'application s'accordent au lieu de se rapprocher sans se ressembler.
+       ⚠️ L'INDIGO #213183 RESTE LA COULEUR DE MARQUE du bandeau de la landing
+       (F17, Phase 11) : il reprendra un token à lui quand cette page arrivera.
+       Aucun écran ne l'utilisait ici — `AdminDashboard` l'écartait déjà en
+       toutes lettres. */
+    --secondary: 40 8% 96%;
+    --secondary-foreground: 0 0% 0%;
+
+    /* ---- Text scale ---- */
+    --muted: 40 8% 96%;
+    --muted-foreground: 33 7% 38%;  /* ink-secondary #31302e */
+
+    /* ---- Surfaces de tableau ----
+       ⚠️ UN TOKEN À PART, PAS `--muted`. Les en-têtes de tableau demandent un
+       gris FROID (teinte bleutée), là où `--muted` est chaud (teinte 40) et sert
+       aussi aux boutons, badges, champs et barre latérale : le refroidir
+       repeindrait toute l'application. Ce token ne peint QUE les `<thead>`. */
+    --tableau-tete: 210 22% 96%;
+    --tableau-tete-foreground: 215 14% 40%;
+
+    --accent: 40 8% 96%;
+    --accent-foreground: 0 0% 0%;
+
+    /* ---- Borders / inputs / focus ---- */
+    --border: 0 0% 90%;             /* hairline #e6e6e6 */
+    --input: 0 0% 87%;              /* text-input border #dddddd */
+    --ring: 209 100% 43%;           /* focus = primary blue */
+
+    /* ---- Semantic (Notion doesn't expose a dedicated ramp; using sticker colors) ---- */
+    --destructive: 0 84% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 125 78% 37%;         /* sticker green #1aae39 */
+    --success-foreground: 0 0% 100%;
+    /* Ambre #f59e0b — état « en cours / à reprendre », distinct de l'erreur.
+       Repris de l'ancienne carte d'établissement (.aff-chip__dot.is-partial). */
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 0%;
+
+    /* ═══ LA SURVEILLANCE D'EFM ═══
+       Fond  : bg-yellow-50 (#fefce8) → 55 92% 95%
+       Texte : #F0B13D (ambre)        → 39 86% 59%
+       Alignés sur le badge « In review » pour une lecture cohérente. */
+    --efm: 55 92% 95%;
+    --efm-foreground: 39 86% 59%;
+
+    /* ---- Radius scale (Notion uses tighter radii than most shadcn defaults) ---- */
+    --radius: 0.5rem;               /* 8px = rounded-md, the "utility" default */
+
+    /* ---- Decorative sticker palette (never use for structure/CTAs) ---- */
+    --accent-sky: 209 79% 66%;      /* #62aef0 */
+    /* ⚠️ Variantes FONCÉES, pour porter du texte blanc. `--accent-sky` (L 66 %)
+       et `--accent-green` (L 37 %) sont pensés pour des APLATS PÂLES : du blanc
+       dessus tombe à 2:1 et 3:1 de contraste, illisible sur un badge d'une
+       lettre. Même convention que `--accent-purple-deep` et
+       `--accent-orange-deep`, déjà présents. */
+    --accent-sky-deep: 209 79% 38%;
+    --accent-green-deep: 125 78% 26%;
+    --accent-purple: 273 66% 84%;   /* #d6b6f6 */
+    --accent-purple-deep: 275 51% 22%; /* #391c57 */
+    /* ⚠️ Le violet du DISTANCIEL À POIDS DE BARRE. `--accent-purple` (L 84 %)
+       est fait pour des APLATS : posé en barre à côté du vert présentiel
+       (`--accent-green`, L 37 %), il disparaît — le graphique ne montrerait plus
+       qu'une seule série. `--accent-purple-deep` (L 22 %), lui, se lit comme du
+       noir et non comme du violet. Même motif que `--accent-sky-deep` et
+       `--accent-green-deep`, ajoutés pour les badges. */
+    --accent-purple-mid: 273 66% 60%;  /* #a86ee8 */
+    --accent-pink: 320 100% 55%;    /* #ff64c8 */
+    --accent-orange: 25 100% 43%;   /* #dd5b00 */
+    --accent-orange-deep: 25 100% 24%; /* #793400 */
+    --accent-teal: 176 57% 39%;     /* #2a9d99 */
+    --accent-cyan: 185 96% 90%;     /* #cffafe */
+    --accent-green: 125 78% 37%;    /* #1aae39 */
+    --accent-brown: 26 61% 20%;     /* #523410 */     --sidebar-background: 0 0% 98%;     --sidebar-foreground: 240 5.3% 26.1%;     --sidebar-primary: 240 5.9% 10%;     --sidebar-primary-foreground: 0 0% 98%;     --sidebar-accent: 240 4.8% 95.9%;     --sidebar-accent-foreground: 240 5.9% 10%;     --sidebar-border: 220 13% 91%;     --sidebar-ring: 217.2 91.2% 59.8%;
+
+  }
+
+  /* Notion's marketing site is light-only in the source analysis.
+     This dark variant is a reasonable app-shell companion (e.g. dashboard dark mode)
+     — adjust if you want to stay strictly light like the marketing pages. */
+  .dark {
+    --background: 0 0% 9%;
+    --foreground: 0 0% 95%;
+
+    --card: 0 0% 12%;
+    --card-foreground: 0 0% 95%;
+
+    --popover: 0 0% 12%;
+    --popover-foreground: 0 0% 95%;
+
+    --primary: 209 100% 55%;
+    --primary-foreground: 0 0% 100%;
+    --primary-active: 208 100% 45%;
+
+    /* Même rôle discret en sombre : le gris des surfaces neutres. */
+    --secondary: 0 0% 16%;
+    --secondary-foreground: 0 0% 95%;
+
+    --muted: 0 0% 16%;
+    --muted-foreground: 0 0% 65%;
+
+    /* Même froideur en sombre, mais plus CLAIRE que le fond : un en-tête doit
+       ressortir du corps du tableau, quel que soit le thème. */
+    --tableau-tete: 215 16% 18%;
+    --tableau-tete-foreground: 215 12% 68%;
+
+    --accent: 0 0% 16%;
+    --accent-foreground: 0 0% 95%;
+
+    --border: 0 0% 20%;
+    --input: 0 0% 22%;
+    --ring: 209 100% 55%;
+
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 125 60% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 85% 55%;
+    --warning-foreground: 0 0% 0%;
+
+    /* En sombre, le fond s'assombrit pour ne pas éblouir sur fond noir.
+       Le texte ambre (#F0B13D) est conservé tel quel. */
+    --efm: 55 45% 18%;
+    --efm-foreground: 39 86% 59%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: "Inter", -apple-system, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-feature-settings: "lnum" 1, "locl" 1;
+  }
+}
+
+/* ==========================================================================
+   SCROLLBARS — style unique, appliqué à toute l'application
+   --------------------------------------------------------------------------
+   L'ancien site masquait purement et simplement les scrollbars
+   (`scrollbar-width: none` dans login.html, profile.html, inbox.html…) :
+   l'utilisateur perdait tout repère de position, ce qui est particulièrement
+   pénalisant sur les grilles d'emploi du temps et les longues listes.
+   Ici elles restent visibles, mais discrètes.
+
+   Le thumb est peint en `background-clip: content-box` derrière une bordure
+   transparente : c'est ce qui lui donne son air « flottant », détaché des
+   bords, sans réserver de piste grise.
+   ========================================================================== */
+@layer base {
+  html {
+    /* La gouttière native ne doit pas réserver de colonne vide : les zones de
+       défilement de l'application portent leur propre barre, au bord droit. */
+    scrollbar-gutter: auto;
+    /* Les menus Select sont rendus dans un portail : leur ouverture ne doit
+       jamais créer de défilement horizontal sur toute la page. Les tableaux
+       conservent leurs propres zones `overflow-x-auto` quand nécessaire. */
+    overflow-x: clip;
+  }
+
+  body {
+    overflow-x: clip;
+  }
+
+  /* Radix verrouille temporairement le body pendant l'ouverture d'un Select.
+     Sur les pages publiques (inscription notamment), on préserve la gouttière
+     pour que la carte reste exactement à la même position. */
+  html:has(.auth-layout) {
+    scrollbar-gutter: stable;
+  }
+
+  /* react-remove-scroll ajoute une marge pour compenser la barre qu'il masque.
+     La gouttière stable ci-dessus assure déjà cette compensation ; sans cette
+     règle, les deux compensations se cumulent et la page vibre. */
+  body[data-scroll-locked][data-scroll-locked] {
+    margin-right: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  /* Firefox UNIQUEMENT.
+     ⚠️ Piège vérifié dans le navigateur : depuis Chrome 121, `scrollbar-width`
+     est aussi reconnu par Chromium, et sa présence DÉSACTIVE les pseudo-éléments
+     `::-webkit-scrollbar`. Déclarée globalement, elle rendait donc tout le bloc
+     ci-dessous sans effet (thumb mesuré à 10px au lieu des 12/8 demandés).
+     Le `@supports` la réserve aux moteurs sans ::-webkit-scrollbar, c'est-à-dire
+     Gecko. */
+  @supports not selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+    }
+  }
+
+  /* WebKit / Blink — Chrome, Edge, Safari */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground) / 0.5);
+    background-clip: content-box;
+    border: 3px solid transparent;
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.6);
+  }
+
+  ::-webkit-scrollbar-thumb:active {
+    background-color: hsl(var(--muted-foreground) / 0.8);
+  }
+
+}
+
+/* ==========================================================================
+   Utilitaires
+   --------------------------------------------------------------------------
+   Décision du 2026-08-14 : on utilise **shadcn tel quel**, et on ne conserve de
+   la charte Notion que la PALETTE DE COULEURS. Les ombres `shadow-notion-1/2`,
+   l'échelle typographique (`text-heading-1`…), les espacements nommés et
+   l'échelle de rayons personnalisés ont donc été retirés — les valeurs par
+   défaut de shadcn/Tailwind les remplacent.
+
+   Ne restent ici que les scrollbars, qui ne relèvent pas de shadcn.
+   ========================================================================== */
+
+@layer utilities {
+  /* --- Variantes de scrollbar (le style global suffit dans 95 % des cas) --- */
+
+  /* Panneaux étroits : popovers, sidebars, listes de suggestions. */
+  .scrollbar-fine::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-fine::-webkit-scrollbar-thumb {
+    border-width: 2px;
+  }
+
+  /* À n'utiliser que pour un défilement HORIZONTAL déjà signalé autrement
+     (bandeau de pastilles, onglets glissants). Jamais sur du contenu vertical :
+     c'est l'erreur de l'ancien site. */
+  .scrollbar-masquee {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-masquee::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@layer utilities {
+  /*
+   * « Petit texte » — menu de la barre d'outils de page.
+   *
+   * ⚠️ POURQUOI IL NE SUFFIT PAS DE RÉDUIRE LA TAILLE DU CONTENEUR.
+   * Première tentative : `text-[0.8125rem]` sur la zone de contenu, en comptant
+   * sur l'héritage. Mesuré ensuite : 55 % des éléments visibles — titres,
+   * badges, boutons, libellés — portent leur propre `text-sm` / `text-xs`, en
+   * `rem`, donc ABSOLU. L'héritage ne les atteignait pas, et l'écran ne bougeait
+   * pas d'un pixel. C'est exactement ce que le réglage promettait de faire.
+   *
+   * On redéfinit donc les utilitaires eux-mêmes, d'un cran (-12,5 %), en
+   * conservant le rapport taille/interligne pour ne pas tasser les lignes.
+   *
+   * `:where()` garde la spécificité à 0 : une taille posée volontairement sur
+   * un élément précis continue de l'emporter.
+   */
+  .petit-texte {
+    font-size: 0.875rem;
+  }
+  .petit-texte :where(.text-xs) {
+    font-size: 0.6875rem;
+    line-height: 0.9375rem;
+  }
+  .petit-texte :where(.text-sm) {
+    font-size: 0.78125rem;
+    line-height: 1.125rem;
+  }
+  .petit-texte :where(.text-base) {
+    font-size: 0.875rem;
+    line-height: 1.3125rem;
+  }
+  .petit-texte :where(.text-lg) {
+    font-size: 1rem;
+    line-height: 1.5rem;
+  }
+  .petit-texte :where(.text-xl) {
+    font-size: 1.125rem;
+    line-height: 1.5rem;
+  }
+  .petit-texte :where(.text-2xl) {
+    font-size: 1.3125rem;
+    line-height: 1.75rem;
+  }
+
+  /*
+   * « Pleine largeur » — menu de la barre d'outils de page.
+   *
+   * Les écrans posent leur propre gouttière (`max-w-4xl mx-auto` dans
+   * `CadreReglage`, par exemple). Plutôt que de rendre chacun conscient du
+   * réglage, on relâche la contrainte depuis le CONTENEUR : une page reste
+   * ignorante de la préférence, comme elle l'est du thème.
+   *
+   * ⚠️ `:where()` garde la spécificité à 0 : une page qui fixe volontairement
+   * sa largeur — une modale, un tableau borné — continue de l'emporter.
+   */
+  .pleine-largeur :where([class*='max-w-']) {
+    max-width: none;
+  }
+}
+
+/*
+ * ═══ IMPRESSION ═══
+ * Sur le papier, on veut LA PAGE — jamais la navigation qui y mène.
+ *
+ * ⚠️ LA RÈGLE VISE L'ENVELOPPE DE LA COQUILLE, pas le composant `Sidebar` :
+ * shadcn pose le `className` reçu sur un nœud INTERNE, si bien qu'un
+ * `print:hidden` passé en prop masquait le panneau mais laissait l'espaceur
+ * occuper ses 16 rem — le contenu s'imprimait décalé, amputé sur la droite.
+ * `group/sidebar-wrapper` est l'enveloppe, et `<main>` la page : tout ce qui
+ * n'est pas la page disparaît.
+ */
+@media print {
+  .group\/sidebar-wrapper > :not(main) {
+    display: none !important;
+  }
+}
+
+/*
+ * ═══ L'ONDE QUI AVANCE — agenda, séance EN COURS (2026-09-12) ═══
+ * Le bord droit de l'aire écoulée (`FondProgression`, VueAgenda.jsx) est une
+ * sinusoïde tracée par MASQUE, répétée verticalement. La faire glisser d'une
+ * PÉRIODE ENTIÈRE (40 px) par cycle la ramène exactement sur elle-même : la
+ * boucle ne saute pas, la vague semble couler sans fin.
+ *
+ * ⚠️ DEUX KEYFRAMES, PAS UNE : l'aire porte DEUX couches de masque (l'aplat,
+ * immobile, puis l'onde) ; le liseré n'en porte qu'une. Chaque liste de
+ * positions doit garder le même nombre d'entrées que son `mask-image`.
+ * ⚠️ UNE ANIMATION L'EMPORTE SUR LE STYLE EN LIGNE : le `maskPosition` posé
+ * par React sert de repos, l'animation le remplace pendant qu'elle tourne.
+ * ⚠️ 40 px ICI = `PERIODE_ONDE` DE VueAgenda.jsx : changer l'un sans l'autre
+ * ferait sauter la vague à chaque tour.
+ * ⚠️ Rien ne bouge pour qui a demandé moins d'animations.
+ */
+@keyframes onde-aire {
+  from {
+    -webkit-mask-position: 0 0, 100% 0;
+    mask-position: 0 0, 100% 0;
+  }
+  to {
+    -webkit-mask-position: 0 0, 100% 40px;
+    mask-position: 0 0, 100% 40px;
+  }
+}
+
+@keyframes onde-trait {
+  from {
+    -webkit-mask-position: 0 0;
+    mask-position: 0 0;
+  }
+  to {
+    -webkit-mask-position: 0 40px;
+    mask-position: 0 40px;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .onde-aire {
+    animation: onde-aire 4s linear infinite;
+  }
+  .onde-trait {
+    animation: onde-trait 4s linear infinite;
+  }
+}

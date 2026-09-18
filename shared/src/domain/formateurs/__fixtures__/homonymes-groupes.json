@@ -1,0 +1,995 @@
+{
+    "genereLe": "2026-08-14T21:25:47+02:00",
+    "source": "includes/functions.php + includes/parse_base_rows.php",
+    "total": 4,
+    "groupes": [
+        {
+            "etablissementId": 96,
+            "anneeScolaire": 2025,
+            "entrees": [
+                {
+                    "nom_complet": "AIT HAMDANE",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "AMMARI",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "ARDY",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "AZHAR",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "BADIR",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "BEJGANNA",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "BETTAH",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "BOUKAL",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "CHNAF",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "EL ACHOURI",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "HOUSNI",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "KHATTARI",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "MOUSTATI",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "OUADI",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "RACHIDI",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "TIKA",
+                    "matricule": ""
+                }
+            ],
+            "resolveNameConflicts": [
+                {
+                    "nom_complet": "AIT HAMDANE",
+                    "nom": "HAMDANE"
+                },
+                {
+                    "nom_complet": "AMMARI",
+                    "nom": "AMMARI"
+                },
+                {
+                    "nom_complet": "ARDY",
+                    "nom": "ARDY"
+                },
+                {
+                    "nom_complet": "AZHAR",
+                    "nom": "AZHAR"
+                },
+                {
+                    "nom_complet": "BADIR",
+                    "nom": "BADIR"
+                },
+                {
+                    "nom_complet": "BEJGANNA",
+                    "nom": "BEJGANNA"
+                },
+                {
+                    "nom_complet": "BETTAH",
+                    "nom": "BETTAH"
+                },
+                {
+                    "nom_complet": "BOUKAL",
+                    "nom": "BOUKAL"
+                },
+                {
+                    "nom_complet": "CHNAF",
+                    "nom": "CHNAF"
+                },
+                {
+                    "nom_complet": "EL ACHOURI",
+                    "nom": "ACHOURI"
+                },
+                {
+                    "nom_complet": "HOUSNI",
+                    "nom": "HOUSNI"
+                },
+                {
+                    "nom_complet": "KHATTARI",
+                    "nom": "KHATTARI"
+                },
+                {
+                    "nom_complet": "MOUSTATI",
+                    "nom": "MOUSTATI"
+                },
+                {
+                    "nom_complet": "OUADI",
+                    "nom": "OUADI"
+                },
+                {
+                    "nom_complet": "RACHIDI",
+                    "nom": "RACHIDI"
+                },
+                {
+                    "nom_complet": "TIKA",
+                    "nom": "TIKA"
+                }
+            ],
+            "pb_resolveNameConflicts": [
+                {
+                    "nom_complet": "AIT HAMDANE",
+                    "nom_unique": "HAMDANE"
+                },
+                {
+                    "nom_complet": "AMMARI",
+                    "nom_unique": "AMMARI"
+                },
+                {
+                    "nom_complet": "ARDY",
+                    "nom_unique": "ARDY"
+                },
+                {
+                    "nom_complet": "AZHAR",
+                    "nom_unique": "AZHAR"
+                },
+                {
+                    "nom_complet": "BADIR",
+                    "nom_unique": "BADIR"
+                },
+                {
+                    "nom_complet": "BEJGANNA",
+                    "nom_unique": "BEJGANNA"
+                },
+                {
+                    "nom_complet": "BETTAH",
+                    "nom_unique": "BETTAH"
+                },
+                {
+                    "nom_complet": "BOUKAL",
+                    "nom_unique": "BOUKAL"
+                },
+                {
+                    "nom_complet": "CHNAF",
+                    "nom_unique": "CHNAF"
+                },
+                {
+                    "nom_complet": "EL ACHOURI",
+                    "nom_unique": "ACHOURI"
+                },
+                {
+                    "nom_complet": "HOUSNI",
+                    "nom_unique": "HOUSNI"
+                },
+                {
+                    "nom_complet": "KHATTARI",
+                    "nom_unique": "KHATTARI"
+                },
+                {
+                    "nom_complet": "MOUSTATI",
+                    "nom_unique": "MOUSTATI"
+                },
+                {
+                    "nom_complet": "OUADI",
+                    "nom_unique": "OUADI"
+                },
+                {
+                    "nom_complet": "RACHIDI",
+                    "nom_unique": "RACHIDI"
+                },
+                {
+                    "nom_complet": "TIKA",
+                    "nom_unique": "TIKA"
+                }
+            ]
+        },
+        {
+            "etablissementId": 96,
+            "anneeScolaire": 2026,
+            "entrees": [
+                {
+                    "nom_complet": "ABDELGHANI LAASAL",
+                    "matricule": "15688"
+                },
+                {
+                    "nom_complet": "ABDELHADI AISSI",
+                    "matricule": "18494"
+                },
+                {
+                    "nom_complet": "ABDESALAM AAJLIYE",
+                    "matricule": "18688"
+                },
+                {
+                    "nom_complet": "ABDESSAMAD AIT TALEB",
+                    "matricule": "18905"
+                },
+                {
+                    "nom_complet": "ABOULKACEM LAMGHARI",
+                    "matricule": "21310"
+                },
+                {
+                    "nom_complet": "ACHRAF SAHEL",
+                    "matricule": "18764"
+                },
+                {
+                    "nom_complet": "AHMED TAIA",
+                    "matricule": "21450"
+                },
+                {
+                    "nom_complet": "BRAHIM LOURID",
+                    "matricule": "18448"
+                },
+                {
+                    "nom_complet": "FOUAD NOUZRI",
+                    "matricule": "9863"
+                },
+                {
+                    "nom_complet": "IKRAM ERRAFIY",
+                    "matricule": "19175"
+                },
+                {
+                    "nom_complet": "MARIAM KARTAF",
+                    "matricule": "20381"
+                },
+                {
+                    "nom_complet": "MERYEM KBABRA",
+                    "matricule": "18953"
+                },
+                {
+                    "nom_complet": "OMAR MOUZG",
+                    "matricule": "18832"
+                },
+                {
+                    "nom_complet": "OTHMANE MGHARI",
+                    "matricule": "18767"
+                },
+                {
+                    "nom_complet": "YASSINE OUKHAYYI",
+                    "matricule": "19067"
+                },
+                {
+                    "nom_complet": "YOUSSEF LAGHSSINI",
+                    "matricule": "17788"
+                },
+                {
+                    "nom_complet": "ZINEB EL OMARI",
+                    "matricule": "21269"
+                }
+            ],
+            "resolveNameConflicts": [
+                {
+                    "nom_complet": "ABDELGHANI LAASAL",
+                    "nom": "LAASAL"
+                },
+                {
+                    "nom_complet": "ABDELHADI AISSI",
+                    "nom": "AISSI"
+                },
+                {
+                    "nom_complet": "ABDESALAM AAJLIYE",
+                    "nom": "AAJLIYE"
+                },
+                {
+                    "nom_complet": "ABDESSAMAD AIT TALEB",
+                    "nom": "AIT TALEB"
+                },
+                {
+                    "nom_complet": "ABOULKACEM LAMGHARI",
+                    "nom": "LAMGHARI"
+                },
+                {
+                    "nom_complet": "ACHRAF SAHEL",
+                    "nom": "SAHEL"
+                },
+                {
+                    "nom_complet": "AHMED TAIA",
+                    "nom": "TAIA"
+                },
+                {
+                    "nom_complet": "BRAHIM LOURID",
+                    "nom": "LOURID"
+                },
+                {
+                    "nom_complet": "FOUAD NOUZRI",
+                    "nom": "NOUZRI"
+                },
+                {
+                    "nom_complet": "IKRAM ERRAFIY",
+                    "nom": "ERRAFIY"
+                },
+                {
+                    "nom_complet": "MARIAM KARTAF",
+                    "nom": "KARTAF"
+                },
+                {
+                    "nom_complet": "MERYEM KBABRA",
+                    "nom": "KBABRA"
+                },
+                {
+                    "nom_complet": "OMAR MOUZG",
+                    "nom": "MOUZG"
+                },
+                {
+                    "nom_complet": "OTHMANE MGHARI",
+                    "nom": "MGHARI"
+                },
+                {
+                    "nom_complet": "YASSINE OUKHAYYI",
+                    "nom": "OUKHAYYI"
+                },
+                {
+                    "nom_complet": "YOUSSEF LAGHSSINI",
+                    "nom": "LAGHSSINI"
+                },
+                {
+                    "nom_complet": "ZINEB EL OMARI",
+                    "nom": "EL OMARI"
+                }
+            ],
+            "pb_resolveNameConflicts": [
+                {
+                    "nom_complet": "ABDELGHANI LAASAL",
+                    "nom_unique": "LAASAL"
+                },
+                {
+                    "nom_complet": "ABDELHADI AISSI",
+                    "nom_unique": "AISSI"
+                },
+                {
+                    "nom_complet": "ABDESALAM AAJLIYE",
+                    "nom_unique": "AAJLIYE"
+                },
+                {
+                    "nom_complet": "ABDESSAMAD AIT TALEB",
+                    "nom_unique": "AIT TALEB"
+                },
+                {
+                    "nom_complet": "ABOULKACEM LAMGHARI",
+                    "nom_unique": "LAMGHARI"
+                },
+                {
+                    "nom_complet": "ACHRAF SAHEL",
+                    "nom_unique": "SAHEL"
+                },
+                {
+                    "nom_complet": "AHMED TAIA",
+                    "nom_unique": "TAIA"
+                },
+                {
+                    "nom_complet": "BRAHIM LOURID",
+                    "nom_unique": "LOURID"
+                },
+                {
+                    "nom_complet": "FOUAD NOUZRI",
+                    "nom_unique": "NOUZRI"
+                },
+                {
+                    "nom_complet": "IKRAM ERRAFIY",
+                    "nom_unique": "ERRAFIY"
+                },
+                {
+                    "nom_complet": "MARIAM KARTAF",
+                    "nom_unique": "KARTAF"
+                },
+                {
+                    "nom_complet": "MERYEM KBABRA",
+                    "nom_unique": "KBABRA"
+                },
+                {
+                    "nom_complet": "OMAR MOUZG",
+                    "nom_unique": "MOUZG"
+                },
+                {
+                    "nom_complet": "OTHMANE MGHARI",
+                    "nom_unique": "MGHARI"
+                },
+                {
+                    "nom_complet": "YASSINE OUKHAYYI",
+                    "nom_unique": "OUKHAYYI"
+                },
+                {
+                    "nom_complet": "YOUSSEF LAGHSSINI",
+                    "nom_unique": "LAGHSSINI"
+                },
+                {
+                    "nom_complet": "ZINEB EL OMARI",
+                    "nom_unique": "EL OMARI"
+                }
+            ]
+        },
+        {
+            "etablissementId": 123,
+            "anneeScolaire": 2025,
+            "entrees": [
+                {
+                    "nom_complet": "ABID",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "AHIL",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "AWAM",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "BEY",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "BOUARIB",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "BOUHMIDA",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "BOUTERRAKA",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "CHARRAB",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "CHERTI",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "EL JAAFARI",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "EL YAKOUTI",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "EL YAZAMI",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "FAHI",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "FATH",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "FSAHI",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "HADRI",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "IDRISSI",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "KHACHAFI",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "KHALILY",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "KHATTARI",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "LAARASS",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "LAASSAL",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "LAHLY",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "MABCHOUR",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "MAHTAJ",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "MARHTERE",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "NEJDAOUI",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "NOUNI",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "OUBENYOUSSEF",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "RAFA",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "SABEK",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "SADAK",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "SAHIL",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "SERBOUT",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "SOUKRI",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "TOUNSSI",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "WAHID",
+                    "matricule": ""
+                },
+                {
+                    "nom_complet": "ZOUBIR",
+                    "matricule": ""
+                }
+            ],
+            "resolveNameConflicts": [
+                {
+                    "nom_complet": "ABID",
+                    "nom": "ABID"
+                },
+                {
+                    "nom_complet": "AHIL",
+                    "nom": "AHIL"
+                },
+                {
+                    "nom_complet": "AWAM",
+                    "nom": "AWAM"
+                },
+                {
+                    "nom_complet": "BEY",
+                    "nom": "BEY"
+                },
+                {
+                    "nom_complet": "BOUARIB",
+                    "nom": "BOUARIB"
+                },
+                {
+                    "nom_complet": "BOUHMIDA",
+                    "nom": "BOUHMIDA"
+                },
+                {
+                    "nom_complet": "BOUTERRAKA",
+                    "nom": "BOUTERRAKA"
+                },
+                {
+                    "nom_complet": "CHARRAB",
+                    "nom": "CHARRAB"
+                },
+                {
+                    "nom_complet": "CHERTI",
+                    "nom": "CHERTI"
+                },
+                {
+                    "nom_complet": "EL JAAFARI",
+                    "nom": "JAAFARI"
+                },
+                {
+                    "nom_complet": "EL YAKOUTI",
+                    "nom": "YAKOUTI"
+                },
+                {
+                    "nom_complet": "EL YAZAMI",
+                    "nom": "YAZAMI"
+                },
+                {
+                    "nom_complet": "FAHI",
+                    "nom": "FAHI"
+                },
+                {
+                    "nom_complet": "FATH",
+                    "nom": "FATH"
+                },
+                {
+                    "nom_complet": "FSAHI",
+                    "nom": "FSAHI"
+                },
+                {
+                    "nom_complet": "HADRI",
+                    "nom": "HADRI"
+                },
+                {
+                    "nom_complet": "IDRISSI",
+                    "nom": "IDRISSI"
+                },
+                {
+                    "nom_complet": "KHACHAFI",
+                    "nom": "KHACHAFI"
+                },
+                {
+                    "nom_complet": "KHALILY",
+                    "nom": "KHALILY"
+                },
+                {
+                    "nom_complet": "KHATTARI",
+                    "nom": "KHATTARI"
+                },
+                {
+                    "nom_complet": "LAARASS",
+                    "nom": "LAARASS"
+                },
+                {
+                    "nom_complet": "LAASSAL",
+                    "nom": "LAASSAL"
+                },
+                {
+                    "nom_complet": "LAHLY",
+                    "nom": "LAHLY"
+                },
+                {
+                    "nom_complet": "MABCHOUR",
+                    "nom": "MABCHOUR"
+                },
+                {
+                    "nom_complet": "MAHTAJ",
+                    "nom": "MAHTAJ"
+                },
+                {
+                    "nom_complet": "MARHTERE",
+                    "nom": "MARHTERE"
+                },
+                {
+                    "nom_complet": "NEJDAOUI",
+                    "nom": "NEJDAOUI"
+                },
+                {
+                    "nom_complet": "NOUNI",
+                    "nom": "NOUNI"
+                },
+                {
+                    "nom_complet": "OUBENYOUSSEF",
+                    "nom": "OUBENYOUSSEF"
+                },
+                {
+                    "nom_complet": "RAFA",
+                    "nom": "RAFA"
+                },
+                {
+                    "nom_complet": "SABEK",
+                    "nom": "SABEK"
+                },
+                {
+                    "nom_complet": "SADAK",
+                    "nom": "SADAK"
+                },
+                {
+                    "nom_complet": "SAHIL",
+                    "nom": "SAHIL"
+                },
+                {
+                    "nom_complet": "SERBOUT",
+                    "nom": "SERBOUT"
+                },
+                {
+                    "nom_complet": "SOUKRI",
+                    "nom": "SOUKRI"
+                },
+                {
+                    "nom_complet": "TOUNSSI",
+                    "nom": "TOUNSSI"
+                },
+                {
+                    "nom_complet": "WAHID",
+                    "nom": "WAHID"
+                },
+                {
+                    "nom_complet": "ZOUBIR",
+                    "nom": "ZOUBIR"
+                }
+            ],
+            "pb_resolveNameConflicts": [
+                {
+                    "nom_complet": "ABID",
+                    "nom_unique": "ABID"
+                },
+                {
+                    "nom_complet": "AHIL",
+                    "nom_unique": "AHIL"
+                },
+                {
+                    "nom_complet": "AWAM",
+                    "nom_unique": "AWAM"
+                },
+                {
+                    "nom_complet": "BEY",
+                    "nom_unique": "BEY"
+                },
+                {
+                    "nom_complet": "BOUARIB",
+                    "nom_unique": "BOUARIB"
+                },
+                {
+                    "nom_complet": "BOUHMIDA",
+                    "nom_unique": "BOUHMIDA"
+                },
+                {
+                    "nom_complet": "BOUTERRAKA",
+                    "nom_unique": "BOUTERRAKA"
+                },
+                {
+                    "nom_complet": "CHARRAB",
+                    "nom_unique": "CHARRAB"
+                },
+                {
+                    "nom_complet": "CHERTI",
+                    "nom_unique": "CHERTI"
+                },
+                {
+                    "nom_complet": "EL JAAFARI",
+                    "nom_unique": "JAAFARI"
+                },
+                {
+                    "nom_complet": "EL YAKOUTI",
+                    "nom_unique": "YAKOUTI"
+                },
+                {
+                    "nom_complet": "EL YAZAMI",
+                    "nom_unique": "YAZAMI"
+                },
+                {
+                    "nom_complet": "FAHI",
+                    "nom_unique": "FAHI"
+                },
+                {
+                    "nom_complet": "FATH",
+                    "nom_unique": "FATH"
+                },
+                {
+                    "nom_complet": "FSAHI",
+                    "nom_unique": "FSAHI"
+                },
+                {
+                    "nom_complet": "HADRI",
+                    "nom_unique": "HADRI"
+                },
+                {
+                    "nom_complet": "IDRISSI",
+                    "nom_unique": "IDRISSI"
+                },
+                {
+                    "nom_complet": "KHACHAFI",
+                    "nom_unique": "KHACHAFI"
+                },
+                {
+                    "nom_complet": "KHALILY",
+                    "nom_unique": "KHALILY"
+                },
+                {
+                    "nom_complet": "KHATTARI",
+                    "nom_unique": "KHATTARI"
+                },
+                {
+                    "nom_complet": "LAARASS",
+                    "nom_unique": "LAARASS"
+                },
+                {
+                    "nom_complet": "LAASSAL",
+                    "nom_unique": "LAASSAL"
+                },
+                {
+                    "nom_complet": "LAHLY",
+                    "nom_unique": "LAHLY"
+                },
+                {
+                    "nom_complet": "MABCHOUR",
+                    "nom_unique": "MABCHOUR"
+                },
+                {
+                    "nom_complet": "MAHTAJ",
+                    "nom_unique": "MAHTAJ"
+                },
+                {
+                    "nom_complet": "MARHTERE",
+                    "nom_unique": "MARHTERE"
+                },
+                {
+                    "nom_complet": "NEJDAOUI",
+                    "nom_unique": "NEJDAOUI"
+                },
+                {
+                    "nom_complet": "NOUNI",
+                    "nom_unique": "NOUNI"
+                },
+                {
+                    "nom_complet": "OUBENYOUSSEF",
+                    "nom_unique": "OUBENYOUSSEF"
+                },
+                {
+                    "nom_complet": "RAFA",
+                    "nom_unique": "RAFA"
+                },
+                {
+                    "nom_complet": "SABEK",
+                    "nom_unique": "SABEK"
+                },
+                {
+                    "nom_complet": "SADAK",
+                    "nom_unique": "SADAK"
+                },
+                {
+                    "nom_complet": "SAHIL",
+                    "nom_unique": "SAHIL"
+                },
+                {
+                    "nom_complet": "SERBOUT",
+                    "nom_unique": "SERBOUT"
+                },
+                {
+                    "nom_complet": "SOUKRI",
+                    "nom_unique": "SOUKRI"
+                },
+                {
+                    "nom_complet": "TOUNSSI",
+                    "nom_unique": "TOUNSSI"
+                },
+                {
+                    "nom_complet": "WAHID",
+                    "nom_unique": "WAHID"
+                },
+                {
+                    "nom_complet": "ZOUBIR",
+                    "nom_unique": "ZOUBIR"
+                }
+            ]
+        },
+        {
+            "etablissementId": 154,
+            "anneeScolaire": 2026,
+            "entrees": [
+                {
+                    "nom_complet": "AFIF ABDELJABBAR",
+                    "matricule": "21710"
+                },
+                {
+                    "nom_complet": "AIT TALEB ABDESSAMAD",
+                    "matricule": "18905"
+                },
+                {
+                    "nom_complet": "AKRACH HASSAN",
+                    "matricule": "9942"
+                },
+                {
+                    "nom_complet": "AZIZI SOUFIANE",
+                    "matricule": "21885"
+                },
+                {
+                    "nom_complet": "CHARKAOUI ABDELHAK",
+                    "matricule": "22096"
+                },
+                {
+                    "nom_complet": "DALLI AMINE",
+                    "matricule": "21713"
+                },
+                {
+                    "nom_complet": "MOUZG OMAR",
+                    "matricule": "18832"
+                },
+                {
+                    "nom_complet": "NOUZRI FOUAD",
+                    "matricule": "9863"
+                }
+            ],
+            "resolveNameConflicts": [
+                {
+                    "nom_complet": "AFIF ABDELJABBAR",
+                    "nom": "ABDELJABBAR"
+                },
+                {
+                    "nom_complet": "AIT TALEB ABDESSAMAD",
+                    "nom": "ABDESSAMAD"
+                },
+                {
+                    "nom_complet": "AKRACH HASSAN",
+                    "nom": "HASSAN"
+                },
+                {
+                    "nom_complet": "AZIZI SOUFIANE",
+                    "nom": "SOUFIANE"
+                },
+                {
+                    "nom_complet": "CHARKAOUI ABDELHAK",
+                    "nom": "ABDELHAK"
+                },
+                {
+                    "nom_complet": "DALLI AMINE",
+                    "nom": "AMINE"
+                },
+                {
+                    "nom_complet": "MOUZG OMAR",
+                    "nom": "OMAR"
+                },
+                {
+                    "nom_complet": "NOUZRI FOUAD",
+                    "nom": "FOUAD"
+                }
+            ],
+            "pb_resolveNameConflicts": [
+                {
+                    "nom_complet": "AFIF ABDELJABBAR",
+                    "nom_unique": "ABDELJABBAR"
+                },
+                {
+                    "nom_complet": "AIT TALEB ABDESSAMAD",
+                    "nom_unique": "ABDESSAMAD"
+                },
+                {
+                    "nom_complet": "AKRACH HASSAN",
+                    "nom_unique": "HASSAN"
+                },
+                {
+                    "nom_complet": "AZIZI SOUFIANE",
+                    "nom_unique": "SOUFIANE"
+                },
+                {
+                    "nom_complet": "CHARKAOUI ABDELHAK",
+                    "nom_unique": "ABDELHAK"
+                },
+                {
+                    "nom_complet": "DALLI AMINE",
+                    "nom_unique": "AMINE"
+                },
+                {
+                    "nom_complet": "MOUZG OMAR",
+                    "nom_unique": "OMAR"
+                },
+                {
+                    "nom_complet": "NOUZRI FOUAD",
+                    "nom_unique": "FOUAD"
+                }
+            ]
+        }
+    ]
+}

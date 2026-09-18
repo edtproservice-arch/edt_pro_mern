@@ -47,6 +47,9 @@ import { BORD_TABLEAU, SEPARATION_JOUR } from './styles';
  */
 function CaseEmploi({
   cellule,
+  cle,
+  seance,
+  periode,
   champ,
   axe,
   etat,
@@ -77,7 +80,6 @@ function CaseEmploi({
   onDeplacer,
   onPlacer,
 }) {
-  const seance = cellule.contenu;
   const absent = seance?.statut === 'absent';
   /*
    * ═══ UNE SÉANCE DE RATTRAPAGE (2026-09-14) ═══
@@ -122,20 +124,32 @@ function CaseEmploi({
 
   return (
     <td
-      data-case={cellule.cle}
+      data-case={cle}
       /*
        * ⚠️ LE GLISSEMENT NE PEUT PAS SERVIR À DEUX CHOSES À LA FOIS. En mode
        * sélection il trace un rectangle ; hors de ce mode il DÉPLACE la séance.
        * C'est la raison d'être du bouton de mode — l'existant avait le même.
        */
       draggable={deplacable && !placement && !modeSelection && Boolean(seance) && !ferme}
-      onMouseDown={modeSelection ? onSelectionner : undefined}
+      /*
+       * ⚠️ `onSelectionner` EST STABLE (mémorisée dans `GrilleEmploi`) : cette
+       * fermeture-ci ne recompose que le CONTEXTE de la case, à partir de props
+       * déjà là. Elle est recréée à chaque rendu de la case, mais ça ne casse
+       * rien — elle n'est jamais comparée par `memo`, contrairement à ce qui
+       * remonte en prop.
+       */
+      onMouseDown={
+        modeSelection
+          ? (evenement) =>
+              onSelectionner?.(evenement, { sujet, jour: cellule.jour, creneau: cellule.seance })
+          : undefined
+      }
       onDragStart={(evenement) => {
         evenement.dataTransfer.effectAllowed = 'copyMove';
         // Le presse-papiers du navigateur veut une charge utile, sinon Firefox
         // n'amorce pas le glissement.
-        evenement.dataTransfer.setData('text/plain', cellule.cle);
-        onDeplacer?.({ phase: 'debut', cle: cellule.cle });
+        evenement.dataTransfer.setData('text/plain', cle);
+        onDeplacer?.({ phase: 'debut', cle, sujet });
       }}
       onDragOver={(evenement) => {
         if (!onDeplacer) return;
@@ -143,11 +157,11 @@ function CaseEmploi({
         // curseur affiche « interdit » partout.
         evenement.preventDefault();
         evenement.dataTransfer.dropEffect = evenement.ctrlKey ? 'copy' : 'move';
-        onDeplacer({ phase: 'survol', cle: cellule.cle });
+        onDeplacer({ phase: 'survol', cle, sujet });
       }}
       onDrop={(evenement) => {
         evenement.preventDefault();
-        onDeplacer?.({ phase: 'depot', cle: cellule.cle, copie: evenement.ctrlKey });
+        onDeplacer?.({ phase: 'depot', cle, sujet, copie: evenement.ctrlKey });
       }}
       onDragEnd={() => onDeplacer?.({ phase: 'fin' })}
       className={cn(
@@ -251,7 +265,18 @@ function CaseEmploi({
           <Select
             defaultOpen
             value={valeur || undefined}
-            onValueChange={(choix) => onChanger(champ, choix === VIDE ? '' : choix)}
+            onValueChange={(choix) =>
+              onChanger?.({
+                cle,
+                sujet,
+                jour: cellule.jour,
+                creneau: cellule.seance,
+                periode,
+                champ,
+                valeur: choix === VIDE ? '' : choix,
+                seance,
+              })
+            }
             onOpenChange={(ouvert) => {
               if (!ouvert) onFermer?.();
             }}
@@ -318,8 +343,11 @@ function CaseEmploi({
              */
             onClick={() => {
               if (modeSelection) return;
-              if (placement) onPlacer?.();
-              else onOuvrir?.();
+              if (placement) {
+                onPlacer?.({ cle, sujet, jour: cellule.jour, creneau: cellule.seance, periode, seance });
+              } else {
+                onOuvrir?.({ cle, champ });
+              }
             }}
             aria-label={
               absence

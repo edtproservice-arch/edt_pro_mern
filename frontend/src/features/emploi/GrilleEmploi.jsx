@@ -76,6 +76,23 @@ export default function GrilleEmploi({
    */
   onPlacerCase,
 }) {
+  /*
+   * ⚠️ LA SEULE FONCTION CRÉÉE ICI POUR LES 1 224 CASES. `onChanger`,
+   * `onOuvrirCase`, `onFermerCase`, `onDeplacer` et `onPlacerCase` viennent
+   * DÉJÀ tout faits du parent (mémorisés par `useCallback` côté `PageEmploi`)
+   * et sont repassés tels quels, sans enveloppe, à chaque `CaseEmploi` — c'est
+   * ce qui rend son `memo` efficace. `onSelectionner` est la seule exception :
+   * il faut choisir entre `onDebuterSelection` et `onEtendreSelection` selon
+   * `shiftKey`, un branchement que seule la case connaît au moment du clic.
+   * Mémorisée ici, elle reste UNE SEULE référence pour toute la grille au lieu
+   * d'une fermeture neuve par case et par rendu.
+   */
+  const onSelectionner = useCallback(
+    (evenement, contexte) =>
+      evenement.shiftKey ? onEtendreSelection?.(contexte) : onDebuterSelection?.(contexte),
+    [onEtendreSelection, onDebuterSelection]
+  );
+
   const lignes = useMemo(
     () => assemblerGrille({ sujets, seances, axe, periode }),
     [sujets, seances, axe, periode]
@@ -544,7 +561,20 @@ export default function GrilleEmploi({
                   return (
                     <CaseEmploi
                       key={cle}
-                      cellule={{ ...cellule, cle, contenu: seance }}
+                      /*
+                       * ⚠️ `cellule` PASSÉE TELLE QUELLE, PAS RECOMPOSÉE. Un
+                       * `{ ...cellule, cle, contenu: seance }` neuf à chaque
+                       * rendu casse le `memo` de `CaseEmploi` même quand rien
+                       * n'a changé pour cette case précise — `cle` et `seance`
+                       * (déjà calculés ci-dessus) partent donc en props à part.
+                       * `cellule` elle-même vient de `lignes`, mémorisé plus
+                       * haut : sa référence est stable tant que `sujets`,
+                       * `seances`, `axe` et `periode` ne bougent pas.
+                       */
+                      cellule={cellule}
+                      cle={cle}
+                      seance={seance}
+                      periode={periode}
                       champ={intitule}
                       axe={axe}
                       etat={etatDuJour.get(cellule.jour)}
@@ -584,16 +614,7 @@ export default function GrilleEmploi({
                       // cadre pointillé d'un rattrapage.
                       derniereLigne={rang === intitules.length - 1}
                       placement={Boolean(onPlacerCase)}
-                      onPlacer={() =>
-                        onPlacerCase?.({
-                          cle,
-                          sujet: ligne.sujet,
-                          jour: cellule.jour,
-                          creneau: cellule.seance,
-                          periode,
-                          seance,
-                        })
-                      }
+                      onPlacer={onPlacerCase}
                       finDuJour={cellule.seance === creneaux[creneaux.length - 1]}
                       finDuTableau={colonne === colonnes.length - 1}
                       bords={
@@ -637,26 +658,25 @@ export default function GrilleEmploi({
                         jour: cellule.jour,
                         creneau: cellule.seance,
                       })}
-                      onChanger={(champ, valeur) =>
-                        onChanger?.({
-                          cle,
-                          sujet: ligne.sujet,
-                          jour: cellule.jour,
-                          creneau: cellule.seance,
-                          periode,
-                          champ,
-                          valeur,
-                          seance,
-                        })
-                      }
-                      onOuvrir={() => onOuvrirCase?.({ cle, champ: intitule })}
-                      onFermer={() => onFermerCase?.()}
-                      onDeplacer={(evenement) => onDeplacer?.({ ...evenement, sujet: ligne.sujet })}
-                      onSelectionner={(evenement) =>
-                        evenement.shiftKey
-                          ? onEtendreSelection?.({ sujet: ligne.sujet, jour: cellule.jour, creneau: cellule.seance })
-                          : onDebuterSelection?.({ sujet: ligne.sujet, jour: cellule.jour, creneau: cellule.seance })
-                      }
+                      /*
+                       * ⚠️ LES SIX GESTIONNAIRES REPARTENT SANS ENVELOPPE.
+                       * Chacun venait avant d'une fermeture créée ICI, à ce
+                       * point de la boucle, à CHAQUE rendu de la grille — donc
+                       * une fonction neuve par case et par rendu, qui rendait
+                       * inutile le `memo` de `CaseEmploi` : recevant une prop
+                       * différente à chaque fois, il ne pouvait jamais
+                       * conclure que rien n'avait changé. La case reconstitue
+                       * elle-même le contexte (`cle`, `sujet`, `cellule`,
+                       * `periode`, `champ`) à partir de ses propres props —
+                       * déjà toutes présentes — et les fonctions d'origine
+                       * (mémorisées côté page) descendent identiques pour les
+                       * 1 224 cases.
+                       */
+                      onChanger={onChanger}
+                      onOuvrir={onOuvrirCase}
+                      onFermer={onFermerCase}
+                      onDeplacer={onDeplacer}
+                      onSelectionner={onSelectionner}
                     />
                   );
                 })}

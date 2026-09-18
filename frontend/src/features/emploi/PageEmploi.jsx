@@ -250,23 +250,28 @@ export default function PageEmploi() {
    * impérative (`lireCurseurs`) : s'abonner aux curseurs ferait re-rendre la
    * page entière vingt fois par seconde.
    */
-  const ouvrirCase = (ouverture) => {
-    setCaseEnEdition(ouverture);
-    if (!ouverture?.cle || !semaine) return;
-    for (const { utilisateur, focus } of lireCurseurs('emploi').values()) {
-      if (
-        focus?.cle === ouverture.cle &&
-        focus.semaine === semaine &&
-        focus.periode === periode &&
-        focus.axe === axeCourant
-      ) {
-        toast.warning(`${utilisateur.nom} est en train de modifier cette case`, {
-          description: 'Si vous enregistrez tous les deux, la dernière saisie l’emportera.',
-        });
-        return;
+  const ouvrirCase = useCallback(
+    (ouverture) => {
+      setCaseEnEdition(ouverture);
+      if (!ouverture?.cle || !semaine) return;
+      for (const { utilisateur, focus } of lireCurseurs('emploi').values()) {
+        if (
+          focus?.cle === ouverture.cle &&
+          focus.semaine === semaine &&
+          focus.periode === periode &&
+          focus.axe === axeCourant
+        ) {
+          toast.warning(`${utilisateur.nom} est en train de modifier cette case`, {
+            description: 'Si vous enregistrez tous les deux, la dernière saisie l’emportera.',
+          });
+          return;
+        }
       }
-    }
-  };
+    },
+    [semaine, periode, axeCourant]
+  );
+
+  const fermerCase = useCallback(() => setCaseEnEdition(null), []);
 
   const fiches = useMemo(
     () => fichesModules(contexte.data?.affectations ?? []),
@@ -465,13 +470,37 @@ export default function PageEmploi() {
   });
 
   /** Mémorise l'état d'AVANT, puis écrit. */
-  const appliquer = (operations) => {
-    if (operations.length === 0) return;
-    ecrire.mutate({ operations, memoriser: true });
-  };
+  const appliquer = useCallback(
+    (operations) => {
+      if (operations.length === 0) return;
+      ecrire.mutate({ operations, memoriser: true });
+    },
+    [ecrire.mutate]
+  );
 
   // ═══ Saisie d'une case ═══
-  const changer = ({ cle, sujet, jour, creneau, periode, champ, valeur, seance }) => {
+  /*
+   * ⚠️ MÉMORISÉE (`useCallback`). `changer`, `ouvrirCase`, `onFermerCase`,
+   * `debuter` et `glisserDeposer` descendent tous jusque dans `GrilleEmploi`,
+   * qui les repasse tels quels aux 1 224 `CaseEmploi` — chacune mémorisée par
+   * `memo`. Une seule de ces fonctions recréée à chaque rendu suffit à rendre
+   * TOUTE la grille à chaque survol pendant un glissement ou un rectangle de
+   * sélection : `memo` compare TOUTES les props, pas seulement celles qui ont
+   * changé de sens. C'est ce qui rendait le déplacement et la sélection lents,
+   * mesuré sur cette page (2026-09-18).
+   */
+  const oublierBrouillon = useCallback(
+    (cle) =>
+      setBrouillons((table) => {
+        if (!table.has(cle)) return table;
+        const suivante = new Map(table);
+        suivante.delete(cle);
+        return suivante;
+      }),
+    []
+  );
+
+  const changer = useCallback(({ cle, sujet, jour, creneau, periode, champ, valeur, seance }) => {
     const encours = brouillons.get(cle) ?? {};
 
     // Le brouillon l'emporte sur la séance : c'est ce qu'on vient de choisir.
@@ -560,15 +589,7 @@ export default function PageEmploi() {
 
     oublierBrouillon(cle);
     appliquer([{ type: 'poser', cle, seance: base }]);
-  };
-
-  const oublierBrouillon = (cle) =>
-    setBrouillons((table) => {
-      if (!table.has(cle)) return table;
-      const suivante = new Map(table);
-      suivante.delete(cle);
-      return suivante;
-    });
+  }, [brouillons, axeGroupe, indexContraintes, seances, oublierBrouillon, appliquer]);
 
   // ═══ Sélection ═══
   // ⚠️ Le soir n'a qu'UN créneau : la sélection rectangulaire et le collage
@@ -577,11 +598,14 @@ export default function PageEmploi() {
   const sujetsAffiches = periode === 'soir' ? groupesSoir : sujets;
   const glisse = useRef(false);
 
-  const debuter = (cellule) => {
-    glisse.current = true;
-    setAncre(cellule);
-    setSelection(new Set([cleCase(cellule.sujet, cellule.jour, cellule.creneau, periode)]));
-  };
+  const debuter = useCallback(
+    (cellule) => {
+      glisse.current = true;
+      setAncre(cellule);
+      setSelection(new Set([cleCase(cellule.sujet, cellule.jour, cellule.creneau, periode)]));
+    },
+    [periode]
+  );
 
   const etendre = useCallback(
     (cellule) => {
@@ -660,30 +684,45 @@ export default function PageEmploi() {
     [axeGroupe]
   );
 
-  const glisserDeposer = ({ phase, cle, sujet, copie }) => {
-    if (phase === 'debut') {
-      setDepot({ source: cle, survol: null });
-      return;
-    }
-    if (phase === 'survol') {
-      setDepot((etat) => (etat.survol === cle ? etat : { ...etat, survol: cle }));
-      return;
-    }
-    if (phase === 'fin') {
+  /*
+   * ⚠️ LA SOURCE VIT AUSSI DANS UNE REF. `depot.source` ne sert qu'au dernier
+   * temps du geste (le dépôt) ; le lire depuis l'ÉTAT obligerait `glisserDeposer`
+   * à changer de référence à chaque case survolée (`depot` change à chaque
+   * `phase: 'survol'`), et donc à re-rendre les 1 224 cases à chaque pixel du
+   * glissement — précisément ce que cette mémorisation évite.
+   */
+  const sourceDepot = useRef(null);
+
+  const glisserDeposer = useCallback(
+    ({ phase, cle, sujet, copie }) => {
+      if (phase === 'debut') {
+        sourceDepot.current = cle;
+        setDepot({ source: cle, survol: null });
+        return;
+      }
+      if (phase === 'survol') {
+        setDepot((etat) => (etat.survol === cle ? etat : { ...etat, survol: cle }));
+        return;
+      }
+      if (phase === 'fin') {
+        sourceDepot.current = null;
+        setDepot({ source: null, survol: null });
+        return;
+      }
+
+      const source = sourceDepot.current;
+      sourceDepot.current = null;
       setDepot({ source: null, survol: null });
-      return;
-    }
+      if (!source) return;
 
-    const source = depot.source;
-    setDepot({ source: null, survol: null });
-    if (!source) return;
-
-    appliquer(
-      deplacement(source, cle, seanceDe(source), { copie, sujetDe: () => imposerLeSujet(sujet) })
-        // La case QUITTÉE fait partie du geste : « défaire » doit la reremplir.
-        .map((operation) => (operation.type === 'deplacer' ? { ...operation, cleSource: source } : operation))
-    );
-  };
+      appliquer(
+        deplacement(source, cle, seanceDe(source), { copie, sujetDe: () => imposerLeSujet(sujet) })
+          // La case QUITTÉE fait partie du geste : « défaire » doit la reremplir.
+          .map((operation) => (operation.type === 'deplacer' ? { ...operation, cleSource: source } : operation))
+      );
+    },
+    [appliquer, seanceDe, imposerLeSujet]
+  );
 
   // ═══ Presse-papiers et historique ═══
   const actions = {
@@ -1166,7 +1205,7 @@ export default function PageEmploi() {
               survolDepot={depot.survol}
               onChanger={changer}
               onOuvrirCase={ouvrirCase}
-              onFermerCase={() => setCaseEnEdition(null)}
+              onFermerCase={fermerCase}
               onDeplacer={glisserDeposer}
               onDebuterSelection={debuter}
               onEtendreSelection={etendre}

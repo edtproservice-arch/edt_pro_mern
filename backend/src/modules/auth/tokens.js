@@ -19,7 +19,7 @@ const COOKIE_REFRESH = 'edt_refresh';
 
 const optionsCookie = {
   httpOnly: true,
-  sameSite: 'lax',
+  sameSite: env.COOKIE_SAME_SITE,
   secure: isProduction,
   domain: env.COOKIE_DOMAIN || undefined,
   path: '/',

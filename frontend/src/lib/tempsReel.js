@@ -18,6 +18,7 @@ import { definirConnexionId } from './identiteConnexion';
  * d'écriture. Les écritures elles-mêmes restent des requêtes HTTP.
  */
 const CHEMIN = '/api/v2/temps-reel';
+const BASE_API = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '');
 
 /**
  * ⚠️ UN DÉLAI DE GRÂCE AVANT DE FERMER. Passer de « Emploi » à « Édition »
@@ -94,8 +95,10 @@ function envoyerRejoindre(page) {
 }
 
 function urlSocket() {
-  const protocole = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${protocole}//${window.location.host}${CHEMIN}`;
+  const cible = BASE_API || window.location.origin;
+  const url = new URL(`${cible}${CHEMIN}`);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  return url.toString();
 }
 
 function ouvrir() {

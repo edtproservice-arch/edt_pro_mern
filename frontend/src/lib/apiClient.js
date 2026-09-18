@@ -4,6 +4,12 @@ import { queryClient } from './queryClient';
 
 let redirectionEnCours = false;
 
+const BASE_API = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '');
+
+function urlApi(path) {
+  return `${BASE_API}${path}`;
+}
+
 /** Redirige vers la page de connexion dès qu'une session est expirée ou invalide. */
 export function gererExpirationsession(raison = 'expiration') {
   if (redirectionEnCours) return;
@@ -91,7 +97,7 @@ let rafraichissementEnCours = null;
 export function rafraichirSession() {
   if (rafraichissementEnCours) return rafraichissementEnCours;
 
-  rafraichissementEnCours = fetch('/api/v2/auth/rafraichir', {
+  rafraichissementEnCours = fetch(urlApi('/api/v2/auth/rafraichir'), {
     method: 'POST',
     credentials: 'include',
   })
@@ -144,7 +150,7 @@ export class ApiError extends Error {
 async function request(method, path, { body, signal, headers = {} } = {}) {
   const response = await avecRafraichissement(
     () =>
-      fetch(path, {
+      fetch(urlApi(path), {
         method,
         signal,
         credentials: 'include',
@@ -221,7 +227,7 @@ async function envoyerFichier(path, fichier, champ = 'fichier', champs = {}) {
      contrairement à un flux, qu'une seconde lecture trouverait épuisé. */
   const response = await avecRafraichissement(
     () =>
-      fetch(path, {
+      fetch(urlApi(path), {
         method: 'POST',
         credentials: 'include',
         headers: enTetesContexte(),
@@ -258,7 +264,7 @@ async function envoyerFichier(path, fichier, champ = 'fichier', champs = {}) {
 async function telecharger(path, body, { nomParDefaut = 'export.xlsx' } = {}) {
   const response = await avecRafraichissement(
     () =>
-      fetch(path, {
+      fetch(urlApi(path), {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json', ...enTetesContexte() },

@@ -20,6 +20,7 @@ const schema = z.object({
   REFRESH_TOKEN_TTL: z.string().default('30d'),
 
   COOKIE_DOMAIN: z.string().optional(),
+  COOKIE_SAME_SITE: z.enum(['lax', 'strict', 'none']).default('lax'),
 
   // SMTP facultatif : sans configuration, les e-mails sont journalisés au lieu
   // d'être envoyés (cf. config/mailer.js). Le serveur doit pouvoir démarrer sur
@@ -47,6 +48,7 @@ const schema = z.object({
   // `originesAutorisees()` : sans contrôle d'origine, n'importe quel site
   // pourrait ouvrir une socket avec le cookie de la victime.
   WS_ORIGINES: z.string().optional(),
+  HTTP_ORIGINES: z.string().optional(),
 
   GEMINI_API_KEY: z.string().optional(),
 });

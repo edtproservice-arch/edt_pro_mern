@@ -1,6 +1,7 @@
 import express from 'express';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
+import { env } from './config/env.js';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import devicesRoutes from './modules/auth/devices.routes.js';
@@ -43,6 +44,25 @@ import {
  */
 export function createApp() {
   const app = express();
+
+  const originesHttp = new Set(
+    String(env.HTTP_ORIGINES ?? '')
+      .split(',')
+      .map((origine) => origine.trim())
+      .filter(Boolean)
+  );
+  app.use((req, res, next) => {
+    const origine = req.headers.origin;
+    if (origine && originesHttp.has(origine)) {
+      res.setHeader('Access-Control-Allow-Origin', origine);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Annee-Scolaire, X-Connexion-Id');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+      res.setHeader('Vary', 'Origin');
+    }
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    return next();
+  });
 
   app.disable('x-powered-by');
   app.use(helmet());

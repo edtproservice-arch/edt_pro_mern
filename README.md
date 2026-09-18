@@ -76,6 +76,40 @@ et permet aux modules migrés et non migrés de cohabiter.
 MongoDB doit tourner en **replica set**, même mono-nœud : les transactions
 multi-collections en dépendent.
 
+## Bascule développement / production (frontend)
+
+Vite choisit le fichier `.env.*` selon la commande, **pas de bascule manuelle
+à faire** :
+
+| Commande | Mode Vite | Fichier lu | `VITE_API_URL` | Comportement |
+|---|---|---|---|---|
+| `npm run dev --workspace=frontend` | development | `frontend/.env.development` | vide | proxy Vite → `http://localhost:4000` |
+| `npm run build --workspace=frontend` | production | `frontend/.env.production` | `https://backend-production-ac98.up.railway.app` | appels directs à l'API Railway, bakés dans le bundle |
+
+Pour tester le build de production en local avant de le déployer (Vercel/Netlify) :
+
+```bash
+npm run build --workspace=frontend
+npm run preview --workspace=frontend   # sert dist/, toujours pointé vers Railway
+```
+
+Côté backend (Railway), il faut whitelister l'origine du frontend déployé —
+sinon le navigateur bloque les requêtes en CORS. Variables à définir dans les
+réglages du service Railway :
+
+```
+HTTP_ORIGINES=https://<votre-projet>.vercel.app
+WS_ORIGINES=https://<votre-projet>.vercel.app
+COOKIE_SAME_SITE=none
+NODE_ENV=production
+```
+
+(`COOKIE_SAME_SITE=none` est nécessaire car frontend et API sont sur des
+domaines différents ; `secure` sur le cookie est déjà forcé par
+`NODE_ENV=production`, voir `backend/src/modules/auth/tokens.js`.) Ajouter
+chaque nouveau domaine (custom domain, preview Vercel) à ces deux listes,
+séparés par des virgules.
+
 ## Tests
 
 ```bash

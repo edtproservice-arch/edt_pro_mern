@@ -58,6 +58,19 @@ export function createApp() {
       res.setHeader('Access-Control-Allow-Credentials', 'true');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Annee-Scolaire, X-Connexion-Id');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+      /*
+       * ⚠️ LE PRÉVOL SE MÉMORISE (2026-09-19, signalé par le porteur : « en local
+       * parfait, hébergé lent »). Front et API sont sur deux origines : toute
+       * requête portant `Content-Type: application/json` ou `X-Annee-Scolaire`
+       * est précédée d'un `OPTIONS`. Sans `Max-Age`, le navigateur ne le retient
+       * que quelques secondes — donc DEUX allers-retours par requête, alors qu'en
+       * local (même origine, via le proxy de Vite) il n'y en a jamais. Chrome
+       * plafonne à 2 h, Firefox à 24 h : cette valeur tient dans les deux.
+       */
+      res.setHeader('Access-Control-Max-Age', '7200');
+      // Le chiffre `Server-Timing` des écritures en lot doit être lisible depuis
+      // l'onglet Réseau d'une page servie par un AUTRE domaine.
+      res.setHeader('Timing-Allow-Origin', origine);
       res.setHeader('Vary', 'Origin');
     }
     if (req.method === 'OPTIONS') return res.sendStatus(204);

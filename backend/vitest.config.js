@@ -13,6 +13,7 @@ export default defineConfig({
       MONGODB_URI: 'mongodb://127.0.0.1:27017/placeholder',
       JWT_ACCESS_SECRET: 'secret-de-test-access-suffisamment-long-pour-zod',
       JWT_REFRESH_SECRET: 'secret-de-test-refresh-suffisamment-long-pour-zod',
+      HTTP_ORIGINES: 'https://front.test',
     },
     // Chaque fichier de test a sa propre base en mémoire : pas d'interférence.
     pool: 'forks',

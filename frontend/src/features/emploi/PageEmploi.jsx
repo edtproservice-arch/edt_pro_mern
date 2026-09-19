@@ -221,18 +221,53 @@ export default function PageEmploi() {
   // Borné à 20 par seconde — mécanisme partagé avec le chronogramme.
   const emettreCurseur = useEmetteurCurseur(salle.envoyerCurseur);
 
+  /*
+   * ═══ ⚠️ LE SUIVI DE SOURIS NE DOIT PAS PESER SUR LE GESTE (2026-09-19, signalé
+   * par le porteur : « sélection et déplacement lents hébergé, parfaits en
+   * local ») ═══
+   * Il tournait à CHAQUE mouvement de souris, avant même la limite des 20 envois
+   * par seconde : un balayage de la table entière (`querySelectorAll` sur 1 224
+   * cases) et trois `getBoundingClientRect()` — c'est-à-dire un recalcul complet
+   * de la mise en page, juste après que le rendu de la sélection l'a invalidée.
+   * En local, seul, personne ne le sentait ; hébergé, avec des collègues en
+   * ligne, il devenait ce qui ralentissait chaque geste.
+   *
+   * Trois garde-fous, du plus gros au plus fin :
+   *   - PERSONNE D'AUTRE SUR LA PAGE : à qui enverrait-on ce curseur ? Rien à
+   *     calculer, rien à envoyer.
+   *   - UN GESTE EN COURS (rectangle de sélection, glisser-déposer) : le curseur
+   *     n'apprend rien aux collègues, et c'est précisément le moment où la
+   *     mise en page bouge le plus.
+   *   - UNE FOIS PAR IMAGE AU PLUS (`requestAnimationFrame`) : le dernier
+   *     mouvement de l'image gagne, les autres n'ont pas besoin d'être mesurés.
+   */
+  const autresPresents = useRef(false);
+  autresPresents.current = salle.membres.some((membre) => membre.id !== salle.utilisateurId);
+  const curseurEnAttente = useRef(null);
+
   const suivreSouris = (evenement) => {
-    if (!semaine) return;
+    if (!semaine || !autresPresents.current || glisse.current || sourceDepot.current) return;
     const cellule = evenement.target.closest?.('[data-case]');
     if (!cellule || !grilleRef.current) return;
-    const cle = cellule.dataset.case;
-    const boite = englober(
-      [...grilleRef.current.querySelectorAll(`[data-case="${CSS.escape(cle)}"]`)].map((element) =>
-        element.getBoundingClientRect()
-      )
-    );
-    const fraction = fractionDansCase(boite, evenement.clientX, evenement.clientY);
-    if (fraction) emettreCurseur({ semaine, periode, axe: axeCourant, cle, ...fraction });
+
+    const dejaPlanifie = curseurEnAttente.current !== null;
+    curseurEnAttente.current = { cellule, x: evenement.clientX, y: evenement.clientY };
+    if (dejaPlanifie) return;
+
+    requestAnimationFrame(() => {
+      const mouvement = curseurEnAttente.current;
+      curseurEnAttente.current = null;
+      if (!mouvement || !grilleRef.current || !mouvement.cellule.isConnected) return;
+
+      const cle = mouvement.cellule.dataset.case;
+      const boite = englober(
+        [...grilleRef.current.querySelectorAll(`[data-case="${CSS.escape(cle)}"]`)].map((element) =>
+          element.getBoundingClientRect()
+        )
+      );
+      const fraction = fractionDansCase(boite, mouvement.x, mouvement.y);
+      if (fraction) emettreCurseur({ semaine, periode, axe: axeCourant, cle, ...fraction });
+    });
   };
 
 
@@ -328,6 +363,13 @@ export default function PageEmploi() {
      * encore provisoires. Même `scope` = file d'attente, un à la fois.
      */
     scope: { id: 'emploi-ecriture' },
+    /*
+     * ⚠️ CETTE ÉCRITURE CORRIGE ELLE-MÊME SON CACHE (réponse du serveur), donc le
+     * filet global de `queryClient` ne doit rien relire derrière elle : hébergé,
+     * ces relectures — une dizaine, après CHAQUE case déposée — valaient plus que
+     * l'écriture elle-même. Voir `meta.invalidation` dans `lib/queryClient.js`.
+     */
+    meta: { invalidation: 'passive' },
     mutationFn: async ({ operations, memoriser = false }) => {
       const bilan = { posees: 0, videes: 0, refus: [], salleRetiree: [] };
 
@@ -465,13 +507,11 @@ export default function PageEmploi() {
          * suivant, qui prendrait sinon son historique sur un état périmé.
          */
         await rafraichir();
-      } else {
-        // Le reste (numéros de semaines, fiches de modules, taux exacts) se met à
-        // jour en fond : rien de ce que l'on vient de faire n'en dépend.
-        cache.invalidateQueries({ queryKey: ['emploi', 'semaines'] });
-        cache.invalidateQueries({ queryKey: cleContexte });
-        cache.invalidateQueries({ queryKey: ['emploi', 'module'] });
       }
+      // Sinon RIEN n'est relu : semaine et heures posées viennent d'être corrigées
+      // avec la réponse du serveur, et le reste (liste des semaines, fiches de
+      // modules) est seulement marqué périmé par `meta.invalidation: 'passive'` —
+      // il se recharge à son prochain affichage, sans requête de plus maintenant.
 
       return bilan;
     },

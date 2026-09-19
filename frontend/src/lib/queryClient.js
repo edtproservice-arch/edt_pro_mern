@@ -46,7 +46,34 @@ const surErreur = (erreur) => {
 export const queryClient = new QueryClient({
   queryCache: new QueryCache({ onError: surErreur }),
   mutationCache: new MutationCache({
-    onSuccess: () => queryClient.invalidateQueries(),
+    /*
+     * ⚠️ UNE ÉCRITURE PEUT DEMANDER QU'ON NE RELISE RIEN (2026-09-19, signalé
+     * par le porteur : « en local parfait, hébergé lent »).
+     *
+     * Le filet ci-dessus relit TOUTES les requêtes actives après chaque écriture
+     * réussie. En local, où une requête coûte 1 ms, personne ne le voyait ;
+     * hébergé, chaque relecture paie la latence du réseau — et l'emploi du temps
+     * en déclenchait une dizaine (semaine, contexte, semaines, session, messages,
+     * modifications…) après CHAQUE case déposée, alors que l'écran venait déjà de
+     * se mettre à jour avec la réponse du serveur.
+     *
+     * Une mutation qui a déjà corrigé son propre cache se déclare
+     * `meta: { invalidation: 'passive' }` : tout est alors seulement MARQUÉ
+     * périmé (`refetchType: 'none'`) — les autres écrans se rechargent à leur
+     * prochain montage, comme prévu plus haut, mais l'écran ouvert ne relit rien.
+     * Sans cette déclaration, le comportement reste EXACTEMENT celui d'avant.
+     *
+     * ⚠️ LA MUTATION SE TROUVE PAR SA FORME, pas par sa position : ce callback a
+     * changé de signature d'une version de TanStack Query à l'autre.
+     */
+    onSuccess: (...arguments_) => {
+      const mutation = arguments_.find((a) => a && typeof a === 'object' && 'mutationId' in a);
+      if (mutation?.options?.meta?.invalidation === 'passive') {
+        queryClient.invalidateQueries({ refetchType: 'none' });
+        return;
+      }
+      queryClient.invalidateQueries();
+    },
     onError: surErreur,
   }),
   defaultOptions: {

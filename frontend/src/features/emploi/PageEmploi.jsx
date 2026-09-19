@@ -24,10 +24,9 @@ import {
   chargerContexte,
   chargerSemaine,
   chargerSemaines,
+  ecrireLot,
   importerSemaine,
-  poserSeance,
   reinitialiserSeances,
-  viderSeance,
 } from './api';
 import GrilleEmploi, { MARQUE_ABSENT, MARQUE_PRESENT } from './GrilleEmploi';
 import MenuGrille from './MenuGrille';
@@ -45,6 +44,7 @@ import { PortailEnTete } from '@/components/layout/enTetePage';
 import { lireCurseurs } from '@/lib/tempsReel';
 import {
   HISTORIQUE_VIDE,
+  appliquerOperations,
   cible,
   cleCase,
   copier,
@@ -321,6 +321,13 @@ export default function PageEmploi() {
 
   // ═══ Écriture ═══
   const ecrire = useMutation({
+    /*
+     * ⚠️ LES GESTES S'ENCHAÎNENT, ILS NE SE CHEVAUCHENT PAS. Deux gestes rapprochés
+     * (couper puis coller) partiraient sinon ensemble : le second lirait un cache
+     * que le premier n'a pas fini de corriger, et porterait des identifiants
+     * encore provisoires. Même `scope` = file d'attente, un à la fois.
+     */
+    scope: { id: 'emploi-ecriture' },
     mutationFn: async ({ operations, memoriser = false }) => {
       const bilan = { posees: 0, videes: 0, refus: [], salleRetiree: [] };
 
@@ -345,53 +352,69 @@ export default function PageEmploi() {
       }
 
       /*
-       * ⚠️ EN SÉRIE, PAS EN PARALLÈLE. Les conflits se cherchent sur l'état
-       * courant : lancer dix écritures ensemble les ferait toutes regarder la
-       * même photo d'avant, et deux séances du même bloc pourraient atterrir sur
-       * la même salle sans que rien ne le voie.
+       * ═══ ⚠️ L'ÉCRAN BOUGE AVANT LE SERVEUR (2026-09-19, signalé par le
+       * porteur : « lent, surtout hébergé ») ═══
+       * Avant, la grille attendait un aller-retour réseau PAR case puis la
+       * relecture de la semaine avant de déplacer quoi que ce soit : hébergé,
+       * chaque requête paie 100 à 300 ms de latence, et un collage de trente
+       * cases durait des secondes sans rien montrer.
+       *
+       * On rejoue donc le geste dans le cache tout de suite
+       * (`appliquerOperations`), puis on l'envoie d'UN SEUL bloc. Le serveur a
+       * toujours raison : ce qu'il refuse est remis à sa place ci-dessous, et la
+       * relecture finale remplace de toute façon la simulation par la réalité.
+       *
+       * ⚠️ `cancelQueries` D'ABORD : une relecture partie avant le geste
+       * reviendrait sinon écraser l'affichage instantané par l'ancien état, et la
+       * case reviendrait un instant à sa place avant de repartir.
        */
-      for (const operation of operations) {
-        try {
-          if (operation.type === 'vider') {
-            await viderSeance(semaine, operation.creneau);
-            bilan.videes += 1;
-          } else if (operation.type === 'deplacer') {
-            /*
-             * ⚠️ ON POSE D'ABORD, ON VIDE ENSUITE — et le vidage ne part QUE si
-             * la pose a réussi, parce qu'une exception saute le reste du bloc.
-             * L'ordre inverse, ou deux opérations séparées, PERDRAIT la séance
-             * dès qu'un conflit refuse l'arrivée.
-             */
-            try {
-              await poserSeance(semaine, operation.seance);
-            } catch (erreur) {
-              /*
-               * ⚠️ SEULE LA SALLE CÈDE, JAMAIS LES PERSONNES (2026-09-19,
-               * demande du porteur). Si le formateur ou le groupe sont pris,
-               * la séance ne peut vraiment pas atterrir ici — aucun second
-               * essai ne change ça. Si TOUS les conflits rendus ne portent
-               * que sur la salle, la séance elle-même a bien sa place : on la
-               * pose SANS salle plutôt que de perdre le déplacement pour un
-               * détail qui se rechoisit d'un clic, juste après, dans la case.
-               */
-              const seulementLaSalle =
-                erreur.code === 'CRENEAU_OCCUPE' &&
-                erreur.details?.length > 0 &&
-                erreur.details.every((d) => d.type === 'salle');
-              if (!seulementLaSalle) throw erreur;
+      const cleSemaine = ['emploi', 'semaine', semaine];
+      await cache.cancelQueries({ queryKey: cleSemaine });
+      const photo = cache.getQueryData(cleSemaine);
+      if (photo) {
+        cache.setQueryData(cleSemaine, {
+          ...photo,
+          seances: appliquerOperations(photo.seances ?? [], operations),
+        });
+      }
 
-              await poserSeance(semaine, { ...operation.seance, salle: '' });
-              bilan.salleRetiree.push(operation.cle);
-            }
-            await viderSeance(semaine, operation.source);
-            bilan.posees += 1;
-          } else {
-            await poserSeance(semaine, operation.seance);
-            bilan.posees += 1;
-          }
-        } catch (erreur) {
-          bilan.refus.push({ cle: operation.cle, erreur });
+      let reponse;
+      try {
+        /*
+         * ⚠️ EN SÉRIE CÔTÉ SERVEUR, PAS EN PARALLÈLE. Les conflits se cherchent
+         * sur l'état courant : dix écritures simultanées regarderaient toutes la
+         * même photo d'avant, et deux séances du même bloc pourraient atterrir
+         * sur la même salle. Le serveur les exécute donc une à une, dans
+         * l'ordre — mais sans qu'Internet s'intercale entre deux.
+         */
+        reponse = await ecrireLot(semaine, operations);
+      } catch (erreur) {
+        // Réseau coupé, session expirée : on ignore ce qui est parti ou non, et
+        // la vérité se relit plutôt que de laisser une simulation à l'écran.
+        await rafraichir();
+        throw erreur;
+      }
+
+      const acceptees = [];
+      reponse.resultats.forEach((resultat, rang) => {
+        const operation = operations[rang];
+        if (!resultat.ok) {
+          bilan.refus.push({ cle: operation.cle, erreur: resultat.erreur });
+          return;
         }
+        acceptees.push(operation);
+        if (operation.type === 'vider') bilan.videes += 1;
+        else bilan.posees += 1;
+        if (resultat.salleRetiree) bilan.salleRetiree.push(operation.cle);
+      });
+
+      // Ce qui a été refusé retombe tout de suite à sa place, sans attendre la
+      // relecture : l'écran ne montre pas un instant de plus ce qui n'a pas eu lieu.
+      if (photo && bilan.refus.length > 0) {
+        cache.setQueryData(cleSemaine, {
+          ...photo,
+          seances: appliquerOperations(photo.seances ?? [], acceptees),
+        });
       }
 
       /*

@@ -185,6 +185,78 @@ export function deplacement(depuis, vers, seance, { copie = false, sujetDe } = {
   ];
 }
 
+const memeCreneau = (seance, creneau) =>
+  seance.jour === creneau.jour &&
+  seance.seance === creneau.seance &&
+  seance.periode === creneau.periode &&
+  seance.formateurMatricule === creneau.formateurMatricule;
+
+/**
+ * Ce que la semaine deviendrait si le serveur acceptait TOUT — pour l'afficher
+ * AVANT sa réponse.
+ *
+ * ═══ ⚠️ POURQUOI (2026-09-19, signalé par le porteur : « lent, surtout
+ * hébergé ») ═══
+ * La grille attendait l'aller-retour réseau ET la relecture de la semaine avant
+ * de bouger : une case déposée restait à sa place pendant une à deux secondes.
+ * Ici on rejoue localement ce que le serveur va faire, et il confirme derrière.
+ * Le serveur a toujours raison — la relecture qui suit remplace ce calcul, et ce
+ * qu'il a refusé retombe alors à sa place.
+ *
+ * ⚠️ MÊMES RÈGLES QUE `poser` / `vider` DU SERVEUR, en plus court : `id` désigne
+ * la séance REMPLACÉE (elle est modifiée en place — c'est ainsi qu'un
+ * déplacement la change de créneau) ; sans `id`, une case déjà prise est
+ * REFUSÉE, donc laissée telle quelle ici.
+ *
+ * ⚠️ PURE : elle ne modifie pas `seances` et ne touche à aucun cache.
+ *
+ * @param {Array} seances la semaine telle que le cache la porte
+ * @param {Array} operations celles que `ecrire` s'apprête à envoyer
+ * @returns {Array} la semaine simulée
+ */
+export function appliquerOperations(seances, operations) {
+  let etat = [...seances];
+
+  for (const operation of operations) {
+    if (operation.type === 'vider') {
+      etat = etat.filter((s) => !memeCreneau(s, operation.creneau));
+      continue;
+    }
+
+    const nouvelle = operation.seance;
+    const index = nouvelle.id
+      ? etat.findIndex((s) => s.id === nouvelle.id)
+      : etat.findIndex((s) => memeCreneau(s, nouvelle));
+
+    // Sans `id`, un créneau occupé par le même formateur est un conflit : le
+    // serveur refuse, et la simulation n'y touche pas.
+    if (!nouvelle.id && index >= 0) continue;
+
+    const definies = Object.fromEntries(
+      Object.entries(nouvelle).filter(([, valeur]) => valeur !== undefined)
+    );
+    const fusion = {
+      ...(index >= 0 ? etat[index] : {}),
+      ...definies,
+      // Un identifiant PROVISOIRE pour ce qui vient d'être créé : la relecture
+      // apporte le vrai, et `ecrire` attend cette relecture avant le geste
+      // suivant.
+      id: (index >= 0 ? etat[index].id : null) ?? nouvelle.id ?? `provisoire-${nouvelle.jour}-${nouvelle.seance}-${nouvelle.formateurMatricule}`,
+    };
+
+    if (index >= 0) etat[index] = fusion;
+    else etat.push(fusion);
+
+    // Un déplacement libère son départ. Posée en place (`id`), la séance a déjà
+    // quitté ce créneau : il n'y a alors plus rien à retirer.
+    if (operation.type === 'deplacer' && operation.source) {
+      etat = etat.filter((s) => s.id === fusion.id || !memeCreneau(s, operation.source));
+    }
+  }
+
+  return etat;
+}
+
 /**
  * L'historique des états de la grille.
  *

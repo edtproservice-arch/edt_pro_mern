@@ -46,6 +46,35 @@ export function poserSeance(semaine, seance) {
   return api.put(`/api/v2/seances/${encodeURIComponent(semaine)}/case`, seance);
 }
 
+/*
+ * Un identifiant que le serveur a émis : 24 caractères hexadécimaux. Les
+ * identifiants PROVISOIRES de l'affichage instantané (voir `appliquerOperations`)
+ * n'en sont pas, et le serveur refuserait tout le lot pour un seul d'entre eux.
+ */
+const ID_SERVEUR = /^[a-f0-9]{24}$/i;
+
+/**
+ * Un geste entier — coller, couper, déplacer, défaire — en UNE requête.
+ *
+ * ⚠️ HÉBERGÉ, CHAQUE REQUÊTE PAIE LA LATENCE D'INTERNET : une par case, c'était
+ * soixante allers-retours pour coller trente cases. Le serveur exécute les
+ * opérations une à une, dans l'ordre, avec les contrôles de `poser` et `vider` ;
+ * il rend un résultat PAR opération, et un refus n'arrête pas les suivantes.
+ *
+ * @returns {Promise<{resultats: Array<{cle, ok, salleRetiree?, inchangee?, erreur?}>}>}
+ */
+export function ecrireLot(semaine, operations) {
+  const nettoyees = operations.map(({ type, cle, seance, creneau, source }) => ({
+    type,
+    cle,
+    seance: seance && (seance.id && !ID_SERVEUR.test(seance.id) ? { ...seance, id: undefined } : seance),
+    creneau,
+    source,
+  }));
+
+  return api.post(`/api/v2/seances/${encodeURIComponent(semaine)}/lot`, { operations: nettoyees });
+}
+
 /**
  * Les modules RÉGIONAUX d'un groupe, avec leur intitulé complet.
  *

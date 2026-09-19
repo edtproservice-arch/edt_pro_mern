@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   HISTORIQUE_VIDE,
+  appliquerOperations,
   cible,
   cleCase,
   copier,
@@ -261,5 +262,108 @@ describe('historique', () => {
 
     expect(historique.passe).toHaveLength(50);
     expect(historique.passe[0]).toBe(10);
+  });
+});
+
+describe('appliquerOperations — l’affichage instantané', () => {
+  const s = (surcharges = {}) => ({
+    id: 'aaaaaaaaaaaaaaaaaaaaaaaa',
+    jour: 'Lundi',
+    seance: 'S1',
+    periode: 'jour',
+    formateurMatricule: '15688',
+    groupe: 'GM101',
+    module: 'M101',
+    salle: 'A12',
+    ...surcharges,
+  });
+  const creneau = (jour, seance, formateurMatricule = '15688') => ({
+    jour,
+    seance,
+    periode: 'jour',
+    formateurMatricule,
+  });
+
+  it('⚠️ ne modifie pas la semaine reçue', () => {
+    const semaine = [s()];
+    const copie = JSON.parse(JSON.stringify(semaine));
+
+    appliquerOperations(semaine, [{ type: 'vider', creneau: creneau('Lundi', 'S1') }]);
+
+    expect(semaine).toEqual(copie);
+  });
+
+  it('vide une case', () => {
+    const resultat = appliquerOperations([s()], [{ type: 'vider', creneau: creneau('Lundi', 'S1') }]);
+
+    expect(resultat).toEqual([]);
+  });
+
+  it('⚠️ un DÉPLACEMENT avec id change la séance de créneau, sans doublon', () => {
+    const resultat = appliquerOperations(
+      [s()],
+      [
+        {
+          type: 'deplacer',
+          seance: { id: 'aaaaaaaaaaaaaaaaaaaaaaaa', jour: 'Mardi', seance: 'S3', periode: 'jour', formateurMatricule: '15688' },
+          source: creneau('Lundi', 'S1'),
+        },
+      ]
+    );
+
+    expect(resultat).toHaveLength(1);
+    expect(resultat[0]).toMatchObject({ id: 'aaaaaaaaaaaaaaaaaaaaaaaa', jour: 'Mardi', seance: 'S3', module: 'M101' });
+  });
+
+  it('⚠️ sans id, une case déjà prise n’est PAS écrasée — le serveur la refuserait', () => {
+    const resultat = appliquerOperations(
+      [s()],
+      [{ type: 'poser', seance: { jour: 'Lundi', seance: 'S1', periode: 'jour', formateurMatricule: '15688', groupe: 'GM102', module: 'M102' } }]
+    );
+
+    expect(resultat).toHaveLength(1);
+    expect(resultat[0].groupe).toBe('GM101');
+  });
+
+  it('avec id, une pose REMPLACE la séance désignée', () => {
+    const resultat = appliquerOperations(
+      [s()],
+      [{ type: 'poser', seance: { id: 'aaaaaaaaaaaaaaaaaaaaaaaa', jour: 'Lundi', seance: 'S1', periode: 'jour', formateurMatricule: '15688', groupe: 'GM101', module: 'M101', salle: 'B02' } }]
+    );
+
+    expect(resultat).toHaveLength(1);
+    expect(resultat[0].salle).toBe('B02');
+  });
+
+  it('une COPIE ajoute une séance et garde l’origine, avec un identifiant provisoire', () => {
+    const resultat = appliquerOperations(
+      [s()],
+      [
+        {
+          type: 'poser',
+          seance: { jour: 'Mardi', seance: 'S3', periode: 'jour', formateurMatricule: '15688', groupe: 'GM101', module: 'M101', salle: 'A12' },
+        },
+      ]
+    );
+
+    expect(resultat).toHaveLength(2);
+    expect(resultat[1].id).toMatch(/^provisoire-/);
+    expect(resultat[0].id).toBe('aaaaaaaaaaaaaaaaaaaaaaaa');
+  });
+
+  it('rejoue les opérations DANS L’ORDRE : couper puis coller', () => {
+    const resultat = appliquerOperations(
+      [s()],
+      [
+        { type: 'vider', creneau: creneau('Lundi', 'S1') },
+        {
+          type: 'poser',
+          seance: { jour: 'Lundi', seance: 'S1', periode: 'jour', formateurMatricule: '15688', groupe: 'GM102', module: 'M102', salle: '' },
+        },
+      ]
+    );
+
+    expect(resultat).toHaveLength(1);
+    expect(resultat[0].groupe).toBe('GM102');
   });
 });

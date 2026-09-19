@@ -44,7 +44,6 @@ import { PortailEnTete } from '@/components/layout/enTetePage';
 import { lireCurseurs } from '@/lib/tempsReel';
 import {
   HISTORIQUE_VIDE,
-  appliquerOperations,
   cible,
   cleCase,
   copier,
@@ -55,6 +54,7 @@ import {
   rectangle,
   refaire,
 } from './selection';
+import { ajusterPosees, appliquerOperations, confirmer } from './previsionEcriture';
 
 /**
  * Emploi du temps hebdomadaire (F5).
@@ -352,30 +352,47 @@ export default function PageEmploi() {
       }
 
       /*
-       * ═══ ⚠️ L'ÉCRAN BOUGE AVANT LE SERVEUR (2026-09-19, signalé par le
-       * porteur : « lent, surtout hébergé ») ═══
-       * Avant, la grille attendait un aller-retour réseau PAR case puis la
-       * relecture de la semaine avant de déplacer quoi que ce soit : hébergé,
-       * chaque requête paie 100 à 300 ms de latence, et un collage de trente
-       * cases durait des secondes sans rien montrer.
+       * ═══ ⚠️ L'ÉCRAN BOUGE AVANT LE SERVEUR — MAIS JAMAIS SUR UN FAUX ═══
+       * (2026-09-19, signalé par le porteur : « lent, surtout hébergé », puis
+       * « il donne parfois des chevauchements qui ne sont pas justes, puis il
+       * rattrape et masque ».)
        *
-       * On rejoue donc le geste dans le cache tout de suite
-       * (`appliquerOperations`), puis on l'envoie d'UN SEUL bloc. Le serveur a
-       * toujours raison : ce qu'il refuse est remis à sa place ci-dessous, et la
-       * relecture finale remplace de toute façon la simulation par la réalité.
+       * Avant, la grille attendait un aller-retour réseau PAR case puis la
+       * relecture de la semaine avant de bouger : hébergé, chaque requête paie
+       * 100 à 300 ms de latence, et un collage de trente cases durait des
+       * secondes sans rien montrer.
+       *
+       * On rejoue donc le geste dans le cache tout de suite — mais en JUGEANT
+       * chaque pose avec les règles du serveur (`appliquerOperations`) : ce
+       * qu'il refuserait n'est PAS montré. Une première version montrait tout, et
+       * l'écran affichait un instant deux séances sur le même créneau avant que
+       * le refus ne les retire. Une prévision peut retarder un affichage — le
+       * serveur l'accepte malgré tout, la case apparaît à sa réponse — jamais le
+       * fausser.
        *
        * ⚠️ `cancelQueries` D'ABORD : une relecture partie avant le geste
        * reviendrait sinon écraser l'affichage instantané par l'ancien état, et la
        * case reviendrait un instant à sa place avant de repartir.
        */
       const cleSemaine = ['emploi', 'semaine', semaine];
+      const cleContexte = ['emploi', 'contexte'];
       await cache.cancelQueries({ queryKey: cleSemaine });
       const photo = cache.getQueryData(cleSemaine);
-      if (photo) {
-        cache.setQueryData(cleSemaine, {
-          ...photo,
-          seances: appliquerOperations(photo.seances ?? [], operations),
+      const contexteCache = cache.getQueryData(cleContexte);
+
+      // Sans le contexte (affectations, quotas), on ne peut PAS juger : on
+      // n'affiche rien avant le serveur, plutôt que de risquer un faux.
+      let affichee = null;
+      if (photo && contexteCache) {
+        const gels = new Map((photo.jours ?? []).map((j) => [j.jour, j.rentreesGelees ?? []]));
+        affichee = appliquerOperations(photo.seances ?? [], operations, {
+          groupesFq: contexteCache.groupesFq ?? [],
+          fiches: fichesModules(contexteCache.affectations ?? []),
+          posees: new Map(Object.entries(contexteCache.posees ?? {})),
+          affectations: contexteCache.affectations ?? [],
+          gelDuJour: (jour) => gels.get(jour) ?? [],
         });
+        cache.setQueryData(cleSemaine, { ...photo, seances: affichee });
       }
 
       let reponse;
@@ -396,6 +413,7 @@ export default function PageEmploi() {
       }
 
       const acceptees = [];
+      const confirmees = [];
       reponse.resultats.forEach((resultat, rang) => {
         const operation = operations[rang];
         if (!resultat.ok) {
@@ -403,27 +421,57 @@ export default function PageEmploi() {
           return;
         }
         acceptees.push(operation);
+        if (resultat.seance) confirmees.push(resultat.seance);
         if (operation.type === 'vider') bilan.videes += 1;
         else bilan.posees += 1;
         if (resultat.salleRetiree) bilan.salleRetiree.push(operation.cle);
       });
 
-      // Ce qui a été refusé retombe tout de suite à sa place, sans attendre la
-      // relecture : l'écran ne montre pas un instant de plus ce qui n'a pas eu lieu.
-      if (photo && bilan.refus.length > 0) {
-        cache.setQueryData(cleSemaine, {
-          ...photo,
-          seances: appliquerOperations(photo.seances ?? [], acceptees),
-        });
+      /*
+       * ═══ ⚠️ ON CONFIRME AVEC LA RÉPONSE, ON NE RELIT PLUS LA SEMAINE ═══
+       * Le serveur rend, pour chaque pose, la séance TELLE QU'IL L'A ÉCRITE
+       * (vrai identifiant, date, statut). On recompose la semaine à partir de
+       * l'état d'avant et des seules opérations ACCEPTÉES, puis on y range ces
+       * séances : c'est exactement l'état du serveur, sans les quatre requêtes de
+       * relecture — ni l'attente qu'elles imposaient à chaque geste.
+       *
+       * ⚠️ MAIS SEULEMENT SI RIEN N'A BOUGÉ ENTRE-TEMPS. Un collègue qui écrit
+       * pendant notre requête fait relire la semaine (temps réel) : recomposer
+       * depuis notre photo effacerait sa modification. Le cache n'est alors plus
+       * celui que nous avions posé — on relit, comme avant.
+       */
+      const actuel = cache.getQueryData(cleSemaine);
+      const intact = Boolean(photo) && actuel?.seances === (affichee ?? photo.seances);
+
+      if (intact) {
+        let confirmee = appliquerOperations(photo.seances ?? [], acceptees);
+        for (const seance of confirmees) confirmee = confirmer(confirmee, seance);
+        cache.setQueryData(cleSemaine, { ...actuel, seances: confirmee });
+
+        // Les heures posées de l'année (les taux des cases) suivent le geste :
+        // sans cela le geste suivant jugerait ses quotas sur des chiffres d'avant.
+        if (contexteCache) {
+          cache.setQueryData(cleContexte, {
+            ...contexteCache,
+            posees: ajusterPosees(contexteCache.posees, photo.seances ?? [], confirmee),
+          });
+        }
       }
 
-      /*
-       * ⚠️ ON ATTEND LA RELECTURE AVANT DE RENDRE LA MAIN. Tant qu'elle n'a pas
-       * abouti, la grille décrit encore l'état d'AVANT : le geste suivant
-       * lirait ce cache périmé pour son propre historique. C'est aussi ce qui
-       * garde les boutons de la barre éteints jusqu'à ce que l'écran dise vrai.
-       */
-      await rafraichir();
+      if (!intact || bilan.refus.length > 0) {
+        /*
+         * ⚠️ ON ATTEND LA RELECTURE quand quelque chose ne colle pas — un refus,
+         * ou un cache qui a bougé : la grille doit dire vrai avant le geste
+         * suivant, qui prendrait sinon son historique sur un état périmé.
+         */
+        await rafraichir();
+      } else {
+        // Le reste (numéros de semaines, fiches de modules, taux exacts) se met à
+        // jour en fond : rien de ce que l'on vient de faire n'en dépend.
+        cache.invalidateQueries({ queryKey: ['emploi', 'semaines'] });
+        cache.invalidateQueries({ queryKey: cleContexte });
+        cache.invalidateQueries({ queryKey: ['emploi', 'module'] });
+      }
 
       return bilan;
     },

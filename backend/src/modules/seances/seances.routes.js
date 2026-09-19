@@ -313,6 +313,67 @@ router.delete(
   }
 );
 
+/**
+ * Un geste entier — coller, couper, déplacer, défaire — en UNE requête.
+ *
+ * ═══ ⚠️ POURQUOI UN LOT (2026-09-19, signalé par le porteur : « lent, surtout
+ * hébergé ») ═══
+ * Le client enchaînait une requête par case, l'une après l'autre : coller
+ * trente cases, c'était soixante allers-retours entre le navigateur et le
+ * serveur, chacun payant la latence d'Internet. En local elle vaut ~1 ms et
+ * personne ne la voyait ; hébergé, elle vaut 100 à 300 ms et le geste durait
+ * dix secondes. Le lot supprime ces allers-retours — les écritures, elles,
+ * restent EXACTEMENT celles de `poser` et `vider`, une à une et dans l'ordre :
+ * mêmes contrôles (conflits, quota, rentrée, rattrapage), mêmes refus.
+ *
+ * ⚠️ EN SÉRIE, PAS EN PARALLÈLE. Les conflits se cherchent sur l'état courant :
+ * lancer dix écritures ensemble les ferait toutes regarder la même photo
+ * d'avant, et deux séances du même bloc pourraient atterrir sur la même salle.
+ *
+ * ⚠️ UN REFUS N'ARRÊTE PAS LE LOT. Chaque opération rend son propre résultat :
+ * coller vingt cases dont une est en conflit doit poser les dix-neuf autres et
+ * NOMMER celle qui a échoué — c'est déjà ce que faisait l'écran, case par case.
+ */
+const operationLotSchema = z
+  .object({
+    type: z.enum(['poser', 'vider', 'deplacer']),
+    cle: z.string().max(200).optional(),
+    seance: seanceSchema.optional(),
+    creneau: creneauSchema.optional(),
+    source: creneauSchema.optional(),
+  })
+  .refine(
+    (op) =>
+      op.type === 'vider' ? Boolean(op.creneau) : Boolean(op.seance) && (op.type !== 'deplacer' || Boolean(op.source)),
+    { message: 'Opération incomplète' }
+  );
+
+const lotSchema = z.object({ operations: z.array(operationLotSchema).min(1).max(400) });
+
+router.post(
+  '/:semaine/lot',
+  modifier,
+  validate({ params: semaineParam, body: lotSchema }),
+  async (req, res, next) => {
+    try {
+      const resultats = await service.ecrireLot(
+        req.etablissementId,
+        req.anneeScolaire,
+        req.params.semaine,
+        req.body.operations
+      );
+      res.json({ success: true, resultats });
+
+      // Une seule annonce pour tout le geste : les collègues relisent UNE fois.
+      if (resultats.some((r) => r.ok && !r.inchangee)) {
+        annoncerModification(req, PAGES_DES_SEANCES, { action: 'lot', semaine: req.params.semaine });
+      }
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 /** Copie une AUTRE semaine dans celle-ci. ← `importWeekBtn` de emploi.html */
 router.post(
   '/:semaine/importer',

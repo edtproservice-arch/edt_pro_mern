@@ -31,7 +31,8 @@ import { Repartition } from '../../models/Repartition.js';
 import { Etablissement } from '../../models/Etablissement.js';
 import { Seance } from '../../models/Seance.js';
 import { lister as listerContraintes } from '../base/contraintes.service.js';
-import { badRequest, conflict, notFound } from '../../lib/httpError.js';
+import { HttpError, badRequest, conflict, notFound } from '../../lib/httpError.js';
+import { logger } from '../../lib/logger.js';
 import { joursFeries as joursFeriesEtablissement } from '../calendrier/calendrier.service.js';
 import { obtenir as calendrierNational } from '../calendrierNational/calendrierNational.service.js';
 import { detacherRattrapage, synchroniser } from '../absences/absences.service.js';
@@ -1054,6 +1055,87 @@ export async function vider(etablissementId, anneeScolaire, valeur, creneau) {
 
   // Vider une case déjà vide n'est pas une erreur : c'est l'état voulu.
   return { supprimee: deletedCount > 0 };
+}
+
+/**
+ * Un geste entier en une requête — voir la route `POST /:semaine/lot`.
+ *
+ * Chaque opération passe par `poser` / `vider`, donc par TOUS leurs contrôles ;
+ * ce qui change ici, c'est seulement qu'un refus ne coupe pas le lot et que le
+ * client n'attend plus la latence du réseau entre deux cases.
+ *
+ * ⚠️ UN DÉPLACEMENT POSE D'ABORD, VIDE ENSUITE — et ne vide que si la pose a
+ * réussi. L'ordre inverse perdrait la séance dès qu'un conflit refuse l'arrivée.
+ *
+ * ⚠️ SEULE LA SALLE CÈDE, JAMAIS LES PERSONNES (2026-09-19, demande du porteur).
+ * Si le formateur ou le groupe sont pris, la séance ne peut pas atterrir ici. Si
+ * TOUS les conflits rendus ne portent que sur la salle, la séance a bien sa
+ * place : on la pose SANS salle plutôt que de perdre le déplacement pour un
+ * détail qui se rechoisit d'un clic dans la case.
+ *
+ * @returns {Array<{cle, ok, salleRetiree?, inchangee?, erreur?}>} dans l'ordre
+ */
+export async function ecrireLot(etablissementId, anneeScolaire, valeur, operations) {
+  const resultats = [];
+
+  for (const operation of operations) {
+    const { cle, type } = operation;
+
+    try {
+      if (type === 'vider') {
+        const { supprimee } = await vider(etablissementId, anneeScolaire, valeur, operation.creneau);
+        resultats.push({ cle, ok: true, inchangee: !supprimee });
+        continue;
+      }
+
+      let salleRetiree = false;
+      try {
+        await poser(etablissementId, anneeScolaire, valeur, operation.seance);
+      } catch (erreur) {
+        const seulementLaSalle =
+          type === 'deplacer' &&
+          erreur instanceof HttpError &&
+          erreur.code === 'CRENEAU_OCCUPE' &&
+          Array.isArray(erreur.details) &&
+          erreur.details.length > 0 &&
+          erreur.details.every((detail) => detail.type === 'salle');
+        if (!seulementLaSalle) throw erreur;
+
+        await poser(etablissementId, anneeScolaire, valeur, { ...operation.seance, salle: '' });
+        salleRetiree = true;
+      }
+
+      if (type === 'deplacer') {
+        await vider(etablissementId, anneeScolaire, valeur, operation.source);
+      }
+
+      resultats.push({ cle, ok: true, ...(salleRetiree && { salleRetiree }) });
+    } catch (erreur) {
+      if (erreur instanceof HttpError) {
+        resultats.push({
+          cle,
+          ok: false,
+          erreur: {
+            message: erreur.message,
+            code: erreur.code,
+            details: erreur.details,
+            status: erreur.status,
+          },
+        });
+        continue;
+      }
+
+      // Une erreur imprévue ne sort jamais vers le client — comme errorHandler.
+      logger.error({ err: erreur, cle }, 'Erreur non gérée dans un lot de séances');
+      resultats.push({
+        cle,
+        ok: false,
+        erreur: { message: 'Une erreur interne est survenue.', status: 500 },
+      });
+    }
+  }
+
+  return resultats;
 }
 
 /**

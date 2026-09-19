@@ -1492,3 +1492,178 @@ describe('PUT / DELETE /seances/publication', () => {
     expect(chezLeGestionnaire.body.courante).toBe('2026-W52');
   });
 });
+
+describe('POST /seances/:semaine/lot — un geste entier en une requête', () => {
+  /*
+   * ⚠️ POURQUOI CE LOT EXISTE : hébergé, chaque requête paie la latence
+   * d'Internet, et coller trente cases en faisait soixante. Le lot ne change
+   * AUCUNE règle — chaque opération traverse `poser` / `vider` — : ces tests
+   * figent surtout qu'il ne les affaiblit pas.
+   */
+  const lot = (operations) =>
+    request(app).post(`/api/v2/seances/${SEMAINE}/lot`).set('Cookie', cookies).send({ operations });
+
+  const seance = (surcharges = {}) => ({
+    jour: 'Lundi',
+    seance: 'S1',
+    periode: 'jour',
+    formateurMatricule: '9863',
+    groupe: 'GM101',
+    module: 'M101',
+    salle: 'A12',
+    ...surcharges,
+  });
+
+  it('pose plusieurs cases d’un seul aller-retour', async () => {
+    const reponse = await lot([
+      { type: 'poser', cle: 'a', seance: seance({ seance: 'S1' }) },
+      { type: 'poser', cle: 'b', seance: seance({ seance: 'S2' }) },
+      { type: 'poser', cle: 'c', seance: seance({ jour: 'Mardi' }) },
+    ]);
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.resultats.map((r) => [r.cle, r.ok])).toEqual([
+      ['a', true],
+      ['b', true],
+      ['c', true],
+    ]);
+    expect(await Seance.countDocuments({})).toBe(3);
+  });
+
+  it('⚠️ UN REFUS N’ARRÊTE PAS LE LOT, et il est NOMMÉ', async () => {
+    await poser(); // Lundi S1, formateur 9863, GM101
+    const reponse = await lot([
+      { type: 'poser', cle: 'ok1', seance: seance({ seance: 'S2' }) },
+      // Même formateur, même créneau que la séance déjà posée → conflit.
+      { type: 'poser', cle: 'refusee', seance: seance({ groupe: 'GM102', module: 'M102', salle: 'B02' }) },
+      { type: 'poser', cle: 'ok2', seance: seance({ jour: 'Mardi' }) },
+    ]);
+
+    expect(reponse.status).toBe(200);
+    const [a, b, c] = reponse.body.resultats;
+    expect(a.ok).toBe(true);
+    expect(c.ok).toBe(true);
+    expect(b).toMatchObject({ cle: 'refusee', ok: false });
+    expect(b.erreur.code).toBe('CRENEAU_OCCUPE');
+    expect(b.erreur.details.map((d) => d.type)).toContain('formateur');
+    // Les deux autres sont bien entrées : la séance d'origine + deux nouvelles.
+    expect(await Seance.countDocuments({})).toBe(3);
+  });
+
+  it('⚠️ un DÉPLACEMENT avec `id` déplace en place, sans doublon ni faux dépassement de quota', async () => {
+    /*
+     * Le module M101 est prévu pour 30 h. On le pose jusqu'à 100 % : un
+     * déplacement ne change aucune heure au total, et ne doit donc pas être
+     * pris pour un ajout.
+     */
+    const jours = ['Lundi', 'Mardi', 'Mercredi'];
+    const creneaux = ['S1', 'S2', 'S3', 'S4'];
+    let posees = 0;
+    for (const jour of jours) {
+      for (const creneau of creneaux) {
+        if (posees === 12) break; // 12 × 2,5 h = 30 h
+        await poser({ jour, seance: creneau, date: new Date('2026-09-14T00:00:00') });
+        posees += 1;
+      }
+    }
+    const origine = await Seance.findOne({ jour: 'Lundi', seance: 'S1' });
+
+    const reponse = await lot([
+      {
+        type: 'deplacer',
+        cle: 'vers',
+        seance: seance({ id: origine.id, jour: 'Jeudi', seance: 'S1' }),
+        source: { jour: 'Lundi', seance: 'S1', periode: 'jour', formateurMatricule: '9863' },
+      },
+    ]);
+
+    expect(reponse.body.resultats[0]).toMatchObject({ cle: 'vers', ok: true });
+    expect(await Seance.countDocuments({})).toBe(12);
+    expect(await Seance.findOne({ jour: 'Lundi', seance: 'S1' })).toBeNull();
+    expect((await Seance.findById(origine.id)).jour).toBe('Jeudi');
+  });
+
+  it('⚠️ un déplacement bloqué par la SEULE salle est posé SANS salle', async () => {
+    const origine = await poser({ salle: 'B02' }); // Lundi S1
+    await poser({
+      seance: 'S2',
+      formateurMatricule: '4211',
+      groupe: 'GM102',
+      module: 'M102',
+      salle: 'B02',
+    });
+
+    const reponse = await lot([
+      {
+        type: 'deplacer',
+        cle: 'vers',
+        seance: seance({ id: origine.id, seance: 'S2', salle: 'B02' }),
+        source: { jour: 'Lundi', seance: 'S1', periode: 'jour', formateurMatricule: '9863' },
+      },
+    ]);
+
+    expect(reponse.body.resultats[0]).toMatchObject({ ok: true, salleRetiree: true });
+    const deplacee = await Seance.findById(origine.id);
+    expect(deplacee.seance).toBe('S2');
+    expect(deplacee.salle).toBe('');
+  });
+
+  it('⚠️ mais JAMAIS si le formateur ou le groupe sont pris : le déplacement reste refusé', async () => {
+    const origine = await poser({ salle: 'B02' }); // 9863 / GM101, Lundi S1
+    await poser({
+      seance: 'S2',
+      formateurMatricule: '9863', // le même formateur, ailleurs au même créneau
+      groupe: 'GM102',
+      module: 'M102',
+      salle: 'B02',
+    });
+
+    const reponse = await lot([
+      {
+        type: 'deplacer',
+        cle: 'vers',
+        seance: seance({ id: origine.id, seance: 'S2', salle: 'B02' }),
+        source: { jour: 'Lundi', seance: 'S1', periode: 'jour', formateurMatricule: '9863' },
+      },
+    ]);
+
+    expect(reponse.body.resultats[0].ok).toBe(false);
+    // Et la séance n'a pas quitté sa place : la pose a échoué, le vidage n'a pas eu lieu.
+    expect((await Seance.findById(origine.id)).seance).toBe('S1');
+  });
+
+  it('vide des cases, et vider une case déjà vide n’est pas une erreur', async () => {
+    await poser();
+    const reponse = await lot([
+      {
+        type: 'vider',
+        cle: 'a',
+        creneau: { jour: 'Lundi', seance: 'S1', periode: 'jour', formateurMatricule: '9863' },
+      },
+      {
+        type: 'vider',
+        cle: 'b',
+        creneau: { jour: 'Lundi', seance: 'S1', periode: 'jour', formateurMatricule: '9863' },
+      },
+    ]);
+
+    expect(reponse.body.resultats).toEqual([
+      { cle: 'a', ok: true, inchangee: false },
+      { cle: 'b', ok: true, inchangee: true },
+    ]);
+    expect(await Seance.countDocuments({})).toBe(0);
+  });
+
+  it('rejette un lot vide ou une opération incomplète', async () => {
+    expect((await lot([])).status).toBe(400);
+    expect((await lot([{ type: 'poser', cle: 'a' }])).status).toBe(400);
+    expect((await lot([{ type: 'deplacer', cle: 'a', seance: seance() }])).status).toBe(400);
+  });
+
+  it('exige d’être connecté', async () => {
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/lot`)
+      .send({ operations: [{ type: 'poser', seance: seance() }] });
+    expect(reponse.status).toBe(401);
+  });
+});

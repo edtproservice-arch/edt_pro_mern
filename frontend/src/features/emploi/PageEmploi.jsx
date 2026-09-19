@@ -69,6 +69,9 @@ import { ajusterPosees, appliquerOperations, confirmer, resoudreIdentifiants } f
  * Suit : (d) absences et rattrapages.
  */
 
+/** La même fonction à chaque rendu : une flèche inline est une prop neuve. */
+const IDENTITE = (valeur) => valeur;
+
 export default function PageEmploi() {
   const cache = useQueryClient();
   /*
@@ -329,10 +332,25 @@ export default function PageEmploi() {
    */
   const axeGroupe = periode === 'soir' || parGroupe;
 
-  const sujets = axeGroupe
-    ? (contexte.data?.groupes ?? [])
-    : (contexte.data?.formateurs ?? []).map((f) => f.matricule);
+  /*
+   * ⚠️ MÉMORISÉ (2026-09-19, signalé par le porteur : « parfois rapide, parfois
+   * lent hébergé »). `.map()` rendait un tableau NEUF à chaque rendu de la page :
+   * la grille en tirait toutes ses lignes à nouveau — la semaine entière
+   * réassemblée — pour un changement de sélection, un avatar qui arrive ou une
+   * relecture terminée. Les mêmes sujets doivent être LE MÊME tableau.
+   */
+  const sujets = useMemo(
+    () =>
+      axeGroupe
+        ? (contexte.data?.groupes ?? [])
+        : (contexte.data?.formateurs ?? []).map((f) => f.matricule),
+    [axeGroupe, contexte.data]
+  );
   const groupesSoir = contexte.data?.groupesSoir ?? [];
+
+  // Le même Set tant que les refus ne changent pas — un `new Set(...)` inline
+  // rendait à la grille une prop neuve à chaque rendu de la page.
+  const conflitsVus = useMemo(() => new Set(conflits.keys()), [conflits]);
 
   const nomDuFormateur = useMemo(() => {
     const noms = new Map((contexte.data?.formateurs ?? []).map((f) => [f.matricule, f.nom]));
@@ -1353,12 +1371,12 @@ export default function PageEmploi() {
               jours={jours}
               periode={periode}
               axe={axeGroupe ? 'groupe' : 'formateur'}
-              nomDuSujet={axeGroupe ? (g) => g : nomDuFormateur}
+              nomDuSujet={axeGroupe ? IDENTITE : nomDuFormateur}
               contexte={contexte.data ?? {}}
               fiches={fiches}
               posees={posees}
               selection={selection}
-              conflits={new Set(conflits.keys())}
+              conflits={conflitsVus}
               brouillons={brouillons}
               modeSelection={modeSelection}
               caseEnEdition={caseEnEdition}

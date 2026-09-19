@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 import { JOURS, TYPES_COURS } from 'shared/constants';
 import {
   anneeDuNomGroupe,
@@ -46,7 +46,7 @@ import { ABREGES, BORD_PLEIN, BORD_TABLEAU, SEPARATION_JOUR } from './styles';
  * leurs créneaux. L'existant en écrivait trois générateurs distincts — d'où des
  * comportements qui avaient dérivé entre eux.
  */
-export default function GrilleEmploi({
+function GrilleEmploi({
   zoom = 100,
   sujets,
   seances,
@@ -54,12 +54,12 @@ export default function GrilleEmploi({
   axe = 'formateur',
   periode = 'jour',
   nomDuSujet = (sujet) => sujet,
-  contexte = {},
+  contexte = CONTEXTE_VIDE,
   fiches,
   posees,
-  selection = new Set(),
-  brouillons = new Map(),
-  conflits = new Set(),
+  selection = SELECTION_VIDE,
+  brouillons = BROUILLONS_VIDES,
+  conflits = CONFLITS_VIDES,
   modeSelection = false,
   caseEnEdition = null,
   survolDepot = null,
@@ -99,7 +99,7 @@ export default function GrilleEmploi({
     [sujets, seances, axe, periode]
   );
 
-  const creneaux = periode === 'soir' ? [SEANCE_SOIR] : SEANCES_JOUR;
+  const creneaux = useMemo(() => (periode === 'soir' ? [SEANCE_SOIR] : SEANCES_JOUR), [periode]);
   const intitules = axe === 'groupe' ? LIGNES_GROUPE : LIGNES_FORMATEUR;
   const etatDuJour = useMemo(() => new Map((jours ?? []).map((j) => [j.jour, j])), [jours]);
 
@@ -405,6 +405,116 @@ export default function GrilleEmploi({
     return disponibilite;
   }, [seanceEnDeplacement, colonnes, periode, axe, etatDuJour, parCreneau, contexte.groupesFq, absenceDuSujet]);
 
+  /*
+   * ═══ ⚠️ CE QUI NE DÉPEND NI DE LA SÉLECTION NI DU SURVOL SE CALCULE UNE FOIS
+   * (2026-09-19, signalé par le porteur : « parfois rapide, parfois lent
+   * hébergé ») ═══
+   * Ce bloc vivait dans la boucle de rendu : à CHAQUE changement de sélection —
+   * une case franchie pendant un rectangle, un survol de dépôt —, les 1 224
+   * cases refaisaient leurs options, leur absence, leur occupation (un
+   * `detecterConflits` par case vide en vue par groupe), leur créneau à éviter.
+   * Des données qui n'avaient pas bougé, recalculées à chaque pixel.
+   *
+   * Pire : `absence`, `occupation` et `seanceDuSujet` sont des OBJETS, neufs à
+   * chaque appel. Pour les 408 cases de la première ligne (`seanceDuSujet`) et
+   * toutes celles d'une ligne en stage ou en formation (`absence`), `memo` voyait
+   * une prop différente à chaque rendu et ne sautait JAMAIS : le correctif du
+   * début de journée n'avait sauvé qu'une partie de la grille.
+   *
+   * Calculé ici, une fois par changement de DONNÉES (séances, brouillons, case
+   * ouverte, contexte), avec des références stables d'un rendu à l'autre. Il ne
+   * reste dans la boucle que des lectures — `selection.has`, `survolDepot ===` —
+   * qui rendent des booléens.
+   *
+   * ⚠️ HÉBERGÉ, DES COLLÈGUES ÉCRIVENT : chaque annonce temps réel relit la
+   * semaine et re-rend la grille. Un rendu qui coûtait 30 ms en local, seul,
+   * arrivait au milieu de VOTRE glissement — d'où « parfois lent ».
+   */
+  const proprietes = useMemo(
+    () =>
+      lignes.map((ligne) =>
+        intitules.map((intitule, rang) =>
+          ligne.cases.map((cellule, colonne) => {
+            const cle = cleCase(ligne.sujet, cellule.jour, cellule.seance, periode);
+            /*
+             * ⚠️ LE BROUILLON L'EMPORTE sur ce qui est enregistré : c'est ce que
+             * la personne vient de choisir, et le perdre au rendu suivant ferait
+             * paraître la case sourde à la saisie.
+             */
+            const seance = brouillons.get(cle) ?? cellule.contenu;
+            const enEdition = caseEnEdition?.cle === cle && caseEnEdition?.champ === intitule;
+
+            return {
+              cle,
+              seance,
+              enEdition,
+              etat: etatDuJour.get(cellule.jour),
+              seanceDuSujet: rang === 0 ? { total: ligne.heures, niveau: ligne.niveau } : null,
+              absence: absenceDuSujet(ligne.sujet, cellule.jour),
+              occupation: occupationDuSujet(ligne.sujet, cellule, seance),
+              // En vue par groupe, c'est le formateur DE LA SÉANCE qui compte.
+              aEviter: creneauAEviter(
+                indexContraintes,
+                axe === 'groupe' ? seance?.formateurMatricule : ligne.sujet,
+                cellule.jour,
+                cellule.seance
+              ),
+              finDuJour: cellule.seance === creneaux[creneaux.length - 1],
+              finDuTableau: colonne === colonnes.length - 1,
+              options: optionsDeLaCase({
+                intitule,
+                axe,
+                sujet: ligne.sujet,
+                seance,
+                options,
+                listes,
+                enEdition,
+                fiches,
+                posees,
+                chargeFormateurs,
+                chargeGroupes,
+                // Ce qui occupe DÉJÀ ce créneau — pour éteindre ce qui serait
+                // refusé.
+                surLeCreneau: parCreneau.get(`${cellule.jour}||${cellule.seance}||${periode}`) ?? VIDE,
+                // La composition des groupes FQ : c'est elle qui fait dire « PRIS »
+                // à un constituant pendant que son FQ siège. Le serveur applique
+                // la MÊME règle.
+                groupesFq: contexte.groupesFq ?? VIDE,
+                // Qui manque CE JOUR-LÀ — pour éteindre les options qui ne peuvent
+                // pas avoir cours.
+                etatDuJour: etatDuJour.get(cellule.jour),
+                contraintes: indexContraintes,
+                jour: cellule.jour,
+                creneau: cellule.seance,
+              }),
+            };
+          })
+        )
+      ),
+    [
+      lignes,
+      intitules,
+      periode,
+      axe,
+      brouillons,
+      caseEnEdition,
+      etatDuJour,
+      absenceDuSujet,
+      occupationDuSujet,
+      indexContraintes,
+      options,
+      listes,
+      fiches,
+      posees,
+      chargeFormateurs,
+      chargeGroupes,
+      parCreneau,
+      contexte.groupesFq,
+      creneaux,
+      colonnes,
+    ]
+  );
+
   if (sujets.length === 0) return null;
 
   return (
@@ -535,7 +645,7 @@ export default function GrilleEmploi({
         </thead>
 
         <tbody>
-          {lignes.map((ligne) =>
+          {lignes.map((ligne, iLigne) =>
             intitules.map((intitule, rang) => (
               <tr key={`${ligne.sujet}-${intitule}`}>
                 {rang === 0 && (
@@ -619,13 +729,8 @@ export default function GrilleEmploi({
                 </td>
 
                 {ligne.cases.map((cellule, colonne) => {
-                  const cle = cleCase(ligne.sujet, cellule.jour, cellule.seance, periode);
-                  /*
-                   * ⚠️ LE BROUILLON L'EMPORTE sur ce qui est enregistré : c'est
-                   * ce que la personne vient de choisir, et le perdre au rendu
-                   * suivant ferait paraître la case sourde à la saisie.
-                   */
-                  const seance = brouillons.get(cle) ?? cellule.contenu;
+                  const p = proprietes[iLigne][rang][colonne];
+                  const cle = p.cle;
                   const dispoDeplacement = disponibiliteDeplacement?.get(cle);
 
                   return (
@@ -643,17 +748,17 @@ export default function GrilleEmploi({
                        */
                       cellule={cellule}
                       cle={cle}
-                      seance={seance}
+                      seance={p.seance}
                       periode={periode}
                       champ={intitule}
                       axe={axe}
-                      etat={etatDuJour.get(cellule.jour)}
+                      etat={p.etat}
                       fiches={fiches}
                       posees={posees}
-                      seanceDuSujet={rang === 0 ? { total: ligne.heures, niveau: ligne.niveau } : null}
+                      seanceDuSujet={p.seanceDuSujet}
                       selectionnee={selection.has(cle)}
                       enConflit={conflits.has(cle)}
-                      enEdition={caseEnEdition?.cle === cle && caseEnEdition?.champ === intitule}
+                      enEdition={p.enEdition}
                       modeSelection={modeSelection}
                       /*
                        * ⚠️ SEULE LA PREMIÈRE LIGNE EST SAISISSABLE À LA SOURIS.
@@ -665,15 +770,9 @@ export default function GrilleEmploi({
                       survolee={survolDepot === cle}
                       personnesLibresDeplacement={dispoDeplacement?.personnesLibres ?? false}
                       salleLibreDeplacement={dispoDeplacement?.salleLibre ?? false}
-                      absence={absenceDuSujet(ligne.sujet, cellule.jour)}
-                      occupation={occupationDuSujet(ligne.sujet, cellule, seance)}
-                      // En vue par groupe, c'est le formateur DE LA SÉANCE qui compte.
-                      aEviter={creneauAEviter(
-                        indexContraintes,
-                        axe === 'groupe' ? seance?.formateurMatricule : ligne.sujet,
-                        cellule.jour,
-                        cellule.seance
-                      )}
+                      absence={p.absence}
+                      occupation={p.occupation}
+                      aEviter={p.aEviter}
                       // Le nom de la ligne — la carte du verrou dit « les mêmes
                       // stagiaires que GM101 », ce qu'un nom de groupe seul ne
                       // laisse pas deviner quand c'est un FQ qui occupe.
@@ -687,8 +786,8 @@ export default function GrilleEmploi({
                       derniereLigne={rang === intitules.length - 1}
                       placement={Boolean(onPlacerCase)}
                       onPlacer={onPlacerCase}
-                      finDuJour={cellule.seance === creneaux[creneaux.length - 1]}
-                      finDuTableau={colonne === colonnes.length - 1}
+                      finDuJour={p.finDuJour}
+                      finDuTableau={p.finDuTableau}
                       bords={
                         selection.has(cle)
                           ? bordsDuBloc({
@@ -703,33 +802,7 @@ export default function GrilleEmploi({
                             })
                           : undefined
                       }
-                      options={optionsDeLaCase({
-                        intitule,
-                        axe,
-                        sujet: ligne.sujet,
-                        seance,
-                        options,
-                        listes,
-                        enEdition: caseEnEdition?.cle === cle && caseEnEdition?.champ === intitule,
-                        fiches,
-                        posees,
-                        chargeFormateurs,
-                        chargeGroupes,
-                        // Ce qui occupe DÉJÀ ce créneau — pour éteindre ce qui
-                        // serait refusé.
-                        surLeCreneau:
-                          parCreneau.get(`${cellule.jour}||${cellule.seance}||${periode}`) ?? VIDE,
-                        // La composition des groupes FQ : c'est elle qui fait
-                        // dire « PRIS » à un constituant pendant que son FQ
-                        // siège. Le serveur applique la MÊME règle.
-                        groupesFq: contexte.groupesFq ?? VIDE,
-                        // Qui manque CE JOUR-LÀ — pour éteindre les options qui
-                        // ne peuvent pas avoir cours.
-                        etatDuJour: etatDuJour.get(cellule.jour),
-                        contraintes: indexContraintes,
-                        jour: cellule.jour,
-                        creneau: cellule.seance,
-                      })}
+                      options={p.options}
                       /*
                        * ⚠️ LES SIX GESTIONNAIRES REPARTENT SANS ENVELOPPE.
                        * Chacun venait avant d'une fermeture créée ICI, à ce
@@ -760,6 +833,17 @@ export default function GrilleEmploi({
     </div>
   );
 }
+
+/*
+ * ⚠️ MÉMORISÉE. La page se rend pour bien d'autres raisons que la grille : un
+ * avatar qui arrive, une relecture qui se termine, l'état d'un bouton. Sans
+ * `memo`, chacune refaisait le calcul de la grille entière — hébergé, où des
+ * collègues écrivent et rafraîchissent sans cesse, c'est ce qui arrivait au
+ * milieu d'un glissement. Avec, elle ne se rend que si l'une de SES props change
+ * (la sélection, le survol, les séances…), et toutes celles que la page lui
+ * passe sont désormais stables d'un rendu à l'autre.
+ */
+export default memo(GrilleEmploi);
 
 /**
  * Jetons de la liste des salles : ils changent le STATUT, pas la salle.
@@ -1177,6 +1261,16 @@ function optionsDeLaCase({
     };
   });
 }
+
+/*
+ * ⚠️ DES VALEURS PAR DÉFAUT UNIQUES. `selection = new Set()` dans la signature en
+ * crée une NEUVE à chaque rendu pour qui ne la fournit pas : tout ce qui dépend
+ * d'elle se recalculait alors à chaque rendu.
+ */
+const SELECTION_VIDE = new Set();
+const BROUILLONS_VIDES = new Map();
+const CONFLITS_VIDES = new Set();
+const CONTEXTE_VIDE = {};
 
 /** ⚠️ UN SEUL tableau vide, partagé : en allouer un par case défait le `memo`. */
 const VIDE = [];

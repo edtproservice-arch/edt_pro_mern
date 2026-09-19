@@ -69,6 +69,8 @@ function CaseEmploi({
   derniereLigne,
   deplacable,
   survolee,
+  personnesLibresDeplacement = false,
+  salleLibreDeplacement = false,
   finDuJour,
   finDuTableau,
   bords,
@@ -221,6 +223,23 @@ function CaseEmploi({
          */
         deplacable && !placement && seance && !modeSelection && !ferme && 'cursor-grab active:cursor-grabbing',
         modeSelection && !ferme && 'cursor-cell',
+        /*
+         * ⚠️ CHAQUE LIGNE DIT SA PROPRE DISPONIBILITÉ, PAS UN VERT EN BLOC
+         * (2026-09-19, demande du porteur). Un créneau peut convenir aux
+         * PERSONNES (formateur, groupe) mais pas à la SALLE, ou l'inverse —
+         * et les deux se corrigent séparément, la salle se rechoisissant dans
+         * la case sans toucher au reste. La ligne GROUPE/FORMATEUR
+         * (`premiereLigne`) porte donc le signal des personnes, la ligne
+         * SALLE le sien : jamais les deux à la fois sur une case qui n'a
+         * qu'un des deux libre.
+         *
+         * ⚠️ UN VERT DISCRET, PAS CELUI D'UN COURS POSÉ — et seulement sur une
+         * case VIDE : une case déjà prise ressortirait en conflit, donc
+         * jamais disponible d'après GrilleEmploi.
+         */
+        ((premiereLigne && personnesLibresDeplacement) || (champ === 'Salle' && salleLibreDeplacement)) &&
+          !seance &&
+          'bg-success/10 outline-dashed outline-1 -outline-offset-1 outline-success',
         // La SÉLECTION l'emporte visuellement : c'est elle qu'on manipule.
         selectionnee && 'bg-primary/10',
         // La DESTINATION d'un dépôt est plus marquée encore, et en pointillé :

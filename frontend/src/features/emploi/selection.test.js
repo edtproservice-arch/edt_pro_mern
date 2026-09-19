@@ -139,7 +139,13 @@ describe('copier / cible', () => {
 });
 
 describe('deplacement', () => {
-  const seance = { formateurMatricule: '15688', groupe: 'GM101', module: 'M101', salle: 'A12' };
+  const seance = {
+    id: 'sea1',
+    formateurMatricule: '15688',
+    groupe: 'GM101',
+    module: 'M101',
+    salle: 'A12',
+  };
   const depuis = cleCase('15688', 'Lundi', 'S1');
   const vers = cleCase('15688', 'Mardi', 'S3');
 
@@ -156,11 +162,26 @@ describe('deplacement', () => {
     expect(operations[0].source).toMatchObject({ jour: 'Lundi', seance: 'S1', formateurMatricule: '15688' });
   });
 
+  it('⚠️ porte l’id de la séance déplacée — sans lui la pose est une création', () => {
+    /*
+     * La pose part AVANT le vidage de l'origine (ordre imposé plus haut) : sans
+     * `id`, le serveur voit un instant DEUX séances du même module — l'ancienne,
+     * pas encore effacée, et la nouvelle — et refuse un déplacement qui ne change
+     * pourtant aucune heure au total dès que le module frôle son quota.
+     */
+    const [operation] = deplacement(depuis, vers, seance);
+
+    expect(operation.seance.id).toBe('sea1');
+  });
+
   it('avec Ctrl, COPIE : rien n’est retiré au départ', () => {
     const [operation] = deplacement(depuis, vers, seance, { copie: true });
 
     expect(operation.type).toBe('poser');
     expect(operation.source).toBeUndefined();
+    // Une copie est une création à part entière : reprendre l'id de l'originale
+    // la remplacerait au lieu de la dupliquer.
+    expect(operation.seance.id).toBeUndefined();
   });
 
   it('⚠️ le sujet de la case d’ARRIVÉE l’emporte', () => {

@@ -322,7 +322,7 @@ export default function PageEmploi() {
   // ═══ Écriture ═══
   const ecrire = useMutation({
     mutationFn: async ({ operations, memoriser = false }) => {
-      const bilan = { posees: 0, videes: 0, refus: [] };
+      const bilan = { posees: 0, videes: 0, refus: [], salleRetiree: [] };
 
       /*
        * ⚠️ L'ÉTAT D'AVANT SE LIT DANS LE CACHE, À L'INSTANT DE L'ÉCRITURE — pas
@@ -362,7 +362,27 @@ export default function PageEmploi() {
              * L'ordre inverse, ou deux opérations séparées, PERDRAIT la séance
              * dès qu'un conflit refuse l'arrivée.
              */
-            await poserSeance(semaine, operation.seance);
+            try {
+              await poserSeance(semaine, operation.seance);
+            } catch (erreur) {
+              /*
+               * ⚠️ SEULE LA SALLE CÈDE, JAMAIS LES PERSONNES (2026-09-19,
+               * demande du porteur). Si le formateur ou le groupe sont pris,
+               * la séance ne peut vraiment pas atterrir ici — aucun second
+               * essai ne change ça. Si TOUS les conflits rendus ne portent
+               * que sur la salle, la séance elle-même a bien sa place : on la
+               * pose SANS salle plutôt que de perdre le déplacement pour un
+               * détail qui se rechoisit d'un clic, juste après, dans la case.
+               */
+              const seulementLaSalle =
+                erreur.code === 'CRENEAU_OCCUPE' &&
+                erreur.details?.length > 0 &&
+                erreur.details.every((d) => d.type === 'salle');
+              if (!seulementLaSalle) throw erreur;
+
+              await poserSeance(semaine, { ...operation.seance, salle: '' });
+              bilan.salleRetiree.push(operation.cle);
+            }
             await viderSeance(semaine, operation.source);
             bilan.posees += 1;
           } else {
@@ -386,6 +406,15 @@ export default function PageEmploi() {
     },
     onSuccess: (bilan) => {
       setConflits(new Map(bilan.refus.map(({ cle, erreur }) => [cle, erreur])));
+
+      if (bilan.salleRetiree.length > 0) {
+        toast.warning(
+          bilan.salleRetiree.length === 1
+            ? 'Séance déposée sans salle'
+            : `${bilan.salleRetiree.length} séances déposées sans salle`,
+          { description: 'L’ancienne salle était déjà prise sur ce créneau — choisissez-en une dans la case.' }
+        );
+      }
 
       if (bilan.refus.length === 0) {
         if (bilan.posees + bilan.videes > 0) {
@@ -914,6 +943,16 @@ export default function PageEmploi() {
 
   const sansConflit = () => setConflits(new Map());
 
+  /*
+   * ⚠️ LA SÉANCE QU'ON DÉPLACE, PAS SEULEMENT SA CASE D'ORIGINE. `GrilleEmploi`
+   * s'en sert pour calculer, UNE SEULE FOIS par geste (pas par case survolée),
+   * l'ensemble des créneaux où elle pourrait atterrir sans conflit — d'où le
+   * vert qui s'allume pendant le glissement. `seanceDe` retourne la MÊME
+   * référence tant que `seances` n'a pas changé : ça reste stable pendant tout
+   * le geste, comme les autres props qui protègent le `memo` des 1 224 cases.
+   */
+  const seanceEnDeplacement = depot.source ? seanceDe(depot.source) : null;
+
   return (
     <CadreReglage
       /* Une GRILLE de 24 colonnes, pas un écran de réglages : la largeur par
@@ -1203,6 +1242,7 @@ export default function PageEmploi() {
               modeSelection={modeSelection}
               caseEnEdition={caseEnEdition}
               survolDepot={depot.survol}
+              seanceEnDeplacement={seanceEnDeplacement}
               onChanger={changer}
               onOuvrirCase={ouvrirCase}
               onFermerCase={fermerCase}

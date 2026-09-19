@@ -146,6 +146,23 @@ export function deplacement(depuis, vers, seance, { copie = false, sujetDe } = {
       type: copie ? 'poser' : 'deplacer',
       cle: vers,
       seance: {
+        /*
+         * ⚠️ SANS CET `id`, LA POSE EST UNE CRÉATION (2026-09-19, signalé par
+         * le porteur). `poserSeance` le documente en toutes lettres :
+         * « absent, la pose est une création ». La pose partant AVANT le
+         * vidage de l'origine (voir plus haut), le serveur voyait alors DEUX
+         * séances du même module le temps d'un aller-retour réseau — l'ancienne,
+         * pas encore effacée, et la nouvelle — et refusait un déplacement qui ne
+         * change pourtant aucune heure au total, dès que le module frôlait son
+         * quota. `id` dit au serveur qu'il s'agit de LA MÊME séance : il
+         * l'exclut de son propre décompte (`verifierQuota`) et la déplace en
+         * place au lieu d'en écrire une seconde.
+         *
+         * ⚠️ JAMAIS EN COPIE. Une copie doit rester une création à part entière
+         * — reprendre l'`id` de l'originale la remplacerait au lieu de la
+         * dupliquer.
+         */
+        id: copie ? undefined : seance.id,
         jour: arrivee.jour,
         seance: arrivee.creneau,
         periode: arrivee.periode,

@@ -63,6 +63,7 @@ export default function GrilleEmploi({
   modeSelection = false,
   caseEnEdition = null,
   survolDepot = null,
+  seanceEnDeplacement = null,
   onChanger,
   onOuvrirCase,
   onFermerCase,
@@ -336,6 +337,74 @@ export default function GrilleEmploi({
     [contexte.contraintesFormateurs]
   );
 
+  /*
+   * ═══ ⚠️ LES CRÉNEAUX OÙ LA SÉANCE DÉPLACÉE PEUT ATTERRIR (2026-09-19) ═══
+   * Demande du porteur : colorer en vert, PENDANT le glissement, ce qui est
+   * libre — PAS EN BLOC. Un créneau peut être libre pour les PERSONNES
+   * (formateur et groupe) mais pas pour la SALLE, ou l'inverse ; les deux se
+   * corrigent séparément — changer de salle ne touche pas au groupe — et
+   * méritent donc chacun leur propre signal, sur leur propre ligne :
+   *   - personnes libres, salle prise  → seule la ligne GROUPE/FORMATEUR
+   *     s'allume : c'est elle qui autorise le dépôt.
+   *   - personnes prises, salle libre  → seule la ligne SALLE s'allume : le
+   *     dépôt reste bloqué, mais on voit que SEULE la salle y était pour
+   *     quelque chose.
+   *   - les deux libres → les deux lignes s'allument.
+   * ⚠️ LA SALLE NE BLOQUE JAMAIS À ELLE SEULE LE VERT DU GROUPE (demande du
+   * porteur) : ce sont les PERSONNES qui décident si ce créneau vaut la peine
+   * d'être visé, la salle n'étant qu'un détail qui se rechoisit après coup
+   * dans la case.
+   *
+   * ⚠️ UNIQUEMENT LA LIGNE D'ORIGINE (2026-09-19, corrigé — un premier essai
+   * parcourait TOUS les sujets, colorant la grille entière : glisser une
+   * séance ne réaffecte pas son formateur ou son groupe, sauf à la déposer
+   * SCIEMMENT sur une autre ligne. Un vert sur cent-cinquante cases de
+   * cinquante autres personnes ne guidait rien, il noyait la grille.
+   *
+   * ⚠️ CALCULÉ UNE FOIS PAR GESTE, PAS PAR CASE SURVOLÉE. `seanceEnDeplacement`
+   * ne change qu'au début et à la fin d'un glissement (voir PageEmploi) — un
+   * `useMemo` dessus donne une Map à référence STABLE tout le long du geste,
+   * que chaque case interroge par un simple `.get(cle)`. Le recalculer à
+   * chaque `onDragOver`, comme le survol lui-même, referait ce parcours à
+   * chaque pixel — exactement le coût que le reste du fichier vient
+   * d'éliminer.
+   *
+   * ⚠️ MÊME RÈGLE QUE LE SERVEUR. `detecterConflits` avec les TROIS champs de
+   * la séance (formateur, groupe, salle) à la fois — pas un seul, comme
+   * `optionsDeLaCase` le fait pour éteindre une option : ici on veut savoir
+   * PRÉCISÉMENT lequel des deux camps — personnes ou salle — bloquerait le
+   * dépôt COMPLET.
+   */
+  const disponibiliteDeplacement = useMemo(() => {
+    if (!seanceEnDeplacement) return null;
+
+    const sujetOrigine =
+      axe === 'groupe' ? seanceEnDeplacement.groupe : seanceEnDeplacement.formateurMatricule;
+
+    const disponibilite = new Map();
+    for (const { jour, creneau } of colonnes) {
+      const etat = etatDuJour.get(jour);
+      if (etat?.vacances || etat?.ferie) continue;
+      if (absenceDuSujet(sujetOrigine, jour)) continue;
+
+      const surLeCreneau = parCreneau.get(`${jour}||${creneau}||${periode}`) ?? VIDE;
+      const candidat = {
+        id: seanceEnDeplacement.id,
+        groupe: seanceEnDeplacement.groupe,
+        formateurMatricule: seanceEnDeplacement.formateurMatricule,
+        salle: seanceEnDeplacement.salle,
+      };
+      const conflits = detecterConflits(candidat, surLeCreneau, { groupesFq: contexte.groupesFq ?? VIDE });
+
+      const personnesLibres = !conflits.some((c) => c.type === 'formateur' || c.type === 'groupe');
+      const salleLibre = !conflits.some((c) => c.type === 'salle');
+      if (!personnesLibres && !salleLibre) continue; // rien à signaler ici
+
+      disponibilite.set(cleCase(sujetOrigine, jour, creneau, periode), { personnesLibres, salleLibre });
+    }
+    return disponibilite;
+  }, [seanceEnDeplacement, colonnes, periode, axe, etatDuJour, parCreneau, contexte.groupesFq, absenceDuSujet]);
+
   if (sujets.length === 0) return null;
 
   return (
@@ -557,6 +626,7 @@ export default function GrilleEmploi({
                    * suivant ferait paraître la case sourde à la saisie.
                    */
                   const seance = brouillons.get(cle) ?? cellule.contenu;
+                  const dispoDeplacement = disponibiliteDeplacement?.get(cle);
 
                   return (
                     <CaseEmploi
@@ -593,6 +663,8 @@ export default function GrilleEmploi({
                        */
                       deplacable={rang === 0}
                       survolee={survolDepot === cle}
+                      personnesLibresDeplacement={dispoDeplacement?.personnesLibres ?? false}
+                      salleLibreDeplacement={dispoDeplacement?.salleLibre ?? false}
                       absence={absenceDuSujet(ligne.sujet, cellule.jour)}
                       occupation={occupationDuSujet(ligne.sujet, cellule, seance)}
                       // En vue par groupe, c'est le formateur DE LA SÉANCE qui compte.

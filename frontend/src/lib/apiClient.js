@@ -94,21 +94,63 @@ function enTetesContexte() {
  */
 let rafraichissementEnCours = null;
 
-export function rafraichirSession() {
+const PAUSE_ENTRE_ESSAIS_MS = [400, 1200];
+
+const attendre = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Tente de renouveler la session, et dit CE QUI S'EST PASSÉ.
+ *
+ * ═══ ⚠️ « REFUSÉ » ET « INJOIGNABLE » NE SONT PAS LA MÊME CHOSE (2026-09-19,
+ * signalé par le porteur : « même si je travaille, la session expire ») ═══
+ * Cette fonction rendait un simple booléen : `false` pour un refus du serveur,
+ * mais AUSSI pour une coupure réseau, un délai dépassé ou un 502 le temps d'un
+ * redémarrage de l'hébergeur. Et `false` voulait dire « la session est finie » :
+ * un raté passager suffisait à déconnecter quelqu'un en pleine saisie. En local
+ * le réseau ne coupe jamais, personne ne le voyait ; hébergé, il coupe.
+ *
+ *   - `ok`            le serveur a renouvelé les cookies ;
+ *   - `refuse`        le serveur a DIT non (401/403) : le refresh token est
+ *                      absent, expiré ou révoqué — la session est réellement finie ;
+ *   - `indisponible`  on n'a PAS obtenu de réponse exploitable (réseau, 5xx) : on
+ *                      ne sait pas. On réessaie deux fois, puis on le DIT — sans
+ *                      déconnecter.
+ */
+async function tenterRafraichissement() {
+  for (let essai = 0; ; essai += 1) {
+    try {
+      const reponse = await fetch(urlApi('/api/v2/auth/rafraichir'), {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (reponse.ok) return 'ok';
+      if (reponse.status === 401 || reponse.status === 403) return 'refuse';
+    } catch {
+      // Réseau coupé : traité comme « indisponible », comme un 5xx.
+    }
+
+    if (essai >= PAUSE_ENTRE_ESSAIS_MS.length) return 'indisponible';
+    await attendre(PAUSE_ENTRE_ESSAIS_MS[essai]);
+  }
+}
+
+function rafraichirEtat() {
   if (rafraichissementEnCours) return rafraichissementEnCours;
 
-  rafraichissementEnCours = fetch(urlApi('/api/v2/auth/rafraichir'), {
-    method: 'POST',
-    credentials: 'include',
-  })
-    .then((reponse) => reponse.ok)
-    .catch(() => false)
-    .finally(() => {
-      rafraichissementEnCours = null;
-    });
+  rafraichissementEnCours = tenterRafraichissement().finally(() => {
+    rafraichissementEnCours = null;
+  });
 
   return rafraichissementEnCours;
 }
+
+/** Pour les appelants qui n'ont besoin que de savoir si c'est renouvelé. */
+export async function rafraichirSession() {
+  return (await rafraichirEtat()) === 'ok';
+}
+
+/** `'ok'`, `'refuse'` ou `'indisponible'` — pour qui doit distinguer une session finie d'un réseau qui coupe. */
+export const etatRafraichissement = rafraichirEtat;
 
 /*
  * ⚠️ LES ROUTES D'AUTHENTIFICATION NE SE REJOUENT PAS. Un mot de passe faux
@@ -128,13 +170,29 @@ function accepteRafraichissement(path) {
  * ⚠️ UNE SEULE FOIS : si le second essai répond encore 401, c'est que la
  * session est réellement finie. Boucler la ferait marteler le serveur sans
  * jamais rendre la main.
+ *
+ * ⚠️ SI LE RENOUVELLEMENT EST REFUSÉ, ON REJOUE QUAND MÊME UNE FOIS. Le refresh
+ * token tourne : deux onglets qui renouvellent ensemble présentent le même jeton,
+ * et le second est refusé alors que le premier vient de poser des cookies
+ * neufs — partagés par les deux onglets. Rejouer avec le cookie du moment
+ * sauve cet onglet-là ; si c'est encore 401, la session est vraiment finie.
+ *
+ * ⚠️ ET SI LE SERVEUR NE RÉPOND PAS, ON NE DÉCONNECTE PAS : l'appelant reçoit une
+ * erreur ordinaire, la session reste ouverte, et la prochaine requête retentera.
  */
 async function avecRafraichissement(envoyer, path) {
   const reponse = await envoyer();
   if (reponse.status !== 401 || !accepteRafraichissement(path)) return reponse;
 
-  const rafraichi = await rafraichirSession();
-  return rafraichi ? envoyer() : reponse;
+  const etat = await rafraichirEtat();
+  if (etat === 'indisponible') {
+    throw new ApiError('Le serveur ne répond pas. Vérifiez la connexion et réessayez.', {
+      status: 503,
+      code: 'SERVEUR_INDISPONIBLE',
+    });
+  }
+
+  return envoyer();
 }
 
 export class ApiError extends Error {

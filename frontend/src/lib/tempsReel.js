@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { FERMETURES_TEMPS_REEL } from 'shared/schemas';
-import { rafraichirSession } from './apiClient';
+import { etatRafraichissement } from './apiClient';
 import { definirConnexionId } from './identiteConnexion';
 
 /**
@@ -165,9 +165,17 @@ function ouvrir() {
        * renverra vers la connexion, la socket n'a pas à le faire elle-même.
        */
       publier({ statut: 'reconnexion' });
-      rafraichirSession().then((reussi) => {
-        if (!reussi) {
+      etatRafraichissement().then((etat) => {
+        // Le serveur a DIT non : la session est finie, la socket s'arrête.
+        if (etat === 'refuse') {
           publier({ statut: 'arrete' });
+          return;
+        }
+        // Injoignable (réseau, 502 le temps d'un redémarrage) : on ne sait pas, et
+        // s'arrêter pour de bon priverait de collaboration jusqu'au prochain
+        // rechargement. On retente, comme pour toute coupure.
+        if (etat === 'indisponible') {
+          planifierReconnexion();
           return;
         }
         tentative = 0;

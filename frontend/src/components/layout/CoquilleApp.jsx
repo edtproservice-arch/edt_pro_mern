@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { marquerVisitee } from '@/lib/visites';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -32,46 +32,74 @@ const TITRE_SESSION = {
 
 const DELAI_INACTIVITE_MS = 5 * 60 * 1000; // 5 minutes d'inactivité
 
+/*
+ * Ce qui compte comme « quelqu'un travaille » — TOUT geste, y compris le
+ * glisser-déposer natif : pendant un glissement le navigateur n'émet plus de
+ * `mousemove`, seulement `drag*`, et l'emploi du temps se travaille en grande
+ * partie ainsi.
+ */
+const EVENEMENTS_ACTIVITE = [
+  'pointerdown',
+  'pointermove',
+  'mousedown',
+  'mousemove',
+  'keydown',
+  'wheel',
+  'scroll',
+  'touchstart',
+  'click',
+  'dragstart',
+  'dragover',
+  'drop',
+  'input',
+];
+
+const VERIFICATION_INACTIVITE_MS = 10_000;
+
 /**
- * Déconnexion automatique si l'utilisateur ne fait aucune action (mouvement de souris,
- * frappe au clavier, clic, scroll, touch) pendant 5 minutes.
+ * Déconnexion automatique si l'utilisateur ne fait aucune action pendant 5
+ * minutes.
+ *
+ * ═══ ⚠️ UN HORODATAGE, PAS UN MINUTEUR RELANCÉ (2026-09-19, signalé par le
+ * porteur : « même si je travaille, la session expire ») ═══
+ * La version précédente armait un `setTimeout` de 5 minutes et le relançait à
+ * chaque geste. Elle tenait à deux hypothèses fausses :
+ *   - que TOUT geste arrive jusqu'à `window` — or un composant qui appelle
+ *     `stopPropagation()` (les boutons des cases de l'emploi du temps le font) le
+ *     coupe avant, et l'écoute se faisait en phase de BULLE. On écoute
+ *     maintenant en phase de CAPTURE, qui passe avant tout le monde ;
+ *   - que le minuteur tire à l'heure — un onglet mis en veille ou ralenti le
+ *     décale, dans un sens comme dans l'autre.
+ *
+ * Ici chaque geste ne fait qu'écrire l'heure (une affectation : rien à
+ * annuler ni à réarmer, donc rien qui pèse sur la souris), et un contrôle
+ * toutes les 10 secondes compare cette heure à maintenant. Le résultat ne
+ * dépend plus de la ponctualité d'aucun minuteur.
  */
 function useGestionInactivite(actif) {
-  const minuterieRef = useRef(null);
-
   useEffect(() => {
     if (!actif) return;
 
-    const reinitialiserMinuterie = () => {
-      if (minuterieRef.current) {
-        clearTimeout(minuterieRef.current);
-      }
-      minuterieRef.current = setTimeout(() => {
-        seDeconnecter().catch(() => {});
-        gererExpirationsession('inactivite');
-      }, DELAI_INACTIVITE_MS);
+    let derniere = Date.now();
+    const noter = () => {
+      derniere = Date.now();
     };
 
-    const evenements = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
-    let dernierTemps = Date.now();
-
-    const surActivite = () => {
-      const maintenant = Date.now();
-      if (maintenant - dernierTemps > 1000) {
-        dernierTemps = maintenant;
-        reinitialiserMinuterie();
-      }
+    const verifier = () => {
+      if (Date.now() - derniere < DELAI_INACTIVITE_MS) return;
+      clearInterval(controle);
+      seDeconnecter().catch(() => {});
+      gererExpirationsession('inactivite');
     };
+    const controle = setInterval(verifier, VERIFICATION_INACTIVITE_MS);
 
-    reinitialiserMinuterie();
-
-    evenements.forEach((evt) => window.addEventListener(evt, surActivite, { passive: true }));
+    EVENEMENTS_ACTIVITE.forEach((evt) =>
+      window.addEventListener(evt, noter, { passive: true, capture: true })
+    );
 
     return () => {
-      if (minuterieRef.current) {
-        clearTimeout(minuterieRef.current);
-      }
-      evenements.forEach((evt) => window.removeEventListener(evt, surActivite));
+      clearInterval(controle);
+      EVENEMENTS_ACTIVITE.forEach((evt) => window.removeEventListener(evt, noter, { capture: true }));
     };
   }, [actif]);
 }

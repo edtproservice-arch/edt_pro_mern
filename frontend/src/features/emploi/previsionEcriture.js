@@ -73,10 +73,7 @@ export function appliquerOperations(seances, operations, regles = null) {
       ...definies(nouvelle),
       // Un identifiant PROVISOIRE pour ce qui vient d'être créé : la réponse du
       // serveur apporte le vrai (voir `confirmer`).
-      id:
-        remplacee?.id ??
-        id ??
-        `provisoire-${nouvelle.jour}-${nouvelle.seance}-${nouvelle.periode}-${nouvelle.formateurMatricule}`,
+      id: remplacee?.id ?? id ?? idProvisoire(nouvelle),
     };
 
     if (suivi) {
@@ -102,6 +99,44 @@ export function appliquerOperations(seances, operations, regles = null) {
   }
 
   return etat;
+}
+
+/**
+ * Donne leur VRAI identifiant aux opérations construites sur une séance encore
+ * provisoire.
+ *
+ * ═══ ⚠️ LE CONFLIT D'UNE SÉANCE AVEC ELLE-MÊME (2026-09-19, signalé par le
+ * porteur : « quand je choisis la salle, il donne un chevauchement qui n'existe
+ * pas ») ═══
+ * Choisir le module d'une case affiche la séance tout de suite, sous un
+ * identifiant PROVISOIRE, pendant que le serveur l'écrit. Choisir ensuite la
+ * salle construit une modification sur CETTE séance : son identifiant part, est
+ * reconnu comme provisoire, et `ecrireLot` le retire. Sans identifiant, le
+ * serveur y voit une CRÉATION — et la refuse, puisque le formateur et le groupe
+ * y ont déjà… cette même séance. Hébergé, où l'attente du serveur dure, on
+ * choisit la salle bien avant sa réponse.
+ *
+ * Les écritures s'exécutent l'une après l'autre : quand celle-ci démarre, la
+ * précédente est terminée et le cache porte déjà le vrai identifiant. Il suffit
+ * de le retrouver, par le créneau et le formateur que l'identifiant provisoire
+ * encode. Introuvable — la première a été refusée, il n'y a plus de séance —,
+ * l'identifiant est retiré : c'est alors une création, ce qu'elle est devenue.
+ *
+ * @param {Array} operations celles que `ecrire` s'apprête à envoyer
+ * @param {Array} seances la semaine telle que le cache la porte MAINTENANT
+ * @returns {Array} les mêmes opérations, sans identifiant provisoire
+ */
+export function resoudreIdentifiants(operations, seances) {
+  const reels = new Map();
+  for (const s of seances) {
+    if (idServeur(s.id)) reels.set(idProvisoire(s), s.id);
+  }
+
+  return operations.map((operation) => {
+    const id = operation.seance?.id;
+    if (!id || idServeur(id)) return operation;
+    return { ...operation, seance: { ...operation.seance, id: reels.get(id) } };
+  });
 }
 
 /**
@@ -157,6 +192,10 @@ export function ajusterPosees(posees = {}, avant, apres) {
 /** Un identifiant que le serveur a émis : 24 caractères hexadécimaux. */
 const ID_SERVEUR = /^[a-f0-9]{24}$/i;
 const idServeur = (id) => (typeof id === 'string' && ID_SERVEUR.test(id) ? id : undefined);
+
+/** L'identifiant PROVISOIRE d'une séance : son créneau et son formateur, lisibles. */
+const idProvisoire = (seance) =>
+  `provisoire-${seance.jour}-${seance.seance}-${seance.periode}-${seance.formateurMatricule}`;
 
 const memeCreneau = (seance, creneau) =>
   seance.jour === creneau.jour &&

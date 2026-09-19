@@ -54,7 +54,7 @@ import {
   rectangle,
   refaire,
 } from './selection';
-import { ajusterPosees, appliquerOperations, confirmer } from './previsionEcriture';
+import { ajusterPosees, appliquerOperations, confirmer, resoudreIdentifiants } from './previsionEcriture';
 
 /**
  * Emploi du temps hebdomadaire (F5).
@@ -422,12 +422,22 @@ export default function PageEmploi() {
       const photo = cache.getQueryData(cleSemaine);
       const contexteCache = cache.getQueryData(cleContexte);
 
+      /*
+       * ⚠️ LES IDENTIFIANTS PROVISOIRES SE RÉSOLVENT ICI, PAS À LA CONSTRUCTION DU
+       * GESTE. Une modification bâtie sur une séance qu'on vient d'afficher
+       * (module choisi, puis salle) porte son identifiant provisoire ; les
+       * écritures étant en file, la précédente est terminée à cet instant et le
+       * cache porte le vrai. Sans cela le serveur voit une création et refuse la
+       * séance contre… elle-même — le « chevauchement qui n'existe pas ».
+       */
+      const aEnvoyer = resoudreIdentifiants(operations, photo?.seances ?? []);
+
       // Sans le contexte (affectations, quotas), on ne peut PAS juger : on
       // n'affiche rien avant le serveur, plutôt que de risquer un faux.
       let affichee = null;
       if (photo && contexteCache) {
         const gels = new Map((photo.jours ?? []).map((j) => [j.jour, j.rentreesGelees ?? []]));
-        affichee = appliquerOperations(photo.seances ?? [], operations, {
+        affichee = appliquerOperations(photo.seances ?? [], aEnvoyer, {
           groupesFq: contexteCache.groupesFq ?? [],
           fiches: fichesModules(contexteCache.affectations ?? []),
           posees: new Map(Object.entries(contexteCache.posees ?? {})),
@@ -446,7 +456,7 @@ export default function PageEmploi() {
          * sur la même salle. Le serveur les exécute donc une à une, dans
          * l'ordre — mais sans qu'Internet s'intercale entre deux.
          */
-        reponse = await ecrireLot(semaine, operations);
+        reponse = await ecrireLot(semaine, aEnvoyer);
       } catch (erreur) {
         // Réseau coupé, session expirée : on ignore ce qui est parti ou non, et
         // la vérité se relit plutôt que de laisser une simulation à l'écran.
@@ -457,7 +467,7 @@ export default function PageEmploi() {
       const acceptees = [];
       const confirmees = [];
       reponse.resultats.forEach((resultat, rang) => {
-        const operation = operations[rang];
+        const operation = aEnvoyer[rang];
         if (!resultat.ok) {
           bilan.refus.push({ cle: operation.cle, erreur: resultat.erreur });
           return;

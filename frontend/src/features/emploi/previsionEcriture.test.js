@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { fichesModules } from 'shared/domain';
-import { ajusterPosees, appliquerOperations, confirmer } from './previsionEcriture.js';
+import { ajusterPosees, appliquerOperations, confirmer, resoudreIdentifiants } from './previsionEcriture.js';
 
 const ID_A = 'aaaaaaaaaaaaaaaaaaaaaaaa';
 const ID_B = 'bbbbbbbbbbbbbbbbbbbbbbbb';
@@ -306,5 +306,72 @@ describe('ajusterPosees', () => {
     ajusterPosees(posees, [], [seance()]);
 
     expect(posees['GM101||M101']).toEqual({ presentiel: 20, synchrone: 0 });
+  });
+});
+
+describe('resoudreIdentifiants — la séance qui entrait en conflit avec elle-même', () => {
+  /*
+   * ⚠️ LE BUG SIGNALÉ : « quand je choisis la salle, il donne un chevauchement qui
+   * n'existe pas ». On choisit le module (la séance s'affiche sous un identifiant
+   * PROVISOIRE), puis la salle — avant la réponse du serveur. La modification
+   * partait sans identifiant : une création, refusée contre la séance qu'elle
+   * modifiait.
+   */
+  const provisoire = 'provisoire-Vendredi-S4-jour-15688';
+
+  it('⚠️ redonne à la séance provisoire son VRAI identifiant, trouvé par créneau et formateur', () => {
+    const cache = [seance({ id: ID_A, jour: 'Vendredi', seance: 'S4' })];
+    const operations = [{ type: 'poser', seance: pose({ id: provisoire, jour: 'Vendredi', seance: 'S4', salle: 'B02' }) }];
+
+    const [resolue] = resoudreIdentifiants(operations, cache);
+
+    expect(resolue.seance.id).toBe(ID_A);
+    expect(resolue.seance.salle).toBe('B02');
+  });
+
+  it('⚠️ le lot résolu se JUGE alors comme une modification, pas comme un conflit', () => {
+    const cache = [seance({ id: ID_A, jour: 'Vendredi', seance: 'S4', salle: '' })];
+    const operations = resoudreIdentifiants(
+      [{ type: 'poser', seance: pose({ id: provisoire, jour: 'Vendredi', seance: 'S4', salle: 'B02' }) }],
+      cache
+    );
+
+    const resultat = appliquerOperations(cache, operations, regles());
+
+    expect(resultat).toHaveLength(1);
+    expect(resultat[0]).toMatchObject({ id: ID_A, salle: 'B02' });
+  });
+
+  it('retire l’identifiant quand la séance n’existe plus — la première pose a été refusée', () => {
+    const [resolue] = resoudreIdentifiants(
+      [{ type: 'poser', seance: pose({ id: provisoire, jour: 'Vendredi', seance: 'S4' }) }],
+      []
+    );
+
+    expect(resolue.seance.id).toBeUndefined();
+  });
+
+  it('ne se trompe pas de séance : le créneau ET le formateur comptent', () => {
+    const cache = [
+      seance({ id: ID_A, jour: 'Vendredi', seance: 'S4', formateurMatricule: '18494' }),
+      seance({ id: ID_B, jour: 'Vendredi', seance: 'S3' }),
+    ];
+
+    const [resolue] = resoudreIdentifiants(
+      [{ type: 'poser', seance: pose({ id: provisoire, jour: 'Vendredi', seance: 'S4' }) }],
+      cache
+    );
+
+    expect(resolue.seance.id).toBeUndefined();
+  });
+
+  it('laisse intactes les opérations qui portent déjà un vrai identifiant, et les vidages', () => {
+    const operations = [
+      { type: 'poser', seance: pose({ id: ID_B }) },
+      { type: 'vider', creneau: creneau('Lundi', 'S1') },
+      { type: 'poser', seance: pose() },
+    ];
+
+    expect(resoudreIdentifiants(operations, [seance()])).toEqual(operations);
   });
 });

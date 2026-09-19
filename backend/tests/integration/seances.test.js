@@ -1530,6 +1530,19 @@ describe('POST /seances/:semaine/lot — un geste entier en une requête', () =>
     expect(await Seance.countDocuments({})).toBe(3);
   });
 
+  it('rend, pour chaque pose, la séance TELLE QUE LE SERVEUR L’A ÉCRITE', async () => {
+    /*
+     * C'est ce qui dispense l'écran de relire la semaine après un geste : il
+     * remplace son affichage instantané par cette séance (vrai identifiant, date).
+     */
+    const reponse = await lot([{ type: 'poser', cle: 'a', seance: seance() }]);
+
+    const [resultat] = reponse.body.resultats;
+    const enBase = await Seance.findOne({});
+    expect(resultat.seance).toMatchObject({ id: enBase.id, jour: 'Lundi', seance: 'S1', module: 'M101' });
+    expect(reponse.headers['server-timing']).toMatch(/^lot;dur=\d+/);
+  });
+
   it('⚠️ UN REFUS N’ARRÊTE PAS LE LOT, et il est NOMMÉ', async () => {
     await poser(); // Lundi S1, formateur 9863, GM101
     const reponse = await lot([

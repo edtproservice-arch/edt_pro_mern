@@ -739,8 +739,8 @@ export async function semaine(etablissementId, anneeScolaire, valeur) {
  * séance couvre tout le monde à la fois, et la poser priverait ceux qui sont
  * rentrés OU promettrait un cours à ceux qui ne le sont pas.
  */
-async function refuserAvantRentree(anneeScolaire, semaine, donnees) {
-  const { rentrees } = await calendrierNational(anneeScolaire);
+async function refuserAvantRentree(anneeScolaire, semaine, donnees, precharge = null) {
+  const rentrees = precharge ?? (await calendrierNational(anneeScolaire)).rentrees;
   if (rentrees.length === 0) return;
 
   const date = enJour(dateDuJour(semaine, donnees.jour));
@@ -809,7 +809,7 @@ async function gelDeLaDate(rentrees, date, groupe) {
  * du formateur (`optionsDuFormateur`).
  */
 export async function poser(etablissementId, anneeScolaire, valeur, donnees, reglages = {}) {
-  const { session = null, rattrapageDe = null } = reglages;
+  const { session = null, rattrapageDe = null, precharge = null } = reglages;
   const normalisee = normaliserValeurSemaine(valeur);
   if (!normalisee) {
     throw badRequest(`Semaine « ${valeur} » illisible`, { code: 'SEMAINE_INVALIDE' });
@@ -821,8 +821,9 @@ export async function poser(etablissementId, anneeScolaire, valeur, donnees, reg
    * ne se voient pas — ce sont pourtant les mêmes stagiaires.
    */
   const [base, etablissement, existante] = await Promise.all([
-    Base.findOne({ etablissementId, anneeScolaire }).select('affectations').session(session),
-    Etablissement.findById(etablissementId).select('groupesFq').session(session).lean(),
+    precharge?.base ?? Base.findOne({ etablissementId, anneeScolaire }).select('affectations').session(session),
+    precharge?.etablissement ??
+      Etablissement.findById(etablissementId).select('groupesFq').session(session).lean(),
     donnees.id
       ? Seance.findOne({ _id: donnees.id, etablissementId, anneeScolaire }).session(session).lean()
       : null,
@@ -909,7 +910,7 @@ export async function poser(etablissementId, anneeScolaire, valeur, donnees, reg
    * comme partout ailleurs : « DEVOWFS201 » → 2. Le domaine du calendrier ne
    * connaît pas ces règles de nommage, c'est à l'appelant de les appliquer.
    */
-  await refuserAvantRentree(anneeScolaire, normalisee, donnees);
+  await refuserAvantRentree(anneeScolaire, normalisee, donnees, precharge?.rentrees ?? null);
 
   /*
    * Les séances DU MÊME CRÉNEAU, et d'elles seules. Passer la semaine entière
@@ -1073,10 +1074,31 @@ export async function vider(etablissementId, anneeScolaire, valeur, creneau) {
  * place : on la pose SANS salle plutôt que de perdre le déplacement pour un
  * détail qui se rechoisit d'un clic dans la case.
  *
- * @returns {Array<{cle, ok, salleRetiree?, inchangee?, erreur?}>} dans l'ordre
+ * @returns {{resultats: Array<{cle, ok, seance?, salleRetiree?, inchangee?, erreur?}>, dureeMs: number}}
+ *   un résultat par opération, dans l'ordre
  */
 export async function ecrireLot(etablissementId, anneeScolaire, valeur, operations) {
+  const debut = Date.now();
   const resultats = [];
+
+  /*
+   * ⚠️ CE QUI NE CHANGE PAS PENDANT UN LOT SE LIT UNE FOIS. `poser` relisait, pour
+   * CHAQUE case, la base entière avec ses affectations, l'établissement et le
+   * calendrier national : trois allers-retours vers MongoDB par case, qui
+   * n'apprenaient rien de neuf — aucune de ces trois données n'est écrite par un
+   * lot. Hébergé, où chaque accès base coûte 20 à 100 ms, c'est ce qui rendait un
+   * collage de trente cases si lent. Les séances, elles, se relisent à chaque
+   * opération : c'est leur état qui change d'une case à l'autre.
+   */
+  const normalisee = normaliserValeurSemaine(valeur);
+  const [base, etablissement, calendrier] = normalisee
+    ? await Promise.all([
+        Base.findOne({ etablissementId, anneeScolaire }).select('affectations'),
+        Etablissement.findById(etablissementId).select('groupesFq').lean(),
+        calendrierNational(anneeScolaire),
+      ])
+    : [null, null, { rentrees: [] }];
+  const precharge = base ? { base, etablissement, rentrees: calendrier.rentrees } : null;
 
   for (const operation of operations) {
     const { cle, type } = operation;
@@ -1089,8 +1111,9 @@ export async function ecrireLot(etablissementId, anneeScolaire, valeur, operatio
       }
 
       let salleRetiree = false;
+      let posee;
       try {
-        await poser(etablissementId, anneeScolaire, valeur, operation.seance);
+        posee = await poser(etablissementId, anneeScolaire, valeur, operation.seance, { precharge });
       } catch (erreur) {
         const seulementLaSalle =
           type === 'deplacer' &&
@@ -1101,7 +1124,13 @@ export async function ecrireLot(etablissementId, anneeScolaire, valeur, operatio
           erreur.details.every((detail) => detail.type === 'salle');
         if (!seulementLaSalle) throw erreur;
 
-        await poser(etablissementId, anneeScolaire, valeur, { ...operation.seance, salle: '' });
+        posee = await poser(
+          etablissementId,
+          anneeScolaire,
+          valeur,
+          { ...operation.seance, salle: '' },
+          { precharge }
+        );
         salleRetiree = true;
       }
 
@@ -1109,7 +1138,10 @@ export async function ecrireLot(etablissementId, anneeScolaire, valeur, operatio
         await vider(etablissementId, anneeScolaire, valeur, operation.source);
       }
 
-      resultats.push({ cle, ok: true, ...(salleRetiree && { salleRetiree }) });
+      // La séance TELLE QUE LE SERVEUR L'A ÉCRITE : le client s'en sert pour
+      // confirmer son affichage instantané (vrai identifiant, date, statut) au
+      // lieu de relire toute la semaine.
+      resultats.push({ cle, ok: true, seance: posee, ...(salleRetiree && { salleRetiree }) });
     } catch (erreur) {
       if (erreur instanceof HttpError) {
         resultats.push({
@@ -1135,7 +1167,12 @@ export async function ecrireLot(etablissementId, anneeScolaire, valeur, operatio
     }
   }
 
-  return resultats;
+  const duree = Date.now() - debut;
+  if (duree > 1500) {
+    logger.warn({ operations: operations.length, dureeMs: duree }, 'Lot de séances lent');
+  }
+
+  return { resultats, dureeMs: duree };
 }
 
 /**

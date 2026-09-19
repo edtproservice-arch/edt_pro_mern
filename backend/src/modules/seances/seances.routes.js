@@ -356,12 +356,15 @@ router.post(
   validate({ params: semaineParam, body: lotSchema }),
   async (req, res, next) => {
     try {
-      const resultats = await service.ecrireLot(
+      const { resultats, dureeMs } = await service.ecrireLot(
         req.etablissementId,
         req.anneeScolaire,
         req.params.semaine,
         req.body.operations
       );
+      // Visible dans l'onglet Réseau du navigateur : dit ce que le serveur a
+      // consommé, donc ce qui reste de la latence du réseau.
+      res.setHeader('Server-Timing', `lot;dur=${dureeMs}`);
       res.json({ success: true, resultats });
 
       // Une seule annonce pour tout le geste : les collègues relisent UNE fois.

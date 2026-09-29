@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { JOURS, ROLES, TYPES_ABSENCE } from 'shared/constants';
 import { bornesAnneeScolaire, enJour, semaineDansAnnee, separerFusion } from 'shared/domain';
 import { AbsenceStagiaire } from '../../models/AbsenceStagiaire.js';
+import { AppelValidation } from '../../models/AppelValidation.js';
 import { Base } from '../../models/Base.js';
 import { Stagiaire } from '../../models/Stagiaire.js';
 import { badRequest, notFound } from '../../lib/httpError.js';
@@ -159,17 +160,30 @@ async function coursEtListe(etablissementId, anneeScolaire, { date, seance, peri
   return { jour, cours, liste };
 }
 
-/** La liste d'appel d'un cours, avec ce qui y est déjà marqué. */
+/** La clé qui désigne UN cours, pour `AbsenceStagiaire` comme pour `AppelValidation`. */
+const cleDuCours = (etablissementId, anneeScolaire, jour, cours) => ({
+  etablissementId,
+  anneeScolaire,
+  date: jour.date,
+  seance: cours.seance,
+  periode: cours.periode,
+  groupe: cours.groupe,
+});
+
+/** La liste d'appel d'un cours, avec ce qui y est déjà marqué — et l'attestation du formateur, s'il y en a une. */
 export async function appel(etablissementId, anneeScolaire, creneau, acteur) {
   const { jour, cours, liste } = await coursEtListe(etablissementId, anneeScolaire, creneau, acteur);
-  const marques = await AbsenceStagiaire.find({
-    etablissementId,
-    anneeScolaire,
-    date: jour.date,
-    seance: cours.seance,
-    periode: cours.periode,
-    matricule: { $in: liste.map((s) => s.matricule) },
-  }).lean();
+  const [marques, validation] = await Promise.all([
+    AbsenceStagiaire.find({
+      etablissementId,
+      anneeScolaire,
+      date: jour.date,
+      seance: cours.seance,
+      periode: cours.periode,
+      matricule: { $in: liste.map((s) => s.matricule) },
+    }).lean(),
+    AppelValidation.findOne(cleDuCours(etablissementId, anneeScolaire, jour, cours)).lean(),
+  ]);
   const parMatricule = new Map(marques.map((m) => [m.matricule, m]));
 
   return {
@@ -177,6 +191,16 @@ export async function appel(etablissementId, anneeScolaire, creneau, acteur) {
     jour: jour.jour,
     semaine: jour.semaine,
     cours,
+    /*
+     * ⚠️ POUR LE GESTIONNAIRE COMME POUR LE FORMATEUR (2026-09-27, demande du
+     * porteur : « je veux un signe que le formateur a marqué l'absence »).
+     * `null` : personne n'a encore attesté cette liste, à cet état — soit
+     * qu'elle n'ait jamais été validée, soit qu'une modification depuis l'ait
+     * défaite (`enregistrerAppel` retire la validation à chaque écriture).
+     */
+    validation: validation
+      ? { valideLe: validation.valideLe, validateurNom: validation.validateurNom }
+      : null,
     stagiaires: liste.map((s) => {
       const marque = parMatricule.get(s.matricule);
       return {
@@ -190,13 +214,26 @@ export async function appel(etablissementId, anneeScolaire, creneau, acteur) {
 }
 
 /**
- * Enregistre l'appel d'un cours : l'écran envoie l'état de la liste entière.
+ * Écrit l'appel d'un cours — le cœur commun à `enregistrerAppel` et à
+ * `validerAppel`, qui ne diffèrent qu'après : le premier EFFACE toute
+ * validation existante (la liste a changé, elle n'est plus celle attestée),
+ * le second en pose une NEUVE.
  *
- * ⚠️ UNE SEULE TRANSACTION : un appel à moitié écrit laisserait des absents
- * marqués et d'autres non, sans que l'écran puisse dire lesquels.
+ * ⚠️ TRANSACTION SEULEMENT POUR VALIDER (2026-09-27) : `session.withTransaction`
+ * coûte plusieurs secondes sur le replica-set à un seul nœud de test — et ce
+ * coût existe pareillement en production, où chaque écriture de
+ * `enregistrerAppel` part toute seule, au fil des clics (`useEnregistrementAuto`).
+ * Le payer à CHAQUE clic aurait rendu l'appel poussif pour rien : l'écriture des
+ * marques et l'effacement d'une validation restent DEUX opérations séparées mais
+ * indépendantes — la seconde échouant, au pire, laisse un signe « validé »
+ * obsolète jusqu'au prochain appel, jamais des marques à moitié écrites. Seul
+ * `validerAppel`, un geste explicite et rare, garde l'atomicité : lui seul doit
+ * écrire ET attester ensemble, sans fenêtre entre les deux.
  * ⚠️ Passer d'absent à retard GARDE la justification et le motif déjà saisis.
+ *
+ * @returns {{jour, cours, bilan: {absences, retards, presents}}}
  */
-export async function enregistrerAppel(etablissementId, anneeScolaire, corps, acteur) {
+async function ecrireAppel(etablissementId, anneeScolaire, corps, acteur, { validation } = {}) {
   const { jour, cours, liste } = await coursEtListe(etablissementId, anneeScolaire, corps, acteur);
 
   if (cours.ferme) {
@@ -249,21 +286,119 @@ export async function enregistrerAppel(etablissementId, anneeScolaire, corps, ac
     };
   });
 
-  const session = await mongoose.startSession();
-  try {
-    await session.withTransaction(async () => {
-      if (operations.length > 0) await AbsenceStagiaire.bulkWrite(operations, { session });
-    });
-  } finally {
-    await session.endSession();
+  const cleValidation = cleDuCours(etablissementId, anneeScolaire, jour, cours);
+
+  if (validation) {
+    // ⚠️ SEUL CE CHEMIN TRANSACTIONNE : voir le commentaire au-dessus de la
+    // fonction — écrire les marques ET poser l'attestation doit rester un
+    // seul geste, sans quoi une coupure entre les deux figerait un appel
+    // écrit mais jamais attesté.
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        if (operations.length > 0) await AbsenceStagiaire.bulkWrite(operations, { session });
+        await AppelValidation.updateOne(
+          cleValidation,
+          {
+            $set: {
+              jour: jour.jour,
+              validePar: acteur.id ?? null,
+              /*
+               * ⚠️ L'ACTEUR, PAS LE FORMATEUR DE LA SÉANCE (2026-09-29, bogue
+               * signalé par le porteur) : depuis que le gestionnaire et le
+               * directeur valident aussi (2026-09-28), `cours.formateur`
+               * mentait dès que ce n'était pas lui qui avait cliqué.
+               */
+              validateurNom: acteur.nomComplet ?? '',
+              valideLe: new Date(),
+            },
+          },
+          { upsert: true, session }
+        );
+      });
+    } finally {
+      await session.endSession();
+    }
+  } else {
+    if (operations.length > 0) await AbsenceStagiaire.bulkWrite(operations);
+    // ⚠️ TOUJOURS, MÊME SANS VALIDATION EXISTANTE : `deleteOne` sans résultat
+    // ne coûte rien, et c'est plus sûr qu'un test à part qui pourrait un jour
+    // diverger de cette règle.
+    await AppelValidation.deleteOne(cleValidation);
   }
 
   const compter = (type) => corps.marques.filter((m) => m.type === type).length;
   return {
-    absences: compter(TYPES_ABSENCE.ABSENCE),
-    retards: compter(TYPES_ABSENCE.RETARD),
-    presents: compter(null),
+    jour,
+    cours,
+    bilan: {
+      absences: compter(TYPES_ABSENCE.ABSENCE),
+      retards: compter(TYPES_ABSENCE.RETARD),
+      presents: compter(null),
+    },
   };
+}
+
+/**
+ * Enregistre l'appel d'un cours : l'écran envoie l'état de la liste entière.
+ *
+ * ⚠️ EFFACE UNE VALIDATION EXISTANTE (2026-09-27) : que ce soit l'encadrement
+ * qui corrige après coup, ou le formateur qui rouvre son appel déjà attesté,
+ * la liste écrite ici n'est plus celle qui a été validée — le signe chez le
+ * gestionnaire doit redevenir « non validé », pas mentir sur une liste qui a
+ * changé depuis.
+ */
+export async function enregistrerAppel(etablissementId, anneeScolaire, corps, acteur) {
+  const { bilan } = await ecrireAppel(etablissementId, anneeScolaire, corps, acteur, { validation: false });
+  return bilan;
+}
+
+/**
+ * Enregistre l'appel ET l'ATTESTE dans le même geste (2026-09-27, demande du
+ * porteur : « chez le formateur, un bouton pour valider l'absence, et annule
+ * l'enregistrement automatique »).
+ *
+ * ═══ ⚠️ UNE SEULE ÉCRITURE, PAS DEUX ═══ Le formateur ne clique plus au fil de
+ * l'appel : ses changements restent dans l'écran jusqu'à ce clic, qui doit
+ * donc écrire la liste ET poser l'attestation ensemble — les séparer
+ * laisserait une fenêtre où la liste est écrite mais pas encore validée, une
+ * seconde requête interrompue (réseau coupé) pouvant y figer l'appel.
+ *
+ * ⚠️ OUVERTE À QUI PEUT DÉJÀ FAIRE L'APPEL DE CE COURS, PAS AU SEUL FORMATEUR :
+ * la règle de « qui voit quoi » reste celle de `coursEtListe` (un formateur ne
+ * voit que ses séances) — rien n'empêche l'encadrement d'attester à sa place
+ * si le besoin s'en présentait, la restriction à l'écran suffit à répondre à
+ * la demande du porteur sans en dresser une seconde ici.
+ */
+export async function validerAppel(etablissementId, anneeScolaire, corps, acteur) {
+  const { bilan } = await ecrireAppel(etablissementId, anneeScolaire, corps, acteur, { validation: true });
+  return bilan;
+}
+
+/**
+ * Le signe demandé par le porteur, DIRECTEMENT sur la grille (2026-09-27,
+ * demande du porteur : « je veux un signe de validé sans cliquer sur la
+ * séance »). Une case de la grille identifie son cours par (date, séance,
+ * période, groupe) — la même clé que `AppelValidation` — d'où une lecture en
+ * bloc sur une semaine, plutôt qu'un aller-retour par case cliquée.
+ */
+export async function validationsSemaine(etablissementId, anneeScolaire, { debut, fin }) {
+  const validations = await AppelValidation.find({
+    etablissementId,
+    anneeScolaire,
+    date: { $gte: debut, $lte: fin },
+  })
+    .select('date seance periode groupe validateurNom valideLe')
+    .lean();
+
+  return validations.map((v) => ({
+    date: v.date,
+    seance: v.seance,
+    periode: v.periode,
+    groupe: v.groupe,
+    validateurNom: v.validateurNom,
+    valideLe: v.valideLe,
+  }));
 }
 
 export function presenter(absence) {

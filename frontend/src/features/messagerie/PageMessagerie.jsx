@@ -14,6 +14,7 @@ import {
   Send,
   Trash2,
   Undo2,
+  X,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -46,6 +47,9 @@ import {
 } from './api';
 import Redaction from './Redaction';
 import CarteInvitation from '@/features/partages/CarteInvitation';
+import CarteChronogrammeFormateur from '@/features/chronogramme/CarteChronogrammeFormateur';
+import BoutonProposer from '@/features/propositions/BoutonProposer';
+import CarteProposition from '@/features/propositions/CarteProposition';
 
 /**
  * Messagerie interne (F10) — sous-livraison (a).
@@ -105,7 +109,17 @@ export default function PageMessagerie() {
    */
   const [rail, setRail] = useState(null);
   const railEtroit = useEtroit(rail, SEUIL_RAIL);
-  const [nonLusSeuls, setNonLusSeuls] = useState(false);
+  /*
+   * `?nonlus=1` (2026-09-28) : « Ouvrir » depuis « À traiter » de l'accueil
+   * montre directement les messages non lus. Lu une seule fois, à l'ouverture :
+   * le filtre reste libre ensuite.
+   *
+   * ⚠️ `window.location` ET NON `parametres` : ceux-ci sont déclarés plus bas,
+   * et l'état initial doit être connu dès ce premier rendu.
+   */
+  const [nonLusSeuls, setNonLusSeuls] = useState(
+    () => new URLSearchParams(window.location.search).get('nonlus') === '1'
+  );
   const [recherche, setRecherche] = useState('');
   const [redaction, setRedaction] = useState(null);
 
@@ -289,6 +303,8 @@ export default function PageMessagerie() {
   const contenuRail = (etroit) => (
     <>
       <BoutonEcrire etroit={etroit} onClick={() => setRedaction({})} />
+      {/* Formateur seulement — le bouton en décide lui-même (Phase 9 b). */}
+      <BoutonProposer compact={etroit} className={cn('mb-1 shrink-0', etroit ? 'size-9 p-0' : 'w-full')} />
 
       {BOITES.map((entree) => (
         <Boite
@@ -742,6 +758,24 @@ function Lecture({
   const message = requete.data.message;
   const repondable = Boolean(message.correspondant.id) && boite !== 'corbeille';
 
+  /*
+   * ⚠️ REPLIÉE PAR DÉFAUT (2026-09-22, demande du porteur : « libérer l'espace » — la grille
+   * d'un chronogramme joint pousse déjà le message vers le bas). Le champ ne s'ouvre qu'au
+   * clic sur « Répondre » ; fermée, elle ne coûte que sa propre absence.
+   *
+   * ⚠️ RÉINITIALISÉE PAR MESSAGE : `Lecture` n'est pas remontée d'un message à l'autre — sans
+   * cet effet, la réponse resterait ouverte en passant à un message qui n'a rien à voir.
+   */
+  const [reponseOuverte, setReponseOuverte] = useState(false);
+  useEffect(() => {
+    setReponseOuverte(false);
+  }, [message.id]);
+
+  // Le champ n'existe qu'une fois la zone dépliée : c'est CE rendu-ci qui le focalise.
+  useEffect(() => {
+    if (reponseOuverte) champReponse.current?.focus();
+  }, [reponseOuverte, champReponse]);
+
   return (
     <article className="flex h-full min-h-0 flex-col">
       {/*
@@ -794,9 +828,14 @@ function Lecture({
           <Action
             icone={Reply}
             titre="Répondre"
-            /* La zone de réponse est en bas : on y amène le curseur plutôt que
-               d'ouvrir une fenêtre, sinon le message d'origine sort de vue. */
-            onClick={() => champReponse.current?.focus()}
+            /*
+              ⚠️ LA ZONE SE DÉPLIE AU CLIC, PUIS REÇOIT LE CURSEUR. Elle est
+              absente du DOM tant qu'on ne l'a pas demandée (`reponseOuverte`) —
+              la focaliser dans le MÊME geste demanderait au champ d'exister
+              avant son propre rendu. Le prochain rendu la monte ; c'est lui qui
+              la focalise (effet ci-dessous, sur `reponseOuverte`).
+            */
+            onClick={() => setReponseOuverte(true)}
           />
         )}
 
@@ -838,12 +877,26 @@ function Lecture({
         seule mise en forme dont il dispose. Les perdre transforme une liste de
         points en un paragraphe illisible.
       */}
-      <p className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap p-4 text-sm leading-relaxed">
-        {message.corps}
-      </p>
+      {/*
+        ═══ LE CORPS ET LES CARTES JOINTES DÉFILENT ENSEMBLE (2026-09-23) ═══
+        Le corps défilait seul, et les cartes (chronogramme, proposition) se
+        partageaient le reste de la hauteur : une carte haute se comprimait et
+        coupait ses propres boutons (capture du porteur : « Valider » et
+        « Renvoyer au directeur » tronqués). Une seule zone de défilement, et des
+        cartes en `shrink-0` qui gardent leur hauteur ; la réponse reste en pied.
+      */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <p className="whitespace-pre-wrap p-4 text-sm leading-relaxed">{message.corps}</p>
 
-      {/* L'invitation à collaborer, quand le message en porte une. */}
-      <CarteInvitation message={message} />
+        {/* L'invitation à collaborer, quand le message en porte une. */}
+        <CarteInvitation message={message} />
+
+        {/* Le chronogramme d'un formateur, quand le message en porte l'instantané (2026-09-22). */}
+        <CarteChronogrammeFormateur message={message} />
+
+        {/* La proposition d'emploi du temps d'un formateur (Phase 9 b). */}
+        <CarteProposition message={message} />
+      </div>
 
       {/*
         ⚠️ LA RÉPONSE SE SAISIT EN PLACE, PAS DANS UNE MODALE — c'est le gain du
@@ -854,7 +907,14 @@ function Lecture({
         ⚠️ Pas de réponse depuis la CORBEILLE : on n'écrit pas depuis un message
         qu'on vient de jeter.
       */}
-      {repondable && <ReponseRapide message={message} champ={champReponse} onEnvoye={onEnvoye} />}
+      {repondable && reponseOuverte && (
+        <ReponseRapide
+          message={message}
+          champ={champReponse}
+          onEnvoye={onEnvoye}
+          onFermer={() => setReponseOuverte(false)}
+        />
+      )}
     </article>
   );
 }
@@ -873,7 +933,7 @@ const Action = ({ icone: Icone, titre, onClick, disabled, destructif }) => (
   </Button>
 );
 
-function ReponseRapide({ message, champ, onEnvoye }) {
+function ReponseRapide({ message, champ, onEnvoye, onFermer }) {
   const [corps, setCorps] = useState('');
 
   const envoi = useMutation({
@@ -890,12 +950,34 @@ function ReponseRapide({ message, champ, onEnvoye }) {
       setCorps('');
       toast.success('Réponse envoyée');
       onEnvoye();
+      // La réponse partie, la zone se replie d'elle-même : c'est le même espace qu'on est
+      // venu libérer en la repliant par défaut.
+      onFermer();
     },
     onError: (erreur) => toast.error('Envoi impossible', { description: erreur.message }),
   });
 
   return (
     <div className="space-y-2 border-t p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-medium text-muted-foreground">
+          Répondre à {message.correspondant.nom}
+        </span>
+        {/* ⚠️ POUR REMASQUER SANS ENVOYER (2026-09-22, demande du porteur) : la zone se replie
+            aussi d'elle-même après un envoi, mais rien ne permettait de la refermer si on
+            change d'avis — sinon elle reprenait l'espace qu'on venait de libérer. */}
+        <Button
+          variant="ghost"
+          size="icon"
+          title="Masquer la réponse"
+          className="size-6 shrink-0 text-muted-foreground"
+          onClick={onFermer}
+        >
+          <X className="size-3.5" />
+          <span className="sr-only">Masquer la réponse</span>
+        </Button>
+      </div>
+
       <Textarea
         ref={champ}
         value={corps}

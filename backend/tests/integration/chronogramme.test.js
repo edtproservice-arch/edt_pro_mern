@@ -6,8 +6,12 @@ import { User } from '../../src/models/User.js';
 import { Etablissement } from '../../src/models/Etablissement.js';
 import { Base } from '../../src/models/Base.js';
 import { Chronogramme } from '../../src/models/Chronogramme.js';
+import { AutoGenConfig } from '../../src/models/AutoGenConfig.js';
+import { Seance } from '../../src/models/Seance.js';
 import { Repartition } from '../../src/models/Repartition.js';
 import { CalendrierNational } from '../../src/models/CalendrierNational.js';
+import { Message } from '../../src/models/Message.js';
+import { Partage } from '../../src/models/Partage.js';
 import { oublierMemoire } from '../../src/modules/calendrier/joursFeries.service.js';
 import { ROLES, STATUTS_COMPTE, TYPES_COURS } from 'shared/constants';
 
@@ -172,6 +176,323 @@ describe('Liste des formateurs', () => {
     const groupe = await request(app).get('/api/v2/chronogrammes/GM101').set('Cookie', cookies);
     expect(groupe.status).toBe(200);
     expect(groupe.body.groupe).toBe('GM101');
+  });
+});
+
+describe('Envoyer le chronogramme à un formateur (2026-09-22)', () => {
+  const envoyer = (matricule) =>
+    request(app)
+      .post(`/api/v2/chronogrammes/par-formateur/${matricule}/envoyer`)
+      .set('Cookie', cookies);
+
+  it('⚠️ refuse un formateur sans compte : aucun message ne peut lui être remis', async () => {
+    // MATRICULE (« BRAHIM LOURID ») n'a aucun compte dans cette suite.
+    const reponse = await envoyer(MATRICULE);
+
+    expect(reponse.status).toBe(400);
+    expect(reponse.body.code).toBe('COMPTE_INTROUVABLE');
+    expect(reponse.body.message).toContain('BRAHIM LOURID');
+    expect(await Message.countDocuments()).toBe(0);
+  });
+
+  it('accorde le droit de modifier le chronogramme, et prévient par un message dédié', async () => {
+    const formateur = await User.create({
+      nomComplet: 'Brahim Lourid',
+      email: 'brahim.lourid@edtpro.ma',
+      motDePasse: MOT_DE_PASSE,
+      role: ROLES.FORMATEUR,
+      identifiant: MATRICULE,
+      statut: STATUTS_COMPTE.APPROUVE,
+      estVerifie: true,
+      etablissementIds: [etablissement.id],
+    });
+
+    const reponse = await envoyer(MATRICULE);
+
+    expect(reponse.status).toBe(200);
+    // Accès accordé d'office (2026-09-23) : plus rien n'attend le formateur.
+    expect(reponse.body).toMatchObject({ envoye: true, nom: 'BRAHIM LOURID', enAttente: false });
+
+    const partage = await Partage.findOne({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      page: 'chronogramme',
+    });
+    expect(partage.membres).toEqual([
+      expect.objectContaining({
+        utilisateurId: formateur._id,
+        droit: 'modifier',
+        statut: 'accepte',
+      }),
+    ]);
+
+    /*
+     * ⚠️ UN SEUL MESSAGE (2026-09-22) : il porte À LA FOIS l'accès accordé ET
+     * l'instantané du chronogramme, modifiable — pas deux annonces séparées de la même chose.
+     */
+    const messages = await Message.find({ destinataireId: formateur._id });
+    expect(messages).toHaveLength(1);
+    const [message] = messages;
+
+    expect(message.sujet).toBe('Votre chronogramme est à remplir');
+    expect(message.corps).not.toContain('Acceptez');
+    expect(message.corps).toContain('Valider');
+    expect(message.invitation).toMatchObject({ droit: 'modifier', statut: 'acceptee' });
+    expect(message.chronogrammeFormateur).toMatchObject({
+      formateur: MATRICULE,
+      nom: 'BRAHIM LOURID',
+      modifiable: true,
+    });
+  });
+
+  it('un second envoi ne double ni le membre, ni les messages', async () => {
+    const formateur = await User.create({
+      nomComplet: 'Brahim Lourid',
+      email: 'brahim.lourid@edtpro.ma',
+      motDePasse: MOT_DE_PASSE,
+      role: ROLES.FORMATEUR,
+      identifiant: MATRICULE,
+      statut: STATUTS_COMPTE.APPROUVE,
+      estVerifie: true,
+      etablissementIds: [etablissement.id],
+    });
+
+    expect((await envoyer(MATRICULE)).status).toBe(200);
+    const second = await envoyer(MATRICULE);
+    expect(second.status).toBe(200);
+    expect(second.body.enAttente).toBe(false);
+
+    const partage = await Partage.findOne({ etablissementId: etablissement.id, anneeScolaire: ANNEE, page: 'chronogramme' });
+    expect(partage.membres).toHaveLength(1);
+
+    // ⚠️ UN MESSAGE PAR ENVOI, PAS DE GÉNÉRIQUE EN PLUS : deux au total.
+    const dedies = await Message.find({ destinataireId: formateur._id }).sort({ createdAt: 1 });
+    expect(dedies).toHaveLength(2);
+    for (const message of dedies) {
+      expect(message.corps).not.toContain('Acceptez');
+      expect(message.invitation).toMatchObject({ statut: 'acceptee' });
+    }
+  });
+
+  it('refuse à qui n’est pas directeur', async () => {
+    await User.create({
+      nomComplet: 'Gestionnaire Test',
+      email: 'gestionnaire@edtpro.ma',
+      motDePasse: MOT_DE_PASSE,
+      role: ROLES.GESTIONNAIRE,
+      statut: STATUTS_COMPTE.APPROUVE,
+      estVerifie: true,
+      etablissementIds: [etablissement.id],
+    });
+    const connexion = await request(app)
+      .post('/api/v2/auth/connexion')
+      .send({ identifiant: 'gestionnaire@edtpro.ma', motDePasse: MOT_DE_PASSE });
+
+    const reponse = await request(app)
+      .post(`/api/v2/chronogrammes/par-formateur/${MATRICULE}/envoyer`)
+      .set('Cookie', connexion.headers['set-cookie']);
+
+    expect(reponse.status).toBe(403);
+    expect(await Message.countDocuments()).toBe(0);
+  });
+});
+
+describe('Envoyer à tous les formateurs (2026-09-22)', () => {
+  const envoyerTous = (cookiesAppelant) =>
+    request(app)
+      .post('/api/v2/chronogrammes/par-formateur/tous/envoyer')
+      .set('Cookie', cookiesAppelant ?? cookies);
+
+  it('⚠️ envoie à chaque formateur ayant un compte, et signale les autres sans faire échouer l’envoi', async () => {
+    // MATRICULE (BRAHIM LOURID) a un compte ; « 4211 » (SAID AMMARI) n'en a pas.
+    const formateur = await User.create({
+      nomComplet: 'Brahim Lourid',
+      email: 'brahim.lourid@edtpro.ma',
+      motDePasse: MOT_DE_PASSE,
+      role: ROLES.FORMATEUR,
+      identifiant: MATRICULE,
+      statut: STATUTS_COMPTE.APPROUVE,
+      estVerifie: true,
+      etablissementIds: [etablissement.id],
+    });
+
+    const reponse = await envoyerTous();
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.total).toBe(2);
+    expect(reponse.body.envoyes).toEqual([
+      expect.objectContaining({ identifiant: MATRICULE, nom: 'BRAHIM LOURID', enAttente: false }),
+    ]);
+    expect(reponse.body.echecs).toEqual([
+      expect.objectContaining({ identifiant: '4211', nom: 'SAID AMMARI' }),
+    ]);
+
+    // Un seul message envoyé : celui du formateur qui a effectivement un compte.
+    const messages = await Message.find({ destinataireId: formateur._id });
+    expect(messages).toHaveLength(1);
+  });
+
+  it('refuse à qui n’est pas directeur', async () => {
+    await User.create({
+      nomComplet: 'Gestionnaire Test',
+      email: 'gestionnaire@edtpro.ma',
+      motDePasse: MOT_DE_PASSE,
+      role: ROLES.GESTIONNAIRE,
+      statut: STATUTS_COMPTE.APPROUVE,
+      estVerifie: true,
+      etablissementIds: [etablissement.id],
+    });
+    const connexion = await request(app)
+      .post('/api/v2/auth/connexion')
+      .send({ identifiant: 'gestionnaire@edtpro.ma', motDePasse: MOT_DE_PASSE });
+
+    const reponse = await envoyerTous(connexion.headers['set-cookie']);
+    expect(reponse.status).toBe(403);
+    expect(await Message.countDocuments()).toBe(0);
+  });
+});
+
+describe('Renvoyer un chronogramme au directeur, pour validation (2026-09-22)', () => {
+  const renvoyer = (matricule, cookiesFormateur) =>
+    request(app)
+      .post(`/api/v2/chronogrammes/par-formateur/${matricule}/renvoyer`)
+      .set('Cookie', cookiesFormateur);
+
+  /** Un compte formateur, avec un accès déjà accepté sur la page (comme après une invitation). */
+  async function formateurAvecAcces(matricule = MATRICULE) {
+    const formateur = await User.create({
+      nomComplet: 'Brahim Lourid',
+      email: 'brahim.lourid@edtpro.ma',
+      motDePasse: MOT_DE_PASSE,
+      role: ROLES.FORMATEUR,
+      identifiant: matricule,
+      statut: STATUTS_COMPTE.APPROUVE,
+      estVerifie: true,
+      etablissementIds: [etablissement.id],
+    });
+    await Partage.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      page: 'chronogramme',
+      membres: [{ utilisateurId: formateur._id, droit: 'modifier', statut: 'accepte', invitePar: formateur._id }],
+    });
+    const connexion = await request(app)
+      .post('/api/v2/auth/connexion')
+      .send({ identifiant: 'brahim.lourid@edtpro.ma', motDePasse: MOT_DE_PASSE });
+    return { formateur, cookies: connexion.headers['set-cookie'] };
+  }
+
+  it('⚠️ envoie au directeur un message qui PORTE LA GRILLE, pas seulement du texte', async () => {
+    const { formateur, cookies: cookiesFormateur } = await formateurAvecAcces();
+
+    const reponse = await renvoyer(MATRICULE, cookiesFormateur);
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.envoye).toBe(true);
+
+    const directeur = await User.findOne({ email: 'directeur@edtpro.ma' });
+    const message = await Message.findOne({ destinataireId: directeur._id, expediteurId: formateur._id });
+
+    expect(message.sujet).toBe('Chronogramme rempli — à valider');
+    expect(message.corps).toContain('Brahim Lourid');
+    // ⚠️ LA MÊME FORME QUE `GET .../par-formateur/:formateur` : c'est elle que l'écran sait déjà
+    // afficher.
+    expect(message.chronogrammeFormateur).toMatchObject({
+      formateur: MATRICULE,
+      nom: 'BRAHIM LOURID',
+      anneeScolaire: ANNEE,
+    });
+    expect(message.chronogrammeFormateur.lignes.length).toBeGreaterThan(0);
+    expect(message.chronogrammeFormateur.plannings).toBeDefined();
+  });
+
+  it('⚠️ refuse de renvoyer le chronogramme d’un AUTRE formateur', async () => {
+    const { cookies: cookiesFormateur } = await formateurAvecAcces();
+
+    // « 4211 » (SAID AMMARI) n'est pas le compte connecté (identifiant MATRICULE).
+    const reponse = await renvoyer('4211', cookiesFormateur);
+    expect(reponse.status).toBe(403);
+    expect(reponse.body.code).toBe('CHRONOGRAMME_AUTRUI');
+    expect(await Message.countDocuments()).toBe(0);
+  });
+
+  it('refuse au directeur — seul le formateur soumet le sien', async () => {
+    const reponse = await renvoyer(MATRICULE, cookies);
+    expect(reponse.status).toBe(403);
+    expect(await Message.countDocuments()).toBe(0);
+  });
+});
+
+describe('Un formateur ne voit que lui-même (2026-09-22)', () => {
+  /*
+   * ⚠️ « ENVOYER » NE PARTAGE PAS L'ÉCRAN DU DIRECTEUR — demande du porteur. Le droit qu'il
+   * accorde porte sur toute la page « chronogramme », comme n'importe quel partage ; ces tests
+   * vérifient que ce droit, à lui seul, n'ouvre PAS la vue des autres formateurs.
+   */
+  async function formateurAvecAcces(matricule = MATRICULE) {
+    const formateur = await User.create({
+      nomComplet: 'Brahim Lourid',
+      email: 'brahim.lourid@edtpro.ma',
+      motDePasse: MOT_DE_PASSE,
+      role: ROLES.FORMATEUR,
+      identifiant: matricule,
+      statut: STATUTS_COMPTE.APPROUVE,
+      estVerifie: true,
+      etablissementIds: [etablissement.id],
+    });
+    await Partage.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      page: 'chronogramme',
+      membres: [{ utilisateurId: formateur._id, droit: 'modifier', statut: 'accepte', invitePar: formateur._id }],
+    });
+    const connexion = await request(app)
+      .post('/api/v2/auth/connexion')
+      .send({ identifiant: 'brahim.lourid@edtpro.ma', motDePasse: MOT_DE_PASSE });
+    return { formateur, cookies: connexion.headers['set-cookie'] };
+  }
+
+  it('la liste ne contient que lui, malgré le droit « modifier » sur toute la page', async () => {
+    const { cookies: cookiesFormateur } = await formateurAvecAcces();
+
+    const reponse = await request(app)
+      .get('/api/v2/chronogrammes/par-formateur')
+      .set('Cookie', cookiesFormateur);
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.formateurs).toEqual([
+      expect.objectContaining({ identifiant: MATRICULE, nom: 'BRAHIM LOURID' }),
+    ]);
+  });
+
+  it('⚠️ refuse la grille d’un AUTRE formateur, malgré le même droit', async () => {
+    const { cookies: cookiesFormateur } = await formateurAvecAcces();
+
+    const reponse = await request(app)
+      .get('/api/v2/chronogrammes/par-formateur/4211')
+      .set('Cookie', cookiesFormateur);
+
+    expect(reponse.status).toBe(403);
+    expect(reponse.body.code).toBe('CHRONOGRAMME_AUTRUI');
+  });
+
+  it('rend sa propre grille normalement', async () => {
+    const { cookies: cookiesFormateur } = await formateurAvecAcces();
+
+    const reponse = await request(app)
+      .get(`/api/v2/chronogrammes/par-formateur/${MATRICULE}`)
+      .set('Cookie', cookiesFormateur);
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.nom).toBe('BRAHIM LOURID');
+  });
+
+  it('le directeur, lui, garde la liste entière', async () => {
+    const reponse = await request(app)
+      .get('/api/v2/chronogrammes/par-formateur')
+      .set('Cookie', cookies);
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.formateurs).toHaveLength(2);
   });
 });
 
@@ -820,6 +1141,15 @@ describe('Charge hebdomadaire — GET /charge', () => {
  * S2 = lundi 7 → samedi 12. Les 1ʳᵉ années reprennent le VENDREDI 11.
  */
 describe('Rentrée — le chronogramme se gèle avant', () => {
+  /*
+   * ⚠️⚠️ S1 EST DÉSORMAIS LA SEMAINE DE LA RENTRÉE LA PLUS PRÉCOCE (2026-09-25,
+   * demande du porteur) : `CalendrierNational.rentrees` ancre maintenant S1
+   * elle-même (voir `lundiPremiereSemaine`), pas seulement le gel par groupe.
+   * Avec une SEULE rentrée déclarée (celle de GM101, le 11 septembre), S1
+   * s'ouvre directement sur SA semaine (7-12 septembre) : elle n'est donc plus
+   * jamais entièrement fermée pour lui, seulement réduite au vendredi et au
+   * samedi.
+   */
   const poserRentree = () =>
     CalendrierNational.create({
       anneeScolaire: ANNEE,
@@ -836,7 +1166,7 @@ describe('Rentrée — le chronogramme se gèle avant', () => {
     expect(reponse.body.semaines[0]).toMatchObject({ numero: 1, disponible: true, motif: null });
   });
 
-  it('FERME la semaine entièrement antérieure, et RÉDUIT celle à cheval', async () => {
+  it('RÉDUIT — sans la fermer — la S1, à cheval sur la rentrée', async () => {
     await poserRentree();
 
     const reponse = await request(app)
@@ -845,12 +1175,36 @@ describe('Rentrée — le chronogramme se gèle avant', () => {
       .expect(200);
 
     const s1 = reponse.body.semaines.find((s) => s.numero === 1);
-    const s2 = reponse.body.semaines.find((s) => s.numero === 2);
 
-    expect(s1).toMatchObject({ disponible: false, motif: 'rentree', rentree: '2026-09-11' });
     // Vendredi et samedi restent ouverts : fermer la colonne les perdrait.
-    expect(s2).toMatchObject({ disponible: true, motif: null, joursRentree: 4 });
-    expect(s2.joursDisponibles).toBe(2);
+    expect(s1).toMatchObject({ disponible: true, motif: null, joursRentree: 4 });
+    expect(s1.joursDisponibles).toBe(2);
+  });
+
+  /*
+   * ⚠️ UNE RENTRÉE PLUS TARDIVE QUE L'ANCRE FERME BIEN LA SEMAINE ENTIÈRE : la
+   * 3ᵉ année ouvre S1 (le 7 septembre) tandis que la 1ʳᵉ ne reprend que trois
+   * semaines plus tard — sa toute première semaine lui reste donc fermée.
+   */
+  it('FERME une semaine entièrement antérieure à une rentrée plus tardive', async () => {
+    await CalendrierNational.create({
+      anneeScolaire: ANNEE,
+      vacances: [],
+      rentrees: [
+        { anneeFormation: 1, date: '2026-09-21' },
+        { anneeFormation: 3, date: '2026-09-07' },
+      ],
+    });
+
+    const reponse = await request(app)
+      .get('/api/v2/chronogrammes/GM101')
+      .set('Cookie', cookies)
+      .expect(200);
+
+    const s1 = reponse.body.semaines.find((s) => s.numero === 1);
+
+    expect(s1).toMatchObject({ disponible: false, motif: 'rentree', rentree: '2026-09-21' });
+    expect(s1.joursDisponibles).toBe(0);
   });
 
   /*
@@ -867,10 +1221,6 @@ describe('Rentrée — le chronogramme se gèle avant', () => {
     expect(reponse.body.rentreesParGroupe.GM101).toMatchObject({ date: '2026-09-11' });
     expect(reponse.body.rentreesParGroupe.GM101.semaines).toContainEqual({
       numero: 1,
-      jours: 6,
-    });
-    expect(reponse.body.rentreesParGroupe.GM101.semaines).toContainEqual({
-      numero: 2,
       jours: 4,
     });
   });
@@ -916,5 +1266,529 @@ describe('Rentrée — le chronogramme se gèle avant', () => {
       (s) => s.debut <= '2026-10-26' && s.fin >= '2026-10-26'
     );
     expect(touchee.motif).toBe(null);
+  });
+});
+
+describe('Complétude — l’emploi du temps face au chronogramme (2026-09-27)', () => {
+  /*
+   * ═══ ⚠️ CE QUE CETTE SUITE GARDE ═══
+   * Le chronogramme dit COMBIEN d'heures un module doit recevoir une semaine ;
+   * la grille dit OÙ elles sont posées. Les deux divergent sans que rien ne le
+   * signale, et l'écart ne se découvre qu'au calcul d'avancement, des semaines
+   * plus tard. ⚠️ Ce bilan N'ÉCRIT RIEN : réaligner le chronogramme sur la
+   * grille annulerait l'écart que toute la section Avancement mesure.
+   */
+  const SEMAINE = `${ANNEE}-W9`;
+
+  const planifier = (groupe, cellules) =>
+    Chronogramme.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      groupe,
+      planning: new Map([['M101', cellules]]),
+    });
+
+  const poser = (extra = {}) =>
+    Seance.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      semaine: SEMAINE,
+      jour: 'Lundi',
+      // Le schéma l'exige : une séance sans date ne se range dans aucun jour.
+      date: new Date(`${ANNEE}-11-02T00:00:00.000Z`),
+      seance: 'S1',
+      formateurMatricule: MATRICULE,
+      groupe: 'GM101',
+      module: 'M101',
+      salle: 'A12',
+      statut: 'planifie',
+      ...extra,
+    });
+
+  const bilan = (semaine = SEMAINE) =>
+    request(app)
+      .get(`/api/v2/chronogrammes/completude?semaine=${encodeURIComponent(semaine)}`)
+      .set('Cookie', cookies);
+
+  it('ne signale rien quand la grille porte exactement le prévu', async () => {
+    await planifier('GM101', [{ semaine: 'S9', heures: 2.5, type: 'P' }]);
+    await poser();
+
+    const reponse = await bilan();
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.total.taux).toBe(100);
+    expect(reponse.body.ecarts).toEqual([]);
+  });
+
+  it('donne la CASE d’une séance hors chronogramme, pour la supprimer (2026-09-27)', async () => {
+    await planifier('GM101', [{ semaine: 'S9', heures: 2.5, type: 'P' }]);
+    await poser();
+    await poser({ module: 'M102', jour: 'Mardi', seance: 'S3', formateurMatricule: '4211' });
+
+    const reponse = await bilan();
+
+    const hors = reponse.body.ecarts.find((e) => e.nature === 'hors_chronogramme');
+    expect(hors.positions).toEqual([
+      { jour: 'Mardi', seance: 'S3', periode: 'jour', formateurMatricule: '4211', groupe: 'GM101' },
+    ]);
+  });
+
+  it('nomme la séance MANQUANTE et le formateur affecté', async () => {
+    await planifier('GM101', [{ semaine: 'S9', heures: 5, type: 'P' }]);
+    await poser();
+
+    const reponse = await bilan();
+
+    expect(reponse.body.ecarts).toHaveLength(1);
+    expect(reponse.body.ecarts[0]).toMatchObject({
+      groupe: 'GM101',
+      module: 'M101',
+      nature: 'manquante',
+      prevu: 5,
+      pose: 2.5,
+      // ⚠️ LE NOM, PAS LE MATRICULE : `affectation.formateur` porte
+      //    l'identifiant stable, et l'afficher tel quel montrerait « 9863 ».
+      formateur: 'BRAHIM LOURID',
+    });
+  });
+
+  it('⚠️ N’ÉCRIT RIEN — ni chronogramme, ni séance', async () => {
+    /*
+     * La propriété à ne jamais perdre. Un bilan qui « corrigerait » en passant
+     * détruirait la mesure même qu'on lui demande.
+     */
+    await planifier('GM101', [{ semaine: 'S9', heures: 10, type: 'P' }]);
+    await poser();
+
+    const avant = {
+      chronogrammes: await Chronogramme.find({ etablissementId: etablissement.id }).lean(),
+      seances: await Seance.countDocuments({ etablissementId: etablissement.id }),
+    };
+
+    expect((await bilan()).status).toBe(200);
+
+    const apres = await Chronogramme.find({ etablissementId: etablissement.id }).lean();
+    expect(apres.map((c) => c.planning)).toEqual(avant.chronogrammes.map((c) => c.planning));
+    expect(await Seance.countDocuments({ etablissementId: etablissement.id })).toBe(avant.seances);
+  });
+
+  it('⚠️ NOMME un groupe absent de la carte sans le compter dans le taux', async () => {
+    // Le taire laisserait un chronogramme fantôme vivre indéfiniment ; le
+    // compter donnerait un manque que rien ne peut combler.
+    await planifier('GM101', [{ semaine: 'S9', heures: 2.5, type: 'P' }]);
+    await planifier('DISPARU', [{ semaine: 'S9', heures: 30, type: 'P' }]);
+    await poser();
+
+    const reponse = await bilan();
+
+    expect(reponse.body.total.taux).toBe(100);
+    expect(reponse.body.inconnus).toEqual([{ groupe: 'DISPARU', prevu: 30, pose: 0 }]);
+  });
+
+  it('⚠️ un groupe DÉCLARÉ sans aucune affectation n’est PAS « absent »', async () => {
+    /*
+     * ═══ LE DÉFAUT (k) DU 2026-09-22, QUI NE DOIT PAS RENAÎTRE ═══
+     * Juger l'existence d'un groupe sur les seules AFFECTATIONS fait passer
+     * pour absent un groupe déclaré dont aucun module n'est encore attribué —
+     * et l'écran conseille alors de SUPPRIMER son chronogramme, l'inverse de
+     * ce qu'il faut faire. « Les groupes de la carte » se lisent sur
+     * `base.groupes` ET sur les affectations, comme dans la cascade.
+     *
+     * ⚠️ Sans ce test la mutation « lire les seules affectations » SURVIVAIT :
+     *    les deux groupes de la fixture ont l'un et l'autre.
+     */
+    await Base.updateOne(
+      { etablissementId: etablissement.id, anneeScolaire: ANNEE },
+      { $push: { groupes: 'GM103' } }
+    );
+    await planifier('GM103', [{ semaine: 'S9', heures: 5, type: 'P' }]);
+
+    const reponse = await bilan();
+
+    expect(reponse.body.inconnus).toEqual([]);
+    expect(reponse.body.groupes.map((g) => g.groupe)).toContain('GM103');
+  });
+
+  it('⚠️ dit si un chronogramme est PLANIFIÉ — l’écran cache son indicateur sinon', async () => {
+    /*
+     * Sans chronogramme il n'y a rien à quoi comparer : montrer « 0 % » à un
+     * établissement qui n'a simplement rien planifié ferait chercher un retard
+     * qui n'existe pas. ⚠️ Le drapeau voyage AVEC le bilan : le demander à part
+     * ferait afficher un instant un taux qu'il faudrait taire.
+     */
+    const vide = await bilan();
+    expect(vide.body.planifie).toBe(false);
+
+    await planifier('GM101', [{ semaine: 'S9', heures: 2.5, type: 'P' }]);
+
+    const garni = await bilan();
+    expect(garni.body.planifie).toBe(true);
+  });
+
+  it('normalise « 2026-W009 » — la production en contient', async () => {
+    await planifier('GM101', [{ semaine: 'S9', heures: 2.5, type: 'P' }]);
+    await poser();
+
+    const reponse = await bilan(`${ANNEE}-W009`);
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.semaine).toBe(SEMAINE);
+    expect(reponse.body.total.taux).toBe(100);
+  });
+
+  it('sans paramètre, rend un taux par semaine — et OMET les semaines vides', async () => {
+    /*
+     * ⚠️ Rendre les 45 semaines afficherait au calendrier une majorité de
+     *    pastilles pour des semaines que personne n'a planifiées : le signal
+     *    utile s'y perdrait.
+     */
+    await planifier('GM101', [
+      { semaine: 'S9', heures: 2.5, type: 'P' },
+      { semaine: 'S10', heures: 5, type: 'P' },
+    ]);
+    await poser();
+
+    const reponse = await request(app)
+      .get('/api/v2/chronogrammes/completude')
+      .set('Cookie', cookies);
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.semaines.map((s) => s.numero)).toEqual([9, 10]);
+    expect(reponse.body.semaines[0]).toMatchObject({ numero: 9, taux: 100 });
+    expect(reponse.body.semaines[1]).toMatchObject({ numero: 10, taux: 0, manquant: 5 });
+  });
+
+  it('exige d’être connecté', async () => {
+    expect((await request(app).get('/api/v2/chronogrammes/completude')).status).toBe(401);
+  });
+});
+
+describe('Liaison chronogramme ↔ emploi du temps (2026-09-27)', () => {
+  /*
+   * ═══ ⚠️ CE QUE CETTE SUITE GARDE ═══
+   * **Lié** (défaut) : le chronogramme fixe les volumes. **Dissocié** : la
+   * grille est tenue à la main. Le verrou ne mord que si le chronogramme est
+   * AUSSI planifié — deux choses distinctes, rendues dans la même réponse pour
+   * que l'écran n'affiche jamais un verrou déjà levé.
+   *
+   * ⚠️ (b) SEUL EST INERTE : tant que le verrou (c) n'existe pas, ce réglage ne
+   *    refuse rien. Il est stocké, lu, et c'est tout.
+   */
+  const etat = () =>
+    request(app).get('/api/v2/chronogrammes/liaison').set('Cookie', cookies);
+
+  const definir = (corps) =>
+    request(app).put('/api/v2/chronogrammes/liaison').set('Cookie', cookies).send(corps);
+
+  it('⚠️ SANS RÉGLAGE, l’emploi du temps est LIÉ', async () => {
+    /*
+     * L'absence de document vaut « lié », comme l'absence de ligne dans
+     * l'ancien : aucun établissement ne change de comportement au déploiement,
+     * et un `AutoGenConfig` jamais créé ne déverrouille rien par surprise.
+     */
+    const reponse = await etat();
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.liee).toBe(true);
+  });
+
+  it('⚠️ LIÉ n’est pas VERROUILLÉ : sans chronogramme planifié, rien ne mord', async () => {
+    const reponse = await etat();
+
+    expect(reponse.body.liee).toBe(true);
+    expect(reponse.body.planifie).toBe(false);
+    expect(reponse.body.verrouActif).toBe(false);
+  });
+
+  it('compte les groupes PLANIFIÉS, et le verrou devient actif', async () => {
+    await Chronogramme.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      groupe: 'GM101',
+      planning: new Map([['M101', [{ semaine: 'S9', heures: 5, type: 'P' }]]]),
+    });
+
+    const reponse = await etat();
+
+    expect(reponse.body).toMatchObject({ planifie: true, groupes: 1, cellules: 1, verrouActif: true });
+  });
+
+  it('⚠️ « ENREGISTRÉ » N’EST PAS « PLANIFIÉ » — un planning vide ne compte pas', async () => {
+    // Une ligne peut exister avec un planning vide : c'est le cas après une
+    // réinitialisation. On compte les CELLULES, jamais les lignes.
+    await Chronogramme.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      groupe: 'GM101',
+      planning: new Map([['M101', [{ semaine: 'S9', heures: 0, type: 'P' }]]]),
+    });
+
+    const reponse = await etat();
+
+    expect(reponse.body.planifie).toBe(false);
+    expect(reponse.body.verrouActif).toBe(false);
+  });
+
+  it('dissocie, puis réassocie — et c’est idempotent', async () => {
+    await Chronogramme.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      groupe: 'GM101',
+      planning: new Map([['M101', [{ semaine: 'S9', heures: 5, type: 'P' }]]]),
+    });
+
+    const dissocie = await definir({ liee: false });
+    expect(dissocie.status).toBe(200);
+    // ⚠️ Le chronogramme reste PLANIFIÉ : c'est le verrou qui tombe, pas le plan.
+    expect(dissocie.body).toMatchObject({ liee: false, planifie: true, verrouActif: false });
+
+    // Renvoyer le même état ne crée pas un second document.
+    await definir({ liee: false });
+    expect(await AutoGenConfig.countDocuments({ etablissementId: etablissement.id })).toBe(1);
+
+    const reassocie = await definir({ liee: true });
+    expect(reassocie.body).toMatchObject({ liee: true, verrouActif: true });
+  });
+
+  it('⚠️ REFUSE une requête sans `liee` — jamais de valeur par défaut', async () => {
+    /*
+     * Un défaut ferait basculer l'établissement dans un état qu'il n'a pas
+     * demandé sur une requête malformée, et dissocier lève le verrou pour tous.
+     */
+    expect((await definir({})).status).toBe(400);
+    expect((await definir({ liee: 'oui' })).status).toBe(400);
+    expect((await etat()).body.liee).toBe(true);
+  });
+
+  it('⚠️ NE TOUCHE PAS aux contraintes du générateur déjà enregistrées', async () => {
+    // Le drapeau partage le document d'`AutoGenConfig` : l'écrire ne doit pas
+    // emporter la graine ni les contraintes.
+    await AutoGenConfig.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      graine: 42,
+      contraintes: [{ formateur: MATRICULE, heures: 24 }],
+    });
+
+    await definir({ liee: false });
+
+    const config = await AutoGenConfig.findOne({ etablissementId: etablissement.id }).lean();
+    expect(config.graine).toBe(42);
+    expect(config.contraintes).toHaveLength(1);
+    expect(config.chronogrammeLie).toBe(false);
+  });
+
+  it('exige d’être connecté', async () => {
+    expect((await request(app).get('/api/v2/chronogrammes/liaison')).status).toBe(401);
+    expect((await request(app).put('/api/v2/chronogrammes/liaison').send({ liee: false })).status)
+      .toBe(401);
+  });
+});
+
+describe('Report emploi → chronogramme (2026-09-27)', () => {
+  /*
+   * ═══ ⚠️ POURQUOI CE SENS-LÀ ═══
+   * D'ordinaire le chronogramme est la source. Mais on peut avoir travaillé la
+   * grille à la main — avant de planifier, ou pendant une dissociation.
+   * Réassocier sans rien reporter laisserait DEUX VÉRITÉS côte à côte : des
+   * séances placées que le chronogramme ignore, donc un rapport qui accuse un
+   * manque là où le cours a bien lieu.
+   */
+  const SEMAINE = `${ANNEE}-W9`;
+
+  const poser = (extra = {}) =>
+    Seance.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      semaine: SEMAINE,
+      jour: 'Lundi',
+      seance: 'S1',
+      date: new Date(`${ANNEE}-11-02T00:00:00.000Z`),
+      formateurMatricule: MATRICULE,
+      groupe: 'GM101',
+      module: 'M101',
+      salle: 'A12',
+      statut: 'planifie',
+      ...extra,
+    });
+
+  const reporter = (corps = {}) =>
+    request(app).post('/api/v2/chronogrammes/report').set('Cookie', cookies).send(corps);
+
+  /*
+   * ⚠️ SANS `.lean()`, ET C'EST VOLONTAIRE. Sous `.lean()`, Mongoose rend un
+   *    champ `Map` en OBJET NU : `planning.get(...)` y lève « is not a
+   *    function ». Le piège s'est présenté trois fois dans la même journée —
+   *    `sallesAffectations`, `chargerCommun`, puis ici. Le document complet
+   *    garde sa `Map`, et le test lit comme le code lit.
+   */
+  const planningDe = async (groupe) =>
+    (await Chronogramme.findOne({ etablissementId: etablissement.id, groupe }))?.planning;
+
+  it('⚠️ SIMULE PAR DÉFAUT — une requête sans drapeau ne fait que compter', async () => {
+    /*
+     * Le report touche plusieurs groupes et réécrit des volumes : annoncer
+     * l'ampleur APRÈS coup n'est pas une confirmation.
+     */
+    await poser();
+
+    const reponse = await reporter();
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.simulation).toBe(true);
+    expect(reponse.body.cellulesEcrites).toBe(1);
+    expect(await Chronogramme.countDocuments({ etablissementId: etablissement.id })).toBe(0);
+  });
+
+  it('écrit ce qu’il avait annoncé, et crée le chronogramme manquant', async () => {
+    await poser();
+    await poser({ seance: 'S2' });
+
+    const apercu = await reporter();
+    const reel = await reporter({ simulation: false });
+
+    // ⚠️ LE MÊME CHIFFRE : la simulation et le report parcourent le même code.
+    expect(reel.body.cellulesEcrites).toBe(apercu.body.cellulesEcrites);
+    expect(reel.body.groupesCrees).toEqual(['GM101']);
+
+    const planning = await planningDe('GM101');
+    expect(planning.get('M101')).toEqual([
+      expect.objectContaining({ semaine: 'S9', heures: 5, type: 'P' }),
+    ]);
+  });
+
+  it('⚠️ NE DÉPASSE JAMAIS LA MASSE HORAIRE de la carte (2026-09-27)', async () => {
+    /*
+     * GM101 · M101 a 30 h présentielles dans la carte. 27,5 h sont déjà
+     * planifiées ailleurs : les 5 h posées en S9 feraient 32,5 h. La cellule
+     * n'est pas reportée, elle est nommée — et le chronogramme ne bouge pas.
+     */
+    await Chronogramme.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      groupe: 'GM101',
+      planning: new Map([
+        ['M101', [
+          { semaine: 'S1', heures: 10, type: 'P' },
+          { semaine: 'S2', heures: 10, type: 'P' },
+          { semaine: 'S3', heures: 7.5, type: 'P' },
+        ]],
+      ]),
+    });
+    await poser();
+    await poser({ seance: 'S2' });
+
+    const reponse = await reporter({ simulation: false });
+
+    expect(reponse.body.cellulesEcrites).toBe(0);
+    expect(reponse.body.depassements).toEqual([
+      expect.objectContaining({
+        groupe: 'GM101',
+        module: 'M101',
+        semaine: 'S9',
+        heures: 5,
+        dejaPlanifie: 27.5,
+        masse: 30,
+      }),
+    ]);
+    const planning = await planningDe('GM101');
+    expect(planning.get('M101').map((c) => c.semaine)).toEqual(['S1', 'S2', 'S3']);
+  });
+
+  it('⚠️ N’EFFACE RIEN : les semaines que la grille ne porte pas restent', async () => {
+    await Chronogramme.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      groupe: 'GM101',
+      planning: new Map([
+        ['M101', [
+          { semaine: 'S9', heures: 10, type: 'P' },
+          { semaine: 'S10', heures: 7.5, type: 'P' },
+        ]],
+        ['M102', [{ semaine: 'S9', heures: 5, type: 'P' }]],
+      ]),
+    });
+    await poser();
+
+    await reporter({ simulation: false });
+
+    const planning = await planningDe('GM101');
+    expect(planning.get('M101').find((c) => c.semaine === 'S9').heures).toBe(2.5);
+    expect(planning.get('M101').find((c) => c.semaine === 'S10').heures).toBe(7.5);
+    expect(planning.get('M102')).toHaveLength(1);
+  });
+
+  it('⚠️ EST REJOUABLE : relancé, il n’écrit plus rien', async () => {
+    // REMPLACER plutôt qu'AJOUTER. Additionner doublerait les heures au second
+    // passage, sans que rien ne le signale.
+    await poser();
+    await reporter({ simulation: false });
+
+    const second = await reporter({ simulation: false });
+
+    expect(second.body.cellulesEcrites).toBe(0);
+    expect(second.body.cellulesInchangees).toBe(1);
+
+    const planning = await planningDe('GM101');
+    expect(planning.get('M101')[0].heures).toBe(2.5);
+  });
+
+  it('⚠️ AVANCE la version du planning — un collègue ne doit pas l’écraser', async () => {
+    /*
+     * Tout écrivain du planning l'avance (import de classeur, report de
+     * rattrapage). Sans cela, l'écran d'un collègue croirait tenir la dernière
+     * version et écraserait ce report sans le savoir.
+     */
+    await Chronogramme.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      groupe: 'GM101',
+      planning: new Map(),
+      version: 3,
+    });
+    await poser();
+
+    await reporter({ simulation: false });
+
+    const ligne = await Chronogramme.findOne({ etablissementId: etablissement.id, groupe: 'GM101' }).lean();
+    expect(ligne.version).toBe(4);
+  });
+
+  it('⚠️ NOMME une cellule MIXTE au lieu de la taire', async () => {
+    // Le format ne porte qu'un type : on garde le volume TOTAL et le type
+    // DOMINANT, et le cas est nommé pour être corrigé à la main.
+    await poser();
+    await poser({ seance: 'S2' });
+    await poser({ seance: 'S3', salle: 'TEAMS' });
+
+    const reponse = await reporter({ simulation: false });
+
+    expect(reponse.body.mixtes).toEqual([
+      expect.objectContaining({ groupe: 'GM101', module: 'M101', semaine: 'S9', retenu: 'P' }),
+    ]);
+
+    const planning = await planningDe('GM101');
+    expect(planning.get('M101')[0]).toMatchObject({ heures: 7.5, type: 'P' });
+  });
+
+  it('⚠️ NE TOUCHE PAS un groupe que la grille ne concerne pas', async () => {
+    await Chronogramme.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      groupe: 'GM102',
+      planning: new Map([['M200', [{ semaine: 'S1', heures: 5, type: 'P' }]]]),
+      version: 7,
+    });
+    await poser();
+
+    await reporter({ simulation: false });
+
+    const intact = await Chronogramme.findOne({ etablissementId: etablissement.id, groupe: 'GM102' }).lean();
+    expect(intact.version).toBe(7);
+  });
+
+  it('exige d’être connecté', async () => {
+    expect((await request(app).post('/api/v2/chronogrammes/report').send({})).status).toBe(401);
   });
 });

@@ -8,10 +8,14 @@ import {
   enregistre,
   estModifie,
   recevoirServeur,
+  renoncer,
   saisir,
 } from './brouillonVersionne';
 
 export const estVersionPerimee = (erreur) => erreur?.code === 'VERSION_PERIMEE';
+
+/** Le serveur demande un oui avant de supprimer des séances (`modules/fermetures`). */
+export const demandeConfirmation = (erreur) => erreur?.code === 'PERIODES_SUPPRESSIONS';
 
 /**
  * Le brouillon d'une page « tout ou rien », branché sur sa requête et son
@@ -27,12 +31,30 @@ export const estVersionPerimee = (erreur) => erreur?.code === 'VERSION_PERIMEE';
  * @param {object} options
  * @param {unknown} options.donnees  `requete.data` — référence stable d'un rendu à l'autre
  * @param {(donnees: unknown) => ({ valeur: unknown, version: number } | null)} options.extraire
- * @param {(valeur: unknown, version: number) => Promise<{ valeur?: unknown, version: number }>} options.enregistrer
+ * ═══ SUR UN 409 « PERIODES_SUPPRESSIONS » (2026-09-23) ═══
+ * Rien n'a été écrit : l'enregistrement supprimerait des séances. Le crochet
+ * garde la saisie et les chiffres dans `suppressionsAConfirmer` ; la page
+ * affiche la question, puis `confirmerSuppressions()` renvoie la MÊME saisie
+ * avec le drapeau, ou `renoncerSuppressions()` revient à ce qui est en base.
+ * ⚠️ Tant que la question est posée, l'enregistrement automatique est suspendu :
+ * il se relancerait sinon à chaque pause, et reposerait la même question.
+ *
+ * @param {(valeur: unknown, version: number, options: { confirmerSuppressions?: boolean }) =>
+ *   Promise<{ valeur?: unknown, version: number }>} options.enregistrer
  * @param {() => Promise<unknown>} options.relire  relit la requête et rend ses données
  * @param {(resultat: object, envoye: unknown) => void} [options.onSucces]
  */
 export function useBrouillonVersionne({ donnees, extraire, enregistrer, relire, onSucces }) {
   const [etat, setEtat] = useState(BROUILLON_VIDE);
+  const [aConfirmer, setAConfirmer] = useState(null);
+  /*
+   * ⚠️ LA QUESTION EN ATTENTE VIT AUSSI DANS UNE RÉFÉRENCE, lue et vidée de
+   * façon SYNCHRONE. La boîte de dialogue appelle `onOpenChange(false)` juste
+   * APRÈS « Confirmer » : lu dans l'état, `aConfirmer` y vaudrait encore la
+   * question, et le renoncement suivrait la confirmation — la page reviendrait
+   * à l'ancienne liste pendant l'envoi, puis la renverrait.
+   */
+  const attente = useRef(null);
 
   // La mutation lit la version AU MOMENT de l'envoi, pas celle du rendu qui l'a créée.
   const etatCourant = useRef(etat);
@@ -49,14 +71,21 @@ export function useBrouillonVersionne({ donnees, extraire, enregistrer, relire, 
   }, [donnees]);
 
   const mutation = useMutation({
-    mutationFn: (valeur) => enregistrer(valeur, etatCourant.current.version),
-    onSuccess: (resultat, envoye) => {
+    mutationFn: ({ valeur, confirmer = false }) =>
+      enregistrer(valeur, etatCourant.current.version, { confirmerSuppressions: confirmer }),
+    onSuccess: (resultat, { valeur: envoye }) => {
       setEtat((courant) =>
         enregistre(courant, { envoye, retour: resultat?.valeur, version: resultat?.version }, egaliteJson)
       );
       rappels.current.onSucces?.(resultat, envoye);
     },
-    onError: async (erreur) => {
+    onError: async (erreur, { valeur }) => {
+      if (demandeConfirmation(erreur)) {
+        attente.current = { valeur, details: erreur.details ?? {} };
+        setAConfirmer(attente.current);
+        return;
+      }
+
       if (!estVersionPerimee(erreur)) {
         toast.error('Enregistrement impossible', { description: erreur.message });
         return;
@@ -73,7 +102,25 @@ export function useBrouillonVersionne({ donnees, extraire, enregistrer, relire, 
   });
 
   const setBrouillon = useCallback((valeur) => setEtat((courant) => saisir(courant, valeur)), []);
-  const lancer = useCallback(() => mutation.mutate(etatCourant.current.brouillon), [mutation]);
+  const lancer = useCallback(() => {
+    if (attente.current) return;
+    mutation.mutate({ valeur: etatCourant.current.brouillon });
+  }, [mutation]);
+
+  const confirmerSuppressions = useCallback(() => {
+    const question = attente.current;
+    if (!question) return;
+    attente.current = null;
+    setAConfirmer(null);
+    mutation.mutate({ valeur: question.valeur, confirmer: true });
+  }, [mutation]);
+
+  const renoncerSuppressions = useCallback(() => {
+    if (!attente.current) return;
+    attente.current = null;
+    setAConfirmer(null);
+    setEtat((courant) => renoncer(courant));
+  }, []);
 
   return {
     charge: etat.charge,
@@ -90,6 +137,9 @@ export function useBrouillonVersionne({ donnees, extraire, enregistrer, relire, 
      */
     echec: mutation.isError,
     enregistrer: lancer,
+    suppressionsAConfirmer: aConfirmer?.details ?? null,
+    confirmerSuppressions,
+    renoncerSuppressions,
   };
 }
 

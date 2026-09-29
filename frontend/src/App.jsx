@@ -12,6 +12,8 @@ import ProfilPage from '@/features/profil/ProfilPage';
 import PageAffectations from '@/features/parametres/PageAffectations';
 import PageCalendrier from '@/features/parametres/PageCalendrier';
 import PageEspaces from '@/features/parametres/PageEspaces';
+import GardeEtapes from '@/features/configuration/GardeEtapes';
+import PageCarte from '@/features/parametres/PageCarte';
 import PageFormateurs from '@/features/parametres/PageFormateurs';
 import PageFormations from '@/features/parametres/PageFormations';
 import PageEdition from '@/features/edition/PageEdition';
@@ -36,8 +38,10 @@ import VerificationPage from '@/features/auth/VerificationPage';
 import MotDePasseOubliePage from '@/features/auth/MotDePasseOubliePage';
 import ReinitialisationPage from '@/features/auth/ReinitialisationPage';
 import EssaiPage from '@/features/auth/EssaiPage';
+import PageChoisirEtablissement from '@/features/auth/PageChoisirEtablissement';
 import AdminDashboard from '@/features/admin/AdminDashboard';
 import { demarrerBattementCoeur } from '@/lib/battementCoeur';
+import { verifierMiseAJourDesktop } from '@/lib/miseAJourDesktop';
 import StatistiquesAdmin from '@/features/admin/StatistiquesAdmin';
 import PageRepartition from '@/features/repartition/PageRepartition';
 import PageReseau from '@/features/reseau/PageReseau';
@@ -48,6 +52,7 @@ import PageMonEmploi from '@/features/consultation/PageMonEmploi';
 import PageMesAffectations from '@/features/consultation/PageMesAffectations';
 import PageMonProgramme from '@/features/consultation/PageMonProgramme';
 import PageMonAvancement from '@/features/consultation/PageMonAvancement';
+import PageMesAbsences from '@/features/consultation/PageMesAbsences';
 
 /*
  * ═══ GROUPES DE RÔLES — SESSIONS CONSULTATIVES (F14, 2026-09-03) ═══
@@ -90,6 +95,9 @@ export default function App() {
    */
   useEffect(demarrerBattementCoeur, []);
 
+  // Application de bureau seulement : propose la nouvelle version si elle existe.
+  useEffect(verifierMiseAJourDesktop, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
@@ -103,6 +111,7 @@ export default function App() {
           <Route path="/mot-de-passe-oublie" element={<MotDePasseOubliePage />} />
           <Route path="/reinitialisation" element={<ReinitialisationPage />} />
           <Route path="/essai" element={<EssaiPage />} />
+          <Route path="/choisir-etablissement" element={<PageChoisirEtablissement />} />
 
           {/* F15 — administration : deux sections, liées par `SectionsAdmin`. */}
           <Route path="/admin" element={<AdminDashboard />} />
@@ -183,6 +192,14 @@ export default function App() {
               }
             />
             <Route
+              path="parametres/carte"
+              element={
+                <GardePage page="affectations" requis="consulter">
+                  <PageCarte />
+                </GardePage>
+              }
+            />
+            <Route
               path="parametres/affectations"
               element={
                 <GardePage page="affectations" requis="consulter">
@@ -194,7 +211,7 @@ export default function App() {
               path="parametres/stages"
               element={
                 <GardePage page="stages" requis="consulter">
-                  <PageStages />
+                  <GardeEtapes titre="Les stages"><PageStages /></GardeEtapes>
                 </GardePage>
               }
             />
@@ -202,7 +219,7 @@ export default function App() {
               path="parametres/formations"
               element={
                 <GardePage page="formations" requis="consulter">
-                  <PageFormations />
+                  <GardeEtapes titre="Les formations"><PageFormations /></GardeEtapes>
                 </GardePage>
               }
             />
@@ -210,7 +227,7 @@ export default function App() {
               path="parametres/groupes-fq"
               element={
                 <GardePage page="groupesFq" requis="consulter">
-                  <PageGroupesFq />
+                  <GardeEtapes titre="Les groupes (FQ)"><PageGroupesFq /></GardeEtapes>
                 </GardePage>
               }
             />
@@ -218,7 +235,7 @@ export default function App() {
               path="parametres/efm-regional"
               element={
                 <GardePage page="efm" requis="consulter">
-                  <PageEfmRegional />
+                  <GardeEtapes titre="L’EFM régional"><PageEfmRegional /></GardeEtapes>
                 </GardePage>
               }
             />
@@ -234,7 +251,7 @@ export default function App() {
               path="parametres/chronogramme"
               element={
                 <GardePage page="chronogramme" requis="consulter">
-                  <PageChronogramme />
+                  <GardeEtapes titre="Le chronogramme"><PageChronogramme /></GardeEtapes>
                 </GardePage>
               }
             />
@@ -250,7 +267,7 @@ export default function App() {
               path="emploi"
               element={
                 <GardePage page="emploi" requis="modifier" repli="/app/edition">
-                  <PageEmploi />
+                  <GardeEtapes titre="L’emploi du temps"><PageEmploi /></GardeEtapes>
                 </GardePage>
               }
             />
@@ -258,7 +275,7 @@ export default function App() {
               path="avancement"
               element={
                 <GardePage page="avancement" requis="consulter">
-                  <PageAvancement />
+                  <GardeEtapes titre="L’avancement"><PageAvancement /></GardeEtapes>
                 </GardePage>
               }
             />
@@ -266,7 +283,7 @@ export default function App() {
               path="absences"
               element={
                 <GardeAbsences>
-                  <PageAbsences />
+                  <GardeEtapes titre="Les absences"><PageAbsences /></GardeEtapes>
                 </GardeAbsences>
               }
             />
@@ -281,7 +298,7 @@ export default function App() {
               path="edition"
               element={
                 <GardePage page="emploi" requis="consulter">
-                  <PageEdition />
+                  <GardeEtapes titre="L’édition"><PageEdition /></GardeEtapes>
                 </GardePage>
               }
             />
@@ -289,7 +306,7 @@ export default function App() {
               path="documents"
               element={
                 <GardePage page="documents" requis="consulter">
-                  <PageDocuments />
+                  <GardeEtapes titre="Les documents"><PageDocuments /></GardeEtapes>
                 </GardePage>
               }
             />
@@ -334,6 +351,14 @@ export default function App() {
               element={
                 <GardeRole roles={[ROLES.FORMATEUR, ROLES.STAGIAIRE]}>
                   <PageMonAvancement />
+                </GardeRole>
+              }
+            />
+            <Route
+              path="mes-absences"
+              element={
+                <GardeRole roles={[ROLES.FORMATEUR, ROLES.STAGIAIRE]}>
+                  <PageMesAbsences />
                 </GardeRole>
               }
             />

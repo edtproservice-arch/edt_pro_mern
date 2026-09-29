@@ -32,13 +32,19 @@ import { SEMAINES_ANNEE_REGIONALE } from './regional.js';
  * @param {number[]} [semainesChomees] — les semaines de vacances, que le graphe
  *   SIGNALE et que le rythme régional ÉCARTE : ce sont les mêmes, et elles
  *   viennent de `semainesDeVacances` pour qu'elles ne puissent pas diverger.
+ * @param {Array<{anneeFormation: number, date: string}>} [rentrees] — LES
+ *   MÊMES que celles données à `rythmeRegional`/`semainesChomees` : les trois
+ *   doivent s'accorder sur la même ancre de S1, sans quoi le numéro d'une
+ *   séance décodée ici désignerait une semaine différente de celle que le
+ *   rythme régional calcule pour le même chiffre.
  * @returns {Array<{numero, libelle, avancement, regional, vacances}>}
  */
 export function progressionEtablissement(
   seances = [],
   prevu = 0,
   rythmeRegional = () => null,
-  semainesChomees = []
+  semainesChomees = [],
+  rentrees = []
 ) {
   const chomees = new Set(semainesChomees);
   const heuresParSemaine = new Map();
@@ -52,7 +58,7 @@ export function progressionEtablissement(
      */
     if (seance.statut === 'absent' || seance.estEfm) continue;
 
-    const analyse = analyserSemaine(seance.semaine);
+    const analyse = analyserSemaine(seance.semaine, rentrees);
     if (!analyse) continue;
     const { numero } = analyse;
 
@@ -93,3 +99,37 @@ export function progressionEtablissement(
  * `emplois_du_temps` — et cette fonction le traite déjà. Un `split('-W')` ferait
  * disparaître ces semaines de la courbe sans rien signaler.
  */
+
+/**
+ * Les heures RÉALISÉES jour par jour, semaine par semaine — la grille d'activité
+ * de l'accueil (demande du porteur, 2026-09-28 : « grille des semaines avec les
+ * couleurs selon l'avancement, comme celle de Claude Code »).
+ *
+ * ⚠️ LES MÊMES EXCLUSIONS QUE LA COURBE : une séance ABSENTE n'a pas eu lieu, une
+ * surveillance d'EFM n'est pas un cours. La grille et le graphe voisin doivent
+ * compter les mêmes heures, sans quoi leurs totaux divergeraient.
+ *
+ * ⚠️ LE JOUR VIENT DU CHAMP `jour` DE LA SÉANCE, pas de sa `date` : une date
+ * stockée en UTC glisserait d'un jour selon le fuseau du serveur.
+ *
+ * @param {Array} seances — avec `semaine`, `jour`, `seance`, `statut`, `estEfm`
+ * @param {string[]} jours — l'ordre des jours de la grille (Lundi… Samedi)
+ * @param {Array} [rentrees] — la même ancre de S1 que `progressionEtablissement`
+ * @returns {Map<number, number[]>} numéro de semaine → heures par jour
+ */
+export function heuresParJour(seances = [], jours = [], rentrees = []) {
+  const parSemaine = new Map();
+
+  for (const seance of seances) {
+    if (seance.statut === 'absent' || seance.estEfm) continue;
+
+    const analyse = analyserSemaine(seance.semaine, rentrees);
+    const rang = jours.indexOf(seance.jour);
+    if (!analyse || rang < 0) continue;
+
+    if (!parSemaine.has(analyse.numero)) parSemaine.set(analyse.numero, jours.map(() => 0));
+    parSemaine.get(analyse.numero)[rang] += dureeSeance(seance.seance);
+  }
+
+  return parSemaine;
+}

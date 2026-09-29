@@ -1,5 +1,3 @@
-import fs from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import nodemailer from 'nodemailer';
 import { env } from './env.js';
 import { logger } from '../lib/logger.js';
@@ -35,26 +33,23 @@ const transport = smtpConfigure
  * SVG dans un e-mail — l'image y reste blanche. Le fichier est donc un RASTER
  * exporté du même tracé, à régénérer si la marque change (cf. DESIGN_SYSTEM.md).
  *
- * ⚠️ ET IL VOYAGE EN PIÈCE JOINTE (cid), PAS PAR URL. Deux raisons : il n'y a
- * pas encore d'hébergement public (Phase 1), et une image DISTANTE dans un
- * courriel de service se comporte comme un pixel de suivi — bloquée par défaut
- * chez beaucoup, et mauvais signal pour les filtres. En pièce jointe, elle
- * s'affiche sans réseau et sans rien tracer.
+ * ═══ ⚠️ IL EST HÉBERGÉ (URL), IL NE VOYAGE PLUS EN PIÈCE JOINTE ═══
+ * (2026-09-20, constaté par le porteur : dans sa boîte Gmail l'image restait cassée
+ * et le logo arrivait comme un fichier joint.) Une image jointe référencée par `cid`
+ * dépend du client ET de tout ce qui réécrit le message en route (antivirus qui
+ * scanne le courrier, passerelles) : dès que la structure MIME est retouchée, le
+ * `cid` ne correspond plus et le logo devient une pièce jointe. Une URL https n'a pas
+ * ce défaut : Gmail la relaie par son propre proxy et l'affiche par défaut.
+ *
+ * Le fichier vit dans `frontend/public/logo-email.png` : il est servi par le site,
+ * à `APP_URL/logo-email.png`. ⚠️ Il ne s'affiche donc que si le frontend est déployé
+ * avec ce fichier ET si `APP_URL` est joignable depuis Internet — un `localhost`
+ * n'est pas vu par Gmail (l'alt « EDT Pro » s'affiche alors à sa place).
  *
  * ⚠️ SON FOND EST TRANSPARENT : il se compose sur le blanc de la page comme sur
  * n'importe quel autre fond, sans dessiner de rectangle autour de la marque.
  */
-const CID_LOGO = 'logo-edtpro';
-
-const logo = (() => {
-  try {
-    return fs.readFileSync(fileURLToPath(new URL('../assets/logo-email.png', import.meta.url)));
-  } catch (erreur) {
-    // Un logo manquant ne doit pas empêcher un code de vérification de partir.
-    logger.warn({ err: erreur }, 'Logo e-mail introuvable — les messages partiront sans');
-    return null;
-  }
-})();
+const URL_LOGO = `${env.APP_URL.replace(/\/+$/, '')}/logo-email.png`;
 
 const adresseExpediteur = env.SMTP_FROM || env.SMTP_USER;
 const expediteur = `"${env.SMTP_FROM_NAME}" <${adresseExpediteur}>`;
@@ -250,10 +245,8 @@ function rendreValeur(valeur) {
  * plusieurs clients — doit encore dire de qui vient le message.
  */
 const enTete = (haut) =>
-  logo
-    ? `<img src="cid:${CID_LOGO}" alt="EDT Pro" width="120" height="57"
-            style="display:block;width:120px;height:57px;margin:${haut} 0 0;border:0;outline:none;text-decoration:none;">`
-    : `<p style="margin:${haut} 0 0;font-size:22px;font-weight:700;color:#489c5a;${POLICE}">eDT<span style="color:#0071db;">pro</span></p>`;
+  `<img src="${URL_LOGO}" alt="EDT Pro" width="120" height="57"
+        style="display:block;width:120px;height:57px;margin:${haut} 0 0;border:0;outline:none;text-decoration:none;">`;
 
 /*
  * Un paragraphe qui n'est QU'UNE valeur à recopier : aucun espace, assez long
@@ -289,20 +282,6 @@ export async function envoyerEmail({ destinataire, sujet, texte, raison, html })
       subject: sujet,
       text: `${texte}\n\n---\n${motif}\n${env.APP_URL}`,
       html: html ?? enveloppeHtml({ texte, titre: sujet, raison: motif }),
-      /*
-       * ⚠️ `contentDisposition: 'inline'` EST INDISPENSABLE : sans lui,
-       * nodemailer joint le fichier en PIÈCE JOINTE VISIBLE — le lecteur voit
-       * un trombone et un fichier à télécharger, en plus de l'image déjà
-       * affichée dans le message.
-       *
-       * ⚠️ Et le logo n'est joint QUE si le gabarit maison est utilisé : un
-       * appelant qui fournit son propre `html` ne référence pas ce `cid`, et la
-       * pièce jointe resterait orpheline.
-       */
-      attachments:
-        logo && !html
-          ? [{ filename: 'edtpro.png', content: logo, cid: CID_LOGO, contentDisposition: 'inline' }]
-          : undefined,
       headers: {
         // Indique aux filtres qu'il s'agit d'un message automatique légitime,
         // et évite les réponses automatiques (absences du bureau) en retour.

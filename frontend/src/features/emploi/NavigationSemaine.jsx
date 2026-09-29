@@ -29,6 +29,8 @@ export default function NavigationSemaine({
   onChanger,
   anneeScolaire,
   remplies = [],
+  /* ⚠️ VOIR `SelecteurSemaine` : optionnel, purement transmis. */
+  completudes = [],
   courante,
 }) {
   const analyse = semaine ? analyserSemaine(semaine) : null;
@@ -56,6 +58,7 @@ export default function NavigationSemaine({
         semaine={semaine}
         anneeScolaire={anneeScolaire}
         remplies={remplies}
+        completudes={completudes}
         onChanger={onChanger}
       />
 

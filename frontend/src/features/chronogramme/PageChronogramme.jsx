@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Check, ChevronDown, RotateCcw, Search } from 'lucide-react';
+import { Check, ChevronDown, RotateCcw, Search, Send } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -22,6 +23,7 @@ import {
   semainesDeLaLigne,
 } from 'shared/domain';
 import { cn } from '@/lib/utils';
+import { recupererSession } from '@/features/auth/api';
 import CadreReglage from '@/features/parametres/CadreReglage';
 import EnTetePartage from '@/features/partages/EnTetePartage';
 import CurseursDistants from '@/features/tempsReel/CurseursDistants';
@@ -37,15 +39,27 @@ import {
   chargerFormateursChronogramme,
   chargerGroupesChronogramme,
   enregistrerChronogramme,
+  envoyerChronogrammeATousLesFormateurs,
+  envoyerChronogrammeFormateur,
+  renvoyerChronogrammeFormateur,
 } from './api';
 import GrilleChronogramme, { FOND_FORMATION, FOND_STAGE, LegendeRattrapage } from './GrilleChronogramme';
 import VueFormateur from './VueFormateur';
 import SectionGrille, { OUVERTES_AU_DEPART } from './SectionGrille';
+import { useCaseCiblee } from './useCaseCiblee';
 import BoutonDupliquer from './BoutonDupliquer';
-import { amorcerPlannings, amorcerVersions, groupesModifies, integrerPlanning, omettreGroupes } from './etatPlannings';
+import {
+  amorcerPlannings,
+  amorcerVersions,
+  fusionnerGrillesFormateurs,
+  groupesModifies,
+  integrerPlanning,
+  omettreGroupes,
+} from './etatPlannings';
 import { estVersionPerimee } from '@/lib/useBrouillonVersionne';
 import BarreClasseur from './BarreClasseur';
 import BoutonCharge from './BoutonCharge';
+import BoutonLiaison from './BoutonLiaison';
 
 /**
  * Chronogramme — planning annuel prévisionnel, par groupe (F7).
@@ -100,6 +114,26 @@ export default function PageChronogramme() {
   const { role, droitSur } = usePartagesAvecMoi();
   const lectureSeule = !droitSuffit(droitSur('chronogramme'), 'modifier');
   const peutImporter = role === ROLES.DIRECTEUR;
+  /*
+   * ⚠️ POUR SAVOIR QUELLE LIGNE EST « LA SIENNE » (2026-09-22) : le DIRECTEUR, lui, voit toutes
+   * les personnes de l'établissement sur cette même page — un formateur n'y voit que lui-même
+   * (voir `estFormateur` plus bas), mais la ligne rendue est la même pour les deux rôles. Seul le
+   * matricule connecté dit laquelle est la sienne, et c'est donc sur elle seule que « Renvoyer au
+   * directeur » doit apparaître.
+   */
+  const session = useQuery({ queryKey: ['session'], queryFn: recupererSession, retry: false });
+  const monIdentifiant = String(session.data?.utilisateur?.identifiant ?? '').trim().toUpperCase();
+  /*
+   * ⚠️ « ENVOYER » NE PARTAGE PAS L'ÉCRAN DU DIRECTEUR (2026-09-22, demande du porteur :
+   * « l'envoi du chronogramme ne veut pas dire qu'il a partagé l'écran, il s'affiche en navbar
+   * chronogramme avec le chronogramme de ce formateur seulement »). Le droit accordé par
+   * « Envoyer » porte sur la page entière, comme tout partage — mais un formateur qui ouvre
+   * « Chronogramme » depuis son propre menu ne doit y trouver QUE lui-même, jamais le choix des
+   * groupes ni celui de ses collègues : c'est ce que fait déjà `GET /par-formateur`, restreint
+   * côté serveur à son seul matricule. Ici, on lui impose directement le mode formateur, sans
+   * bascule ni sélecteur à afficher pour une liste qui ne contient déjà que lui.
+   */
+  const estFormateur = role === ROLES.FORMATEUR;
   const [selection, setSelection] = useState([]);
   const [plannings, setPlannings] = useState({});
 
@@ -112,19 +146,29 @@ export default function PageChronogramme() {
    * regroupement : la cellule changeait chez les autres une à deux secondes
    * après la saisie.
    */
+  /*
+   * Pose un planning ENREGISTRÉ (le sien ou celui d'un collègue) dans les deux
+   * lectures en cache — par groupe et par formateur.
+   */
+  const poserDansLeCache = useCallback(
+    (annonce) => {
+      cache.setQueryData(['chronogramme', annonce.groupe], (donnees) => integrerPlanning(donnees, annonce));
+      cache.setQueriesData({ queryKey: ['chronogramme-formateur'] }, (donnees) =>
+        integrerPlanning(donnees, annonce)
+      );
+    },
+    [cache]
+  );
+
   const appliquerAnnonce = useCallback(
     (message) => {
       if (message.action !== 'enregistrer' || !message.planning || typeof message.version !== 'number') {
         return false;
       }
-      const annonce = { groupe: message.groupe, planning: message.planning, version: message.version };
-      cache.setQueryData(['chronogramme', message.groupe], (donnees) => integrerPlanning(donnees, annonce));
-      cache.setQueriesData({ queryKey: ['chronogramme-formateur'] }, (donnees) =>
-        integrerPlanning(donnees, annonce)
-      );
+      poserDansLeCache({ groupe: message.groupe, planning: message.planning, version: message.version });
       return true;
     },
-    [cache]
+    [poserDansLeCache]
   );
 
   const anneeActive = useAnneeActive();
@@ -201,6 +245,33 @@ export default function PageChronogramme() {
    * symétrique qui pourrait en diverger.
    */
   const [parFormateur, setParFormateur] = useState(false);
+
+  /*
+   * `?formateur=<matricule>` (2026-09-23) : « Ouvrir la page » depuis un chronogramme reçu en
+   * message ouvre la page SUR ce formateur, en mode formateur — sans quoi le directeur
+   * retomberait sur les vingt groupes et devrait chercher la personne à la main.
+   */
+  const [parametres] = useSearchParams();
+  const formateurDemande = parametres.get('formateur')?.trim() || null;
+
+  /*
+   * `?groupe=…&module=…&semaine=…` (2026-09-27) : « Modifier le chronogramme »
+   * depuis la fenêtre de conformité mène à LA case du groupe concerné — le
+   * groupe seul est retenu (le filtre reste libre ensuite), et `useCaseCiblee`
+   * amène la case à l'écran.
+   */
+  const caseDemandee = {
+    groupe: parametres.get('groupe')?.trim() || null,
+    module: parametres.get('module')?.trim() || null,
+    semaine: parametres.get('semaine')?.trim() || null,
+  };
+  useCaseCiblee(caseDemandee);
+
+  // Forcé, pour la raison ci-dessus — un formateur n'a ni bascule ni sélecteur à l'écran.
+  useEffect(() => {
+    if (estFormateur || formateurDemande) setParFormateur(true);
+  }, [estFormateur, formateurDemande]);
+
   /*
    * PLUSIEURS formateurs, comme pour les groupes. Deux personnes qui
    * interviennent sur la même promotion se comparent semaine par semaine — et
@@ -273,28 +344,27 @@ export default function PageChronogramme() {
    * touche, pas seulement les modules de la personne : c'est ce qui permet à
    * l'enregistrement de ne pas effacer les modules de ses collègues.
    */
+  /*
+   * ⚠️ DEUX FORMATEURS PEUVENT PARTAGER UN GROUPE — fusionnés par version, pas
+   * par ordre d'arrivée : voir `fusionnerGrillesFormateurs` (2026-09-22, corrige
+   * la boucle d'enregistrement signalée quand une copie périmée écrasait la
+   * copie fraîche d'un groupe partagé).
+   */
+  const fusionFormateurs = useMemo(
+    () => fusionnerGrillesFormateurs(grillesFormateurs.map((grille) => grille.data).filter(Boolean)),
+    [grillesFormateurs]
+  );
+
   const initiaux = useMemo(() => {
+    if (parFormateur) return fusionFormateurs.plannings;
+
     const depart = {};
-
-    if (parFormateur) {
-      /*
-       * ⚠️ DEUX FORMATEURS PEUVENT PARTAGER UN GROUPE. Chacun reçoit le planning
-       * COMPLET de ce groupe — c'est ce qui protège les modules des collègues à
-       * l'enregistrement — donc les deux réponses portent la même valeur pour ce
-       * groupe, et la fusion est sans perte quel que soit l'ordre.
-       */
-      for (const grille of grillesFormateurs) {
-        if (grille.data) Object.assign(depart, grille.data.plannings ?? {});
-      }
-      return depart;
-    }
-
     for (const [rang, groupe] of selection.entries()) {
       const chargee = grilles[rang]?.data;
       if (chargee) depart[groupe] = chargee.planning ?? {};
     }
     return depart;
-  }, [parFormateur, grillesFormateurs, selection, grilles]);
+  }, [parFormateur, fusionFormateurs, selection, grilles]);
 
   /*
    * La version de chaque planning EN BASE (étape d3) — mêmes sources que
@@ -302,19 +372,15 @@ export default function PageChronogramme() {
    * figure pas.
    */
   const versionsInitiales = useMemo(() => {
+    if (parFormateur) return fusionFormateurs.versions;
+
     const versions = {};
-    if (parFormateur) {
-      for (const grille of grillesFormateurs) {
-        if (grille.data) Object.assign(versions, grille.data.versions ?? {});
-      }
-      return versions;
-    }
     for (const [rang, groupe] of selection.entries()) {
       const chargee = grilles[rang]?.data;
       if (chargee) versions[groupe] = chargee.version ?? 0;
     }
     return versions;
-  }, [parFormateur, grillesFormateurs, selection, grilles]);
+  }, [parFormateur, fusionFormateurs, selection, grilles]);
 
   /*
    * Changer de mode REPART de la base. Les deux vues écrivent la même donnée,
@@ -409,6 +475,26 @@ export default function PageChronogramme() {
           );
           // Tout de suite : une seconde saisie doit partir avec la NOUVELLE version.
           versionsBase.current = { ...versionsBase.current, [groupe]: reponse.version };
+          /*
+           * ═══ ⚠️⚠️ LE CACHE REÇOIT CE QUI VIENT D'ÊTRE ÉCRIT — SANS ATTENDRE UNE RELECTURE ═══
+           * (2026-09-23, signalé par le porteur : « lorsque j'enregistre en
+           * chronogramme il entre dans une boucle » — mesuré en base : GM101 réécrit
+           * ~1 fois par seconde, v1470 → v1522 en 52 s, contenu identique.)
+           *
+           * L'onglet qui écrit est écarté de l'annonce temps réel : il comptait sur
+           * l'invalidation pour relire sa grille. Or la relecture par formateur prend
+           * 570 à 2 000 ms (mesuré, latence Atlas), et la minuterie se ré-arme
+           * 300 ms (`REPOS_CHRONOGRAMME`) après le retour de l'écriture. Tant que la
+           * relecture n'est pas revenue, `initiaux` porte l'ANCIEN planning : le
+           * groupe paraît encore modifié, et part une seconde fois — dont
+           * l'invalidation ANNULE la relecture en vol (`cancelRefetch`), qui ne
+           * revient donc jamais. Boucle sans fin, chaque tour affiché comme un succès.
+           *
+           * La réponse porte le planning tel qu'enregistré et sa version : on le pose
+           * dans le cache comme une annonce de collègue. `initiaux` rattrape la saisie
+           * immédiatement, et la minuterie n'a plus rien à écrire.
+           */
+          poserDansLeCache({ groupe, planning: reponse.planning, version: reponse.version });
           return reponse;
         })
       );
@@ -442,11 +528,13 @@ export default function PageChronogramme() {
       return issues.filter((issue) => issue.status === 'fulfilled').map((issue) => issue.value);
     },
     onSuccess: (resultats) => {
+      /*
+       * Seule la liste (« planifié », charges) est relue. Les grilles ne le sont
+       * plus : `poserDansLeCache` les a déjà mises à jour avec la réponse, et une
+       * relecture lente revenue APRÈS l'écriture suivante ferait reculer l'écran
+       * d'une version (voir le commentaire dans `mutationFn`).
+       */
       cache.invalidateQueries({ queryKey: ['chronogrammes'] });
-      cache.invalidateQueries({ queryKey: ['chronogramme-formateur'] });
-      for (const groupe of modifies) {
-        cache.invalidateQueries({ queryKey: ['chronogramme', groupe] });
-      }
 
       const cellules = resultats.reduce((somme, resultat) => somme + resultat.cellules, 0);
       toast.success(`${resultats.length} chronogramme(s) enregistré(s)`, {
@@ -503,14 +591,20 @@ export default function PageChronogramme() {
   useEffect(() => {
     if (cleGroupes === '' || defautPose.current.groupes === cleGroupes) return;
     defautPose.current.groupes = cleGroupes;
-    setSelection(cleGroupes.split('|'));
+    const tous = cleGroupes.split('|');
+    // Le groupe demandé par l'adresse, s'il est bien de l'année ; tous sinon.
+    const demande = tous.find((nom) => nom.toUpperCase() === caseDemandee.groupe?.toUpperCase());
+    setSelection(demande ? [demande] : tous);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- un point de départ, pas une contrainte
   }, [cleGroupes]);
 
   useEffect(() => {
     if (cleFormateurs === '' || defautPose.current.formateurs === cleFormateurs) return;
     defautPose.current.formateurs = cleFormateurs;
-    setSelectionFormateurs(cleFormateurs.split('|'));
-  }, [cleFormateurs]);
+    const tous = cleFormateurs.split('|');
+    // Le formateur demandé par l'adresse, s'il est bien de l'année ; tous sinon.
+    setSelectionFormateurs(formateurDemande && tous.includes(formateurDemande) ? [formateurDemande] : tous);
+  }, [cleFormateurs, formateurDemande]);
 
   /** Vide la grille d'un groupe — l'enregistrement automatique suit. */
   const reinitialiser = (groupe) => {
@@ -547,6 +641,67 @@ export default function PageChronogramme() {
       description: `${donnees.lignes.length} module(s) sur ${groupes.size} groupe(s). Les autres modules de ces groupes sont conservés.`,
     });
   };
+
+  /**
+   * « Envoyer » à un formateur, en mode formateur (2026-09-22, demande du porteur : « que le
+   * directeur envoie le chronogramme du formateur, à fin de remplir »).
+   *
+   * ═══ CE QUE FAIT L'ENVOI ═══
+   * Le serveur (`POST .../par-formateur/:formateur/envoyer`) accorde au formateur le droit de
+   * MODIFIER la page — le même mécanisme que le bouton « Partager » en tête de page — et lui
+   * envoie un message dédié. Il n'y a rien à répartir ici entre plusieurs groupes : c'est un
+   * geste sur UNE personne, identifiée par la grille déjà à l'écran.
+   *
+   * ⚠️ LE DIRECTEUR SEUL : la route le refuse à qui d'autre — un invité « peut modifier » le
+   * chronogramme travaille dessus, il n'en délègue pas l'accès.
+   */
+  const envoiFormateur = useMutation({
+    mutationFn: (matricule) => envoyerChronogrammeFormateur(matricule),
+    onSuccess: (resultat) => {
+      toast.success(`Chronogramme envoyé à ${resultat.nom}`, {
+        description: resultat.enAttente
+          ? 'Une invitation à accepter, et un message expliquant quoi faire, lui sont parvenus.'
+          : 'Il a déjà accès à la page : un message lui rappelle de la remplir.',
+      });
+    },
+    onError: (erreur) => toast.error('Envoi impossible', { description: erreur.message }),
+  });
+
+  /**
+   * « Envoyer à tous » (2026-09-22, demande du porteur) : le même geste que ci-dessus, répété
+   * pour chaque formateur de l'année — un clic au lieu d'un par ligne dépliée.
+   */
+  const envoiTousFormateurs = useMutation({
+    mutationFn: envoyerChronogrammeATousLesFormateurs,
+    onSuccess: (resultat) => {
+      toast.success(`Chronogramme envoyé à ${resultat.envoyes.length} formateur(s)`, {
+        description:
+          resultat.echecs.length > 0
+            ? `${resultat.echecs.length} sans compte actif, non prévenu(s) : ${resultat.echecs
+                .map((e) => e.nom)
+                .join(', ')}.`
+            : `Sur ${resultat.total} formateur(s) au total.`,
+      });
+    },
+    onError: (erreur) => toast.error('Envoi impossible', { description: erreur.message }),
+  });
+
+  /**
+   * « Renvoyer au directeur », pour validation (2026-09-22, demande du porteur : « après le
+   * formateur rempli le chronogramme, il renvoie au directeur pour valider »).
+   *
+   * ⚠️ LE MESSAGE PORTE LA GRILLE — « en message envoyé s'affiche le chronogramme » — le serveur
+   * y joint un instantané (`CarteChronogrammeFormateur`, dans la messagerie, sait l'afficher).
+   */
+  const renvoiFormateur = useMutation({
+    mutationFn: (matricule) => renvoyerChronogrammeFormateur(matricule),
+    onSuccess: () => {
+      toast.success('Chronogramme renvoyé au directeur', {
+        description: 'Il l’a reçu dans sa messagerie, avec la grille jointe.',
+      });
+    },
+    onError: (erreur) => toast.error('Envoi impossible', { description: erreur.message }),
+  });
 
   /**
    * Quelles grilles chargées peuvent recevoir celle de `source` ?
@@ -770,19 +925,25 @@ export default function PageChronogramme() {
             groupe existant.
           </Alerte>
         ) : (
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            {parFormateur ? (
-              <ChoixFormateurs
-                requete={formateurs}
-                selection={selectionFormateurs}
-                onChange={setSelectionFormateurs}
-              />
-            ) : (
-              <ChoixGroupes liste={liste} selection={selection} onChange={setSelection} />
-            )}
+          /*
+           * ⚠️ RIEN À CHOISIR POUR UN FORMATEUR : ni bascule (le mode formateur lui est imposé),
+           * ni sélecteur (la liste que rend le serveur ne contient déjà que lui-même).
+           */
+          !estFormateur && (
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              {parFormateur ? (
+                <ChoixFormateurs
+                  requete={formateurs}
+                  selection={selectionFormateurs}
+                  onChange={setSelectionFormateurs}
+                />
+              ) : (
+                <ChoixGroupes liste={liste} selection={selection} onChange={setSelection} />
+              )}
 
-            <BasculeMode actif={parFormateur} onChange={setParFormateur} />
-          </div>
+              <BasculeMode actif={parFormateur} onChange={setParFormateur} />
+            </div>
+          )
         )}
 
         {/*
@@ -805,6 +966,32 @@ export default function PageChronogramme() {
               moitié de la réponse — et il ne dépend PAS de ce qui est coché.
             */}
             <BoutonCharge mode={parFormateur ? 'formateur' : 'groupe'} />
+
+            {/*
+              Associer / dissocier l'emploi du temps du chronogramme (2026-09-27).
+              ⚠️ AU DIRECTEUR SEUL : ce réglage change la règle de saisie de
+              TOUTE la grille, pour tout le monde — même portée qu'un import de
+              classeur. Le serveur le refuse aussi aux autres rôles ; l'écran ne
+              montre pas un bouton qui échouerait.
+            */}
+            {role === ROLES.DIRECTEUR && <BoutonLiaison lectureSeule={lectureSeule} />}
+
+            {/*
+              ⚠️ AU DIRECTEUR SEUL, ET EN MODE FORMATEUR SEULEMENT — même règle que le bouton
+              « Envoyer » d'une ligne : c'est lui qui délègue l'accès à la page.
+            */}
+            {parFormateur && role === ROLES.DIRECTEUR && listeFormateurs.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 text-xs"
+                disabled={envoiTousFormateurs.isPending}
+                onClick={() => envoiTousFormateurs.mutate()}
+              >
+                <Send className="size-3.5" />
+                {envoiTousFormateurs.isPending ? 'Envoi…' : 'Envoyer à tous'}
+              </Button>
+            )}
           </div>
         )}
 
@@ -860,18 +1047,57 @@ export default function PageChronogramme() {
                     elles n'enseignent pas les mêmes modules aux mêmes groupes, et
                     la copie ne retiendrait presque rien.
                   */
-                  !lectureSeule &&
                   donnees?.lignes?.length > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={!aDesHeures(plannings, donnees.lignes)}
-                      className="h-8 gap-1.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
-                      onClick={() => reinitialiserFormateur(donnees)}
-                    >
-                      <RotateCcw className="size-3.5" />
-                      Réinitialiser
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      {/*
+                        ⚠️ AU DIRECTEUR SEUL : c'est lui qui délègue l'accès, la route le refuse
+                        à qui d'autre — un invité « peut modifier » travaille sur la page, il ne
+                        la partage pas.
+                      */}
+                      {role === ROLES.DIRECTEUR && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={envoiFormateur.isPending}
+                          className="h-8 gap-1.5 text-xs"
+                          onClick={() => envoiFormateur.mutate(identifiant)}
+                        >
+                          <Send className="size-3.5" />
+                          Envoyer
+                        </Button>
+                      )}
+                      {/*
+                        ⚠️ SUR SA PROPRE LIGNE SEULEMENT (2026-09-22) : le formateur voit ici
+                        toutes les personnes de l'établissement, comme le directeur — seul son
+                        matricule dit laquelle est la sienne.
+                      */}
+                      {role === ROLES.FORMATEUR &&
+                        monIdentifiant !== '' &&
+                        String(identifiant).trim().toUpperCase() === monIdentifiant && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={renvoiFormateur.isPending}
+                            className="h-8 gap-1.5 text-xs"
+                            onClick={() => renvoiFormateur.mutate(identifiant)}
+                          >
+                            <Send className="size-3.5" />
+                            Renvoyer au directeur
+                          </Button>
+                        )}
+                      {!lectureSeule && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={!aDesHeures(plannings, donnees.lignes)}
+                          className="h-8 gap-1.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          onClick={() => reinitialiserFormateur(donnees)}
+                        >
+                          <RotateCcw className="size-3.5" />
+                          Réinitialiser
+                        </Button>
+                      )}
+                    </div>
                   )
                 }
               >

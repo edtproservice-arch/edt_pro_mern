@@ -11,6 +11,7 @@ import comptesRoutes from './modules/comptes/comptes.routes.js';
 import baseRoutes from './modules/base/base.routes.js';
 import stagiairesRoutes from './modules/stagiaires/stagiaires.routes.js';
 import chronogrammeRoutes from './modules/chronogramme/chronogramme.routes.js';
+import generationRoutes from './modules/generation/generation.routes.js';
 import seancesRoutes from './modules/seances/seances.routes.js';
 import modificationsRoutes from './modules/modifications/modifications.routes.js';
 import partagesRoutes from './modules/partages/partages.routes.js';
@@ -19,6 +20,7 @@ import absencesStagiairesRoutes from './modules/absencesStagiaires/absencesStagi
 import avancementRoutes from './modules/avancement/avancement.routes.js';
 import meteoRoutes from './modules/meteo/meteo.routes.js';
 import messagerieRoutes from './modules/messagerie/messagerie.routes.js';
+import propositionsRoutes from './modules/propositions/propositions.routes.js';
 import consultationRoutes from './modules/consultation/consultation.routes.js';
 import calendrierRoutes from './modules/calendrier/calendrier.routes.js';
 import repartitionsRoutes from './modules/repartitions/repartitions.routes.js';
@@ -29,6 +31,12 @@ import {
   lecture as calendrierNationalLecture,
   ecriture as calendrierNationalEcriture,
 } from './modules/calendrierNational/calendrierNational.routes.js';
+import {
+  lecture as horairesLecture,
+  ecriture as horairesEcriture,
+} from './modules/horaires/horaires.routes.js';
+import espacesRoutes from './modules/espaces/espaces.routes.js';
+import formateursMutualisesRoutes from './modules/espaces/formateursMutualises.routes.js';
 
 /**
  * Construction de l'application Express — SANS `listen`.
@@ -56,7 +64,7 @@ export function createApp() {
     if (origine && originesHttp.has(origine)) {
       res.setHeader('Access-Control-Allow-Origin', origine);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Annee-Scolaire, X-Connexion-Id');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Annee-Scolaire, X-Etablissement-Id, X-Connexion-Id');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
       /*
        * ⚠️ LE PRÉVOL SE MÉMORISE (2026-09-19, signalé par le porteur : « en local
@@ -114,6 +122,8 @@ export function createApp() {
   app.use('/api/v2/admin/repartitions', repartitionsAdminRoutes); //  F15 — Phase 4
   app.use('/api/v2/admin/reseau', reseauAdminRoutes); //         F15 — Phase 4
   app.use('/api/v2/admin/calendrier-national', calendrierNationalEcriture); // F15
+  // Les horaires des séances (hiver / été / ramadan) : l'admin les ÉCRIT ici, tout compte les lit.
+  app.use('/api/v2/admin/horaires-seances', horairesEcriture);
   app.use('/api/v2/admin', adminRoutes); //                      F15 — Phase 3
   app.use('/api/v2/etablissements', etablissementsRoutes); //    F2  — Phase 3
   app.use('/api/v2/comptes', comptesRoutes); //                  F12 — Phase 3
@@ -127,9 +137,15 @@ export function createApp() {
    * l'admin l'ÉCRIT — voir `/api/v2/admin/calendrier-national`.
    */
   app.use('/api/v2/calendrier-national', calendrierNationalLecture); //  F3, F13
+  app.use('/api/v2/horaires-seances', horairesLecture);
+  // Espaces mutualisés : partager une salle avec un autre établissement (2026-09-21).
+  app.use('/api/v2/espaces-mutualises', espacesRoutes);
+  // Formateurs mutualisés : affectés dans plusieurs établissements, détectés tout seuls (2026-09-21).
+  app.use('/api/v2/formateurs-mutualises', formateursMutualisesRoutes);
   app.use('/api/v2/repartitions', repartitionsRoutes); //     F3, F13 — Phase 4
 
   // Modules suivants, phase par phase :
+  app.use('/api/v2/generation', generationRoutes); // F6      → Phase 6
   app.use('/api/v2/seances', seancesRoutes); //      F5, F8  → Phase 5
   app.use('/api/v2/modifications', modificationsRoutes); // « Modifié il y a… » — 2026-09-13
   app.use('/api/v2/partages', partagesRoutes); // collaboration — Phase 5bis (c)
@@ -138,6 +154,7 @@ export function createApp() {
   app.use('/api/v2/avancement', avancementRoutes); // F7 → Phase 7
   app.use('/api/v2/meteo', meteoRoutes); // l'emblème de la salutation, sur l'accueil
   app.use('/api/v2/messages', messagerieRoutes); // F10     → Phase 9 (a)
+  app.use('/api/v2/propositions', propositionsRoutes); // F10 → Phase 9 (b)
   app.use('/api/v2/consultation', consultationRoutes); // F14 → Phase 10
   // …
 

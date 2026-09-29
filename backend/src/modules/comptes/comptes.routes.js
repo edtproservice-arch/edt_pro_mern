@@ -6,6 +6,7 @@ import {
   creationCompteSchema,
   creationLotSchema,
   listeComptesSchema,
+  reinitialisationMotDePasseSchema,
   suppressionLotSchema,
 } from 'shared/schemas';
 import { ROLES } from 'shared/constants';
@@ -144,12 +145,15 @@ router.patch(
 
 router.post(
   '/:id/mot-de-passe',
-  validate({ params: identifiantMongo }),
+  validate({ params: identifiantMongo, body: reinitialisationMotDePasseSchema }),
   async (req, res, next) => {
     try {
-      // `motDePasse` n'est présent que pour les comptes sans adresse réelle —
-      // le service décide, la route se contente de relayer.
-      res.json({ success: true, ...(await service.reinitialiserMotDePasse(req.etablissementId, req.params.id)) });
+      // `motDePasse` en retour n'est présent que pour les comptes sans adresse
+      // réelle — le service décide, la route se contente de relayer.
+      res.json({
+        success: true,
+        ...(await service.reinitialiserMotDePasse(req.etablissementId, req.params.id, req.body.motDePasse)),
+      });
     } catch (error) {
       next(error);
     }

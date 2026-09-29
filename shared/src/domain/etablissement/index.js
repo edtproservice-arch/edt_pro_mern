@@ -4,6 +4,12 @@
  */
 export { LONGUEUR_MAXIMALE, propositionsNomAbrege } from './nomAbrege.js';
 export {
+  ETAPES_CONFIGURATION,
+  etapeDeReprise,
+  etapesConfigurationFaites,
+  etapesConfigurationManquantes,
+} from './configuration.js';
+export {
   CHEFS_LIEUX,
   COORDONNEES,
   localiserEtablissement,

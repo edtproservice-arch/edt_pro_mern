@@ -7,6 +7,7 @@ import { resolveTenant } from '../../middleware/resolveTenant.js';
 import { validate } from '../../middleware/validate.js';
 import { exigerDroitPage } from '../partages/exigerDroitPage.js';
 import { annoncerModification } from '../tempsReel/annonces.js';
+import { enregistrerAvecCascade } from '../fermetures/fermetures.service.js';
 import * as service from './calendrier.service.js';
 
 /**
@@ -118,6 +119,13 @@ const calendrierSchema = z.object({
    */
   vacancesEcartees: z.array(z.string().trim().min(1).max(100)).max(50).optional(),
 
+  /*
+   * ⚠️ FAUX PAR DÉFAUT (2026-09-23) : de nouvelles vacances qui recouvrent des
+   * séances ou des heures de chronogramme sont refusées en 409 avec les
+   * chiffres ; l'écran renvoie la même saisie avec ce drapeau une fois lue.
+   */
+  confirmerSuppressions: z.boolean().default(false),
+
   ajustementsFeries: z
     .array(
       z
@@ -141,11 +149,16 @@ const calendrierSchema = z.object({
 
 router.put('/', ECRITURE, validate({ body: calendrierSchema }), async (req, res, next) => {
   try {
-    const resultat = await service.enregistrer(req.etablissementId, {
-      ...req.body,
+    const { version, confirmerSuppressions, anneeScolaire: _annee, ...calendrier } = req.body;
+    const { cascade } = await enregistrerAvecCascade(req.etablissementId, {
       anneeScolaire: req.anneeScolaire,
+      $set: service.champsCalendrier(calendrier),
+      cheminVersion: 'versions.calendrier',
+      version,
+      confirmerSuppressions,
     });
-    res.json({ success: true, ...resultat });
+    const resultat = await service.obtenir(req.etablissementId, req.anneeScolaire);
+    res.json({ success: true, ...resultat, cascade });
     // Le calendrier ferme des colonnes ailleurs : grille, chronogramme, rythme régional.
     annoncerModification(req, ['calendrier', 'emploi', 'chronogramme', 'avancement'], {
       action: 'enregistrer',

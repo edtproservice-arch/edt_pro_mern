@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Building2, Check, ChevronDown, CircleHelp, Layers, Link2, Users, X } from 'lucide-react';
+import { Check, ChevronDown, CircleHelp, Layers, Link2, Users, X } from 'lucide-react';
 import { PAGES_PARTAGEABLES, libellePage, libelleSemaine, urlDePage } from 'shared/domain';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import IconeImmeubles from '@/components/common/IconeImmeubles';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { libelleRole } from '@/features/admin/components/roles';
@@ -372,14 +373,24 @@ export default function BoutonPartager({ page = 'emploi', semaine, publication, 
           de la barre. L'immeuble dit que la page appartient à l'établissement.
         */}
         <Button variant="ghost" size="sm" className="h-8 gap-1.5 px-2 text-sm font-normal">
-          <Building2 className="size-4" />
+          {/* 18 px et non 16 : un dessin plein et plus large que haut paraît plus petit
+              que l'étoile et le « … » voisins à taille égale (2026-09-23).
+              ⚠️ `!` OBLIGATOIRE : `Button` impose `[&_svg]:size-4` à toute icône qu'il
+              contient, sélecteur plus fort qu'une classe seule — sans lui, 16 px. */}
+          <IconeImmeubles className="!size-[18px]" />
           Partager
         </Button>
       </PopoverTrigger>
 
       <PopoverContent
         align="end"
-        className="w-[31rem] max-w-[calc(100vw-2rem)] p-0"
+        /*
+         * ⚠️ BORNÉE À LA HAUTEUR DISPONIBLE (2026-09-23, demande du porteur) : trente
+         * formateurs faisaient sortir la boîte de l'écran, les derniers hors d'atteinte.
+         * La liste des membres défile en elle-même (voir le `<ul>`) ; ce plafond-ci
+         * rattrape le reste sur un petit écran.
+         */
+        className="max-h-[var(--radix-popover-content-available-height)] w-[31rem] max-w-[calc(100vw-2rem)] overflow-y-auto p-0"
         // La boîte reste ouverte derrière « Gérer ses pages » : on y revient après.
         onInteractOutside={(evenement) => gererOuvert && evenement.preventDefault()}
       >
@@ -454,7 +465,8 @@ export default function BoutonPartager({ page = 'emploi', semaine, publication, 
                   <ChoixPages page={page} droits={droitsInvitation} onDroits={setDroitsInvitation} />
                 </div>
 
-                <ul className="space-y-1">
+                {/* La liste défile seule : le champ d'invitation et l'accès général restent en vue. */}
+                <ul className="max-h-[min(22rem,45vh)] space-y-1 overflow-y-auto pr-1">
                   {/* Le propriétaire, toujours en tête — sa ligne ne se modifie pas. */}
                   <li className="flex items-center gap-2.5 py-1">
                     <AvatarPersonne id={moi?.id} nom={moi?.nomComplet} />
@@ -540,7 +552,7 @@ export default function BoutonPartager({ page = 'emploi', semaine, publication, 
                   <p className="text-xs font-medium text-muted-foreground">Accès général</p>
                   <div className="flex items-center gap-2.5">
                     <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
-                      <Building2 className="size-4 text-foreground" />
+                      <IconeImmeubles className="size-4 text-foreground" />
                     </span>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>

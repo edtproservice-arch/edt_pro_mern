@@ -1,0 +1,31 @@
+[package]
+name = "edt-pro"
+version = "0.1.0"
+description = "EDT Pro — application de bureau"
+authors = ["EDT Pro"]
+edition = "2021"
+
+[lib]
+name = "edt_pro_lib"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-process = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Mise à jour automatique : desktop uniquement (le plugin n'existe pas sur mobile).
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

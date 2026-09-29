@@ -6,10 +6,11 @@ import { ROLES } from 'shared/constants';
 import { Separator } from '@/components/ui/separator';
 import FilAriane from './FilAriane';
 import BarreOutilsPage from './BarreOutilsPage';
-import BarreNavigation, { LARGEUR_BARRE } from './BarreNavigation';
+import BarreNavigation from './BarreNavigation';
 import { FournirLargeurPage } from './largeurPage';
 import { FournirSansFilAriane } from './titrePage';
 import { FournirEnTetePage } from './enTetePage';
+import { EmplacementPanneauDroit, FournirPanneauDroit } from './PanneauDroit';
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import BandeauUsurpation from './BandeauUsurpation';
 import BandeauCollaboration from './BandeauCollaboration';
@@ -21,6 +22,8 @@ import { classesAffichage, useAffichage } from '@/lib/preferencesAffichage';
 import { useEpinglage } from '@/lib/epinglageBarre';
 import { cn } from '@/lib/utils';
 import { gererExpirationsession } from '@/lib/apiClient';
+import { useAncreRentrees } from '@/lib/useAncreRentrees';
+import { definirEtablissementActif, lireEtablissementActif } from '@/lib/etablissementActif';
 
 /** Le libellé de contexte affiché à côté du logo, dans la barre horizontale. */
 const TITRE_SESSION = {
@@ -117,12 +120,19 @@ function useGestionInactivite(actif) {
 export default function CoquilleApp() {
   const { pathname } = useLocation();
 
-  const affichage = useAffichage();
+  const affichage = useAffichage(pathname);
   const epinglee = useEpinglage();
 
   const session = useQuery({ queryKey: ['session'], queryFn: recupererSession, retry: false });
 
   const utilisateur = session.data?.utilisateur;
+
+  /*
+   * ⚠️ L'ANCRE DE S1 AVANT TOUTE PAGE (2026-09-28) : sans elle, un calendrier
+   *    affiché au premier rendu daterait S1 du 1er septembre, puis changerait
+   *    de dates sous les yeux une fois les rentrées arrivées.
+   */
+  const ancre = useAncreRentrees(Boolean(utilisateur));
 
   // Déconnexion automatique après 5 minutes d'inactivité
   useGestionInactivite(Boolean(utilisateur));
@@ -180,13 +190,99 @@ export default function CoquilleApp() {
   const estSession =
     role === ROLES.FORMATEUR || role === ROLES.STAGIAIRE || (role === ROLES.ADMIN && Boolean(collaboration));
 
-  if (session.isLoading) return null;
+  if (session.isLoading || !ancre.pret) return null;
   // Un administrateur HORS collaboration n'a rien sous /app : son espace est /admin.
   if (role === ROLES.ADMIN && !collaboration) return <Navigate to="/admin" replace />;
+
+  /*
+   * ═══ ⚠️ UN COMPTE SUR PLUSIEURS ÉTABLISSEMENTS CHOISIT LE SIEN (2026-09-24) ═══
+   * (demande du porteur : « pour les formateurs mutualisés, affectés dans deux
+   * établissements, après connexion il faut choisir à quel établissement se
+   * connecter, avec une option de switcher les établissements sans se
+   * déconnecter ».)
+   *
+   * ⚠️ ELLE VIT ICI, PAS SEULEMENT AU SORTIR DE LA CONNEXION — même raison que
+   * la garde de configuration juste en dessous : la coquille est la porte de
+   * TOUT `/app`, un favori ou un lien direct doit la respecter aussi.
+   *
+   * ⚠️ UN SEUL ÉTABLISSEMENT NE POSE JAMAIS LA QUESTION : c'est le cas de
+   * presque tous les comptes, à qui un écran de choix imposerait un clic de
+   * plus à chaque connexion pour un choix qui n'en est pas un.
+   *
+   * ⚠️ PAS EN COLLABORATION : l'établissement d'un administrateur qui collabore
+   * vient de son jeton (`$locals.collaboration`), jamais de `etablissementIds`
+   * — vide pour lui —, donc jamais de cette garde.
+   */
+  const etablissementIds = utilisateur?.etablissementIds ?? [];
+  const etablissementStocke = lireEtablissementActif();
+
+  /*
+   * ═══ ⚠️⚠️ AUTO-GUÉRISON — L'ÉTABLISSEMENT ACTIF SURVIT À LA DÉCONNEXION
+   * (2026-09-25, signalé par le porteur : « je me déconnecte puis je me
+   * connecte à un autre compte, il mémorise l'ancien établissement — Ces
+   * réglages n'ont pas pu être chargés, Établissement non autorisé ») ═══
+   *
+   * `etablissementActif` vit dans `localStorage` : c'est une préférence du
+   * NAVIGATEUR, pas de la SESSION, et une déconnexion ne l'efface pas — un
+   * second compte, sur le même poste, en hérite. Tant que ce second compte a
+   * plusieurs établissements et que le stocké en fait partie, tout va bien ;
+   * sinon CHAQUE requête posait l'en-tête d'un établissement qui n'est plus le
+   * sien, et `resolveTenant` refusait tout en 403 — y compris le plus simple
+   * des réglages, d'où l'erreur vue à l'écran, sans le moindre rapport avec ce
+   * qu'elle nommait.
+   *
+   * ⚠️ ON L'OUBLIE ICI, AVANT LA MOINDRE REQUÊTE : la coquille rend ses
+   * enfants — barre latérale, page — APRÈS ce point ; eux seuls interrogent le
+   * serveur. Le corriger plus bas (après leur premier rendu) les aurait
+   * laissés partir une fois avec l'en-tête fautif.
+   *
+   * ⚠️ PAS EN COLLABORATION : l'établissement d'un administrateur qui collabore
+   * vient de son jeton, jamais de `etablissementActif`.
+   */
+  if (
+    !collaboration &&
+    etablissementStocke !== null &&
+    !etablissementIds.some((id) => String(id) === etablissementStocke)
+  ) {
+    definirEtablissementActif(null);
+  }
+
+  const etablissementChoisi = etablissementIds.some(
+    (id) => String(id) === lireEtablissementActif()
+  );
+  if (!collaboration && etablissementIds.length > 1 && !etablissementChoisi) {
+    return <Navigate to="/choisir-etablissement" replace />;
+  }
+
+  /*
+   * ═══ ⚠️ AUCUNE PAGE DU DIRECTEUR TANT QUE LA CONFIGURATION N'EST PAS TERMINÉE ═══
+   * (2026-09-20, demande du porteur : « s'il saute les étapes, aucune page de l'espace
+   * directeur ne sera accessible à condition de terminer les étapes ».)
+   *
+   * Jusqu'ici seule la CONNEXION renvoyait vers l'assistant (`routeApresConnexion`) : un
+   * directeur qui tapait `/app/emploi` dans la barre d'adresse, ou rouvrait un favori,
+   * arrivait sur une application vide. La coquille est la porte de TOUT `/app` — la
+   * garde vit ici, pas page par page, pour qu'aucune page ajoutée demain ne l'oublie.
+   *
+   * ⚠️ `=== false`, PAS « falsy » : une session dont le champ manque (une réponse plus
+   * ancienne) ne doit pas enfermer un directeur déjà configuré.
+   *
+   * ⚠️ PAS SOUS USURPATION : l'administrateur qui prend la place d'un directeur vient
+   * REGARDER (décision du 2026-09-06). L'enfermer dans un assistant qu'il ne doit pas
+   * remplir à la place de son propriétaire l'empêcherait d'enquêter.
+   */
+  if (
+    role === ROLES.DIRECTEUR &&
+    utilisateur?.configurationTerminee === false &&
+    !session.data?.impersonateur
+  ) {
+    return <Navigate to="/configuration" replace />;
+  }
 
   if (estSession) {
     return (
       <FournirEnTetePage>
+      <FournirPanneauDroit>
       <SidebarProvider>
         <SidebarInset className="h-svh overflow-hidden">
           {/*
@@ -213,6 +309,8 @@ export default function CoquilleApp() {
             titre={TITRE_SESSION[role]}
             liens={<SectionsConsultation role={role} />}
             messagerie
+            // Le formateur et le stagiaire n'ont pas « Paramètres » : la bascule clair/sombre vit dans leur barre.
+            basculeTheme={role === ROLES.FORMATEUR || role === ROLES.STAGIAIRE}
             // L'administrateur garde SA messagerie et n'a pas de profil sous /app.
             messagerieUrl={collaboration ? '/admin/messagerie' : '/app/messagerie'}
             profilUrl={collaboration ? undefined : '/app/profil'}
@@ -234,12 +332,15 @@ export default function CoquilleApp() {
               route.
             */}
             {/*
-              ═══ LA LARGEUR EST CELLE DE LA BARRE, POUR TOUTE LA SESSION ═══
-              (2026-09-06, demande du porteur.) Le défaut de `CadreReglage`
-              (`max-w-4xl`, 896 px) coupait la dernière colonne des tableaux à
-              neuf colonnes de « Suivi de l'avancement ». C'est la coquille qui
-              tranche, une fois — pas chaque page, où le réglage finirait par
-              être oublié sur la suivante.
+              ═══ LARGEUR À 100 %, POUR TOUTE LA SESSION ═══ (2026-09-22, demande
+              du porteur.) Alignée sur la barre (`max-w-7xl`) depuis le
+              2026-09-06, elle laissait encore de la marge inutilisée de chaque
+              côté sur un grand écran — les tableaux de ces sessions (jusqu'à
+              neuf colonnes) en profitent mieux que le confort de lecture d'un
+              écran de réglages, seul concerné par le défaut de `CadreReglage`
+              (`max-w-4xl`). C'est la coquille qui tranche, une fois — pas
+              chaque page, où le réglage finirait par être oublié sur la
+              suivante.
 
               ⚠️ LA MESSAGERIE N'EST PAS CONCERNÉE (demande explicite du
               porteur), et elle ne l'est pas par construction : elle ne passe pas
@@ -249,20 +350,24 @@ export default function CoquilleApp() {
             */}
             {/* ⚠️ PAS DE FIL D'ARIANE DANS CETTE COQUILLE : une page partagée y
                 rend donc son propre titre (étape d2 bis, `titreDePage`). */}
-            <FournirLargeurPage value={LARGEUR_BARRE}>
+            <FournirLargeurPage value="max-w-full">
               <FournirSansFilAriane value>
                 <Outlet />
               </FournirSansFilAriane>
             </FournirLargeurPage>
           </div>
         </SidebarInset>
+        {/* Le panneau de droite « à la Notion » — voir `PanneauDroit.jsx`. */}
+        <EmplacementPanneauDroit />
       </SidebarProvider>
+      </FournirPanneauDroit>
       </FournirEnTetePage>
     );
   }
 
   return (
     <FournirEnTetePage>
+      <FournirPanneauDroit>
       <SidebarProvider>
       <BarreLaterale />
 
@@ -285,8 +390,12 @@ export default function CoquilleApp() {
         />
 
         {/* La navigation ne s'imprime pas : ce qu'on met sur le papier, c'est le
-            contenu de la page, jamais la barre d'outils qui y mène. */}
-        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-2 border-b bg-background px-4 print:hidden">
+            contenu de la page, jamais la barre d'outils qui y mène.
+            50 px et non `h-16` (64 px) : 14 px rendus à la page (2026-09-23,
+            demande du porteur — 44 px essayés d'abord, jugés trop serrés).
+            ⚠️ Deux hauteurs calculées en dépendent : `CadreReglage`
+            (100svh − 3,125rem) et `GardeEtapes` (100svh − 6,125rem). */}
+        <header className="sticky top-0 z-30 flex h-[50px] shrink-0 items-center gap-2 border-b bg-background px-4 print:hidden">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-2 h-4" />
           <FilAriane courante={courante} />
@@ -311,7 +420,15 @@ export default function CoquilleApp() {
           <Outlet />
         </ContenuPage>
       </SidebarInset>
+      {/*
+        ═══ LE PANNEAU DE DROITE « À LA NOTION » (2026-09-28) ═══ Frère de la
+        zone de page dans la rangée de `SidebarProvider` : pleine hauteur, collé
+        au bord droit, et la zone de page — en-tête compris — se resserre. Voir
+        `PanneauDroit.jsx`.
+      */}
+      <EmplacementPanneauDroit />
     </SidebarProvider>
+      </FournirPanneauDroit>
       </FournirEnTetePage>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
+import Alerte from '@/components/common/Alerte';
 import { useLargeurPage } from '@/components/layout/largeurPage';
 import { titreDePage } from '@/components/layout/navigation';
 import { useSansFilAriane } from '@/components/layout/titrePage';
@@ -194,16 +195,23 @@ export default function CadreReglage({
    * dire ce qui s'est passé.
    */
   if (erreur) {
+    /*
+     * ⚠️ UNE ALERTE, PAS UNE PHRASE GRISE (2026-09-20, demande du porteur). Un texte
+     * `text-muted-foreground` se lisait comme un commentaire de bas de page — or c'est
+     * l'écran ENTIER qui manque. Le composant `Alerte` est celui du reste de
+     * l'application : icône, titre, teinte. Le message du serveur (« Aucune base pour cette
+     * année scolaire ») en est le corps, tel quel.
+     */
     return cadre(
-      <p className="text-sm text-muted-foreground">
-        Ces réglages n&apos;ont pas pu être chargés. {erreur}
-      </p>
+      <Alerte type="avertissement" titre="Ces réglages n’ont pas pu être chargés">
+        {erreur}
+      </Alerte>
     );
   }
 
   if (chargement) {
     return cadre(
-      <div className="flex min-h-[calc(100svh-4rem)] items-center justify-center">
+      <div className="flex min-h-[calc(100svh-3.125rem)] items-center justify-center">
         <IndicateurChargement />
       </div>
     );

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   amorcerPlannings,
   amorcerVersions,
+  fusionnerGrillesFormateurs,
   groupesModifies,
   integrerPlanning,
   omettreGroupes,
@@ -143,11 +144,35 @@ describe('amorcerPlannings — suivre ce qu’un collègue enregistre (étape d2
     expect(suivants.GM101).toBe(apres.GM101);
   });
 
-  // ⚠️ La saisie en cours n'est jamais écrasée par une relecture.
-  it('garde la saisie en cours, même si le serveur a changé', () => {
+  // ⚠️ La case qu'on a touchée n'est jamais écrasée par une relecture.
+  it('garde SA case, mais adopte celle qu’un collègue vient d’ajouter à côté', () => {
+    /*
+     * ⚠️ LE DÉFAUT CORRIGÉ LE 2026-09-23. La copie locale ne touche que la
+     * semaine 1 (5h → 10h) ; le serveur porte en plus une semaine 2, ajoutée
+     * par quelqu'un d'autre PENDANT cette saisie. L'ancienne règle — « garder
+     * TOUT le groupe local dès qu'une case a changé » — aurait rendu `saisie`
+     * telle quelle et PERDU cette semaine 2 au prochain enregistrement (il
+     * écrit le groupe entier). Les deux doivent survivre.
+     */
     const saisie = { GM101: { M1: { 1: { heures: 10, type: 'P' } } } };
     const suivants = amorcerPlannings(saisie, apres, avant);
-    expect(suivants).toBe(saisie);
+    expect(suivants.GM101).toEqual({
+      M1: { 1: { heures: 10, type: 'P' }, 2: { heures: 2.5, type: 'P' } },
+    });
+  });
+
+  it('reprend en entier un module qu’un collègue ajoute, sans toucher au sien', () => {
+    // Même principe qu'au-dessus, mais le collègue touche un AUTRE module du
+    // même groupe : rien ici ne doit empêcher de le reprendre entièrement.
+    const avecDeuxModules = {
+      GM101: { M1: { 1: { heures: 5, type: 'P' } }, M2: { 1: { heures: 3, type: 'P' } } },
+    };
+    const saisie = { GM101: { M1: { 1: { heures: 10, type: 'P' } } } };
+    const suivants = amorcerPlannings(saisie, avecDeuxModules, avant);
+    expect(suivants.GM101).toEqual({
+      M1: { 1: { heures: 10, type: 'P' } },
+      M2: { 1: { heures: 3, type: 'P' } },
+    });
   });
 
   it('ne change rien quand le serveur rend la même chose', () => {
@@ -249,5 +274,54 @@ describe('integrerPlanning — le planning reçu avec l’annonce (2026-09-13)',
     const donnees = { groupe: 'GM101', planning: {}, version: 0 };
     expect(integrerPlanning(donnees, { groupe: 'GM101' })).toBe(donnees);
     expect(integrerPlanning(undefined, annonce)).toBeUndefined();
+  });
+});
+
+describe('fusionnerGrillesFormateurs', () => {
+  it('fusionne les groupes de plusieurs formateurs qui ne se recoupent pas', () => {
+    const grilles = [
+      { plannings: { GM101: planning('M101', 5, 7.5) }, versions: { GM101: 2 } },
+      { plannings: { GM102: planning('M102', 5, 3) }, versions: { GM102: 1 } },
+    ];
+    expect(fusionnerGrillesFormateurs(grilles)).toEqual({
+      plannings: { GM101: planning('M101', 5, 7.5), GM102: planning('M102', 5, 3) },
+      versions: { GM101: 2, GM102: 1 },
+    });
+  });
+
+  it('⚠️ RETIENT LA VERSION LA PLUS HAUTE d’un groupe partagé, quel que soit l’ordre', () => {
+    /*
+     * Le défaut corrigé le 2026-09-22 : une requête encore périmée, placée
+     * APRÈS la fraîche dans le tableau, écrasait la bonne valeur — et la
+     * comparaison avec la saisie en cours ne convergeait alors plus jamais.
+     */
+    const perimee = { plannings: { GM101: planning('M101', 5, 5) }, versions: { GM101: 3 } };
+    const fraiche = { plannings: { GM101: planning('M101', 5, 8) }, versions: { GM101: 4 } };
+
+    expect(fusionnerGrillesFormateurs([fraiche, perimee])).toEqual({
+      plannings: { GM101: planning('M101', 5, 8) },
+      versions: { GM101: 4 },
+    });
+    // Le même résultat, quel que soit l'ordre d'arrivée des deux requêtes.
+    expect(fusionnerGrillesFormateurs([perimee, fraiche])).toEqual({
+      plannings: { GM101: planning('M101', 5, 8) },
+      versions: { GM101: 4 },
+    });
+  });
+
+  it('une seule grille : rendue telle quelle', () => {
+    const grille = { plannings: { GM101: planning('M101', 5, 7.5) }, versions: { GM101: 2 } };
+    expect(fusionnerGrillesFormateurs([grille])).toEqual({
+      plannings: { GM101: planning('M101', 5, 7.5) },
+      versions: { GM101: 2 },
+    });
+  });
+
+  it('rend deux objets vides sans aucune grille', () => {
+    expect(fusionnerGrillesFormateurs([])).toEqual({ plannings: {}, versions: {} });
+  });
+
+  it('une grille sans plannings ni versions ne casse rien', () => {
+    expect(fusionnerGrillesFormateurs([{}])).toEqual({ plannings: {}, versions: {} });
   });
 });

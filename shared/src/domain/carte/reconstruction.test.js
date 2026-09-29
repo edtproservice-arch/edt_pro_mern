@@ -58,6 +58,15 @@ describe('anneeDuNomGroupe', () => {
     expect(anneeDuNomGroupe('ACADA3012')).toBe(3);
   });
 
+  it('⚠️ ignore les suffixes : « DEV301 (CDS) » est de 3ème année', () => {
+    expect(anneeDuNomGroupe('DEV301 (CDS)')).toBe(3);
+    expect(anneeDuNomGroupe('GE201 (GC)')).toBe(2);
+    expect(anneeDuNomGroupe('PIE202 (FQ)')).toBe(2);
+    expect(anneeDuNomGroupe('GE301 (CDS) (GE)')).toBe(3);
+    // Une fusion garde la lecture par son dernier numéro.
+    expect(anneeDuNomGroupe('GM301 GM302 (CDS)')).toBe(3);
+  });
+
   it('retombe sur la première année quand le nom ne dit rien', () => {
     expect(anneeDuNomGroupe('GROUPE')).toBe(1);
     expect(anneeDuNomGroupe('')).toBe(1);
@@ -445,5 +454,58 @@ describe('filieresParGroupe — table persistée', () => {
       groupeFilieres: new Map([['GE101', 'GE_GE_TS']]),
     };
     expect(filieresParGroupe(avecMap).get('GE101')).toBe('GE_GE_TS');
+  });
+});
+
+describe('salles par module (2026-09-23)', () => {
+  /** Les salles du module `code` du groupe `nom`, ou `undefined`. */
+  const sallesDe = (groupes, nom, code) =>
+    groupes.find((g) => g.nom === nom)?.modules.find((m) => m.code === code)?.salles;
+
+  it('REPOSE les salles enregistrées sur le module', () => {
+    /*
+     * ═══ ⚠️ MÊME PIÈGE QUE `modulesInactifs`, EN PLUS RADICAL ═══
+     * Le format e-note n'a AUCUNE colonne de salle — vérifié aussi dans
+     * l'ancien EDT Pro, qui n'en attribue qu'au FORMATEUR. Elles se relisent
+     * donc à part. Sans cela, la carte revient sans salles à l'écran et le
+     * premier enregistrement les efface : l'incident déjà vécu avec `espaces`.
+     */
+    const groupes = reconstruireGroupes(
+      { ...base, sallesAffectations: { 'DEVOWFS201||M202': ['Atelier FM', 'Salle 2'] } },
+      referentiel
+    );
+
+    expect(sallesDe(groupes, 'DEVOWFS201', 'M202')).toEqual(['Atelier FM', 'Salle 2']);
+  });
+
+  it('ne les pose QUE sur le groupe nommé', () => {
+    // Deux groupes d'une même promotion partagent leurs modules : une salle
+    // déclarée chez l'un ne s'impose pas à l'autre.
+    const groupes = reconstruireGroupes(
+      { ...base, sallesAffectations: { 'DEVOWFS201||M202': ['Atelier FM'] } },
+      referentiel
+    );
+
+    expect(sallesDe(groupes, 'DEVOWFS202', 'M202')).toBeUndefined();
+  });
+
+  it('n’écrit PAS de tableau vide sur les modules ordinaires', () => {
+    /*
+     * ⚠️ Un tableau vide partout rendrait indiscernable « aucune salle imposée »
+     *    de « salles effacées », et gonflerait la carte de 80 modules × 24
+     *    groupes de clés qui ne disent rien.
+     */
+    const groupes = reconstruireGroupes(base, referentiel);
+    expect(sallesDe(groupes, 'DEVOWFS201', 'M202')).toBeUndefined();
+  });
+
+  it('accepte une Map, comme Mongoose la rend', () => {
+    // `lireTable` doit traiter les deux formes : objet nu (JSON) et Map (ODM).
+    const groupes = reconstruireGroupes(
+      { ...base, sallesAffectations: new Map([['DEVOWFS201||M202', ['Atelier FM']]]) },
+      referentiel
+    );
+
+    expect(sallesDe(groupes, 'DEVOWFS201', 'M202')).toEqual(['Atelier FM']);
   });
 });

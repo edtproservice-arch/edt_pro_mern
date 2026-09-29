@@ -1,10 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
+import ExcelJS from 'exceljs';
 import { createApp } from '../../src/app.js';
 import { User } from '../../src/models/User.js';
 import { Etablissement } from '../../src/models/Etablissement.js';
 import { Base } from '../../src/models/Base.js';
 import { Seance } from '../../src/models/Seance.js';
+import { Chronogramme } from '../../src/models/Chronogramme.js';
+import { AutoGenConfig } from '../../src/models/AutoGenConfig.js';
+import { memoPose } from '../../src/modules/generation/memoPose.js';
+// ⚠️ ALIAS : ce fichier a déjà un helper local nommé `poser` (l. 86).
+import { poser as poserDirectement } from '../../src/modules/seances/seances.service.js';
 import { Repartition } from '../../src/models/Repartition.js';
 import { CalendrierNational } from '../../src/models/CalendrierNational.js';
 import { oublierMemoire } from '../../src/modules/calendrier/joursFeries.service.js';
@@ -81,6 +87,18 @@ beforeEach(async () => {
   cookies = connexion.headers['set-cookie'];
 });
 
+/*
+ * ⚠️ `superagent` NE BUFFÉRISE EN `Buffer` QUE LES TYPES MIME QU'IL CONNAÎT —
+ * ni le Word ni l'Excel n'en font partie, et `reponse.body` resterait `{}`.
+ * Ce parseur, appliqué avec `.buffer(true).parse(...)`, redonne le binaire tel
+ * quel : c'est le même besoin que `apiClient.telecharger()` côté navigateur.
+ */
+const bufferiser = (res, callback) => {
+  const morceaux = [];
+  res.on('data', (chunk) => morceaux.push(chunk));
+  res.on('end', () => callback(null, Buffer.concat(morceaux)));
+};
+
 const poser = (surcharges = {}) =>
   Seance.create({
     etablissementId: etablissement.id,
@@ -120,8 +138,18 @@ describe('GET /seances/contexte', () => {
        affectations du montage n'en portent aucune, ce que vérifie le test
        suivant. */
     await Base.updateOne({}, { $set: { groupeFilieres: { GM101: 'GM_GM_TS' } } });
+    /*
+      * ═══ ⚠️ DEUX CODES DIFFÉRENTS, À DESSEIN ═══ (2026-09-26)
+      * La carte stocke le code CARTE — c'est celui de la base e-note — et c'est
+      * par lui que `identitesDesGroupes` cherche depuis la bascule. Avec le même
+      * code des deux côtés, ce test serait vert quelle que soit la colonne
+      * interrogée : **aucun pouvoir de détection**. La fixture d'avant n'avait
+      * même PAS de code carte, ce que les données réelles n'admettent jamais
+      * (0 vide sur 13 359 lignes).
+      */
     await Repartition.create({
-      codeFiliereDrif: 'GM_GM_TS',
+      codeFiliereDrif: 'GM_GM_TS_DRIF',
+      codeFiliereCarte: 'GM_GM_TS',
       secteur: 'Génie Mécanique',
       niveauFormation: 'TS',
       filiere: 'Génie Mécanique',
@@ -240,6 +268,47 @@ describe('GET /seances/:semaine', () => {
     expect(reponse.body.jours[0].date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
+  /*
+   * ═══ ⚠️ `espacesAilleurs` — FERMER L'OPTION AVANT LE CLIC (2026-09-25) ═══
+   * (demande du porteur : « en select espace il faut figé ».) Chaque jour porte
+   * les créneaux où une pièce mutualisée a déjà cours chez l'autre
+   * établissement, pour que la liste déroulante des espaces l'éteigne — le
+   * pendant, pour une salle, de `formateursAilleurs`.
+   */
+  it('rend, par jour, les créneaux où un espace mutualisé a déjà cours ailleurs', async () => {
+    const voisin = await Etablissement.create({
+      proprietaireId: etablissement.proprietaireId,
+      region: 'Fès-Meknès',
+      complexe: 'CF Voisin',
+      nom: 'ISTA Voisin',
+      anneeScolaire: ANNEE,
+      espaces: ['Atelier FM'],
+      espacesMutualises: [{ espace: 'Atelier FM', etablissementId: etablissement.id }],
+    });
+
+    await Seance.create({
+      etablissementId: voisin.id,
+      anneeScolaire: ANNEE,
+      semaine: SEMAINE,
+      jour: 'Mardi',
+      seance: 'S2',
+      date: new Date('2026-09-15T00:00:00'),
+      formateurMatricule: '0001',
+      groupe: 'AUTRE',
+      module: 'AUTRE',
+      salle: 'Atelier FM',
+    });
+
+    const reponse = await request(app).get(`/api/v2/seances/${SEMAINE}`).set('Cookie', cookies);
+    const mardi = reponse.body.jours.find((j) => j.jour === 'Mardi');
+
+    expect(mardi.espacesAilleurs).toEqual([
+      { salle: 'Atelier FM (ISTA Voisin)', seance: 'S2', periode: 'jour', par: 'ISTA Voisin', groupe: 'AUTRE' },
+    ]);
+    // Aucun autre jour n'en porte.
+    expect(reponse.body.jours.find((j) => j.jour === 'Lundi').espacesAilleurs).toEqual([]);
+  });
+
   it('marque les jours de VACANCES', async () => {
     const jours = (await request(app).get(`/api/v2/seances/${SEMAINE}`).set('Cookie', cookies)).body
       .jours;
@@ -287,6 +356,422 @@ describe('GET /seances/:semaine', () => {
   it('refuse une valeur de semaine illisible', async () => {
     const reponse = await request(app).get('/api/v2/seances/lundi').set('Cookie', cookies);
     expect(reponse.status).toBe(400);
+  });
+});
+
+/**
+ * Téléchargement Word / PDF / Excel de la « vue globale » (page Édition).
+ * ← `exportGlobal.service.js` : les mêmes données que `GET /seances/:semaine`,
+ *   mises en forme dans le canevas transmis par l'établissement.
+ */
+describe('POST /seances/:semaine/export', () => {
+  it('rend un .docx exploitable, avec son en-tête de téléchargement', async () => {
+    await poser();
+
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/export`)
+      .set('Cookie', cookies)
+      .buffer(true)
+      .parse(bufferiser)
+      .send({ format: 'docx' });
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-type']).toContain(
+      'wordprocessingml.document'
+    );
+    expect(reponse.headers['content-disposition']).toContain('attachment');
+    expect(reponse.headers['content-disposition']).toContain('.docx');
+    // Signature ZIP d'un .docx valide : « PK ».
+    expect(reponse.body.subarray(0, 2).toString()).toBe('PK');
+  }, 30_000 /* ⚠️ La toute première lecture du canevas (83 Ko) peut être ralentie
+               par l'antivirus du poste — au chaud, elle prend quelques centaines
+               de ms. Constaté ici même : 22 s au premier passage, 4,5 s ensuite. */);
+
+  it('rend un .xlsx exploitable', async () => {
+    await poser();
+
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/export`)
+      .set('Cookie', cookies)
+      .buffer(true)
+      .parse(bufferiser)
+      .send({ format: 'xlsx' });
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-type']).toContain('spreadsheetml.sheet');
+    expect(reponse.body.subarray(0, 2).toString()).toBe('PK');
+  });
+
+  it('rend un .pdf exploitable', async () => {
+    await poser();
+
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/export`)
+      .set('Cookie', cookies)
+      .send({ format: 'pdf' });
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-type']).toBe('application/pdf');
+    expect(reponse.body.subarray(0, 5).toString()).toBe('%PDF-');
+  }, 30_000);
+
+  it('respecte l’axe et le sujet DÉSIGNÉ, comme l’écran', async () => {
+    await poser({ formateurMatricule: '9863', groupe: 'GM101' });
+    await poser({ formateurMatricule: '4211', groupe: 'GM102', seance: 'S2' });
+
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/export`)
+      .set('Cookie', cookies)
+      .send({ format: 'xlsx', axe: 'formateur', choisis: ['9863'] });
+
+    expect(reponse.status).toBe(200);
+  });
+
+  it('refuse un format inconnu', async () => {
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/export`)
+      .set('Cookie', cookies)
+      .send({ format: 'jpeg' });
+
+    expect(reponse.status).toBe(400);
+  });
+
+  it('⚠️ REFUSE plutôt que de rendre un document VIDE quand le filtre n’a aucune correspondance', async () => {
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/export`)
+      .set('Cookie', cookies)
+      .send({ format: 'xlsx', axe: 'formateur', choisis: ['MATRICULE-INCONNU'] });
+
+    expect(reponse.status).toBe(400);
+    expect(reponse.body.code).toBe('EXPORT_VIDE');
+  });
+});
+
+/**
+ * L'émargement JOURNALIER — la feuille de signature d'un jour donné.
+ * ← `exportEmargement.service.js` : le découpage en blocs de `agendaDuSujet`
+ *   et le taux d'`avancementModule`, tous deux déjà couverts par leurs propres
+ *   tests de domaine — ici on vérifie seulement le branchement HTTP.
+ */
+describe('POST /seances/:semaine/emargement', () => {
+  it('rend un .docx pour un jour donné, avec le taux d’avancement du module', async () => {
+    // Lundi S1 : 9863 / GM101 / M101 — 30 h prévues (S1Heures de la fixture), 2,5 h posées.
+    await poser();
+
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/emargement`)
+      .set('Cookie', cookies)
+      .buffer(true)
+      .parse(bufferiser)
+      .send({ jour: 'Lundi', format: 'docx' });
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-type']).toContain('wordprocessingml.document');
+    expect(reponse.headers['content-disposition']).toContain('.docx');
+    expect(reponse.body.subarray(0, 2).toString()).toBe('PK');
+  });
+
+  it('rend un .xlsx', async () => {
+    await poser();
+
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/emargement`)
+      .set('Cookie', cookies)
+      .buffer(true)
+      .parse(bufferiser)
+      .send({ jour: 'Lundi', format: 'xlsx' });
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-type']).toContain('spreadsheetml.sheet');
+    expect(reponse.body.subarray(0, 2).toString()).toBe('PK');
+  });
+
+  it('GET /seances/module — l’intitulé vient de la filière CARTE du groupe', async () => {
+    /*
+     * ═══ ⚠️ LE TEST QUI COUVRE `intituleModule` ═══ (2026-09-26)
+     * Il essaie trois critères, du plus précis au plus large, et le dernier est
+     * « le premier module portant ce code », toutes filières confondues. Avec
+     * une seule ligne « M101 » en base, ce repli donnait la bonne réponse quoi
+     * qu'il arrive : la mutation « repasse au code DRIF » SURVIVAIT — mesuré.
+     *
+     * L'homonyme ci-dessous force la recherche à choisir, et c'est le code
+     * CARTE du groupe qui doit trancher.
+     */
+    await poser(); // Lundi S1 : 9863 / GM101 / M101
+    await Base.updateOne({}, { $set: { groupeFilieres: { GM101: 'GM_GM_TS' } } });
+
+    await Repartition.create([
+      {
+        /*
+         * ⚠️ INSÉRÉ EN PREMIER, ET C'EST TOUT L'INTÉRÊT. Le dernier repli de
+         *    `intituleModule` est un `findOne({ codeModule })` SANS tri : il
+         *    rend la première ligne rencontrée. Placé en second, l'homonyme
+         *    perdait, le repli tombait juste par hasard et la mutation
+         *    survivait — mesuré deux fois avant de comprendre.
+         */
+        codeFiliereDrif: 'AUTRE_FILIERE',
+        codeFiliereCarte: 'AUTRE_FILIERE',
+        secteur: 'Digital',
+        niveauFormation: 'TS',
+        filiere: 'Autre filière',
+        anneeFormation: 1,
+        codeModule: 'M101',
+        module: 'NE DOIT PAS APPARAÎTRE',
+      },
+      {
+        codeFiliereDrif: 'GM_GM_TS_DRIF',
+        codeFiliereCarte: 'GM_GM_TS',
+        secteur: 'Génie Mécanique',
+        niveauFormation: 'TS',
+        filiere: 'Génie Mécanique',
+        anneeFormation: 1,
+        codeModule: 'M101',
+        module: 'LE BON',
+      },
+    ]);
+
+    const reponse = await request(app)
+      .get('/api/v2/seances/module?groupe=GM101&module=M101')
+      .set('Cookie', cookies);
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.intitule).toBe('LE BON');
+  });
+
+  it('⚠️ AJOUTE le nom complet du module à côté de son code, depuis la répartition DRIF', async () => {
+    await poser(); // Lundi S1 : 9863 / GM101 / M101
+
+    /*
+     * ⚠️ SANS CE RATTACHEMENT, LE GROUPE N'A PAS DE FILIÈRE et `intituleModule`
+     *    tombe droit dans son dernier repli, « le premier module portant ce
+     *    code » — révélé par l'homonyme ci-dessous, qui gagnait alors. Le test
+     *    passait, mais il ne vérifiait pas ce que son intitulé annonce.
+     */
+    await Base.updateOne({}, { $set: { groupeFilieres: { GM101: 'GM_GM_TS' } } });
+
+    await Repartition.create({
+      codeFiliereDrif: 'GM_GM_TS_DRIF',
+      // ⚠️ Le code que la carte stocke — voir `/seances/contexte` plus haut.
+      codeFiliereCarte: 'GM_GM_TS',
+      secteur: 'Génie Mécanique',
+      niveauFormation: 'TS',
+      filiere: 'Génie Mécanique',
+      anneeFormation: 1,
+      codeModule: 'M101',
+      module: 'Programmation Orientée Objet',
+    });
+
+
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/emargement`)
+      .set('Cookie', cookies)
+      .buffer(true)
+      .parse(bufferiser)
+      .send({ jour: 'Lundi', format: 'xlsx' });
+
+    expect(reponse.status).toBe(200);
+
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(reponse.body);
+    const module = classeur.worksheets[0].getRow(5).getCell(3).value;
+
+    expect(module).toBe('M101 - Programmation Orientée Objet');
+  });
+
+  it('⚠️ GARDE le seul code quand le module est hors référentiel DRIF', async () => {
+    await poser(); // M101, sans aucune Repartition créée.
+
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/emargement`)
+      .set('Cookie', cookies)
+      .buffer(true)
+      .parse(bufferiser)
+      .send({ jour: 'Lundi', format: 'xlsx' });
+
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(reponse.body);
+    const module = classeur.worksheets[0].getRow(5).getCell(3).value;
+
+    expect(module).toBe('M101');
+  });
+
+  it('rend un .pdf', async () => {
+    await poser();
+
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/emargement`)
+      .set('Cookie', cookies)
+      .send({ jour: 'Lundi', format: 'pdf' });
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-type']).toBe('application/pdf');
+    expect(reponse.body.subarray(0, 5).toString()).toBe('%PDF-');
+  }, 30_000);
+
+  it('⚠️ TRIE la liste par nom de formateur, en ordre alphabétique', async () => {
+    // 9863 = BRAHIM LOURID, 4211 = AHMED CHERKAOUI — posés dans l'ordre
+    // INVERSE de l'alphabet pour que le test échoue si le tri disparaît.
+    await poser({ formateurMatricule: '9863', groupe: 'GM101', seance: 'S1' });
+    await poser({ formateurMatricule: '4211', groupe: 'GM102', module: 'M102', seance: 'S2' });
+
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/emargement`)
+      .set('Cookie', cookies)
+      .buffer(true)
+      .parse(bufferiser)
+      .send({ jour: 'Lundi', format: 'xlsx' });
+
+    expect(reponse.status).toBe(200);
+
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(reponse.body);
+    const feuille = classeur.worksheets[0];
+    const noms = [feuille.getRow(5).getCell(1).value, feuille.getRow(6).getCell(1).value];
+
+    expect(noms).toEqual(['AHMED CHERKAOUI', 'BRAHIM LOURID']);
+  });
+
+  it('⚠️ REFUSE plutôt que de rendre un document VIDE — aucune séance ce jour-là', async () => {
+    await poser(); // Lundi seulement
+
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/emargement`)
+      .set('Cookie', cookies)
+      .send({ jour: 'Mardi', format: 'pdf' });
+
+    expect(reponse.status).toBe(400);
+    expect(reponse.body.code).toBe('EMARGEMENT_VIDE');
+  });
+
+  it('refuse un jour qui n’existe pas dans la semaine de travail', async () => {
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/emargement`)
+      .set('Cookie', cookies)
+      .send({ jour: 'Dimanche', format: 'pdf' });
+
+    expect(reponse.status).toBe(400);
+  });
+});
+
+/**
+ * L'emploi du temps INDIVIDUEL d'un formateur — sa semaine à lui seul.
+ * ← `exportIndividuel.service.js` : `assemblerConsultation` (déjà couverte par
+ *   ses propres tests de domaine) fait tout le calcul ; ici on vérifie
+ *   seulement le branchement HTTP.
+ */
+/**
+ * La vue DÉTAILLÉE — une page par sujet affiché. ← `exportIndividuel.service.js` :
+ * MÊMES filtres (axe/choisis/filtre/filtreGroupes) que `/export`, c'est la
+ * même vue sous une autre forme — voir son propre bloc de tests pour ceux qui
+ * n'ont pas besoin d'être rejoués ici (format inconnu, filtre sans
+ * correspondance, etc.).
+ */
+describe('POST /seances/:semaine/individuel', () => {
+  it('rend un .docx, une page par sujet affiché', async () => {
+    await poser();
+
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/individuel`)
+      .set('Cookie', cookies)
+      .buffer(true)
+      .parse(bufferiser)
+      .send({ format: 'docx' });
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-type']).toContain('wordprocessingml.document');
+    expect(reponse.headers['content-disposition']).toContain('.docx');
+    expect(reponse.body.subarray(0, 2).toString()).toBe('PK');
+  }, 30_000 /* ⚠️ La toute première lecture de CE canevas (60 Ko) peut être
+               ralentie par l'antivirus du poste, comme pour celui de
+               `/export` — voir son propre test .docx pour la mesure. */);
+
+  it('rend un .xlsx', async () => {
+    await poser();
+
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/individuel`)
+      .set('Cookie', cookies)
+      .buffer(true)
+      .parse(bufferiser)
+      .send({ format: 'xlsx' });
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-type']).toContain('spreadsheetml.sheet');
+    expect(reponse.body.subarray(0, 2).toString()).toBe('PK');
+  });
+
+  it('rend un .pdf', async () => {
+    await poser();
+
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/individuel`)
+      .set('Cookie', cookies)
+      .send({ format: 'pdf' });
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-type']).toBe('application/pdf');
+    expect(reponse.body.subarray(0, 5).toString()).toBe('%PDF-');
+  }, 45_000 /* ⚠️ PLUSIEURS PAGES, PAS UNE SEULE : cet export convertit UNE page
+               PAR SUJET affiché (ici les deux formateurs de la fixture) — la
+               conversion LibreOffice en prend d'autant plus, ~25 s constaté ici
+               même contre ~11 s pour une seule page. */);
+
+  it('respecte l’axe et le sujet DÉSIGNÉ, comme l’écran', async () => {
+    await poser({ formateurMatricule: '9863', groupe: 'GM101' });
+    await poser({ formateurMatricule: '4211', groupe: 'GM102', seance: 'S2' });
+
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/individuel`)
+      .set('Cookie', cookies)
+      .send({ format: 'xlsx', axe: 'formateur', choisis: ['9863'] });
+
+    expect(reponse.status).toBe(200);
+  });
+
+  it('fonctionne aussi sur l’axe GROUPE, avec les libellés de lignes de cet axe', async () => {
+    await poser();
+
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/individuel`)
+      .set('Cookie', cookies)
+      .buffer(true)
+      .parse(bufferiser)
+      .send({ format: 'docx', axe: 'groupe', choisis: ['GM101'] });
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.subarray(0, 2).toString()).toBe('PK');
+  }, 30_000);
+
+  it('⚠️ N’EXIGE AUCUNE séance — un sujet sans cours reste une page valide', async () => {
+    // 4211 (AHMED CHERKAOUI) n'a jamais été posé cette semaine-là.
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/individuel`)
+      .set('Cookie', cookies)
+      .buffer(true)
+      .parse(bufferiser)
+      .send({ format: 'docx', axe: 'formateur', choisis: ['4211'] });
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.subarray(0, 2).toString()).toBe('PK');
+  });
+
+  it('refuse un format inconnu', async () => {
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/individuel`)
+      .set('Cookie', cookies)
+      .send({ format: 'jpeg' });
+
+    expect(reponse.status).toBe(400);
+  });
+
+  it('⚠️ REFUSE plutôt que de rendre un document VIDE quand le filtre n’a aucune correspondance', async () => {
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/individuel`)
+      .set('Cookie', cookies)
+      .send({ format: 'xlsx', axe: 'formateur', choisis: ['MATRICULE-INCONNU'] });
+
+    expect(reponse.status).toBe(400);
+    expect(reponse.body.code).toBe('EXPORT_VIDE');
   });
 });
 
@@ -568,7 +1053,9 @@ describe('GET /seances/module — la fiche au survol', () => {
   const fiche = (query) =>
     request(app).get('/api/v2/seances/module').query(query).set('Cookie', cookies);
 
-  it('rend l’avancement SEMAINE PAR SEMAINE, dans l’ordre des numéros', async () => {
+  // ⚠️ UNE LIGNE PAR SÉANCE, PAS PAR SEMAINE (2026-09-24, demande du porteur :
+  // « il faut qu'il calcule l'avancement selon la séance, pas la semaine »).
+  it('rend l’avancement SÉANCE PAR SÉANCE, dans l’ordre chronologique', async () => {
     await poser({ semaine: '2026-W10', jour: 'Mardi' });
     await poser({ semaine: '2026-W2', jour: 'Mercredi' });
     await poser({ semaine: '2026-W2', seance: 'S2', jour: 'Mercredi' });
@@ -581,9 +1068,10 @@ describe('GET /seances/module — la fiche au survol', () => {
      * tout se range en présentiel, et la masse à distance reste vide.
      */
     expect(reponse.body.presentiel).toMatchObject({ prevu: 30, pose: 7.5, taux: 25 });
-    expect(reponse.body.presentiel.semaines).toEqual([
-      { semaine: '2026-W2', numero: 2, heures: 5, cumul: 5, taux: 17 },
-      { semaine: '2026-W10', numero: 10, heures: 2.5, cumul: 7.5, taux: 25 },
+    expect(reponse.body.presentiel.seances).toEqual([
+      { semaine: '2026-W2', numero: 2, jour: 'Mercredi', creneau: 'S1', heures: 2.5, cumul: 2.5, taux: 8 },
+      { semaine: '2026-W2', numero: 2, jour: 'Mercredi', creneau: 'S2', heures: 2.5, cumul: 5, taux: 17 },
+      { semaine: '2026-W10', numero: 10, jour: 'Mardi', creneau: 'S1', heures: 2.5, cumul: 7.5, taux: 25 },
     ]);
     expect(reponse.body.synchrone).toMatchObject({ prevu: 0, pose: 0, taux: null });
   });
@@ -618,7 +1106,7 @@ describe('GET /seances/module — la fiche au survol', () => {
     const reponse = await fiche({ groupe: 'GM101', module: 'M101' });
 
     expect(reponse.status).toBe(200);
-    expect(reponse.body.presentiel).toHaveProperty('semaines');
+    expect(reponse.body.presentiel).toHaveProperty('seances');
   });
 });
 
@@ -669,6 +1157,50 @@ describe('⚠️ QUOTA — on ne pose pas plus d’heures que la carte n’en pr
     expect(reponse.status).toBe(409);
     expect(reponse.body.code).toBe('QUOTA_DEPASSE');
     expect(reponse.body.details[0].message).toMatch(/30 h en présentiel déjà posées sur 30 h prévues/);
+  });
+
+  it('COMPTE les séances posées dans la même transaction, via le mémo', async () => {
+    /*
+     * ═══ ⚠️⚠️ LE DÉFAUT QUE CE TEST EXISTE POUR INTERDIRE ═══ (2026-09-22)
+     * La génération remplace les 181 lectures de quota par UN mémo, tenu à jour
+     * par `poser()` lui-même après chaque écriture. Si ce rappel disparaît, le
+     * mémo reste figé sur l'état d'avant : **les séances qu'on vient de poser ne
+     * comptent dans aucun quota**, et la carte laisse poser bien plus d'heures
+     * qu'elle n'en accorde.
+     *
+     * ⚠️ Une mutation l'a montré : supprimer `precharge.noter(...)` ne faisait
+     *    tomber AUCUN des 226 tests. Le dépassement ne se verrait qu'en mai, sur
+     *    un module deux fois trop fourni.
+     *
+     * Ici : 27,5 h déjà posées sur 30 prévues. La première séance passe (30 h),
+     * la SECONDE doit être refusée — et elle ne peut l'être que si le mémo a
+     * enregistré la première.
+     */
+    await remplir(27.5);
+
+    const memo = await memoPose(Seance, etablissement.id, ANNEE, null);
+    const precharge = { ...memo };
+
+    const pose = (jour) =>
+      poserDirectement(
+        etablissement.id,
+        ANNEE,
+        SEMAINE,
+        {
+          jour,
+          seance: 'S4',
+          periode: 'jour',
+          formateurMatricule: '9863',
+          groupe: 'GM101',
+          module: 'M101',
+          salle: 'A12',
+          statut: 'planifie',
+        },
+        { precharge }
+      );
+
+    await expect(pose('Jeudi')).resolves.toBeTruthy();
+    await expect(pose('Vendredi')).rejects.toMatchObject({ code: 'QUOTA_DEPASSE' });
   });
 
   it('accepte tant qu’il reste de la place', async () => {
@@ -743,6 +1275,179 @@ describe('⚠️ QUOTA — on ne pose pas plus d’heures que la carte n’en pr
     expect(reponse.body.importees).toBe(1);
     expect(reponse.body.refusees).toHaveLength(3);
     expect(reponse.body.refusees[0].motif).toMatch(/30 h en présentiel prévues/);
+  });
+
+  /*
+   * ═══ ⚠️⚠️ L'IMPORT VÉRIFIE AUSSI LES ESPACES MUTUALISÉS (2026-09-25, signalé
+   * par le porteur : « il ne vérifie pas le chevauchement des salles
+   * mutualisées… il laisse sélectionner ») ═══
+   * `Seance.insertMany` copiait une semaine directement, sans repasser par
+   * `poser()` — le SEUL endroit qui interroge les autres établissements sur une
+   * salle partagée. La salle était libre dans la semaine SOURCE ; rien ne
+   * disait qu'un autre établissement l'occupait déjà dans la semaine VISÉE.
+   */
+  it('refuse une séance copiée dans une salle mutualisée déjà occupée à la semaine visée', async () => {
+    const voisin = await Etablissement.create({
+      proprietaireId: etablissement.proprietaireId,
+      region: 'Fès-Meknès',
+      complexe: 'CF Voisin',
+      nom: 'ISTA Voisin',
+      anneeScolaire: ANNEE,
+      espaces: ['Atelier FM'],
+    });
+
+    // « Atelier FM » : la pièce d'ISTA Test, partagée avec ISTA Voisin.
+    await Etablissement.updateOne(
+      { _id: etablissement.id },
+      {
+        $set: {
+          espaces: [...etablissement.espaces, 'Atelier FM'],
+          espacesMutualises: [{ espace: 'Atelier FM', etablissementId: voisin.id }],
+        },
+      }
+    );
+
+    // Libre dans la source : rien n'empêche de la poser là.
+    await poser({ semaine: '2026-W40', jour: 'Lundi', seance: 'S3', salle: 'Atelier FM' });
+    // Une seconde séance, sans conflit — pour vérifier qu'elle seule est importée.
+    await poser({ semaine: '2026-W40', jour: 'Lundi', seance: 'S4', salle: 'A12' });
+
+    /*
+     * Mais le VOISIN — l'EMPRUNTEUR — occupe déjà la pièce, cette semaine-CI, au
+     * même créneau. ⚠️ SOUS SON PROPRE LIBELLÉ, comme `libelleEspaceEmprunte`
+     * le construit chez lui : « Atelier FM (ISTA Test) », pas « Atelier FM » —
+     * c'est le nom du PROPRIÉTAIRE (« ISTA Test ») qui la lui désigne, la
+     * pièce portant chez lui le même nom qu'une éventuelle salle à lui.
+     */
+    await Seance.create({
+      etablissementId: voisin.id,
+      anneeScolaire: ANNEE,
+      semaine: SEMAINE,
+      jour: 'Lundi',
+      seance: 'S3',
+      date: new Date('2026-09-15T00:00:00'),
+      formateurMatricule: '0001',
+      groupe: 'AUTRE',
+      module: 'AUTRE',
+      salle: 'Atelier FM (ISTA Test)',
+    });
+
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/importer`)
+      .set('Cookie', cookies)
+      .send({ depuis: '2026-W40' });
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.importees).toBe(1);
+    expect(reponse.body.refusees).toHaveLength(1);
+    expect(reponse.body.refusees[0].motif).toMatch(/Atelier FM.*déjà utilisé/);
+
+    // La séance en conflit n'a PAS été écrite ; l'autre l'a bien été.
+    const ecrites = await Seance.find({ etablissementId: etablissement.id, semaine: SEMAINE }).lean();
+    expect(ecrites.map((s) => s.salle)).toEqual(['A12']);
+  });
+
+  /*
+   * ⚠️ ET LA POSE DIRECTE (2026-09-25, signalé par le porteur : « j'ai vraiment
+   * posé la séance et enregistré » — sur `PUT /case`, pas sur l'import). Même
+   * scénario, mais par la case elle-même : c'est le chemin qu'`ecrireLot`
+   * emprunte aussi pour chaque case d'un lot (collage, génération…), donc le
+   * même test que ci-dessus vaut pour eux tous.
+   */
+  it('refuse de poser une séance dans une salle mutualisée déjà occupée par un autre établissement', async () => {
+    const voisin = await Etablissement.create({
+      proprietaireId: etablissement.proprietaireId,
+      region: 'Fès-Meknès',
+      complexe: 'CF Voisin',
+      nom: 'ISTA Voisin',
+      anneeScolaire: ANNEE,
+      espaces: ['Atelier FM'],
+    });
+
+    await Etablissement.updateOne(
+      { _id: etablissement.id },
+      {
+        $set: {
+          espaces: [...etablissement.espaces, 'Atelier FM'],
+          espacesMutualises: [{ espace: 'Atelier FM', etablissementId: voisin.id }],
+        },
+      }
+    );
+
+    // Le VOISIN — l'EMPRUNTEUR — a déjà cours dans la pièce, ce même créneau.
+    await Seance.create({
+      etablissementId: voisin.id,
+      anneeScolaire: ANNEE,
+      semaine: SEMAINE,
+      jour: 'Lundi',
+      seance: 'S1',
+      date: new Date('2026-09-14T00:00:00'),
+      formateurMatricule: '0001',
+      groupe: 'AUTRE',
+      module: 'AUTRE',
+      salle: 'Atelier FM (ISTA Test)',
+    });
+
+    const reponse = await poserVia({ salle: 'Atelier FM' });
+
+    expect(reponse.status).toBe(409);
+    expect(reponse.body.details?.[0]?.type).toBe('salle');
+    expect(reponse.body.details?.[0]?.message).toMatch(/Atelier FM.*déjà utilisé/);
+
+    const ecrite = await Seance.findOne({ etablissementId: etablissement.id, semaine: SEMAINE }).lean();
+    expect(ecrite).toBeNull();
+  });
+
+  /*
+   * ⚠️ ET QUAND LE PARTAGE EST CROISÉ (2026-09-25, signalé par le porteur, avec
+   * capture des « Partages d'espaces ») : mon établissement prête « Salle 8 » à
+   * un voisin ET lui emprunte « Atelier FM » en retour — les DEUX sens à la
+   * fois, entre les DEUX MÊMES établissements. Rien dans `piecesPartagees` ne
+   * devrait s'en trouver perturbé, mais c'est justement la configuration
+   * signalée en défaut : elle mérite son propre test plutôt qu'une supposition.
+   */
+  it('refuse encore quand les DEUX établissements se prêtent chacun un espace', async () => {
+    const voisin = await Etablissement.create({
+      proprietaireId: etablissement.proprietaireId,
+      region: 'Fès-Meknès',
+      complexe: 'CF Voisin',
+      nom: 'ISTA Voisin',
+      anneeScolaire: ANNEE,
+      espaces: ['Atelier FM'],
+      // Le voisin ME prête « Atelier FM », dans l'autre sens du partage ci-dessous.
+      espacesMutualises: [{ espace: 'Atelier FM', etablissementId: etablissement.id }],
+    });
+
+    // Moi, je LUI prête « Salle 8 ».
+    await Etablissement.updateOne(
+      { _id: etablissement.id },
+      {
+        $set: {
+          espaces: [...etablissement.espaces, 'Salle 8'],
+          espacesMutualises: [{ espace: 'Salle 8', etablissementId: voisin.id }],
+        },
+      }
+    );
+
+    // Le VOISIN occupe déjà « Salle 8 » sous SON libellé, ce créneau-ci.
+    await Seance.create({
+      etablissementId: voisin.id,
+      anneeScolaire: ANNEE,
+      semaine: SEMAINE,
+      jour: 'Lundi',
+      seance: 'S1',
+      date: new Date('2026-09-14T00:00:00'),
+      formateurMatricule: '0001',
+      groupe: 'AUTRE',
+      module: 'AUTRE',
+      salle: 'Salle 8 (ISTA Test)',
+    });
+
+    const reponse = await poserVia({ salle: 'Salle 8' });
+
+    expect(reponse.status).toBe(409);
+    expect(reponse.body.details?.[0]?.type).toBe('salle');
+    expect(reponse.body.details?.[0]?.message).toMatch(/Salle 8.*déjà utilisé/);
   });
 });
 
@@ -1187,11 +1892,22 @@ describe('GET /seances/modules-regionaux', () => {
  * S3 = lundi 14 septembre → samedi 19. GM101 et GM102 sont des 1ʳᵉ années.
  */
 describe('Rentrée — les trois chemins d’écriture', () => {
+  /*
+   * ⚠️ LES 2ᵉ ANNÉES RENTRENT LE 1er SEPTEMBRE (2026-09-28). Depuis le
+   *    2026-09-25, S1 est la semaine de la rentrée LA PLUS PRÉCOCE : avec la
+   *    seule rentrée des 1ʳᵉ années, S1 démarrerait à celle-ci et plus rien ne
+   *    pourrait être gelé. Une rentrée plus tôt pour un autre niveau garde S1
+   *    sur la semaine du 31/08 — donc « S3 = 14 septembre », comme ci-dessus —
+   *    et le gel des 1ʳᵉ années se teste comme avant.
+   */
   const gelerJusquAu = (date) =>
     CalendrierNational.create({
       anneeScolaire: ANNEE,
       vacances: [],
-      rentrees: [{ anneeFormation: 1, date }],
+      rentrees: [
+        { anneeFormation: 1, date },
+        { anneeFormation: 2, date: '2026-09-01' },
+      ],
     });
 
   /*
@@ -1678,5 +2394,217 @@ describe('POST /seances/:semaine/lot — un geste entier en une requête', () =>
       .post(`/api/v2/seances/${SEMAINE}/lot`)
       .send({ operations: [{ type: 'poser', seance: seance() }] });
     expect(reponse.status).toBe(401);
+  });
+});
+
+describe('Verrou du chronogramme (2026-09-27)', () => {
+  /*
+   * ═══ ⚠️ CE QUE CETTE SUITE GARDE ═══
+   * Le chronogramme fixe COMBIEN d'heures chaque module reçoit par semaine.
+   * Sous verrou, tout ce qui change cette allocation est refusé ; le
+   * DÉPLACEMENT, la SALLE et l'ABSENCE restent libres.
+   *
+   * ⚠️ L'ancien ne vérifiait qu'À L'ÉCRAN — sept gestionnaires d'événement, et
+   *    rien au serveur. Une requête forgée, ou un onglet ouvert avant que le
+   *    chronogramme soit planifié, passait. Ces tests portent sur le SERVEUR.
+   */
+  const planifier = () =>
+    Chronogramme.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      groupe: 'GM101',
+      planning: new Map([['M101', [{ semaine: 'S3', heures: 5, type: 'P' }]]]),
+    });
+
+  const creneau = { jour: 'Lundi', seance: 'S1', periode: 'jour', formateurMatricule: '9863' };
+  const cours = { ...creneau, groupe: 'GM101', module: 'M101', salle: 'A12' };
+
+  const ecrire = (corps) =>
+    request(app).put(`/api/v2/seances/${SEMAINE}/case`).set('Cookie', cookies).send(corps);
+
+  const lot = (operations) =>
+    request(app).post(`/api/v2/seances/${SEMAINE}/lot`).set('Cookie', cookies).send({ operations });
+
+  describe('quand rien ne verrouille', () => {
+    it('sans chronogramme planifié, tout passe comme avant', async () => {
+      expect((await ecrire(cours)).status).toBe(200);
+    });
+
+    it('⚠️ DISSOCIÉ, tout passe MÊME avec un chronogramme planifié', async () => {
+      // C'est tout l'objet de l'interrupteur : le plan reste, il cesse de faire loi.
+      await planifier();
+      await AutoGenConfig.create({
+        etablissementId: etablissement.id,
+        anneeScolaire: ANNEE,
+        chronogrammeLie: false,
+      });
+
+      expect((await ecrire(cours)).status).toBe(200);
+    });
+
+    it('⚠️ un chronogramme ENREGISTRÉ MAIS VIDE ne verrouille pas', async () => {
+      // Une ligne peut exister avec un planning vide, après réinitialisation.
+      await Chronogramme.create({
+        etablissementId: etablissement.id,
+        anneeScolaire: ANNEE,
+        groupe: 'GM101',
+        planning: new Map([['M101', [{ semaine: 'S3', heures: 0, type: 'P' }]]]),
+      });
+
+      expect((await ecrire(cours)).status).toBe(200);
+    });
+  });
+
+  describe('sous verrou', () => {
+    beforeEach(planifier);
+
+    it('REFUSE d’ajouter une séance sur une case vide', async () => {
+      const reponse = await ecrire(cours);
+      expect(reponse.status).toBe(409);
+      expect(reponse.body.code).toBe('CHRONOGRAMME_VERROUILLE');
+      // ⚠️ Le message dit la VOIE À SUIVRE : « impossible » ferait chercher une panne.
+      expect(JSON.stringify(reponse.body)).toContain('dissociez');
+    });
+
+    it('REFUSE de changer le module d’une séance', async () => {
+      await poser();
+      const reponse = await ecrire({ ...cours, module: 'M102' });
+      expect(reponse.status).toBe(409);
+      expect(reponse.body.message).toContain('module');
+    });
+
+    it('REFUSE de changer le groupe d’une séance', async () => {
+      await poser();
+      const reponse = await ecrire({ ...cours, groupe: 'GM102' });
+      expect(reponse.status).toBe(409);
+      expect(reponse.body.message).toContain('groupe');
+    });
+
+    it('REFUSE de vider une case', async () => {
+      await poser();
+      const reponse = await request(app)
+        .delete(`/api/v2/seances/${SEMAINE}/case`)
+        .set('Cookie', cookies)
+        .send(creneau);
+      expect(reponse.status).toBe(409);
+      expect(await Seance.countDocuments({ etablissementId: etablissement.id })).toBe(1);
+    });
+
+    it('REFUSE d’importer une autre semaine', async () => {
+      const reponse = await request(app)
+        .post(`/api/v2/seances/${SEMAINE}/importer`)
+        .set('Cookie', cookies)
+        .send({ depuis: '2026-W2' });
+      expect(reponse.status).toBe(409);
+      expect(reponse.body.code).toBe('CHRONOGRAMME_VERROUILLE');
+    });
+
+    it('⚠️ LAISSE PASSER la salle — elle ne change aucun cours', async () => {
+      /*
+        * ⚠️ L'`id` VOYAGE, comme le fait l'écran quand il MODIFIE une case.
+        *    Sans lui, le serveur y voit une séance NEUVE qui entre en conflit
+        *    avec celle déjà posée — `CRENEAU_OCCUPE`, et non le verrou.
+        */
+      const existante = await poser();
+      const reponse = await ecrire({ ...cours, id: existante.id, salle: 'B7' });
+
+      expect(reponse.status).toBe(200);
+      expect(reponse.body.seance.salle).toBe('B7');
+    });
+
+    it('⚠️ LAISSE PASSER l’absence — la séance reste posée, elle n’est pas donnée', async () => {
+      const existante = await poser();
+      const reponse = await ecrire({ ...cours, id: existante.id, statut: 'absent' });
+
+      expect(reponse.status).toBe(200);
+      expect(reponse.body.seance.statut).toBe('absent');
+    });
+
+    it('⚠️ LAISSE PASSER un DÉPLACEMENT, qui s’exécute pourtant en deux écritures', async () => {
+      /*
+       * `poser` à la destination puis `vider` à la source. Les laisser subir le
+       * verrou séparément le refuserait TOUJOURS : la destination est vide
+       * (« ajouter »), la source doit être vidée (« supprimer »). Or déplacer
+       * ne change aucun volume.
+       */
+      await poser();
+
+      const reponse = await lot([
+        { cle: 'd1', type: 'deplacer', source: creneau, seance: { ...cours, seance: 'S2' } },
+      ]);
+
+      expect(reponse.status).toBe(200);
+      expect(reponse.body.resultats[0].ok).toBe(true);
+
+      const restantes = await Seance.find({ etablissementId: etablissement.id }).lean();
+      expect(restantes).toHaveLength(1);
+      expect(restantes[0].seance).toBe('S2');
+    });
+
+    it('⚠️⚠️ REFUSE un lot ÉTIQUETÉ « deplacer » qui change en fait le module', async () => {
+      /*
+       * ═══ LE TROU QUE LE TRAITEMENT « UN SEUL GESTE » OUVRAIT ═══
+       * Le type d'opération vient du CLIENT. Sans contrôle du cours, il
+       * suffirait d'étiqueter « deplacer » une écriture qui change le module
+       * pour traverser le verrou — et l'exemption accordée au déplacement
+       * deviendrait la porte de service du verrou tout entier.
+       */
+      await poser();
+
+      const reponse = await lot([
+        {
+          cle: 'd1',
+          type: 'deplacer',
+          source: creneau,
+          seance: { ...cours, seance: 'S2', module: 'M102' },
+        },
+      ]);
+
+      expect(reponse.body.resultats[0].ok).toBe(false);
+      expect(reponse.body.resultats[0].erreur.code).toBe('CHRONOGRAMME_VERROUILLE');
+
+      // Rien n'a bougé.
+      const restantes = await Seance.find({ etablissementId: etablissement.id }).lean();
+      expect(restantes).toHaveLength(1);
+      expect(restantes[0]).toMatchObject({ seance: 'S1', module: 'M101' });
+    });
+
+    it('⚠️⚠️ LA GÉNÉRATION N’EST PAS BLOQUÉE — elle est le producteur légitime', async () => {
+      /*
+       * ═══ LE TEST QUI ÉVITE LA RÉGRESSION LA PLUS GRAVE ═══
+       * La génération traduit le chronogramme en grille. La lui interdire au
+       * nom du chronogramme serait exactement l'inverse de ce que le verrou
+       * protège — et la panne serait totale : plus aucune grille produisible
+       * dès qu'un groupe est planifié, c'est-à-dire dans le cas NORMAL.
+       */
+      const posee = await poserDirectement(
+        etablissement.id,
+        ANNEE,
+        SEMAINE,
+        { ...cours, periode: 'jour' },
+        { verrou: false }
+      );
+
+      expect(posee.module).toBe('M101');
+      expect(await Seance.countDocuments({ etablissementId: etablissement.id })).toBe(1);
+    });
+
+    it('⚠️ mais le DÉFAUT est verrouillé : un appelant qui oublie le réglage est bloqué', async () => {
+      /*
+       * Le sens du défaut est un choix de sûreté : un appelant futur qui
+       * oublie `verrou` est REFUSÉ, ce qui se voit tout de suite. L'inverse
+       * laisserait passer une écriture qui ne devait pas passer — et cela ne
+       * se voit pas.
+       */
+      await expect(
+        poserDirectement(etablissement.id, ANNEE, SEMAINE, { ...cours, periode: 'jour' })
+      ).rejects.toMatchObject({ code: 'CHRONOGRAMME_VERROUILLE' });
+    });
+
+    it('REFUSE « poser » dans un lot, comme à l’unité', async () => {
+      const reponse = await lot([{ cle: 'p1', type: 'poser', seance: cours }]);
+      expect(reponse.body.resultats[0].ok).toBe(false);
+      expect(reponse.body.resultats[0].erreur.code).toBe('CHRONOGRAMME_VERROUILLE');
+    });
   });
 });

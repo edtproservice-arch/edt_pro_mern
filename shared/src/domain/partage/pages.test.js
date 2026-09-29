@@ -6,6 +6,7 @@ import {
   droitBorne,
   grouperPages,
   libellePage,
+  ordonnerPages,
   pagePrete,
   pageAnnuelle,
   pagesPretes,
@@ -81,6 +82,25 @@ describe('grouperPages', () => {
   it('ne rend aucune colonne vide', () => {
     expect(grouperPages([])).toEqual([]);
     expect(grouperPages(undefined)).toEqual([]);
+  });
+});
+
+describe('ordonnerPages', () => {
+  it('range Affectations, Chronogramme puis Emploi du temps', () => {
+    const triees = ordonnerPages([{ page: 'emploi' }, { page: 'chronogramme' }, { page: 'affectations' }]);
+    expect(triees.map((e) => e.page)).toEqual(['affectations', 'chronogramme', 'emploi']);
+  });
+
+  it('garde les pages hors de l’ordre, à la fin et dans leur ordre d’arrivée', () => {
+    const triees = ordonnerPages([{ page: 'xyz' }, { page: 'emploi' }, { page: 'stages' }]);
+    expect(triees.map((e) => e.page)).toEqual(['emploi', 'xyz', 'stages']);
+  });
+
+  it('ne modifie pas le tableau reçu et tolère l’absence d’entrées', () => {
+    const entrees = [{ page: 'emploi' }, { page: 'affectations' }];
+    ordonnerPages(entrees);
+    expect(entrees[0].page).toBe('emploi');
+    expect(ordonnerPages(undefined)).toEqual([]);
   });
 });
 

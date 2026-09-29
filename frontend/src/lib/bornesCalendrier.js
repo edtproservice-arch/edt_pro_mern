@@ -18,14 +18,18 @@ import { bornesAnneeScolaire } from 'shared/domain';
  * rendrait inaccessibles les premiers jours de l'année, ceux de la semaine S1.
  *
  * @param {number|null} anneeScolaire année de septembre (2026 pour « 2026-2027 »)
+ * @param {Array<{anneeFormation: number, date: string}>} [rentrees] — celles
+ *   de `anneeScolaire`, pour démarrer l'année sur la rentrée la plus précoce
+ *   plutôt que sur le 1er septembre (voir `lundiPremiereSemaine`). Omises, le
+ *   calendrier se borne comme avant cette révision.
  * @returns {object} propriétés à étaler sur `<Calendar>` — vide si l'année est
  *   inconnue, auquel cas mieux vaut un calendrier libre qu'un calendrier borné
  *   sur une année devinée.
  */
-export function bornesCalendrier(anneeScolaire) {
+export function bornesCalendrier(anneeScolaire, rentrees = []) {
   if (!Number.isInteger(anneeScolaire)) return {};
 
-  const { debut, fin } = bornesAnneeScolaire(anneeScolaire);
+  const { debut, fin } = bornesAnneeScolaire(anneeScolaire, rentrees);
   const premierJour = enDate(debut);
   const dernierJour = enDate(fin);
 

@@ -1,3 +1,4 @@
+import { emailDeduit, resoudreHomonymes } from 'shared/domain';
 import { Base } from '../../models/Base.js';
 import { EnoteImport } from '../../models/EnoteImport.js';
 import { notFound } from '../../lib/httpError.js';
@@ -41,6 +42,13 @@ export async function obtenir(etablissementId, anneeScolaire) {
      */
     modulesInactifs: Object.fromEntries(base.modulesInactifs ?? []),
     groupeFilieres: Object.fromEntries(base.groupeFilieres ?? []),
+    /*
+     * ⚠️ MÊME PIÈGE QUE `modulesInactifs` CI-DESSUS, et il a déjà coûté une
+     * perte de données avec `espaces` : la carte se reconstruit à partir de CE
+     * présentateur. Sans cette ligne, elle reviendrait sans salles et le
+     * premier enregistrement les effacerait toutes, silencieusement.
+     */
+    sallesAffectations: Object.fromEntries(base.sallesAffectations ?? []),
     affectations: base.affectations,
     // La version que la carte renverra (étape d3).
     version: base.version ?? 0,
@@ -133,6 +141,140 @@ export async function corrigerFormateurs(etablissementId, anneeScolaire, correct
   base.version = (base.version ?? 0) + 1;
   await base.save();
   return { corriges: corrections.length, version: base.version };
+}
+
+const majuscules = (texte) => String(texte ?? '').trim().replace(/\s+/g, ' ').toUpperCase();
+
+/** Ce qui lie une affectation à son formateur : le matricule, à défaut le nom. */
+const identifiantDe = (formateur) =>
+  majuscules(formateur.matricule) || majuscules(formateur.nomComplet);
+
+/**
+ * Ajoute, met à jour et retire des formateurs DIRECTEMENT dans la base.
+ * ← demande du porteur (2026-09-19) : l'ajout se fait depuis la page Formateurs.
+ *
+ * ═══ POURQUOI UNE ROUTE À PART, ET PAS LA CARTE ═══
+ * La carte reconstruit la base à partir des lignes de ses modules : un formateur
+ * qu'aucun module ne nomme n'y a aucune ligne, donc aucune existence. Ajouté
+ * depuis la page Formateurs, il aurait disparu au premier enregistrement.
+ * (`enregistrerCarte` les reprend désormais — mais ce n'est pas à la carte de
+ * porter une liste qu'on gère ici.)
+ *
+ * ⚠️ UN FORMATEUR DÉJÀ PRÉSENT (même matricule, sinon même nom) est MIS À JOUR, pas
+ * dupliqué, et un champ vide ne EFFACE PAS la valeur en place : c'est la règle de
+ * l'import Excel côté carte (`fusionnerFormateurs`), reprise telle quelle.
+ *
+ * ⚠️ RETIRER UN FORMATEUR LIBÈRE SES AFFECTATIONS. Son nom resté sur un module
+ * produirait un formateur inconnu à la lecture.
+ *
+ * ⚠️ UN MATRICULE DONNÉ À UN FORMATEUR QUI N'EN AVAIT PAS change ce qui LIE ses
+ * affectations (le matricule, à défaut le nom) : elles sont réécrites avec, sinon
+ * elles ne le retrouveraient plus.
+ *
+ * Une base absente est créée vide : sur une année neuve, c'est ici qu'on commence.
+ * Un seul `save()`, et la version avance — la carte d'un collègue ouverte avant
+ * serait sinon capable d'écraser cet ajout.
+ */
+export async function modifierListeFormateurs(
+  etablissementId,
+  anneeScolaire,
+  { ajouter = [], retirer = [] }
+) {
+  let base = await Base.findOne({ etablissementId, anneeScolaire });
+
+  if (!base) {
+    if (ajouter.length === 0) throw notFound('Aucune base pour cette année', { code: 'BASE_ABSENTE' });
+    base = new Base({ etablissementId, anneeScolaire, origine: 'carte' });
+  }
+
+  let liste = base.formateurs.map((formateur) => ({
+    matricule: formateur.matricule ?? '',
+    nomComplet: formateur.nomComplet,
+    nomUnique: formateur.nomUnique ?? '',
+    email: formateur.email ?? '',
+    masseHoraire: formateur.masseHoraire ?? 0,
+  }));
+  let affectations = base.affectations.map((affectation) => affectation.toObject());
+
+  // ─── Retraits ────────────────────────────────────────────────────────────
+  const aRetirer = new Set(retirer.map(majuscules));
+  const identifiantsRetires = new Set(
+    liste.filter((formateur) => aRetirer.has(majuscules(formateur.nomComplet))).map(identifiantDe)
+  );
+  const retires = liste.filter((formateur) => aRetirer.has(majuscules(formateur.nomComplet)));
+  liste = liste.filter((formateur) => !aRetirer.has(majuscules(formateur.nomComplet)));
+
+  const avant = affectations.length;
+  affectations = affectations.filter(
+    (affectation) => !identifiantsRetires.has(majuscules(affectation.formateur))
+  );
+  const affectationsLiberees = avant - affectations.length;
+
+  // ─── Ajouts et mises à jour ──────────────────────────────────────────────
+  let ajoutes = 0;
+  let misAJour = 0;
+
+  for (const entree of ajouter) {
+    const nomComplet = majuscules(entree.nom);
+    if (nomComplet === '') continue;
+
+    const matricule = String(entree.matricule ?? '').trim();
+    const existant =
+      (matricule !== '' &&
+        liste.find((candidat) => majuscules(candidat.matricule) === majuscules(matricule))) ||
+      liste.find((candidat) => majuscules(candidat.nomComplet) === nomComplet);
+
+    if (existant) {
+      const ancienId = identifiantDe(existant);
+
+      if (matricule !== '') existant.matricule = matricule;
+      if (entree.email) existant.email = entree.email;
+      if (entree.masseHoraire) existant.masseHoraire = Number(entree.masseHoraire);
+
+      const nouvelId = identifiantDe(existant);
+      if (nouvelId !== ancienId) {
+        for (const affectation of affectations) {
+          if (majuscules(affectation.formateur) === ancienId) affectation.formateur = nouvelId;
+        }
+      }
+
+      misAJour += 1;
+      continue;
+    }
+
+    liste.push({
+      matricule,
+      nomComplet,
+      nomUnique: '',
+      // Une adresse laissée vide se déduit du nom, comme à l'import.
+      email: entree.email || emailDeduit(nomComplet, matricule),
+      masseHoraire: Number(entree.masseHoraire) || 0,
+    });
+    ajoutes += 1;
+  }
+
+  // Ajouter un homonyme change le préfixe de l'autre : les noms uniques se
+  // recalculent sur toute la liste, comme à chaque enregistrement de la carte.
+  const resolus = resoudreHomonymes(
+    liste.map(({ nomComplet, matricule }) => ({ nomComplet, matricule }))
+  );
+  liste = liste.map((formateur, index) => ({ ...formateur, nomUnique: resolus[index].nomUnique }));
+
+  // Même ordre que la base produite par l'import : comparaison par octets.
+  liste.sort((a, b) => (a.nomComplet < b.nomComplet ? -1 : a.nomComplet > b.nomComplet ? 1 : 0));
+
+  base.formateurs = liste;
+  base.affectations = affectations;
+  base.version = (base.version ?? 0) + 1;
+  await base.save();
+
+  return {
+    ajoutes,
+    misAJour,
+    retires: retires.length,
+    affectationsLiberees,
+    version: base.version,
+  };
 }
 
 /** Masse horaire statutaire d'un formateur, corrigée par l'établissement. */

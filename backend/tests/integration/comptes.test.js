@@ -125,6 +125,89 @@ describe('Création de comptes', () => {
   });
 });
 
+/*
+ * ⚠️ UN FORMATEUR MUTUALISÉ REJOINT SON COMPTE, IL N'EN REÇOIT PAS UN SECOND
+ * (2026-09-24) : deux établissements distincts qui créent le même matricule
+ * FORMATEUR doivent finir sur UN SEUL compte, rattaché aux deux — pas sur un
+ * `409` qui laisse le second établissement sans rien.
+ */
+describe('Formateurs mutualisés (compte partagé entre établissements)', () => {
+  it('rattache le compte existant au second établissement plutôt que de refuser', async () => {
+    const premier = await request(app)
+      .post('/api/v2/comptes')
+      .set('Cookie', cookiesDirecteur)
+      .send(nouveauFormateur);
+    expect(premier.status).toBe(201);
+
+    const connexionVoisin = await request(app)
+      .post('/api/v2/auth/connexion')
+      .send({ identifiant: 'voisin@edtpro.ma', motDePasse: MOT_DE_PASSE });
+    const cookiesVoisin = connexionVoisin.headers['set-cookie'];
+
+    const second = await request(app)
+      .post('/api/v2/comptes')
+      .set('Cookie', cookiesVoisin)
+      // Même identifiant, un nom éventuellement mieux orthographié dans cette
+      // base-ci : ça ne fait pas un compte distinct, c'est la même personne.
+      .send({ ...nouveauFormateur, nomComplet: 'Ahmed CHERKAOUI' });
+
+    // Rattaché, pas refusé : même identifiant Mongo que le premier compte.
+    expect(second.status).toBe(201);
+    expect(second.body.compte.id).toBe(premier.body.compte.id);
+
+    const compte = await User.findById(premier.body.compte.id);
+    expect(compte.etablissementIds.map((id) => id.toString()).sort()).toEqual(
+      [etablissement.id, autreEtablissement.id].sort()
+    );
+    // Le premier établissement à l'avoir créé reste maître du nom et du mot de
+    // passe : rejoindre un second établissement ne les réécrit pas.
+    expect(compte.nomComplet).toBe('Ahmed Cherkaoui');
+
+    // Il peut se connecter avec le mot de passe posé par le PREMIER établissement.
+    const connexion = await request(app)
+      .post('/api/v2/auth/connexion')
+      .send({ identifiant: '9863', motDePasse: 'Formateur2026' });
+    expect(connexion.body.action).toBe('connecte');
+  });
+
+  it('refuse encore un doublon dans le MÊME établissement', async () => {
+    await request(app).post('/api/v2/comptes').set('Cookie', cookiesDirecteur).send(nouveauFormateur);
+    const doublon = await request(app)
+      .post('/api/v2/comptes')
+      .set('Cookie', cookiesDirecteur)
+      .send(nouveauFormateur);
+
+    expect(doublon.status).toBe(409);
+    expect(doublon.body.code).toBe('COMPTE_EXISTANT');
+  });
+
+  it('ne mutualise jamais un gestionnaire ou un stagiaire : identifiant partagé, comptes distincts refusés', async () => {
+    await User.create({
+      nomComplet: 'Gestionnaire Voisin',
+      identifiant: '5555',
+      email: '5555@placeholder.ofppt.ma',
+      motDePasse: MOT_DE_PASSE,
+      role: ROLES.GESTIONNAIRE,
+      statut: STATUTS_COMPTE.APPROUVE,
+      estVerifie: true,
+      etablissementIds: [autreEtablissement.id],
+    });
+
+    const reponse = await request(app)
+      .post('/api/v2/comptes')
+      .set('Cookie', cookiesDirecteur)
+      .send({
+        nomComplet: 'Homonyme',
+        role: ROLES.GESTIONNAIRE,
+        identifiant: '5555',
+        motDePasse: 'Gestionnaire2026',
+      });
+
+    expect(reponse.status).toBe(409);
+    expect(reponse.body.code).toBe('COMPTE_EXISTANT');
+  });
+});
+
 describe('Isolation entre établissements', () => {
   it("ne liste que les comptes de son propre établissement", async () => {
     await request(app).post('/api/v2/comptes').set('Cookie', cookiesDirecteur).send(nouveauFormateur);
@@ -215,20 +298,30 @@ describe('Activation et mot de passe', () => {
     expect(reconnexion.status).toBe(403);
   });
 
-  it('renvoie le mot de passe quand aucune adresse réelle n\'existe', async () => {
+  it('reprend le mot de passe saisi par le directeur quand aucune adresse réelle n\'existe', async () => {
     const reponse = await request(app)
       .post(`/api/v2/comptes/${formateurId}/mot-de-passe`)
-      .set('Cookie', cookiesDirecteur);
+      .set('Cookie', cookiesDirecteur)
+      .send({ motDePasse: 'Nouveau2026' });
 
     // Sans adresse réelle, aucun autre canal ne permet de le transmettre.
     expect(reponse.body.aTransmettre).toBe(true);
-    expect(reponse.body.motDePasse).toMatch(/^Aa1/);
+    expect(reponse.body.motDePasse).toBe('Nouveau2026');
     expect(envois).toHaveLength(0);
 
     const connexion = await request(app)
       .post('/api/v2/auth/connexion')
-      .send({ identifiant: '9863', motDePasse: reponse.body.motDePasse });
+      .send({ identifiant: '9863', motDePasse: 'Nouveau2026' });
     expect(connexion.body.action).toBe('connecte');
+  });
+
+  it('refuse un mot de passe qui ne respecte pas la règle', async () => {
+    const reponse = await request(app)
+      .post(`/api/v2/comptes/${formateurId}/mot-de-passe`)
+      .set('Cookie', cookiesDirecteur)
+      .send({ motDePasse: 'trop court' });
+
+    expect(reponse.status).toBe(400);
   });
 
   it("l'envoie par e-mail — et ne le renvoie pas — quand l'adresse est réelle", async () => {
@@ -245,7 +338,8 @@ describe('Activation et mot de passe', () => {
 
     const reponse = await request(app)
       .post(`/api/v2/comptes/${creation.body.compte.id}/mot-de-passe`)
-      .set('Cookie', cookiesDirecteur);
+      .set('Cookie', cookiesDirecteur)
+      .send({ motDePasse: 'Nouveau2026' });
 
     expect(reponse.body.aTransmettre).toBe(false);
     expect(reponse.body.motDePasse).toBeUndefined();

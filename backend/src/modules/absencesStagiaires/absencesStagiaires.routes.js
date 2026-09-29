@@ -9,6 +9,8 @@ import { validate } from '../../middleware/validate.js';
 import { annoncerModification } from '../tempsReel/annonces.js';
 import * as appelService from './absencesStagiaires.service.js';
 import * as discipline from './discipline.service.js';
+import { construireExportFeuilleAbsence } from './exportFeuilleAbsence.service.js';
+import { construireBilletsAbsence } from './exportBilletAbsence.service.js';
 
 /**
  * Absences, retards et indisciplines des stagiaires — la note de discipline (F9).
@@ -38,6 +40,15 @@ const ENCADREMENT = requireRole(ROLES.DIRECTEUR, ROLES.GESTIONNAIRE);
 const acteur = (req) => ({
   id: req.utilisateur._id,
   role: req.utilisateur.role,
+  /*
+   * ⚠️ CELUI QUI A VRAIMENT CLIQUÉ (2026-09-29, bogue signalé par le porteur :
+   * « validé par doit être le propriétaire de la session qui a validé »). Le
+   * service écrivait jusqu'ici le NOM DU FORMATEUR DE LA SÉANCE dans
+   * `validateurNom` — vrai quand c'est lui qui valide, faux dès qu'un
+   * gestionnaire ou un directeur le fait à sa place (2026-09-28, ils le
+   * peuvent désormais). C'est LUI, l'acteur de la requête, qu'il faut nommer.
+   */
+  nomComplet: req.utilisateur.nomComplet,
   identifiant: String(req.utilisateur.identifiant ?? '').trim(),
 });
 
@@ -60,6 +71,56 @@ router.get(
   ENCADREMENT,
   route(async (req, res) => {
     res.json({ groupes: await discipline.groupes(req.etablissementId, req.anneeScolaire) });
+  })
+);
+
+/**
+ * Le tableau de bord du gestionnaire (2026-09-29, demande du porteur) — les
+ * statistiques d'absence et de discipline des stagiaires, agrégées pour tout
+ * l'établissement.
+ */
+router.get(
+  '/tableau-bord',
+  ENCADREMENT,
+  route(async (req, res) => {
+    res.json(await discipline.tableauDeBord(req.etablissementId, req.anneeScolaire));
+  })
+);
+
+/**
+ * La feuille d'absence hebdomadaire d'un ou plusieurs groupes, en Word, PDF
+ * ou Excel (2026-09-29, demande du porteur, canevas transmis) — voir
+ * `exportFeuilleAbsence.service.js`. Bouton posé sur la grille de « Faire
+ * l'appel », avec le même filtre filière/niveau/année qu'en Édition : il
+ * télécharge tous les groupes que ce filtre laisse visibles.
+ *
+ * ⚠️ RÉSERVÉE À L'ENCADREMENT, comme `/notes` et `/stagiaires/:matricule` : la
+ * feuille porte le nom de tous les stagiaires de chaque groupe, pas seulement
+ * ceux qu'un formateur enseigne.
+ */
+router.post(
+  '/export',
+  ENCADREMENT,
+  validate({
+    body: z.object({
+      format: z.enum(['docx', 'pdf', 'xlsx']),
+      groupes: z.array(z.string().trim().min(1).max(200)).min(1).max(100),
+      semaine: z.string().regex(/^\d{4}-W\d{1,3}$/, 'Semaine attendue au format AAAA-Wn'),
+    }),
+  }),
+  route(async (req, res) => {
+    const { tampon, nomFichier, contentType } = await construireExportFeuilleAbsence(
+      req.etablissementId,
+      req.anneeScolaire,
+      req.body
+    );
+    res.setHeader('Content-Type', contentType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="export"; filename*=UTF-8''${encodeURIComponent(nomFichier)}`
+    );
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+    res.send(tampon);
   })
 );
 
@@ -96,6 +157,35 @@ router.put(
       await appelService.enregistrerAppel(req.etablissementId, req.anneeScolaire, req.body, acteur(req))
     );
     annoncer(req, 'appel');
+  })
+);
+
+/**
+ * Enregistre l'appel ET l'ATTESTE (2026-09-27) — le bouton « Valider l'appel »
+ * du formateur, qui remplace l'enregistrement automatique pour lui : ses
+ * changements restent dans l'écran jusqu'à ce clic.
+ */
+router.put(
+  '/appel/valider',
+  validate({ body: appelStagiairesSchema }),
+  route(async (req, res) => {
+    res.json(
+      await appelService.validerAppel(req.etablissementId, req.anneeScolaire, req.body, acteur(req))
+    );
+    annoncer(req, 'appel');
+  })
+);
+
+/**
+ * Le signe « validé » directement sur la grille de la page Absences
+ * (2026-09-27, demande du porteur : « je veux un signe de validé sans cliquer
+ * sur la séance »).
+ */
+router.get(
+  '/appel/validations',
+  validate({ query: z.object({ debut: jour, fin: jour }) }),
+  route(async (req, res) => {
+    res.json(await appelService.validationsSemaine(req.etablissementId, req.anneeScolaire, req.query));
   })
 );
 
@@ -152,6 +242,44 @@ router.get(
   }),
   route(async (req, res) => {
     res.json(await appelService.lister(req.etablissementId, req.anneeScolaire, req.query, acteur(req)));
+  })
+);
+
+/**
+ * Le(s) billet(s) d'excuse (Word, PDF ou Excel) d'une ou plusieurs absences
+ * ou retards JUSTIFIÉS (2026-09-29, demande du porteur : « si une absence ou
+ * retard est justifié afficher un billet d'absence » ; « si deux stagiaires
+ * justifient en même temps il s'affiche deux billets » ; « je veux avec trois
+ * word, pdf, excel »), canevas transmis — voir `exportBilletAbsence.service.js`.
+ * Un seul identifiant rend un seul billet ; plusieurs en rendent autant, sur
+ * le même gabarit à quatre par page.
+ *
+ * ⚠️ RÉSERVÉE À L'ENCADREMENT, comme `/:id` (justifier) : c'est la suite du
+ * même geste.
+ */
+router.post(
+  '/billets',
+  ENCADREMENT,
+  validate({
+    body: z.object({
+      format: z.enum(['docx', 'pdf', 'xlsx']),
+      ids: z.array(z.string().regex(/^[a-f0-9]{24}$/, 'Identifiant invalide')).min(1).max(200),
+    }),
+  }),
+  route(async (req, res) => {
+    const { tampon, nomFichier, contentType } = await construireBilletsAbsence(
+      req.etablissementId,
+      req.anneeScolaire,
+      req.body.ids,
+      req.body.format
+    );
+    res.setHeader('Content-Type', contentType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="export"; filename*=UTF-8''${encodeURIComponent(nomFichier)}`
+    );
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+    res.send(tampon);
   })
 );
 

@@ -109,6 +109,27 @@ const baseSchema = new mongoose.Schema(
     groupeFilieres: { type: Map, of: String, default: {} },
 
     /**
+     * `GROUPE||MODULE` → salles où ce cours doit se donner (2026-09-23).
+     *
+     * ⚠️ RANGÉ À PART DES LIGNES, pour la même raison que `modulesInactifs` :
+     * le format e-note n'a **aucune colonne de salle**. Vérifié dans l'ancien
+     * EDT Pro, qui n'en a pas non plus — il n'attribue des salles qu'au
+     * FORMATEUR (`autoGenConstraints[formateur].spaces`). Une salle par module
+     * est donc une notion neuve, qui ne survivrait pas à l'aller-retour par
+     * les lignes.
+     *
+     * ⚠️ UNE LISTE, PAS UNE SALLE (décision du porteur, 2026-09-23) : un module
+     * accepte « Atelier FM ou Atelier CM ». Imposer une salle unique rendrait
+     * impossible de placer deux groupes du même module au même créneau, et cela
+     * se paierait en séances non placées.
+     *
+     * ⚠️ LA CLÉ EST CELLE DU QUOTA (`cleModule`, en MAJUSCULES) : une seconde
+     * convention de clé pour la même notion finirait par diverger — c'est le
+     * constat §4.2, la cause n°1 d'instabilité de l'existant.
+     */
+    sallesAffectations: { type: Map, of: [String], default: {} },
+
+    /**
      * Version optimiste (Phase 5bis, étape d3) : la carte d'affectations REMPLACE
      * la base entière. Deux personnes sur la carte, et la seconde effaçait le
      * travail de la première. Le compteur survit au remplacement — la nouvelle
@@ -125,5 +146,12 @@ const baseSchema = new mongoose.Schema(
 // Une seule base par établissement et par année — c'est la clé unique de MySQL,
 // conservée.
 baseSchema.index({ etablissementId: 1, anneeScolaire: 1 }, { unique: true });
+
+/**
+ * « Dans quels AUTRES établissements ce formateur est-il affecté ? » — la mutualisation des
+ * formateurs (2026-09-21) se détecte par le matricule, à chaque pose d'une séance.
+ */
+baseSchema.index({ anneeScolaire: 1, 'affectations.formateur': 1 });
+baseSchema.index({ anneeScolaire: 1, 'formateurs.matricule': 1 });
 
 export const Base = mongoose.model('Base', baseSchema);

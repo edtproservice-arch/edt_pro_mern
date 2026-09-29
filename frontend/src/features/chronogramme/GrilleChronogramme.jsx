@@ -10,6 +10,7 @@ import {
   poserCellule,
   totauxModule,
   verifierCellule,
+  DUREE_RATTRAPAGE,
   cleLigne,
   effacerAvecJumelles,
   massesCumulees,
@@ -315,6 +316,14 @@ export default function GrilleChronogramme({
    * Un REPÈRE sur la cellule, jamais une donnée du planning.
    */
   marques = null,
+  /*
+   * ═══ CLIC DIRECT (2026-09-28) ═══
+   * « Je clique, ça s'ajoute automatiquement, sans sélectionner, comme en
+   * emploi » : fourni, un clic sur une case appelle `onClicDirect(module,
+   * semaine)` au lieu d'ouvrir la liste des heures — la modale de rattrapage y
+   * pose (ou retire) sa séance de 2,5 h. Pas de poignée de recopie non plus.
+   */
+  onClicDirect = null,
 }) {
   /*
    * UNE seule cellule ouverte à la fois — c'est ce qui permet de n'avoir qu'un
@@ -369,6 +378,11 @@ export default function GrilleChronogramme({
    * utile. Voir `useOnPoser`.
    */
   const onPoser = useOnPoser(planning, onChanger, modules, semaines);
+
+  // ⚠️ STABLE, pour le `memo` des cellules : la dernière version est lue par `ref`.
+  const clicDirect = useRef(onClicDirect);
+  clicDirect.current = onClicDirect;
+  const surClicDirect = useCallback((...args) => clicDirect.current?.(...args), []);
 
   /*
    * Le conteneur de défilement est tenu ICI : la barre de navigation doit
@@ -501,9 +515,15 @@ export default function GrilleChronogramme({
    * `totalSemaineFusionnee` a besoin des MODULES — rien dans une cellule ne dit
    * à quelle séance elle appartient.
    */
+  // Le planning RÉALISÉ : séances absentes déduites — voir `planningSansAbsences`.
+  const realise = useMemo(
+    () => planningSansAbsences(planning, modules, marques, groupe),
+    [planning, modules, marques, groupe]
+  );
+
   const totaux = useMemo(
-    () => semaines.map((semaine) => totalSemaineFusionnee(planning, semaine.numero, modules)),
-    [planning, semaines, modules]
+    () => semaines.map((semaine) => totalSemaineFusionnee(realise, semaine.numero, modules)),
+    [realise, semaines, modules]
   );
 
   /*
@@ -515,7 +535,7 @@ export default function GrilleChronogramme({
     // ⚠️ Même règle que les totaux de colonne : une séance mutualisée n'est
     // déclarée qu'une fois, et posée qu'une fois.
     const masses = massesCumulees(modules);
-    const poses = posesCumulees(modules, planning, totauxModule);
+    const poses = posesCumulees(modules, realise, totauxModule);
 
     return {
       mhp: masses.presentiel,
@@ -526,7 +546,7 @@ export default function GrilleChronogramme({
         poses.presentiel + poses.synchrone - (masses.presentiel + masses.synchrone)
       ),
     };
-  }, [modules, planning]);
+  }, [modules, realise]);
 
   return (
     <div className="space-y-2">
@@ -605,12 +625,14 @@ export default function GrilleChronogramme({
               // mémoïsée n'en reçoit que sa semaine.
               marquesLigne={marques?.[`${module.groupe ?? groupe}||${module.code}`.toUpperCase()]}
               planning={planning}
+              realise={realise}
               ouverte={ouverte}
               onOuvrir={setOuverte}
               onPoser={onPoser}
               remplissage={remplissage}
               onDemarrerRemplissage={setRemplissage}
               lectureSeule={lectureSeule}
+              onClicDirect={onClicDirect ? surClicDirect : null}
             />
           ))}
         </tbody>
@@ -886,9 +908,10 @@ function Badges({ semaine }) {
   );
 }
 
-function LigneModule({ module, colonne, semaines, identite, marquesLigne, planning, ouverte, onOuvrir, onPoser, remplissage, onDemarrerRemplissage, lectureSeule }) {
+function LigneModule({ module, colonne, semaines, identite, marquesLigne, planning, realise, ouverte, onOuvrir, onPoser, remplissage, onDemarrerRemplissage, lectureSeule, onClicDirect }) {
   const cle = cleDe(module);
-  const poses = totauxModule(planning, cle);
+  // Les cellules montrent le PRÉVU ; « Posé » et l'écart, le RÉALISÉ.
+  const poses = totauxModule(realise ?? planning, cle);
 
   // ← `ecart = mht - mhp` : le chronogramme est complet quand il couvre
   // exactement la masse horaire, ni plus ni moins.
@@ -994,6 +1017,7 @@ function LigneModule({ module, colonne, semaines, identite, marquesLigne, planni
           onPoser={onPoser}
           onDemarrerRemplissage={onDemarrerRemplissage}
           lectureSeule={lectureSeule}
+          onClicDirect={onClicDirect}
           survole={estDansLeGlissement(remplissage, cle, semaine.numero)}
           /*
            * ⚠️ Module COMPLET : on ferme les cellules encore VIDES, pas toutes.
@@ -1110,7 +1134,7 @@ function ColonnesStats({ entete, module, poses, ecart }) {
  * obtient le style complet — panneau, groupes, coche, navigation clavier — avec
  * UNE SEULE instance montée à la fois, celle qu'on manipule.
  */
-function CelluleBrute({ semaine, module, identite, cellule, marque, ouverte, onOuvrir, onPoser, complet, survole, onDemarrerRemplissage, lectureSeule }) {
+function CelluleBrute({ semaine, module, identite, cellule, marque, ouverte, onOuvrir, onPoser, complet, survole, onDemarrerRemplissage, lectureSeule, onClicDirect }) {
   const cle = cleDe(module);
   // Une cellule VIDE d'un module complet n'a plus rien à recevoir.
   const verrouillee = !semaine.disponible || (complet && !cellule);
@@ -1183,7 +1207,11 @@ function CelluleBrute({ semaine, module, identite, cellule, marque, ouverte, onO
         <button
           type="button"
           disabled={verrouillee}
-          onClick={() => onOuvrir({ module: cle, semaine: semaine.numero })}
+          onClick={() =>
+            onClicDirect
+              ? onClicDirect(module, semaine)
+              : onOuvrir({ module: cle, semaine: semaine.numero })
+          }
           className={apparence + ' mx-auto disabled:cursor-not-allowed disabled:opacity-40'}
         >
           {/*
@@ -1208,7 +1236,7 @@ function CelluleBrute({ semaine, module, identite, cellule, marque, ouverte, onO
         points bleus illisible. `touch-none` empêche le défilement de la page de
         voler le geste sur un écran tactile.
       */}
-      {cellule && !ouverte && !lectureSeule && (
+      {cellule && !ouverte && !lectureSeule && !onClicDirect && (
         <span
           role="presentation"
           onPointerDown={(evenement) => {
@@ -1442,3 +1470,47 @@ const jourCourt = (jour) =>
   new Date(`${jour}T12:00:00`).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
 
 const arrondir = (valeur) => Math.round(valeur * 100) / 100;
+
+/**
+ * Le planning RÉALISÉ : chaque séance déclarée absente ôte 2,5 h de sa case
+ * (2026-09-28, demande du porteur : « si une séance est déclarée absente il
+ * faut la déduire de la masse horaire des heures posées », puis « déduire aussi
+ * dans le total par semaine »). Il alimente « Posé », « Posé S », l'écart et le
+ * total par semaine ; les cellules, elles, gardent le planning PRÉVU.
+ *
+ * ⚠️ UNE DÉDUCTION À L'AFFICHAGE, PAS DANS LE PLANNING ENREGISTRÉ. Le
+ * rattrapage, lui, INSCRIT ses 2,5 h dans le planning (`reporterAuChronogramme`)
+ * : l'absence ôtée ici et le rattrapage ajouté là-bas se compensent, et l'écart
+ * retombe à zéro une fois la séance rattrapée.
+ *
+ * ⚠️ LE TYPE DE LA CASE EST CONSERVÉ, comme dans `reporterRattrapage` : une
+ * séance synchrone manquée s'ôte du « Posé S ». Une case ne descend jamais
+ * sous zéro.
+ */
+function planningSansAbsences(planning, modules, marques, groupe) {
+  if (!marques) return planning;
+
+  let realise = planning;
+  for (const module of modules) {
+    const marquesLigne = marques[`${module.groupe ?? groupe}||${module.code}`.toUpperCase()];
+    if (!marquesLigne) continue;
+
+    const cle = cleLigne(module);
+    for (const [numero, marque] of Object.entries(marquesLigne)) {
+      const absentes = (Number(marque?.absences) || 0) * DUREE_RATTRAPAGE;
+      const cellule = realise?.[cle]?.[numero];
+      const heures = Number(cellule?.heures) || 0;
+      if (absentes <= 0 || heures <= 0) continue;
+
+      realise = poserCellule(
+        realise,
+        cle,
+        Number(numero),
+        Math.max(0, arrondir(heures - absentes)),
+        cellule.type ?? TYPES.PRESENTIEL
+      );
+    }
+  }
+
+  return realise;
+}

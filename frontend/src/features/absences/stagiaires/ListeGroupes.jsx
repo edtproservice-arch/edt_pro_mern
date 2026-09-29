@@ -18,8 +18,11 @@ import { chargerGroupes } from './api';
  * requêtes — et trente calculs de notes — pour en lire un.
  *
  * @param {(groupe: string) => import('react').ReactNode} detail
+ * @param {string} [groupeInitial] — le groupe à déplier dès l'arrivée
+ *   (2026-09-29, demande du porteur : « si je clique envoie directement en
+ *   groupe en page absence » — un lien depuis les stats de l'accueil).
  */
-export default function ListeGroupes({ detail }) {
+export default function ListeGroupes({ detail, groupeInitial = null }) {
   const groupes = useQuery({ queryKey: ['absences-stagiaires', 'groupes'], queryFn: chargerGroupes, retry: false });
 
   if (groupes.isLoading) return <p className="text-sm text-muted-foreground">Chargement des groupes…</p>;
@@ -37,6 +40,7 @@ export default function ListeGroupes({ detail }) {
         droite: <span className="text-muted-foreground">{g.effectif} stagiaire(s)</span>,
       })}
       detail={(g) => detail(g.groupe)}
+      ouvertInitial={groupeInitial}
     />
   );
 }

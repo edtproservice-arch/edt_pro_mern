@@ -1,3 +1,5 @@
+import { retenirRentrees } from 'shared/domain';
+
 import { CalendrierNational } from '../../models/CalendrierNational.js';
 import { badRequest } from '../../lib/httpError.js';
 
@@ -20,12 +22,27 @@ import { badRequest } from '../../lib/httpError.js';
  */
 export async function obtenir(anneeScolaire) {
   const calendrier = await CalendrierNational.findOne({ anneeScolaire }).lean();
+  const rentrees = (calendrier?.rentrees ?? []).sort((a, b) => a.anneeFormation - b.anneeFormation);
 
-  return {
-    anneeScolaire,
-    vacances: calendrier?.vacances ?? [],
-    rentrees: (calendrier?.rentrees ?? []).sort((a, b) => a.anneeFormation - b.anneeFormation),
-  };
+  // ⚠️ Chaque lecture RAFRAÎCHIT l'ancre de S1 (`ancres.js`) : c'est elle que
+  //    tout calcul de date de semaine emploie quand on ne lui donne rien.
+  retenirRentrees(anneeScolaire, rentrees);
+
+  return { anneeScolaire, vacances: calendrier?.vacances ?? [], rentrees };
+}
+
+/**
+ * Retient les rentrées de TOUTES les années — au démarrage du serveur.
+ *
+ * ⚠️ AVANT D'ÉCOUTER : une requête reçue avant ce chargement daterait ses
+ *    semaines sur le 1er septembre — exactement le défaut du 2026-09-28.
+ */
+export async function retenirToutesLesRentrees() {
+  const calendriers = await CalendrierNational.find().select('anneeScolaire rentrees').lean();
+  for (const calendrier of calendriers) {
+    retenirRentrees(calendrier.anneeScolaire, calendrier.rentrees ?? []);
+  }
+  return calendriers.length;
 }
 
 /**
@@ -57,6 +74,9 @@ export async function enregistrer(anneeScolaire, { vacances = [], rentrees = [] 
     { $set: { vacances: enBase, rentrees } },
     { new: true, upsert: true, setDefaultsOnInsert: true }
   ).lean();
+
+  // ⚠️ Une rentrée modifiée DÉPLACE S1 : l'ancre suit à l'instant.
+  retenirRentrees(anneeScolaire, calendrier.rentrees ?? []);
 
   return presenter({
     anneeScolaire,

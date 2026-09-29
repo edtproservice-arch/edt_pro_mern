@@ -11,6 +11,8 @@ import { proprietesEnregistrement, useBrouillonVersionne } from '@/lib/useBrouil
 import EnTetePartage from '@/features/partages/EnTetePartage';
 import { useDroitPage } from '@/features/partages/useDroitPage';
 import CadreReglage from './CadreReglage';
+import DialogueSuppressionsPeriodes from './DialogueSuppressionsPeriodes';
+import { annoncerCascade } from './annoncerCascade';
 
 /**
  * Réglage du calendrier : périodes de vacances et fériés.
@@ -57,15 +59,17 @@ export default function PageCalendrier() {
   const edition = useBrouillonVersionne({
     donnees: enregistre.data,
     extraire: (donnees) => ({ valeur: lireCalendrier(donnees), version: donnees?.version ?? 0 }),
-    enregistrer: async (valeur, version) => {
-      const reponse = await enregistrerCalendrier({ anneeScolaire: annee, ...valeur, version });
-      return { valeur: lireCalendrier(reponse), version: reponse.version };
+    enregistrer: async (valeur, version, options) => {
+      const reponse = await enregistrerCalendrier({ anneeScolaire: annee, ...valeur, version }, options);
+      return { valeur: lireCalendrier(reponse), version: reponse.version, cascade: reponse.cascade ?? null };
     },
     relire: async () => (await enregistre.refetch()).data,
-    onSucces: (resultat) =>
+    onSucces: (resultat) => {
       toast.success('Calendrier enregistré', {
         description: `${resultat.valeur.vacances.length} période(s) de vacances.`,
-      }),
+      });
+      annoncerCascade(resultat.cascade);
+    },
   });
   const { brouillon: calendrier, setBrouillon: setCalendrier } = edition;
 
@@ -125,6 +129,12 @@ export default function PageCalendrier() {
         }
       />
     </CadreReglage>
+    {/* ⚠️ Une période nouvelle peut supprimer des séances : jamais sans ce oui (2026-09-23). */}
+    <DialogueSuppressionsPeriodes
+      details={edition.suppressionsAConfirmer}
+      onConfirmer={edition.confirmerSuppressions}
+      onRenoncer={edition.renoncerSuppressions}
+    />
     </>
   );
 }

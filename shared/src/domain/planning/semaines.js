@@ -60,9 +60,11 @@ export function lundiDeLaSemaine(date) {
  * ⚠️ UNE DATE ANTÉRIEURE À L'ANCRE RELÈVE DE LA S1 — comportement de l'existant,
  * conservé : un travail fait avant la rentrée vaut pour la première semaine.
  *
+ * @param {Array<{anneeFormation: number, date: string}>} [rentrees] — celles
+ *   de `annee` ; voir `lundiPremiereSemaine`. Omises, S1 reste au 1er septembre.
  * @returns {{anneeScolaire: number, numero: number, lundi: Date}}
  */
-export function semaineDansAnnee(annee, date) {
+export function semaineDansAnnee(annee, date, rentrees = []) {
   if (!Number.isInteger(annee)) {
     throw new TypeError('semaineDansAnnee attend une année scolaire entière');
   }
@@ -70,7 +72,7 @@ export function semaineDansAnnee(annee, date) {
     throw new TypeError('semaineDansAnnee attend une Date valide');
   }
 
-  const ancre = lundiPremiereSemaine(annee);
+  const ancre = lundiPremiereSemaine(annee, rentrees);
   const lundi = lundiDeLaSemaine(date);
 
   const numero =
@@ -80,30 +82,82 @@ export function semaineDansAnnee(annee, date) {
 }
 
 /**
+ * Le numéro de semaine à AFFICHER dans un calendrier, ou `null` avant que
+ * l'année n'ait commencé.
+ *
+ * ═══ ⚠️ CE N'EST PAS `semaineDansAnnee` (2026-09-27, demande du porteur :
+ * « il faut qu'il y ait un seul S1 ») ═══
+ * Celle-ci RANGE une date antérieure à l'ancre dans la S1 — une règle juste
+ * pour CLASSER une donnée (un import e-note fait avant la rentrée compte pour
+ * la première semaine), mais fausse pour un CALENDRIER : dès que S1 s'ouvre
+ * sur une rentrée tardive (le 7 septembre, par exemple), toutes les semaines
+ * d'août se voyaient alors étiquetées « 1 » — la même colonne « Sem » répétant
+ * un même numéro sur cinq lignes, quand chacune est une semaine CALENDAIRE
+ * différente. Ici, une semaine antérieure à l'ancre ne porte simplement AUCUN
+ * numéro — elle n'est pas encore dans l'année scolaire qu'on affiche.
+ *
+ * @param {number} annee — l'année scolaire AFFICHÉE, donnée par l'appelant
+ *   (comme `semaineDansAnnee`, pour la même raison : la déduire de `date`
+ *   romprait sur un jour d'août qui précède encore l'ancre).
+ * @param {Date} date
+ * @param {Array<{anneeFormation: number, date: string}>} [rentrees]
+ * @returns {number|null}
+ */
+export function semaineAffichable(annee, date, rentrees = []) {
+  if (!Number.isInteger(annee)) {
+    throw new TypeError('semaineAffichable attend une année scolaire entière');
+  }
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    throw new TypeError('semaineAffichable attend une Date valide');
+  }
+
+  const ancre = lundiPremiereSemaine(annee, rentrees);
+  const lundi = lundiDeLaSemaine(date);
+  if (lundi < ancre) return null;
+
+  return semaineDansAnnee(annee, date, rentrees).numero;
+}
+
+/**
  * Numéro de semaine scolaire d'une date, dans SA propre année.
+ *
+ * ⚠️ SANS `rentrees`, L'ANNÉE ELLE-MÊME (`anneeScolaire(date)`) RESTE ANCRÉE AU
+ * 1er SEPTEMBRE : la classifier par rentrée demanderait de connaître déjà LA
+ * rentrée de l'année qui la contient — une dépendance circulaire que cette
+ * fonction ne résout pas. Seul le NUMÉRO à l'intérieur de cette année en tient
+ * compte.
+ *
+ * @param {Array<{anneeFormation: number, date: string}>} [rentrees]
  * @returns {{anneeScolaire: number, numero: number, lundi: Date}}
  */
-export function semaineDe(date) {
+export function semaineDe(date, rentrees = []) {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
     throw new TypeError('semaineDe attend une Date valide');
   }
 
-  return semaineDansAnnee(anneeScolaire(date), date);
+  return semaineDansAnnee(anneeScolaire(date), date, rentrees);
 }
 
-/** Identifiant de semaine, au format de `emplois_du_temps.valeur_semaine`. */
-export function valeurSemaine(date) {
-  const { anneeScolaire: annee, numero } = semaineDe(date);
+/**
+ * Identifiant de semaine, au format de `emplois_du_temps.valeur_semaine`.
+ * @param {Array<{anneeFormation: number, date: string}>} [rentrees]
+ */
+export function valeurSemaine(date, rentrees = []) {
+  const { anneeScolaire: annee, numero } = semaineDe(date, rentrees);
   return `${annee}-W${numero}`;
 }
 
 /**
  * Décompose un identifiant « 2026-W3 ».
+ *
+ * @param {string} valeur
+ * @param {Array<{anneeFormation: number, date: string}>} [rentrees] — celles
+ *   de l'année portée par `valeur` ; voir `lundiPremiereSemaine`.
  * @returns {{anneeScolaire: number, numero: number, debut: Date, fin: Date}|null}
  *   null si le format est invalide — jamais une exception : ces valeurs
  *   viennent d'URL et de données anciennes.
  */
-export function analyserSemaine(valeur) {
+export function analyserSemaine(valeur, rentrees = []) {
   // ⚠️ `\d{1,3}` et non `\d{1,2}` : la production contient « 2026-W039 »,
   // avec un zéro de remplissage. `parseWeekValue()` l'acceptait sans le savoir
   // (`parseInt` ignore les zéros initiaux). Une expression plus stricte ferait
@@ -115,7 +169,7 @@ export function analyserSemaine(valeur) {
   const numero = Number.parseInt(correspondance[2], 10);
   if (numero < 1) return null;
 
-  const debut = new Date(lundiPremiereSemaine(annee));
+  const debut = new Date(lundiPremiereSemaine(annee, rentrees));
   debut.setDate(debut.getDate() + (numero - 1) * 7);
 
   const fin = new Date(debut);
@@ -134,8 +188,8 @@ export function analyserSemaine(valeur) {
  *
  * @returns {string|null} « 2026-W39 », ou null si l'entrée est inexploitable.
  */
-export function normaliserValeurSemaine(valeur) {
-  const semaine = analyserSemaine(valeur);
+export function normaliserValeurSemaine(valeur, rentrees = []) {
+  const semaine = analyserSemaine(valeur, rentrees);
   return semaine ? `${semaine.anneeScolaire}-W${semaine.numero}` : null;
 }
 
@@ -145,10 +199,11 @@ export function normaliserValeurSemaine(valeur) {
  *
  * @param {string} valeur  « 2026-W3 »
  * @param {string} jour    « Lundi » … « Dimanche »
+ * @param {Array<{anneeFormation: number, date: string}>} [rentrees]
  * @returns {Date|null}
  */
-export function dateDuJour(valeur, jour) {
-  const semaine = analyserSemaine(valeur);
+export function dateDuJour(valeur, jour, rentrees = []) {
+  const semaine = analyserSemaine(valeur, rentrees);
   if (!semaine) return null;
 
   const decalage = JOURS_SEMAINE_CIVILE.indexOf(jour);
@@ -159,9 +214,12 @@ export function dateDuJour(valeur, jour) {
   return auDebutDuJour(date);
 }
 
-/** Les sept dates d'une semaine, du lundi au dimanche. */
-export function datesDeLaSemaine(valeur) {
-  const semaine = analyserSemaine(valeur);
+/**
+ * Les sept dates d'une semaine, du lundi au dimanche.
+ * @param {Array<{anneeFormation: number, date: string}>} [rentrees]
+ */
+export function datesDeLaSemaine(valeur, rentrees = []) {
+  const semaine = analyserSemaine(valeur, rentrees);
   if (!semaine) return [];
 
   return JOURS_SEMAINE_CIVILE.map((_, index) => {

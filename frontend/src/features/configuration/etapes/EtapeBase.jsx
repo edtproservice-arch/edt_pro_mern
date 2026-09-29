@@ -7,19 +7,30 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import Alerte from '@/components/common/Alerte';
 import { chargerResumeBase } from '../api';
 import { useImportEnote, DialogueRemplacementEnote } from '../importEnote';
-import CarteEtablissement from '../carte/CarteEtablissement';
 import { cn } from '@/lib/utils';
 
 /**
- * Étape 1 — point de départ.
+ * Étape 3 — point de départ.
  * ← public/setup.html:446-513
  *
  * Deux voies, et c'est le choix structurant de toute la configuration :
  * importer la base e-note, ou construire la carte à la main. L'existant
  * proposait les deux sur le même écran.
+ *
+ * ═══ ELLE NE FAIT PLUS QUE CHOISIR (2026-09-19, demande du porteur) ═══
+ * La voie « carte » construisait tout ici — filières, groupes, formateurs,
+ * affectations — d'un seul bloc. Ces trois temps sont désormais des ÉTAPES à part
+ * (4 Formateurs, 5 Carte, 6 Affectations), et elles suivent QUELLE QUE SOIT la
+ * voie : après un import, on y vérifie et complète ce que le fichier a produit.
+ *
+ * ⚠️ LA VOIE SE TIENT DANS L'ASSISTANT, pas ici : revenir à cette étape doit
+ * retrouver le choix fait, et c'est l'assistant qui sait si l'on peut avancer.
+ *
+ * @param {'enote'|'carte'} props.voie
+ * @param {(voie: 'enote'|'carte') => void} props.onVoieChange
  */
-export default function EtapeBase({ onBasePrete }) {
-  const [voie, setVoie] = useState('enote');
+export default function EtapeBase({ onBasePrete, voie, onVoieChange }) {
+  const setVoie = onVoieChange;
   const [fichier, setFichier] = useState(null);
   const champFichier = useRef(null);
 
@@ -60,8 +71,8 @@ export default function EtapeBase({ onBasePrete }) {
       <div>
         <h2 className="text-xl font-semibold">Point de départ de votre configuration</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Importez votre base e-note si vous en disposez. Sinon, construisez directement la carte
-          de votre établissement.
+          Importez votre base e-note si vous en disposez. Sinon, vous construirez la carte de
+          votre établissement aux étapes suivantes.
         </p>
       </div>
 
@@ -83,6 +94,12 @@ export default function EtapeBase({ onBasePrete }) {
           description="Sans fichier. Vous saisissez filières, groupes et modules depuis la répartition DRIF."
         />
       </div>
+
+      {/* Dans les deux cas : la suite est la même, dite avant qu'on choisisse. */}
+      <p className="text-sm text-muted-foreground">
+        Dans les deux cas, les étapes suivantes vous mènent aux <strong>formateurs</strong>, à la{' '}
+        <strong>carte</strong> puis aux <strong>affectations</strong>.
+      </p>
 
       {voie === 'enote' ? (
         <Card>
@@ -151,12 +168,17 @@ export default function EtapeBase({ onBasePrete }) {
           </CardContent>
         </Card>
       ) : (
-        <CarteEtablissement
-            onEnregistree={() => resume.refetch()}
-            // La carte REMPLACE la base : l'écran doit dire ce qui va être
-            // écrasé, et le faire dire avant, pas après.
-            baseExistante={resume.data?.resume?.existe ? resume.data.resume : null}
-          />
+        <Alerte type="info" titre="La carte se construit dans les étapes suivantes">
+          Ajoutez d&apos;abord vos formateurs, puis générez les groupes de chaque filière depuis la
+          répartition DRIF, et enfin affectez un formateur à chaque module.
+          {dejaImportee && (
+            <>
+              {' '}
+              Une base existe déjà ({resume.data.resume.formateurs} formateur(s),{' '}
+              {resume.data.resume.groupes} groupe(s)) : elle sera reprise telle quelle.
+            </>
+          )}
+        </Alerte>
       )}
     </div>
   );
@@ -195,7 +217,8 @@ function Bilan({ resultat }) {
       {resultat.nouveauxFormateurs?.length > 0 && (
         <Alerte type="info" titre="Masses horaires à vérifier">
           {resultat.nouveauxFormateurs.length} formateur(s) inconnu(s) de votre établissement. Leur
-          masse horaire a été déduite des heures affectées — vérifiez-la à l&apos;étape suivante.
+          masse statutaire a été fixée à 910 h par défaut, 0 h pour les vacataires et les
+          formateurs sans matricule — vérifiez-la à l&apos;étape suivante.
         </Alerte>
       )}
 

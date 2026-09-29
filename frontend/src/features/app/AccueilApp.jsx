@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { CalendarRange, ChevronDown, Plus, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,13 +17,8 @@ import { depuis } from '@/lib/derniereModification';
 import { useVisites } from '@/lib/visites';
 import { api } from '@/lib/apiClient';
 import { apparenceMeteo } from './meteo';
-import { cn } from '@/lib/utils';
 import { recupererSession } from '@/features/auth/api';
-import { chargerContexte, chargerSemaines } from '@/features/emploi/api';
-import { chargerAbsences } from '@/features/absences/api';
-import { chargerGroupesChronogramme } from '@/features/chronogramme/api';
-import { chargerStatistiquesStagiaires } from '@/features/documents/api';
-import ProgressionAccueil from './ProgressionAccueil';
+import TableauDeBordAccueil from './TableauDeBordAccueil';
 
 /**
  * Accueil de l'espace applicatif.
@@ -35,9 +30,9 @@ import ProgressionAccueil from './ProgressionAccueil';
  * porteur, remplacé par les chiffres de l'établissement — ce qu'on vient
  * réellement vérifier en ouvrant l'application.
  *
- * ⚠️ AUCUNE ROUTE NOUVELLE. Les quatre chiffres viennent d'endpoints qui
- * existent et que les écrans métier interrogent déjà : ils sont donc en cache
- * dès qu'on a ouvert l'un d'eux, et l'accueil ne coûte alors rien.
+ * Le tableau de bord du directeur vit dans `TableauDeBordAccueil` : tuiles,
+ * « À traiter », trajectoire, statut des groupes, modules à risque, service
+ * des formateurs (2026-09-28).
  */
 export default function AccueilApp() {
   const navigate = useNavigate();
@@ -60,11 +55,7 @@ export default function AccueilApp() {
   return (
     <div className="mx-auto max-w-4xl space-y-10 py-4">
       <Salutation nom={session.data.utilisateur.nomComplet} />
-      <TableauDeBord />
-      {/* ⚠️ APRÈS LES TUILES : celles-ci disent un ÉTAT — combien de formateurs,
-          de groupes, de séances. Le graphe dit une TENDANCE, et se lit une fois
-          qu'on sait de quoi il parle. */}
-      <ProgressionAccueil />
+      <TableauDeBordAccueil />
       <LiensRapides />
       <Recents />
     </div>
@@ -106,7 +97,7 @@ function momentDuJour(heure) {
  * resterait figée sur un onglet laissé ouvert toute la journée — et une heure
  * fausse en tête de page est pire que pas d'heure du tout.
  */
-function Salutation({ nom }) {
+export function Salutation({ nom }) {
   const [maintenant, setMaintenant] = useState(() => new Date());
 
   useEffect(() => {
@@ -190,140 +181,13 @@ function Embleme({ meteo, emoji }) {
 }
 
 /**
- * Les quatre chiffres de l'établissement.
- *
- * ⚠️ CHAQUE TUILE MÈNE À L'ÉCRAN QUI LA CORRIGE. Un chiffre qu'on ne peut pas
- * suivre n'est qu'une décoration : « 3 sans rattrapage » n'a d'intérêt que si le
- * registre est à un clic.
- */
-function TableauDeBord() {
-  const [contexte, semaines, absences, chronogrammes, stagiaires] = useQueries({
-    queries: [
-      { queryKey: ['emploi', 'contexte'], queryFn: chargerContexte, retry: false },
-      { queryKey: ['emploi', 'semaines'], queryFn: chargerSemaines, retry: false },
-      { queryKey: ['absences', 'toutes'], queryFn: () => chargerAbsences({}), retry: false },
-      { queryKey: ['chronogrammes'], queryFn: chargerGroupesChronogramme, retry: false },
-      {
-        queryKey: ['stagiaires', 'statistiques'],
-        queryFn: chargerStatistiquesStagiaires,
-        retry: false,
-      },
-    ],
-  });
-
-  /*
-   * ⚠️ SANS BASE, PAS DE CHIFFRES — ET ON LE DIT. Le contexte répond 404 tant
-   * qu'aucune base n'a été importée : afficher « 0 formateur » laisserait croire
-   * à un établissement vide alors que la configuration n'a pas commencé.
-   */
-  if (contexte.isError) {
-    return (
-      <section className="rounded-lg border border-dashed p-6 text-center">
-        <p className="text-sm font-medium">Votre établissement n’a pas encore de base</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Les chiffres apparaîtront ici dès que vos formateurs et vos groupes seront connus.
-        </p>
-        <Button asChild size="sm" className="mt-3">
-          <Link to="/app/parametres/affectations">Construire la carte</Link>
-        </Button>
-      </section>
-    );
-  }
-
-  const groupes = chronogrammes.data?.groupes ?? [];
-  const remplies = (semaines.data?.semaines ?? []).filter((entree) => entree.seances > 0).length;
-  const sansRattrapage = (absences.data?.absences ?? []).filter((a) => !a.dateRattrapage).length;
-
-  return (
-    /* ⚠️ TROIS PAR RANGÉE, pas quatre : à six tuiles, quatre colonnes laissaient
-       une seconde rangée à moitié vide. Deux rangées pleines se lisent mieux. */
-    <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      <Tuile
-        libelle="Formateurs"
-        valeur={contexte.data?.formateurs?.length}
-        chargement={contexte.isLoading}
-        vers="/app/parametres/formateurs"
-      />
-      <Tuile
-        libelle="Groupes"
-        valeur={contexte.data?.groupes?.length}
-        chargement={contexte.isLoading}
-        vers="/app/parametres/affectations"
-      />
-      {/*
-        ⚠️ LES STAGIAIRES NE VIENNENT PAS DE LA BASE E-NOTE mais de l'import
-        KONOSYS (une base par année scolaire) : leur tuile mène donc à
-        « Documents », pas aux « Affectations ». Les envoyer ailleurs ferait
-        chercher un import qui ne s'y trouve pas.
-      */}
-      <Tuile
-        libelle="Stagiaires"
-        valeur={stagiaires.data?.total}
-        detail={
-          stagiaires.data?.nombreGroupes
-            ? `${stagiaires.data.nombreGroupes} groupe(s) pourvu(s)`
-            : undefined
-        }
-        chargement={stagiaires.isLoading}
-        vers="/app/documents"
-      />
-      <Tuile
-        libelle="Salles"
-        valeur={contexte.data?.salles?.length}
-        chargement={contexte.isLoading}
-        vers="/app/parametres/espaces"
-      />
-      <Tuile
-        libelle="Semaines saisies"
-        valeur={remplies}
-        detail={
-          groupes.length > 0
-            ? `${groupes.filter((g) => g.planifie).length} / ${groupes.length} chronogrammes`
-            : undefined
-        }
-        chargement={semaines.isLoading}
-        vers="/app/emploi"
-      />
-      <Tuile
-        libelle="Sans rattrapage"
-        valeur={sansRattrapage}
-        /* Le seul chiffre qui APPELLE une action : les autres décrivent un état. */
-        alerte={sansRattrapage > 0}
-        chargement={absences.isLoading}
-        vers="/app/absences"
-      />
-    </section>
-  );
-}
-
-function Tuile({ libelle, valeur, detail, alerte, chargement, vers }) {
-  return (
-    <Link
-      to={vers}
-      className="rounded-lg border p-4 transition-colors hover:border-input hover:bg-muted/40"
-    >
-      <p className="text-xs text-muted-foreground">{libelle}</p>
-      <p
-        className={cn(
-          'mt-1 text-2xl font-semibold tabular-nums',
-          alerte && 'text-destructive'
-        )}
-      >
-        {chargement ? '—' : (valeur ?? 0)}
-      </p>
-      {detail && <p className="mt-0.5 text-xs text-muted-foreground">{detail}</p>}
-    </Link>
-  );
-}
-
-/**
  * Les favoris, en cartes.
  *
  * ⚠️ CE SONT LES MÊMES QUE L'ÉTOILE DE L'EN-TÊTE, pas une seconde liste. Deux
  * listes de raccourcis à tenir à jour, c'est la garantie qu'elles divergent —
  * et la barre latérale les affiche déjà en tête.
  */
-function LiensRapides() {
+export function LiensRapides() {
   const favoris = useFavoris();
   const restants = ENTREES.filter((entree) => !favoris.includes(entree.url));
 
@@ -389,7 +253,7 @@ function LiensRapides() {
  * l'emploi du temps pour une saisie : le lier à l'écriture ferait disparaître
  * d'ici les pages qu'on regarde le plus.
  */
-function Recents() {
+export function Recents() {
   const visites = useVisites();
   const [section, setSection] = useState(null);
 
@@ -505,7 +369,7 @@ function prenom(nomComplet) {
   return premier ? premier[0].toUpperCase() + premier.slice(1).toLowerCase() : '';
 }
 
-function Etat({ children }) {
+export function Etat({ children }) {
   // Un `div` : l'écran vit dans la coquille, qui porte le `<main>`.
   return (
     <div className="flex items-center justify-center py-24">

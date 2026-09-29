@@ -17,16 +17,26 @@ const reponse = (status, corps = {}) => ({
 let api;
 let ApiError;
 let expiration;
+let redirection;
+// La page où l'on se trouve — `/emploi` par défaut, une page publique dans certains cas.
+let chemin;
 
 beforeEach(async () => {
   vi.resetModules();
   vi.useFakeTimers();
   expiration = vi.fn();
+  redirection = vi.fn();
+  chemin = '/emploi';
   // `window` n'existe pas sous Node : sa présence prouve qu'on a voulu rediriger.
   vi.stubGlobal('window', {
     get location() {
       expiration();
-      return { pathname: '/emploi', set href(_) {} };
+      return {
+        pathname: chemin,
+        set href(valeur) {
+          redirection(valeur);
+        },
+      };
     },
   });
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
@@ -144,5 +154,40 @@ describe('renouvellement de session', () => {
     expect(expiration).toHaveBeenCalled();
     // requête, renouvellement, requête rejouée — pas de boucle.
     expect(fetch).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('une page publique n’expire jamais', () => {
+  it('⚠️ un 401 sur l’inscription ne renvoie PAS vers la connexion', async () => {
+    // Le battement de cœur part cinq secondes après l'arrivée sur n'importe quelle
+    // page ; sans session il reçoit 401, et la redirection d'expiration faisait
+    // recharger l'inscription vers la connexion.
+    chemin = '/inscription';
+    vi.stubGlobal('fetch', vi.fn(async () => reponse(401, { message: 'Non authentifié' })));
+
+    const { erreur } = await jouer(api.post('/api/v2/auth/activite'));
+
+    expect(erreur.status).toBe(401);
+    expect(redirection).not.toHaveBeenCalled();
+  });
+
+  it('les autres pages publiques sont épargnées de même', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => reponse(401)));
+
+    for (const page of ['/connexion', '/verification', '/mot-de-passe-oublie', '/reinitialisation', '/essai']) {
+      chemin = page;
+      await jouer(api.get('/api/v2/auth/moi'));
+    }
+
+    expect(redirection).not.toHaveBeenCalled();
+  });
+
+  it('une page privée, elle, redirige toujours', async () => {
+    chemin = '/app/emploi';
+    vi.stubGlobal('fetch', vi.fn(async () => reponse(401)));
+
+    await jouer(api.get('/api/v2/seances/contexte'));
+
+    expect(redirection).toHaveBeenCalledWith('/connexion?raison=expiration');
   });
 });

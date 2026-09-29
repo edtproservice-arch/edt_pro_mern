@@ -57,3 +57,20 @@ export {
   posesCumulees,
   totalSemaineFusionnee,
 } from './fusion.js';
+
+export {
+  cleSemaineChronogramme,
+  completudeSemaine,
+  poseDeLaSemaine,
+  prevuDeLaSemaine,
+  tauxConformite,
+} from './completude.js';
+
+export { heuresPoseesParSemaine, reporterVersChronogramme } from './report.js';
+
+export {
+  NIVEAUX_PLACEMENT,
+  RAISONS_NON_PLACEE,
+  placerManquantes,
+  seancesManquantes,
+} from './placementManquantes.js';

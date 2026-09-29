@@ -102,12 +102,13 @@ router.get('/filtres', lire, validate({ query: filtresSchema }), async (req, res
  * Import Konosys — REMPLACE la base de l'année scolaire active (et elle seule).
  * ← upload.php
  *
- * Réservé au DIRECTEUR : l'opération supprime des comptes, ce n'est pas une
- * consultation.
+ * Réservé au DIRECTEUR et au GESTIONNAIRE (2026-09-23, demande du porteur) :
+ * l'opération supprime des comptes, ce n'est pas une consultation — un
+ * formateur invité sur « Documents » ne l'a donc pas.
  */
 router.post(
   '/import',
-  requireRole(ROLES.DIRECTEUR),
+  requireRole(ROLES.DIRECTEUR, ROLES.GESTIONNAIRE),
   televersement.single('fichier'),
   async (req, res, next) => {
     try {

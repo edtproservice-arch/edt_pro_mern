@@ -2,7 +2,6 @@ import { fusionnerJoursFeries } from 'shared/domain';
 import { obtenir as calendrierNational } from '../calendrierNational/calendrierNational.service.js';
 import { Etablissement } from '../../models/Etablissement.js';
 import { notFound } from '../../lib/httpError.js';
-import { conditionVersion, versionPerimee } from '../../lib/versionOptimiste.js';
 import { obtenirNationaux } from './joursFeries.service.js';
 
 /**
@@ -118,6 +117,8 @@ export async function obtenir(etablissementId, anneeScolaire) {
   ]);
 
   return {
+    // L'année que portent ces rentrées : l'écran en retient l'ancre de S1 (2026-09-28).
+    anneeScolaire,
     nationales: national.vacances.map((periode) => ({
       intitule: periode.nom,
       debut: periode.debut,
@@ -132,27 +133,31 @@ export async function obtenir(etablissementId, anneeScolaire) {
       date: ajustement.date,
       supprime: ajustement.supprime,
     })),
+    /*
+     * ⚠️ AJOUTÉ ICI (2026-09-25, demande du porteur : « je veux que ça change
+     * dans TOUS les calendriers de la plateforme ») : c'est LA route que
+     * `useDecorationCalendrier` et `SelecteurSemaine` interrogent déjà pour
+     * colorer fériés et vacances — le seul point de passage commun à tous les
+     * calendriers de saisie. Sans `rentrees` ici, chacun continuerait de
+     * numéroter ses semaines sur le 1er septembre, quelle que soit l'ancre
+     * retenue par `lundiPremiereSemaine` ailleurs dans l'application.
+     */
+    rentrees: national.rentrees,
   };
 }
 
 /**
- * Remplace le calendrier de l'établissement.
+ * Les chemins écrits par un enregistrement du calendrier.
  *
  * Remplacement complet et non fusion : l'écran envoie la liste telle qu'elle
  * est affichée, et une suppression doit se propager. `complete_setup.php`
  * faisait de même (`ON DUPLICATE KEY UPDATE` sur le blob entier).
  *
- * ═══ UNE SEULE MISE À JOUR, VERSION COMPRISE (étape d3) ═══
- * La lecture puis `save()` d'avant ne comparait rien : deux personnes sur le
- * calendrier, et la seconde effaçait les vacances de la première. Le compteur
- * est désormais dans le FILTRE de la mise à jour — voir `lib/versionOptimiste.js`.
- *
- * @param {number} [version]  celle que l'écran a lue ; absente, l'écriture passe
+ * ⚠️ L'ÉCRITURE ELLE-MÊME PASSE PAR `modules/fermetures` (2026-09-23) : de
+ * nouvelles vacances suppriment les séances qu'elles recouvrent, dans la même
+ * transaction, sous la même version optimiste qu'avant (étape d3).
  */
-export async function enregistrer(
-  etablissementId,
-  { vacances = [], ajustementsFeries = [], vacancesEcartees, anneeScolaire, version }
-) {
+export function champsCalendrier({ vacances = [], ajustementsFeries = [], vacancesEcartees }) {
   const $set = {
     'calendrier.vacances': vacances.map((periode) => ({
       libelle: periode.intitule ?? periode.libelle ?? 'Vacances',
@@ -174,22 +179,7 @@ export async function enregistrer(
    */
   if (vacancesEcartees !== undefined) $set['calendrier.vacancesEcartees'] = vacancesEcartees;
 
-  const etablissement = await Etablissement.findOneAndUpdate(
-    { _id: etablissementId, ...conditionVersion('versions.calendrier', version) },
-    { $set, $inc: { 'versions.calendrier': 1 } },
-    { new: true, runValidators: true }
-  );
-
-  if (!etablissement) {
-    // Absent, ou compteur déjà avancé : on distingue les deux, un 409 sur un
-    // établissement inexistant enverrait recharger une page qui n'existe pas.
-    if (!(await Etablissement.exists({ _id: etablissementId }))) {
-      throw notFound('Établissement introuvable', { code: 'ETABLISSEMENT_INCONNU' });
-    }
-    throw versionPerimee();
-  }
-
-  return obtenir(etablissementId, anneeScolaire);
+  return $set;
 }
 
 function presenterPeriode(periode) {

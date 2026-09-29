@@ -1,21 +1,26 @@
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Building2, Check, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ArrowUpRight, Check, X } from 'lucide-react';
+import IconeImmeubles from '@/components/common/IconeImmeubles';
 import { Button } from '@/components/ui/button';
-import { droitBorne, libellePage } from 'shared/domain';
+import { droitBorne, libellePage, urlDePage } from 'shared/domain';
 import { cn } from '@/lib/utils';
 import { repondreInvitation } from './api';
 
 const ETATS = {
-  acceptee: { texte: 'Invitation acceptée — la page est dans votre menu.', classe: 'text-success' },
+  acceptee: { texte: 'Accès accordé — la page est dans votre menu.', classe: 'text-success' },
   refusee: { texte: 'Invitation refusée.', classe: 'text-muted-foreground' },
   retiree: { texte: 'Le directeur a retiré cette invitation.', classe: 'text-muted-foreground' },
 };
 
 /**
- * L'invitation portée par un message — « Accepter » et « Refuser ».
- * (2026-09-12, demande du porteur : « avant de partager, il faut accepter
- * l'invitation ».)
+ * Le partage porté par un message.
+ *
+ * ═══ DEPUIS LE 2026-09-23 : L'ACCÈS EST ACCORDÉ D'OFFICE ═══ (décision du porteur,
+ * qui renverse celle du 2026-09-12.) Le message arrive « acceptée » et propose
+ * d'OUVRIR la page. « Accepter » / « Refuser » ne paraissent plus que sur les
+ * invitations envoyées avant ce changement, restées en attente.
  *
  * ⚠️ LES BOUTONS NE PARAISSENT QUE POUR LE DESTINATAIRE, ET TANT QU'ELLE ATTEND.
  * L'expéditeur relit son envoi sans pouvoir y répondre ; une invitation déjà
@@ -66,7 +71,7 @@ export default function CarteInvitation({ message }) {
       {/* Gris et noir, comme l'accès général de la boîte « Partager » : l'immeuble
           y dit la même chose — la page appartient à l'établissement. */}
       <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted">
-        <Building2 className="size-4 text-foreground" />
+        <IconeImmeubles className="size-4 text-foreground" />
       </span>
 
       <div className="min-w-0 flex-1">
@@ -116,6 +121,30 @@ export default function CarteInvitation({ message }) {
             <Check className="size-3.5" />
             Accepter
           </Button>
+        </div>
+      )}
+
+      {/*
+        ═══ « OUVRIR » (2026-09-23) ═══ Le partage ouvre la page d'office : il n'y a plus rien
+        à accepter, le message mène directement à la page — une entrée par page partagée.
+        ⚠️ L'adresse vient du REGISTRE (`urlDePage`), celle que prend le menu « Partagé » :
+        un chemin écrit ici divergerait au premier déplacement de la page.
+      */}
+      {message.recu && invitation.statut === 'acceptee' && (
+        <div className="flex flex-wrap items-center gap-2">
+          {invitation.pages.map((page) => {
+            const droit = invitation.droits?.find((d) => d.page === page)?.droit ?? invitation.droit;
+            const url = urlDePage(page, droitBorne(page, droit));
+            if (!url) return null;
+            return (
+              <Button key={page} asChild variant="outline" size="sm" className="h-8 gap-1.5">
+                <Link to={url}>
+                  {plusieurs ? libellePage(page) : 'Ouvrir la page'}
+                  <ArrowUpRight className="size-3.5" />
+                </Link>
+              </Button>
+            );
+          })}
         </div>
       )}
 

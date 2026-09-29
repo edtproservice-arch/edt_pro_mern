@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { ChevronsUpDown, LogOut, Settings, UserRound } from 'lucide-react';
+import { ChevronsUpDown, LogOut, Moon, Settings, Sun, UserRound } from 'lucide-react';
+import { ROLES } from 'shared/constants';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -19,6 +20,8 @@ import {
 } from '@/components/ui/sidebar';
 import { recupererSession, seDeconnecter } from '@/features/auth/api';
 import { initiales } from '@/lib/initiales';
+import { useTheme } from '@/lib/theme';
+import SousMenuEtablissements from './SousMenuEtablissements';
 
 /**
  * Menu du compte, en pied de la barre latérale.
@@ -36,6 +39,7 @@ export default function MenuUtilisateur() {
 
   const session = useQuery({ queryKey: ['session'], queryFn: recupererSession, retry: false });
   const utilisateur = session.data?.utilisateur;
+  const theme = useTheme();
 
   const deconnexion = useMutation({
     mutationFn: seDeconnecter,
@@ -101,19 +105,41 @@ export default function MenuUtilisateur() {
                   Mon profil
                 </NavLink>
               </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <NavLink to="/app/parametres">
-                  <Settings />
-                  Paramètres
-                </NavLink>
-              </DropdownMenuItem>
+              {/* ⚠️ PAS POUR LE GESTIONNAIRE (2026-09-29, demande du porteur) : la
+                  page Paramètres ne lui est pas ouverte — le lien menait à un refus. */}
+              {utilisateur?.role !== ROLES.GESTIONNAIRE && (
+                <DropdownMenuItem asChild>
+                  <NavLink to="/app/parametres">
+                    <Settings />
+                    Paramètres
+                  </NavLink>
+                </DropdownMenuItem>
+              )}
+              <SousMenuEtablissements />
+
+              {/*
+                ⚠️ POUR LE GESTIONNAIRE (2026-09-28, demande du porteur : « pour le
+                gestionnaire, mets-le en sidebar ») : il n'a pas la page
+                Paramètres, où vit la bascule du directeur. Un clic alterne
+                clair / sombre ; le menu se referme, comme pour toute entrée.
+              */}
+              {utilisateur?.role === ROLES.GESTIONNAIRE && (
+                <DropdownMenuItem onClick={() => theme.definir(theme.sombre ? 'clair' : 'sombre')}>
+                  {theme.sombre ? <Sun /> : <Moon />}
+                  {theme.sombre ? 'Thème clair' : 'Thème sombre'}
+                </DropdownMenuItem>
+              )}
             </DropdownMenuGroup>
 
             <DropdownMenuSeparator />
 
+            {/* Rouge DOUX, comme « Déconnexion » de la barre d'administration (`BarreNavigation`) :
+                la même action se lit de la même façon dans les deux espaces. `[&_svg]` :
+                l'icône du menu impose sa propre couleur, qu'il faut surcharger aussi. */}
             <DropdownMenuItem
               disabled={deconnexion.isPending}
               onClick={() => deconnexion.mutate()}
+              className="text-destructive focus:bg-destructive/10 focus:text-destructive [&_svg]:!text-destructive"
             >
               <LogOut />
               Se déconnecter

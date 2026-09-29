@@ -21,14 +21,14 @@ describe('enveloppeHtml', () => {
   });
 
   /*
-   * ⚠️ LE LOGO EST RÉFÉRENCÉ PAR SON `cid`, jamais par une URL : c'est ce qui
-   * lui permet de s'afficher sans réseau et sans rien tracer.
+   * ⚠️ LE LOGO EST UNE URL, PLUS UN `cid` : une image jointe se réécrit en route
+   * (antivirus, passerelle) et finit en pièce jointe visible avec une image cassée.
    */
-  it('référence le logo en pièce jointe, pas par une adresse distante', () => {
+  it('référence le logo par une adresse https, pas par une pièce jointe', () => {
     const html = rendre('Bonjour.');
 
-    expect(html).toContain('src="cid:logo-edtpro"');
-    expect(html).not.toMatch(/<img[^>]+src="https?:/);
+    expect(html).toMatch(/<img[^>]+src="https?:\/\/[^"]+\/logo-email\.png"/);
+    expect(html).not.toContain('cid:');
   });
 
   it('donne un texte de remplacement au logo, pour une image bloquée', () => {

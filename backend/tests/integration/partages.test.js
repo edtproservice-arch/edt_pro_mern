@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
+import mongoose from 'mongoose';
 import { createApp } from '../../src/app.js';
 import { User } from '../../src/models/User.js';
 import { Etablissement } from '../../src/models/Etablissement.js';
@@ -72,8 +73,12 @@ const en = (qui) => ({
     request(app).delete(url).set('Cookie', cookies[qui]).set('X-Annee-Scolaire', String(ANNEE)).send(corps),
 });
 
-/** Le message d'invitation EN ATTENTE d'un compte, s'il en a un. */
+/** Le DERNIER message d'invitation d'un compte, quel que soit son statut. */
 const invitationDe = (utilisateur) =>
+  Message.findOne({ destinataireId: utilisateur.id, invitation: { $ne: null } }).sort({ createdAt: -1, _id: -1 });
+
+/** Le message d'invitation EN ATTENTE d'un compte — seuls les messages anciens en portent. */
+const invitationEnAttenteDe = (utilisateur) =>
   Message.findOne({ destinataireId: utilisateur.id, 'invitation.statut': 'en_attente' });
 
 /**
@@ -101,21 +106,38 @@ const cleDe = (utilisateur) => Object.keys(comptes).find((cle) => comptes[cle].i
 
 /** Répond à l'invitation en attente d'un compte, avec SA session. */
 async function repondre(utilisateur, reponse = 'accepter') {
-  const message = await invitationDe(utilisateur);
+  const message = await invitationEnAttenteDe(utilisateur);
   if (!message) return null;
   return en(cleDe(utilisateur)).post(`/api/v2/partages/invitations/${message.id}/${reponse}`);
 }
 
 /**
- * Invite, puis — par défaut — ACCEPTE avec la session de l'invité : depuis le
- * 2026-09-12, une invitation en attente ne donne aucun accès.
+ * Remet une invitation dans l'état « en attente » d'AVANT le 2026-09-23 — membre et
+ * message. Un partage ouvre désormais la page d'office, mais les invitations envoyées
+ * avant ce changement existent encore, et la route qui y répond reste en place.
  */
-async function inviter(utilisateur, droit = 'modifier', { accepter = true } = {}) {
+async function remettreEnAttente(utilisateur) {
+  await Partage.updateMany(
+    { 'membres.utilisateurId': new mongoose.Types.ObjectId(utilisateur.id) },
+    { $set: { 'membres.$[m].statut': 'en_attente', 'membres.$[m].accepteLe': null } },
+    { arrayFilters: [{ 'm.utilisateurId': new mongoose.Types.ObjectId(utilisateur.id) }] }
+  );
+  await Message.updateMany(
+    { destinataireId: utilisateur.id, invitation: { $ne: null } },
+    { $set: { 'invitation.statut': 'en_attente', 'invitation.reponduLe': null } }
+  );
+}
+
+/**
+ * Invite. Depuis le 2026-09-23 l'accès est accordé d'office ; `enAttente` reproduit une
+ * invitation ANCIENNE, restée sans réponse.
+ */
+async function inviter(utilisateur, droit = 'modifier', { enAttente = false } = {}) {
   const reponse = await en('directeur').post('/api/v2/partages/emploi/membres', {
     utilisateurIds: [utilisateur.id],
     droit,
   });
-  if (accepter && reponse.status === 200) await repondre(utilisateur, 'accepter');
+  if (enAttente && reponse.status === 200) await remettreEnAttente(utilisateur);
   return reponse;
 }
 
@@ -207,20 +229,22 @@ describe('la boîte « Partager » du directeur', () => {
   });
 
   it('prévient l’invité par la messagerie, et trace l’invitation', async () => {
-    const reponse = await inviter(comptes.formateur, 'modifier', { accepter: false });
+    const reponse = await inviter(comptes.formateur, 'modifier');
     expect(reponse.status).toBe(200);
+    // Accès accordé d'office (2026-09-23) : rien à accepter.
     expect(reponse.body.partage.membres).toEqual([
-      expect.objectContaining({ email: 'formateur@edtpro.ma', droit: 'modifier', statut: 'en_attente' }),
+      expect.objectContaining({ email: 'formateur@edtpro.ma', droit: 'modifier', statut: 'accepte' }),
     ]);
     // Un membre n'est plus proposé à l'invitation : il change de droit dans sa ligne.
     expect(reponse.body.partage.candidats.map((c) => c.email)).not.toContain('formateur@edtpro.ma');
 
     const message = await Message.findOne({ destinataireId: comptes.formateur.id });
-    expect(message.sujet).toMatch(/Invitation à collaborer/);
-    expect(message.corps).toMatch(/vous pourrez modifier/);
+    expect(message.sujet).toMatch(/partagée avec vous/);
+    expect(message.corps).toMatch(/vous pouvez modifier/);
+    expect(message.corps).not.toMatch(/Acceptez/);
     // ⚠️ Plus de lien : l'adresse n'est pas encore hébergée (demande du porteur).
     expect(message.corps).not.toMatch(/https?:\/\//);
-    expect(message.invitation).toMatchObject({ pages: ['emploi'], droit: 'modifier', statut: 'en_attente' });
+    expect(message.invitation).toMatchObject({ pages: ['emploi'], droit: 'modifier', statut: 'acceptee' });
 
     const trace = await AuditLog.findOne({ action: ACTIONS_AUDIT.PARTAGE_MODIFIE });
     expect(trace.details).toMatchObject({ page: 'emploi', action: 'inviter', droit: 'modifier' });
@@ -338,10 +362,12 @@ describe('GET /partages/moi — ce que le menu doit montrer', () => {
    */
   it('ne présente pas l’accès par le rôle comme un partage', async () => {
     const reponse = await en('gestionnaire').get('/api/v2/partages/moi');
-    // Documents n'y figure plus depuis le 2026-09-14 : la page ne se partage pas — le
-    // gestionnaire la garde par son rôle, et son menu l'avait déjà.
+    // ⚠️ Documents ne se partage pas, mais y FIGURE (2026-09-23) : la garde de route
+    // lit son droit ici — absente, elle renvoyait le gestionnaire vers « Édition ».
+    // `partagee: false` la tient hors du menu « Partagé ».
     expect(reponse.body.pages).toEqual([
       { page: 'emploi', droit: 'consulter', source: 'role', partagee: false },
+      { page: 'documents', droit: 'consulter', source: 'role', partagee: false },
     ]);
   });
 
@@ -365,27 +391,51 @@ describe('suppression d’un compte', () => {
   });
 });
 
-describe('acceptation de l’invitation', () => {
+describe('accès accordé d’office (2026-09-23)', () => {
   /*
-   * ═══ ⚠️ UNE INVITATION DOIT ÊTRE ACCEPTÉE (demande du porteur, 2026-09-12) ═══
+   * ═══ UN PARTAGE OUVRE LA PAGE SANS « ACCEPTER » (décision du porteur) ═══
+   * Renverse la règle du 2026-09-12 : l'invité n'a plus à répondre.
+   */
+  it('ouvre la page dès l’invitation, sans réponse de l’invité', async () => {
+    await inviter(comptes.formateur, 'modifier');
+
+    expect((await en('formateur').put(`/api/v2/seances/${SEMAINE}/case`, seance)).status).toBe(200);
+    const moi = await en('formateur').get('/api/v2/partages/moi');
+    expect(moi.body.pages.map((p) => p.page)).toEqual(['emploi']);
+    expect(await invitationEnAttenteDe(comptes.formateur)).toBeNull();
+  });
+
+  it('ouvre au passage un membre resté en attente qu’on réinvite', async () => {
+    await inviter(comptes.formateur, 'modifier', { enAttente: true });
+    await inviter(comptes.formateur, 'consulter');
+
+    const partage = await Partage.findOne({ page: 'emploi' }).lean();
+    expect(partage.membres[0]).toMatchObject({ droit: 'consulter', statut: 'accepte' });
+  });
+});
+
+describe('invitations ANCIENNES, restées en attente', () => {
+  /*
+   * Les invitations envoyées avant le 2026-09-23 attendent encore une réponse : la
+   * route qui y répond reste, et ses garde-fous avec elle.
    */
   it('ne donne AUCUN accès tant qu’elle n’est pas acceptée', async () => {
-    await inviter(comptes.formateur, 'modifier', { accepter: false });
+    await inviter(comptes.formateur, 'modifier', { enAttente: true });
 
     expect((await en('formateur').get(`/api/v2/seances/${SEMAINE}`)).status).toBe(403);
     expect((await en('formateur').get('/api/v2/partages/moi')).body.pages).toEqual([]);
   });
 
   it('ouvre la page à l’acceptation, et le message le garde', async () => {
-    await inviter(comptes.formateur, 'modifier', { accepter: false });
+    await inviter(comptes.formateur, 'modifier', { enAttente: true });
+    const message = await invitationEnAttenteDe(comptes.formateur);
     const reponse = await repondre(comptes.formateur, 'accepter');
 
     expect(reponse.status).toBe(200);
     expect(reponse.body).toMatchObject({ statut: 'acceptee', pages: ['emploi'] });
     expect((await en('formateur').put(`/api/v2/seances/${SEMAINE}/case`, seance)).status).toBe(200);
 
-    const message = await Message.findOne({ destinataireId: comptes.formateur.id });
-    expect(message.invitation.statut).toBe('acceptee');
+    expect((await Message.findById(message.id)).invitation.statut).toBe('acceptee');
 
     // La boîte du directeur ne la dit plus « en attente ».
     const boite = await en('directeur').get('/api/v2/partages/emploi');
@@ -393,8 +443,8 @@ describe('acceptation de l’invitation', () => {
   });
 
   it('refuse une seconde réponse à la même invitation', async () => {
-    await inviter(comptes.formateur, 'modifier', { accepter: false });
-    const message = await invitationDe(comptes.formateur);
+    await inviter(comptes.formateur, 'modifier', { enAttente: true });
+    const message = await invitationEnAttenteDe(comptes.formateur);
     await en('formateur').post(`/api/v2/partages/invitations/${message.id}/accepter`);
 
     const seconde = await en('formateur').post(`/api/v2/partages/invitations/${message.id}/refuser`);
@@ -403,7 +453,7 @@ describe('acceptation de l’invitation', () => {
   });
 
   it('retire l’invité qui refuse', async () => {
-    await inviter(comptes.formateur, 'modifier', { accepter: false });
+    await inviter(comptes.formateur, 'modifier', { enAttente: true });
     const reponse = await repondre(comptes.formateur, 'refuser');
 
     expect(reponse.body.statut).toBe('refusee');
@@ -414,8 +464,8 @@ describe('acceptation de l’invitation', () => {
 
   // ⚠️ Seul le DESTINATAIRE répond : sinon l'identifiant du message suffirait.
   it('refuse qu’un autre que l’invité réponde à sa place', async () => {
-    await inviter(comptes.formateur, 'modifier', { accepter: false });
-    const message = await invitationDe(comptes.formateur);
+    await inviter(comptes.formateur, 'modifier', { enAttente: true });
+    const message = await invitationEnAttenteDe(comptes.formateur);
 
     const usurpation = await en('autreFormateur').post(`/api/v2/partages/invitations/${message.id}/accepter`);
     expect(usurpation.status).toBe(404);
@@ -423,8 +473,8 @@ describe('acceptation de l’invitation', () => {
   });
 
   it('éteint les boutons d’une invitation que le directeur retire avant la réponse', async () => {
-    await inviter(comptes.formateur, 'modifier', { accepter: false });
-    const message = await invitationDe(comptes.formateur);
+    await inviter(comptes.formateur, 'modifier', { enAttente: true });
+    const message = await invitationEnAttenteDe(comptes.formateur);
 
     await en('directeur').delete(`/api/v2/partages/emploi/membres/${comptes.formateur.id}`);
 
@@ -465,17 +515,16 @@ describe('invitation sur plusieurs pages (étape d)', () => {
 
     const partages = await Partage.find({}).lean();
     expect(partages.map((p) => p.page).sort()).toEqual(['chronogramme', 'emploi']);
-    for (const p of partages) expect(p.membres[0]).toMatchObject({ droit: 'modifier', statut: 'en_attente' });
+    for (const p of partages) expect(p.membres[0]).toMatchObject({ droit: 'modifier', statut: 'accepte' });
 
     const messages = await Message.find({ destinataireId: comptes.formateur.id });
     expect(messages).toHaveLength(1);
     expect(messages[0].invitation.pages).toEqual(['emploi', 'chronogramme']);
-    expect(messages[0].sujet).toBe('Invitation à collaborer sur 2 pages');
+    expect(messages[0].sujet).toBe('2 pages partagées avec vous');
   });
 
-  it('ouvre toutes les pages d’un seul « Accepter »', async () => {
+  it('ouvre toutes les pages d’un coup, sans rien accepter', async () => {
     await inviterSur(comptes.formateur, ['chronogramme']);
-    expect((await repondre(comptes.formateur, 'accepter')).status).toBe(200);
 
     const reponse = await en('formateur').get('/api/v2/partages/moi');
     expect(reponse.body.pages.map((p) => p.page).sort()).toEqual(['chronogramme', 'emploi']);
@@ -491,8 +540,8 @@ describe('invitation sur plusieurs pages (étape d)', () => {
     expect(emploi.membres[0].droit).toBe('modifier');
 
     const message = await Message.findOne({ destinataireId: comptes.formateur.id });
-    expect(message.corps).toMatch(/Emploi du temps — vous pourrez modifier/);
-    expect(message.corps).toMatch(/Sessions — vous pourrez consulter/);
+    expect(message.corps).toMatch(/Emploi du temps — vous pouvez modifier/);
+    expect(message.corps).toMatch(/Sessions — vous pouvez consulter/);
   });
 
   // ⚠️ Déjà membre de l'emploi du temps : son nouveau message n'annonce que le reste.
@@ -533,7 +582,7 @@ describe('un droit par page, et les pages d’un invité (2026-09-13)', () => {
       ['absences', 'consulter'],
       ['sessions', 'consulter'],
     ]);
-    expect(message.corps).toMatch(/Absences — vous pourrez consulter/);
+    expect(message.corps).toMatch(/Absences — vous pouvez consulter/);
 
     // ⚠️ Le PRÉSENTATEUR de la messagerie les rend : sans eux, la carte ne dirait que le plus haut.
     const lu = await en('formateur').get(`/api/v2/messages/${message.id}`);
@@ -555,7 +604,7 @@ describe('un droit par page, et les pages d’un invité (2026-09-13)', () => {
   });
 
   it('rend toutes les pages d’un invité, avec ce qu’il aurait sans invitation', async () => {
-    await inviter(comptes.gestionnaire, 'modifier', { accepter: false });
+    await inviter(comptes.gestionnaire, 'modifier');
 
     const reponse = await pagesDe(comptes.gestionnaire);
     expect(reponse.status).toBe(200);
@@ -563,7 +612,7 @@ describe('un droit par page, et les pages d’un invité (2026-09-13)', () => {
     expect(reponse.body.pages.map((p) => p.page)).toEqual(pagesPretes());
 
     const emploi = reponse.body.pages.find((p) => p.page === 'emploi');
-    expect(emploi.invitation).toEqual({ droit: 'modifier', statut: 'en_attente' });
+    expect(emploi.invitation).toEqual({ droit: 'modifier', statut: 'accepte' });
     // Le gestionnaire consulte l'emploi du temps par son RÔLE : la ligne le dit.
     expect(emploi.sansInvitation).toMatchObject({ droit: 'consulter' });
 
@@ -578,7 +627,6 @@ describe('un droit par page, et les pages d’un invité (2026-09-13)', () => {
       utilisateurIds: [comptes.formateur.id],
       droits: { emploi: 'modifier', absences: 'modifier' },
     });
-    await repondre(comptes.formateur, 'accepter');
 
     const reponse = await regler(comptes.formateur, { emploi: 'consulter', absences: null, chronogramme: 'modifier' });
     expect(reponse.status).toBe(200);
@@ -586,31 +634,34 @@ describe('un droit par page, et les pages d’un invité (2026-09-13)', () => {
     // Le droit change, l'acceptation reste.
     expect(await membreSur('emploi', comptes.formateur)).toMatchObject({ droit: 'consulter', statut: 'accepte' });
     expect(await membreSur('absences', comptes.formateur)).toBeUndefined();
-    expect(await membreSur('chronogramme', comptes.formateur)).toMatchObject({ droit: 'modifier', statut: 'en_attente' });
+    expect(await membreSur('chronogramme', comptes.formateur)).toMatchObject({ droit: 'modifier', statut: 'accepte' });
 
     const nouveau = await invitationDe(comptes.formateur);
     expect(nouveau.invitation.pages).toEqual(['chronogramme']);
 
     // La réponse est la vue à jour : rien à relire.
     const chrono = reponse.body.pages.find((p) => p.page === 'chronogramme');
-    expect(chrono.invitation).toEqual({ droit: 'modifier', statut: 'en_attente' });
+    expect(chrono.invitation).toEqual({ droit: 'modifier', statut: 'accepte' });
 
-    // L'accès retiré se ferme aussitôt : Absences n'est plus dans son menu.
+    // L'accès retiré se ferme aussitôt : Absences n'est plus dans son menu — et la page
+    // ajoutée y est déjà, accordée d'office (2026-09-23).
     const moi = await en('formateur').get('/api/v2/partages/moi');
-    expect(moi.body.pages.map((p) => p.page)).toEqual(['emploi']);
+    expect(moi.body.pages.map((p) => p.page).sort()).toEqual(['chronogramme', 'emploi']);
   });
 
+  // Invitation ANCIENNE (d'avant le 2026-09-23), restée en attente.
   it('garde les boutons d’une invitation tant qu’UNE de ses pages attend encore', async () => {
     await en('directeur').post('/api/v2/partages/emploi/membres', {
       utilisateurIds: [comptes.formateur.id],
       droits: { emploi: 'modifier', absences: 'consulter' },
     });
+    await remettreEnAttente(comptes.formateur);
 
     await regler(comptes.formateur, { absences: null });
-    expect((await invitationDe(comptes.formateur))?.invitation.pages).toEqual(['emploi', 'absences']);
+    expect((await invitationEnAttenteDe(comptes.formateur))?.invitation.pages).toEqual(['emploi', 'absences']);
 
     await regler(comptes.formateur, { emploi: null });
-    expect(await invitationDe(comptes.formateur)).toBeNull();
+    expect(await invitationEnAttenteDe(comptes.formateur)).toBeNull();
     const message = await Message.findOne({ destinataireId: comptes.formateur.id });
     expect(message.invitation.statut).toBe('retiree');
   });
@@ -818,7 +869,6 @@ describe('pages de l’étape d2 — Absences, Chronogramme, Avancement, EFM', (
       droit,
     });
     expect(reponse.status).toBe(200);
-    await repondre(utilisateur, 'accepter');
   }
 
   const efm = {
@@ -916,7 +966,6 @@ describe('pages de l’étape d3 — pages « tout ou rien » et version optimis
       droit,
     });
     expect(reponse.status).toBe(200);
-    await repondre(utilisateur, 'accepter');
   }
 
   const carte = {
@@ -1104,7 +1153,6 @@ describe('pages de l’étape d4 — Sessions et Documents, en lecture', () => {
       droit,
     });
     expect(reponse.status).toBe(200);
-    await repondre(utilisateur, 'accepter');
   }
 
   it('ferme les deux pages au formateur non invité', async () => {
@@ -1159,16 +1207,17 @@ describe('pages de l’étape d4 — Sessions et Documents, en lecture', () => {
     }
   });
 
-  it('Documents : l’import Konosys reste au directeur', async () => {
+  it('Documents : l’import Konosys reste au directeur et au gestionnaire', async () => {
     await inviterSurPage(comptes.formateur, 'documents');
-    for (const qui of ['formateur', 'gestionnaire']) {
-      const reponse = await request(app)
+    const envoyer = (qui) =>
+      request(app)
         .post('/api/v2/stagiaires/import')
         .set('Cookie', cookies[qui])
         .set('X-Annee-Scolaire', String(ANNEE))
         .attach('fichier', Buffer.from('x'), 'k.xlsx');
-      expect(reponse.status).toBe(403);
-    }
+    expect((await envoyer('formateur')).status).toBe(403);
+    // Le gestionnaire passe la garde (2026-09-23) : c'est le fichier, illisible, qui est refusé.
+    expect((await envoyer('gestionnaire')).status).not.toBe(403);
   });
 });
 

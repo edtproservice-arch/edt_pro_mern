@@ -35,6 +35,10 @@ const ENTETES = [
   'CodeDiplome',
   'Site',
   'LibelleLong',
+  'MotifAdmission',
+  'NTelelephone',
+  'LieuNaissance',
+  'DateInscription',
 ];
 
 /** Classeur Konosys : la PREMIÈRE feuille, en-têtes en ligne 1. */
@@ -126,6 +130,50 @@ describe('Import Konosys', () => {
     });
     expect(enregistre.groupes).toEqual(['DEVOWFS201']);
     expect(enregistre.anneeScolaire).toBe(ANNEE);
+  });
+
+  it('⚠️ CONSERVE le motif d’admission et le téléphone (2026-09-21), sans les exposer', async () => {
+    const reponse = await importer([
+      stagiaire({ MotifAdmission: 'Admission sur dossier', NTelelephone: '0687623946' }),
+      stagiaire({ MatriculeEtudiant: 'S002', Nom: 'ALAMI' }),
+    ]);
+    expect(reponse.status).toBe(200);
+
+    // Le numéro reste une chaîne qui commence par 0 : converti en nombre, il perdrait ce zéro.
+    const complet = await Stagiaire.findOne({ matricule: 'S001' });
+    expect(complet.motifAdmission).toBe('Admission sur dossier');
+    expect(complet.telephone).toBe('0687623946');
+
+    // Colonnes vides : des champs vides, pas une erreur.
+    const sans = await Stagiaire.findOne({ matricule: 'S002' });
+    expect(sans.motifAdmission).toBe('');
+    expect(sans.telephone).toBe('');
+
+    // Aucune route ne les renvoie tant qu'un écran n'en a pas besoin.
+    const liste = await request(app).get('/api/v2/stagiaires').set('Cookie', cookies);
+    expect(JSON.stringify(liste.body)).not.toContain('0687623946');
+    expect(JSON.stringify(liste.body)).not.toContain('Admission sur dossier');
+  });
+
+  it('⚠️ EXPOSE le lieu de naissance et la date d’inscription (2026-09-27, demande du porteur : « exposer ces champs dans la fiche stagiaire »)', async () => {
+    const reponse = await importer([
+      stagiaire({ LieuNaissance: 'RABAT', DateInscription: '22/06/2026' }),
+      stagiaire({ MatriculeEtudiant: 'S002', Nom: 'ALAMI' }),
+    ]);
+    expect(reponse.status).toBe(200);
+
+    const complet = await Stagiaire.findOne({ matricule: 'S001' });
+    expect(complet.lieuNaissance).toBe('RABAT');
+    expect(complet.dateInscription).toBe('22/06/2026');
+
+    // Colonnes vides : des champs vides, pas une erreur.
+    const sans = await Stagiaire.findOne({ matricule: 'S002' });
+    expect(sans.lieuNaissance).toBe('');
+    expect(sans.dateInscription).toBe('');
+
+    const liste = await request(app).get('/api/v2/stagiaires').set('Cookie', cookies);
+    const s001 = liste.body.stagiaires.find((s) => s.matricule === 'S001');
+    expect(s001).toMatchObject({ lieuNaissance: 'RABAT', dateInscription: '22/06/2026' });
   });
 
   it('REGROUPE les deux inscriptions d’un même stagiaire', async () => {

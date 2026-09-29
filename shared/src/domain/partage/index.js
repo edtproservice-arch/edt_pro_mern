@@ -9,11 +9,13 @@ export {
 } from './droits.js';
 export {
   GROUPES_PAGES,
+  ORDRE_PAGES_PARTAGEES,
   PAGES_COLLABORATIVES,
   PAGES_PARTAGEABLES,
   droitBorne,
   grouperPages,
   libellePage,
+  ordonnerPages,
   pageAnnuelle,
   pagePrete,
   pagesPretes,

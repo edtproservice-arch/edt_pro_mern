@@ -1,15 +1,23 @@
 import { createContext, useContext, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CalendarCheck, CalendarClock, CalendarX, Check, Clock, GraduationCap, UserX } from 'lucide-react';
-import { ROLES } from 'shared/constants';
-import { dateDuJour, droitSuffit, dureeSeance, enJour, horaireCreneau, libelleSemaine } from 'shared/domain';
 import {
-  ContenuSeance,
-  STYLES as STYLES_AGENDA,
-  formatterDuree,
-  formatterHeure,
-} from '@/features/consultation/VueAgenda';
+  CalendarCheck,
+  CalendarClock,
+  CalendarX,
+  ChevronDown,
+  Download,
+  File,
+  FileSpreadsheet,
+  FileText,
+  GraduationCap,
+  UserX,
+} from 'lucide-react';
+import { ROLES } from 'shared/constants';
+import { DUREE_RATTRAPAGE, dateDuJour, droitSuffit, dureeSeance, enJour, horaireCreneau, libelleSemaine } from 'shared/domain';
+import { formatterDuree, formatterHeure } from '@/features/consultation/VueAgenda';
+import { useHorairesCourants } from '@/features/horaires/useHorairesCourants';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
 import {
@@ -19,14 +27,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
+import TableauTriable from '@/components/common/TableauTriable';
 import Alerte from '@/components/common/Alerte';
-import { PASTILLE_RATTRAPAGE } from '@/components/common/apparenceGrille';
+import { MARGE_PAGE, PASTILLE_RATTRAPAGE } from '@/components/common/apparenceGrille';
 import CadreReglage from '@/features/parametres/CadreReglage';
 import EnTetePartage from '@/features/partages/EnTetePartage';
 import { usePartagesAvecMoi } from '@/features/partages/usePartagesAvecMoi';
 import { cn } from '@/lib/utils';
-import { annulerRattrapage, chargerAbsences, modifierAbsence, placerRattrapage } from './api';
+import { annulerRattrapage, chargerAbsences, exporterAbsences, modifierAbsence, placerRattrapage } from './api';
 import RattrapageChronogramme from './RattrapageChronogramme';
 import RattrapageEmploi from './RattrapageEmploi';
 import { grouperParFormateur } from './regroupement';
@@ -46,10 +61,17 @@ import ListeRepliable from './ListeRepliable';
  * autant que dans le registre — il faut pouvoir modifier les DEUX pages, comme
  * le serveur l'exige (2026-09-14). Être invité aux absences ne suffit pas.
  *
- * ⚠️ `voitChronogramme` : l'onglet Chronogramme de la modale n'est plus qu'une
- * LECTURE (décision B du porteur) — consulter suffit.
+ * ⚠️ `voitChronogramme` : consulter suffit pour VOIR l'onglet Chronogramme de la
+ * modale ; `modifieChronogramme` (2026-09-28, demande du porteur : « pour le
+ * rattrapage je veux qu'il puisse poser en chronogramme, pas seulement la
+ * lecture ») ouvre la saisie — le même droit que sur la page Chronogramme.
  */
-const DroitsAbsences = createContext({ lectureSeule: false, peutPlacer: false, voitChronogramme: false });
+const DroitsAbsences = createContext({
+  lectureSeule: false,
+  peutPlacer: false,
+  voitChronogramme: false,
+  modifieChronogramme: false,
+});
 
 /**
  * Registre des absences de formateurs et de leurs rattrapages (F8).
@@ -75,13 +97,18 @@ export default function PageAbsences() {
    */
   const voitFormateurs = droitSuffit(droitSur('absences'), 'consulter');
   const encadrement = role === ROLES.DIRECTEUR || role === ROLES.GESTIONNAIRE;
+  const [parametresPage] = useSearchParams();
   const [onglet, setOnglet] = useState(null);
-  const actif = onglet ?? (voitFormateurs ? 'formateurs' : 'stagiaires');
+  /* ⚠️ `?groupe=…` FORCE L'ONGLET STAGIAIRES (2026-09-29, demande du porteur :
+     « si je clique envoie directement en groupe en page absence ») — sans ça,
+     un directeur qui voit aussi « Formateurs » atterrirait sur le mauvais
+     onglet et le lien depuis l'accueil ne mènerait nulle part d'utile. */
+  const actif = onglet ?? (parametresPage.get('groupe') ? 'stagiaires' : voitFormateurs ? 'formateurs' : 'stagiaires');
 
   return (
     <>
       <EnTetePartage page="absences" clesARelire={[['absences'], ['absences-stagiaires']]} />
-      <CadreReglage titre="Absences" large={actif === 'stagiaires'} chargement={session.isLoading}>
+      <CadreReglage titre="Absences" large chargement={session.isLoading}>
         {voitFormateurs && encadrement && (
           <ButtonGroup>
             {ONGLETS_PAGE.map(({ cle, libelle, Icone }) => (
@@ -114,7 +141,14 @@ const ONGLETS_PAGE = [
 
 function RegistreFormateurs() {
   const cache = useQueryClient();
-  const [filtre, setFiltre] = useState('toutes');
+  /* `?filtre=attente` (2026-09-28) : depuis « À traiter » de l'accueil, le
+     registre s'ouvre sur les absences sans rattrapage — celles dont on parle. */
+  const [parametres] = useSearchParams();
+  const [filtre, setFiltre] = useState(() =>
+    FILTRES.some((choix) => choix.valeur === parametres.get('filtre'))
+      ? parametres.get('filtre')
+      : 'toutes'
+  );
 
   const registre = useQuery({
     queryKey: ['absences', filtre],
@@ -153,6 +187,21 @@ function RegistreFormateurs() {
     onError: (erreur) => toast.error('Enregistrement impossible', { description: erreur.message }),
   });
 
+  /*
+   * ═══ TÉLÉCHARGER : MÊME FILTRE QUE L'ÉCRAN (2026-09-29, demande du porteur :
+   * « en absence je veux ajouter qu'il être exporté en Word et PDF et Excel »)
+   * ═══ « Toutes », « Sans rattrapage » ou « Rattrapées » — le registre
+   * téléchargé est celui que le bouton actif montre à l'écran.
+   */
+  const telechargement = useMutation({
+    mutationFn: (format) =>
+      exporterAbsences({
+        format,
+        ...(filtre === 'toutes' ? {} : { rattrapees: filtre === 'rattrapees' }),
+      }),
+    onError: (erreur) => toast.error('Téléchargement impossible', { description: erreur.message }),
+  });
+
   const absences = registre.data?.absences ?? [];
   const enAttente = absences.filter((absence) => !absence.dateRattrapage).length;
 
@@ -162,6 +211,7 @@ function RegistreFormateurs() {
     lectureSeule,
     peutPlacer: !lectureSeule && droitSuffit(droitSur('emploi'), 'modifier'),
     voitChronogramme: droitSuffit(droitSur('chronogramme'), 'consulter'),
+    modifieChronogramme: droitSuffit(droitSur('chronogramme'), 'modifier'),
   };
 
   if (registre.isLoading) return <p className="text-sm text-muted-foreground">Chargement…</p>;
@@ -174,7 +224,7 @@ function RegistreFormateurs() {
         {/* La consigne dit où SAISIR : sans objet pour qui ne fait que consulter. */}
         {/* {!droits.lectureSeule && (
           <Alerte type="info" titre="Une absence se marque dans l’emploi du temps">
-            Ouvrez la case de la séance et choisissez « Marquer absent » dans la liste des salles. Elle
+            Ouvrez la case de la séance et choisissez « Marquer absent » dans la liste des espaces. Elle
             apparaît alors ici, où l’on note le motif et le rattrapage.
           </Alerte>
         )} */}
@@ -195,6 +245,42 @@ function RegistreFormateurs() {
             {absences.length} absence(s)
             {enAttente > 0 && ` · ${enAttente} sans rattrapage`}
           </span>
+
+          {/*
+            ⚠️ LE MÊME FILTRE QUE LES BOUTONS CI-DESSUS : télécharger « Sans
+            rattrapage » ne rend pas le registre entier.
+          */}
+          {absences.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 text-xs"
+                  disabled={telechargement.isPending}
+                >
+                  <Download className="size-3.5" />
+                  Télécharger
+                  <ChevronDown className="size-3.5 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onSelect={() => telechargement.mutate('docx')}>
+                  <FileText className="size-3.5 text-blue-600" />
+                  Télécharger en Word
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => telechargement.mutate('pdf')}>
+                  <File className="size-3.5 text-red-600" />
+                  Télécharger en PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => telechargement.mutate('xlsx')}>
+                  <FileSpreadsheet className="size-3.5 text-green-600" />
+                  Télécharger en Excel
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
 
         {/*
@@ -238,17 +324,11 @@ function RegistreFormateurs() {
             ),
           })}
           detail={(formateur) => (
-            <div className="space-y-4">
-              {formateur.jours.map((groupe, rang) => (
-                <BlocJourAbsence
-                  key={groupe.cle}
-                  groupe={groupe}
-                  enCours={enregistrer.isPending}
-                  onEnregistrer={(id, champs) => enregistrer.mutate({ id, champs })}
-                  separe={rang > 0}
-                />
-              ))}
-            </div>
+            <TableauAbsencesFormateur
+              absences={formateur.jours.flatMap((jour) => jour.entrees)}
+              enCours={enregistrer.isPending}
+              onEnregistrer={(id, champs) => enregistrer.mutate({ id, champs })}
+            />
           )}
         />
       </div>
@@ -334,111 +414,110 @@ function ChampRattrapage({ absence, enCours, onEnregistrer }) {
 }
 
 /**
- * Le détail d'UN jour d'absence, dans la fiche dépliée d'un formateur.
- * ← le corps de l'ancienne carte groupée par jour (2026-08-26), passé par la
- * modale (2026-09-03) puis sous l'en-tête de la fiche (2026-09-14) — la MÊME
- * saisie à chaque fois.
+ * ═══ LES SÉANCES D'UN FORMATEUR ABSENT, EN TABLEAU (2026-09-20, demande du porteur) ═══
+ * « Comme le mode stagiaire, pour la cohérence » : les absences des stagiaires se
+ * lisent dans un `TableauTriable` — une ligne par marquage, des colonnes triables,
+ * et des cartes sous 1280 px. Celles des formateurs étaient des cartes d'agenda
+ * empilées par jour : deux écrans de la même page, deux façons de lire une absence.
+ * C'est désormais le MÊME composant, et la même forme de colonnes.
  *
- * ═══ ⚠️ GROUPÉ, MAIS PAS FUSIONNÉ ═══
- * Trois créneaux d'affilée sont un seul bloc — on ne relit pas trois fois le
- * même nom, la même date, le même groupe — mais CHAQUE CRÉNEAU garde son
- * observation et sa date de rattrapage, parce que chacun vaut 2,5 h à
- * reprendre et peut être rattrapé un autre jour. Les écritures restent
- * indépendantes.
+ * ⚠️ UNE LIGNE PAR CRÉNEAU, jamais fusionnée : chacun garde SON motif et SON
+ * rattrapage (2,5 h à reprendre chacun, à un autre jour si besoin). Ce sont les
+ * MÊMES champs qu'avant (`ChampObservation`, `RattrapagePlacement`) — seule la
+ * disposition change, aucune écriture ne bouge.
+ *
+ * ⚠️ TRIÉ PAR DATE DÉCROISSANTE À L'ARRIVÉE, comme le registre du serveur (le plus
+ * récent d'abord) : le tri par défaut de `TableauTriable` est l'ordre reçu, et un
+ * clic sur « Date » le renverse.
  */
-function BlocJourAbsence({ groupe, enCours, onEnregistrer, separe }) {
-  // Dans l'ordre de la journée, comme l'agenda — le registre arrive du plus récent.
-  const entrees = [...groupe.entrees].sort((a, b) => String(a.seance).localeCompare(String(b.seance)));
-
+function TableauAbsencesFormateur({ absences, enCours, onEnregistrer }) {
+  // L'horaire en vigueur (hiver, été, ramadan) : l'heure barrée d'une séance en dépend.
+  const horaires = useHorairesCourants();
   return (
-    <div className={cn('space-y-2', separe && 'pt-2')}>
-      {/* L'en-tête du jour de l'agenda : le jour en capitales, puis la date. */}
-      <p className="flex items-baseline gap-2 text-xs">
-        <span className="font-semibold uppercase tracking-wide">{entrees[0]?.jour}</span>
-        <span className="tabular-nums text-muted-foreground">{jourMois(groupe.dateAbsence)}</span>
-        <span className="text-muted-foreground">· {libelleSemaine(groupe.semaine, { court: true })}</span>
-      </p>
-      <div className="space-y-3">
-        {entrees.map((absence) => (
-          <CarteAbsence key={absence.id} absence={absence} enCours={enCours} onEnregistrer={onEnregistrer} />
-        ))}
-      </div>
-    </div>
+    <TableauTriable
+      cartesSous="lg"
+      collant={`-${MARGE_PAGE}px`}
+      colonnes={colonnesAbsencesFormateur({ enCours, onEnregistrer, horaires })}
+      lignes={absences}
+      cleLigne={(absence) => absence.id}
+      vide="Aucune absence."
+    />
   );
 }
 
-/**
- * ═══ UN CRÉNEAU D'ABSENCE, EN CARTE D'AGENDA ═══ (2026-09-17, demande du
- * porteur : « comme les cartes de Mon emploi du temps, avec le motif et le bouton
- * de rattrapage dedans, pour la cohérence ».) Cercle d'état, horaire officiel
- * barré, durée, badge « Absence », puis groupe / module (code et nom complet) /
- * salle — ce sont les pièces EXPORTÉES de `VueAgenda`, pas une recopie : une
- * absence se lit ici exactement comme dans l'agenda du formateur.
- *
- * ⚠️ UNE CARTE PAR CRÉNEAU, jamais fusionnée comme dans l'agenda : chacun garde
- * SON motif et SON rattrapage (2,5 h à reprendre chacun).
- * ⚠️ SANS l'`opacity-80` de la carte d'agenda : elle porte ici un champ et un
- * bouton, qu'un voile ferait paraître désactivés.
- * ⚠️ Rattrapée, le cercle porte une coche — mais RESTE ROUGE (demande du
- * porteur, 2026-09-17), la teinte de la carte.
- */
-function CarteAbsence({ absence, enCours, onEnregistrer }) {
-  const style = STYLES_AGENDA.absente;
-  const rattrapee = Boolean(absence.dateRattrapage);
-  const { debut, fin } = horaireCreneau(absence.jour, absence.seance);
-  const duree = formatterDuree(dureeSeance(absence.seance));
-  const bloc = {
-    absente: true,
-    autreSujet: absence.groupe,
-    module: absence.module,
-    salle: absence.salle,
-    aDistance: absence.salle === 'TEAMS',
-  };
-
-  return (
-    <div className="flex items-start gap-3">
-      <div
-        className={cn(
-          'flex size-9 shrink-0 items-center justify-center rounded-full border',
-          // Toujours rouge (2026-09-17, demande du porteur) : la coche dit
-          // « rattrapée », la couleur reste celle de l'absence.
-          style.cercle
-        )}
-      >
-        {rattrapee ? <Check className="size-4" /> : <Clock className="size-4" />}
-      </div>
-
-      <div className="min-w-0 flex-1 rounded-xl border border-destructive/20 bg-destructive/5 p-3">
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className={cn('text-sm font-bold line-through', style.texte)}>
-              {formatterHeure(debut)} – {formatterHeure(fin)}
+function colonnesAbsencesFormateur({ enCours, onEnregistrer, horaires }) {
+  return [
+    {
+      id: 'date',
+      entete: 'Date',
+      tri: (absence) => `${absence.dateAbsence}|${absence.seance}`,
+      rendu: (absence) => {
+        const { debut, fin } = horaireCreneau(absence.jour, absence.seance, horaires);
+        return (
+          <span className="whitespace-nowrap text-xs">
+            {jourMois(absence.dateAbsence)}{' '}
+            <span className="text-muted-foreground">
+              · {absence.jour.slice(0, 3)} {absence.seance}
             </span>
-            {duree && (
-              <span className={cn('rounded-full border bg-background px-2 py-0.5 text-[0.7rem] font-medium', style.texteDoux)}>
-                {duree}
+            {/* L'horaire officiel du créneau, barré : c'est la séance qui n'a pas eu lieu. */}
+            <span className="mt-0.5 flex items-center gap-1.5 text-[0.7rem]">
+              <span className="text-destructive line-through">
+                {formatterHeure(debut)} – {formatterHeure(fin)}
               </span>
-            )}
-            <span className="text-[0.7rem] text-muted-foreground">{absence.seance}</span>
-          </div>
-          <span className={cn('rounded-full border px-2 py-0.5 text-[0.7rem] font-semibold', style.badge)}>Absence</span>
-        </div>
-
-        <ContenuSeance bloc={bloc} axe="formateur" intitule={absence.moduleIntitule} style={style} />
-
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-destructive/15 pt-3">
-          <div className="min-w-48 flex-1">
-            <ChampObservation absence={absence} onEnregistrer={(champs) => onEnregistrer(absence.id, champs)} />
-          </div>
-          <RattrapagePlacement
-            absence={absence}
-            enCours={enCours}
-            onEnregistrer={(champs) => onEnregistrer(absence.id, champs)}
-          />
-        </div>
-      </div>
-    </div>
-  );
+              {/* Hors du barré : la durée est celle du cours à reprendre, pas d'un cours annulé. */}
+              <span className="rounded-full border bg-background px-1.5 py-0.5 text-muted-foreground">
+                {formatterDuree(dureeSeance(absence.seance))}
+              </span>
+            </span>
+          </span>
+        );
+      },
+    },
+    {
+      id: 'groupe',
+      entete: 'Groupe',
+      tri: (absence) => absence.groupe,
+      rendu: (absence) => <span className="text-xs font-medium">{absence.groupe || '—'}</span>,
+    },
+    {
+      id: 'cours',
+      entete: 'Cours',
+      tri: (absence) => absence.module,
+      rendu: (absence) => (
+        <span className="text-xs">
+          {absence.module || '—'}
+          {absence.moduleIntitule && (
+            <span className="block text-muted-foreground">{absence.moduleIntitule}</span>
+          )}
+        </span>
+      ),
+    },
+    {
+      id: 'espace',
+      entete: 'Espace',
+      tri: (absence) => absence.salle,
+      rendu: (absence) => <span className="whitespace-nowrap text-xs">{absence.salle || '—'}</span>,
+    },
+    {
+      id: 'motif',
+      entete: 'Motif',
+      rendu: (absence) => (
+        <ChampObservation absence={absence} onEnregistrer={(champs) => onEnregistrer(absence.id, champs)} />
+      ),
+    },
+    {
+      id: 'rattrapage',
+      entete: 'Rattrapage',
+      tri: (absence) => absence.dateRattrapage ?? '',
+      rendu: (absence) => (
+        <RattrapagePlacement
+          absence={absence}
+          enCours={enCours}
+          onEnregistrer={(champs) => onEnregistrer(absence.id, champs)}
+        />
+      ),
+    },
+  ];
 }
 
 /**
@@ -460,16 +539,44 @@ function CarteAbsence({ absence, enCours, onEnregistrer }) {
  * lève le double comptage qui avait fait garder, le 2026-09-03, la grille en
  * simple vérification à côté d'un champ de date : le champ de date disparaît.
  *
+ * ═══ UN SEUL BOUTON POUR LES DEUX ONGLETS (2026-09-28) ═══
+ * « Un seul bouton pour enregistrer rattrapage et chronogramme » : on choisit
+ * SOIT un créneau de l'emploi du temps (`choisi`), SOIT une semaine du
+ * chronogramme (`semaineAjout`) — choisir l'un efface l'autre. Le créneau
+ * inscrit déjà ses 2,5 h au chronogramme côté serveur : garder les deux
+ * compterait la séance deux fois. « Enregistrer le rattrapage » écrit celui
+ * qui est choisi.
+ *
+ * ⚠️ LA SEMAINE DU CHRONOGRAMME MARQUE AUSSI L'ABSENCE RATTRAPÉE (2026-09-28,
+ * « oui, marquer l'absence comme rattrapée aussi ») : elle passe par la DATE de
+ * rattrapage — le lundi de la semaine —, que le serveur écrit avec le report
+ * de 2,5 h au chronogramme dans UNE transaction, en reprenant une date
+ * précédente. Pas d'écriture du planning depuis l'écran : la date et les
+ * heures ne peuvent pas se contredire.
+ *
  * ⚠️ SANS DROIT DE PLACER — ou sans matricule, aucune ligne à isoler — il reste
  * la saisie de la date d'avant. Un rattrapage déjà PLACÉ ne s'y modifie pas :
  * le serveur refuserait une date qui contredit sa séance.
  */
 function RattrapagePlacement({ absence, enCours, onEnregistrer }) {
-  const { peutPlacer, voitChronogramme } = useContext(DroitsAbsences);
+  const { peutPlacer, voitChronogramme, modifieChronogramme } = useContext(DroitsAbsences);
   const [ouvert, setOuvert] = useState(false);
   const [vue, setVue] = useState('emploi');
-  const [choisi, setChoisi] = useState(null);
+  const [choisi, setChoisiBrut] = useState(null);
+  const [semaineAjout, setSemaineAjoutBrut] = useState(null);
+  const cache = useQueryClient();
   const posee = absence.rattrapage ?? null;
+
+  // L'un OU l'autre — voir « un seul bouton » ci-dessus.
+  const setChoisi = (creneau) => {
+    setChoisiBrut(creneau);
+    if (creneau) setSemaineAjoutBrut(null);
+  };
+  // `{numero, debut}` : la semaine du chronogramme, et son lundi pour la date.
+  const setSemaineAjout = (semaine) => {
+    setSemaineAjoutBrut(semaine);
+    if (semaine) setChoisiBrut(null);
+  };
 
   const apresEcriture = (reponse, message) => {
     setChoisi(null);
@@ -496,6 +603,20 @@ function RattrapagePlacement({ absence, enCours, onEnregistrer }) {
     onError: refus,
   });
 
+  const poserChronogramme = useMutation({
+    mutationFn: () => modifierAbsence(absence.id, { dateRattrapage: semaineAjout.debut }),
+    onSuccess: async (reponse) => {
+      apresEcriture(reponse, 'Rattrapage enregistré');
+      cache.invalidateQueries({ queryKey: ['absences'] });
+      cache.invalidateQueries({ queryKey: ['chronogramme'] });
+      cache.invalidateQueries({ queryKey: ['chronogrammes'] });
+      // La relecture d'abord : la grille ne repasse pas par l'ancien planning.
+      await cache.invalidateQueries({ queryKey: ['chronogramme-formateur'] });
+      setSemaineAjoutBrut(null);
+    },
+    onError: refus,
+  });
+
   const annuler = useMutation({
     mutationFn: () => annulerRattrapage(absence.id),
     onSuccess: (reponse) => apresEcriture(reponse, 'Rattrapage annulé'),
@@ -513,7 +634,7 @@ function RattrapagePlacement({ absence, enCours, onEnregistrer }) {
     return <ChampRattrapage absence={absence} enCours={enCours} onEnregistrer={onEnregistrer} />;
   }
 
-  const enCoursEcriture = placer.isPending || annuler.isPending;
+  const enCoursEcriture = placer.isPending || annuler.isPending || poserChronogramme.isPending;
   const ongletsVisibles = voitChronogramme ? ONGLETS_RATTRAPAGE : ONGLETS_RATTRAPAGE.slice(0, 1);
   const vueActive = ongletsVisibles.some((onglet) => onglet.cle === vue) ? vue : 'emploi';
 
@@ -526,6 +647,7 @@ function RattrapagePlacement({ absence, enCours, onEnregistrer }) {
         className="h-8 gap-1.5 text-xs"
         onClick={() => {
           setChoisi(null);
+          setSemaineAjoutBrut(null);
           setOuvert(true);
         }}
       >
@@ -577,28 +699,37 @@ function RattrapagePlacement({ absence, enCours, onEnregistrer }) {
 
           <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
             {vueActive === 'chronogramme' ? (
-              <RattrapageChronogramme absence={absence} choisi={choisi} />
+              <RattrapageChronogramme
+                absence={absence}
+                choisi={choisi}
+                semaineAjout={semaineAjout}
+                onSemaineAjout={setSemaineAjout}
+                modifiable={modifieChronogramme && !enCoursEcriture}
+              />
             ) : (
               <RattrapageEmploi absence={absence} choisi={choisi} onChoisir={setChoisi} />
             )}
           </div>
 
           <div className="flex shrink-0 flex-wrap items-center gap-3 border-t pt-3">
-            <EtatRattrapage choisi={choisi} posee={posee} absence={absence} />
+            <EtatRattrapage choisi={choisi} semaineAjout={semaineAjout} posee={posee} absence={absence} />
 
             <div className="ml-auto flex flex-wrap items-center gap-2">
-              {choisi && (
+              {(choisi || semaineAjout) && (
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   disabled={enCoursEcriture}
-                  onClick={() => setChoisi(null)}
+                  onClick={() => {
+                    setChoisi(null);
+                    setSemaineAjout(null);
+                  }}
                 >
                   Abandonner ce choix
                 </Button>
               )}
-              {posee && !choisi && (
+              {posee && !choisi && !semaineAjout && (
                 <Button
                   type="button"
                   variant="outline"
@@ -613,10 +744,10 @@ function RattrapagePlacement({ absence, enCours, onEnregistrer }) {
               <Button
                 type="button"
                 size="sm"
-                disabled={!choisi || enCoursEcriture}
-                onClick={() => placer.mutate()}
+                disabled={(!choisi && !semaineAjout) || enCoursEcriture}
+                onClick={() => (choisi ? placer.mutate() : poserChronogramme.mutate())}
               >
-                {placer.isPending ? 'Enregistrement…' : 'Enregistrer le rattrapage'}
+                {placer.isPending || poserChronogramme.isPending ? 'Enregistrement…' : 'Enregistrer le rattrapage'}
               </Button>
             </div>
           </div>
@@ -637,7 +768,19 @@ const ONGLETS_RATTRAPAGE = [
  * n'y a plus d'enregistrement automatique : ce qui est choisi et pas encore
  * enregistré doit se lire comme tel.
  */
-function EtatRattrapage({ choisi, posee, absence }) {
+function EtatRattrapage({ choisi, semaineAjout, posee, absence }) {
+  if (semaineAjout) {
+    return (
+      <p className="text-sm">
+        <span className={cn(PASTILLE_RATTRAPAGE, 'mr-1.5 align-middle')}>↺</span>
+        <span className="font-medium">
+          Chronogramme · S{semaineAjout.numero} ({jourMois(semaineAjout.debut)}) · +{DUREE_RATTRAPAGE} h
+        </span>
+        <span className="ml-1.5 text-muted-foreground">— pas encore enregistré</span>
+      </p>
+    );
+  }
+
   if (choisi) {
     const date = enJour(dateDuJour(choisi.semaine, choisi.jour));
     return (
@@ -648,7 +791,7 @@ function EtatRattrapage({ choisi, posee, absence }) {
         </span>
         <span className="ml-1.5 text-muted-foreground">
           ({libelleSemaine(choisi.semaine, { court: true })})
-          {!choisi.salleDOrigine && absence.salle ? ` — ${absence.salle} est prise, autre salle libre` : ''}
+          {!choisi.salleDOrigine && absence.salle ? ` — ${absence.salle} est pris, autre espace libre` : ''}
           {' — '}pas encore enregistré
         </span>
       </p>
@@ -672,7 +815,8 @@ function EtatRattrapage({ choisi, posee, absence }) {
 
   return (
     <p className="text-sm text-muted-foreground">
-      Aucun rattrapage placé. Cliquez sur une case libre de l’emploi du temps.
+      Aucun rattrapage placé. Cliquez sur une case libre de l’emploi du temps, ou sur une
+      semaine du chronogramme.
     </p>
   );
 }

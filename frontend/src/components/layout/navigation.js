@@ -11,11 +11,13 @@ import {
   House,
   Layers,
   Mail,
+  Map as IconeCarte,
   Network,
   PencilRuler,
   Settings,
   TrendingUp,
   UserX,
+  UserRound,
   Users,
 } from 'lucide-react';
 import { ROLES } from 'shared/constants';
@@ -104,15 +106,16 @@ export const NAVIGATION = [
     sousMenu: [
       // Une porte, pas un bâtiment : le bâtiment désigne l'établissement,
       // affiché juste au-dessus dans le sélecteur.
-      { titre: 'Espaces', url: '/app/parametres/espaces', icone: DoorOpen, phase: 4, resume: 'Salles et TEAMS où placer les séances' },
-      { titre: 'Calendrier', url: '/app/parametres/calendrier', icone: CalendarDays, phase: 4, resume: 'Jours fériés et périodes de vacances' },
+      { titre: 'Espaces', url: '/app/parametres/espaces', icone: DoorOpen, phase: 4, resume: 'Espaces et TEAMS où placer les séances' },
       { titre: 'Formateurs', url: '/app/parametres/formateurs', icone: Users, phase: 4, resume: 'Adresses, matricules et masses horaires' },
-      { titre: 'Affectations', url: '/app/parametres/affectations', icone: Network, phase: 4, resume: 'Filières, groupes et qui enseigne quoi' },
+      { titre: 'Carte', url: '/app/parametres/carte', icone: IconeCarte, phase: 4, resume: 'Filières DRIF et génération des groupes' },
+      { titre: 'Affectations', url: '/app/parametres/affectations', icone: Network, phase: 4, resume: 'Qui enseigne quoi, module par module' },
+      { titre: 'Calendrier', url: '/app/parametres/calendrier', icone: CalendarDays, phase: 4, resume: 'Jours fériés et périodes de vacances' },
       { titre: 'Stages', url: '/app/parametres/stages', icone: Briefcase, phase: 4, resume: 'Périodes en entreprise, par groupe' },
       { titre: 'Formations', url: '/app/parametres/formations', icone: BookOpen, phase: 4, resume: 'Périodes de formation des formateurs' },
-      { titre: 'Sessions', url: '/app/parametres/sessions', icone: GraduationCap, phase: 4, resume: 'Comptes formateurs, stagiaires et gestionnaires' },
       // Un diagramme de Gantt : c'est exactement ce qu'est un chronogramme.
       { titre: 'Chronogramme', url: '/app/parametres/chronogramme', icone: GanttChart, phase: 7, resume: 'Planning annuel par groupe' },
+      { titre: 'Sessions', url: '/app/parametres/sessions', icone: GraduationCap, phase: 4, resume: 'Comptes formateurs, stagiaires et gestionnaires' },
       { titre: 'Groupes (FQ)', url: '/app/parametres/groupes-fq', icone: Layers, phase: 4, resume: 'Groupes réels composant un groupe FQ' },
       { titre: 'EFM régional', url: '/app/parametres/efm-regional', icone: Award, phase: 7, resume: 'Modules évalués au niveau régional' },
     ],
@@ -126,7 +129,7 @@ export const NAVIGATION = [
  * dans le menu principal offrait deux chemins pour un même écran, sans rien qui
  * dise qu'ils mènent au même endroit.
  */
-const HORS_MENU = [{ titre: 'Mon profil', url: '/app/profil', phase: 4 }];
+const HORS_MENU = [{ titre: 'Mon profil', url: '/app/profil', icone: UserRound, phase: 4 }];
 
 /**
  * ═══ SESSIONS CONSULTATIVES — FORMATEUR & STAGIAIRE (F14) ═══
@@ -167,6 +170,8 @@ export const NAVIGATION_FORMATEUR = [
   { titre: 'Emploi', titrePage: 'Mon emploi du temps', url: '/app/mon-emploi', icone: CalendarRange, phase: 10 },
   { titre: 'Affectations', titrePage: 'Mes affectations', url: '/app/mes-affectations', icone: Network, phase: 10 },
   { titre: 'Avancement', titrePage: "Suivi de l'avancement", url: '/app/mon-avancement', icone: TrendingUp, phase: 10 },
+  // Sa propre section de « Compte », déplacée dans une page à elle (2026-09-24, demande du porteur).
+  { titre: 'Absences', titrePage: 'Mes absences', url: '/app/mes-absences', icone: UserX, phase: 10 },
 ];
 
 /**
@@ -185,6 +190,8 @@ export const NAVIGATION_STAGIAIRE = [
   { titre: 'Emploi', titrePage: 'Mon emploi du temps', url: '/app/mon-emploi', icone: CalendarRange, phase: 10 },
   { titre: 'Programme', titrePage: 'Table des matières', url: '/app/mon-programme', icone: BookOpen, phase: 10 },
   { titre: 'Avancement', titrePage: "Suivi de l'avancement", url: '/app/mon-avancement', icone: TrendingUp, phase: 10 },
+  // Sa note de discipline et ses absences, déplacées de « Compte » (2026-09-24, demande du porteur).
+  { titre: 'Absences', titrePage: 'Mes absences', url: '/app/mes-absences', icone: UserX, phase: 10 },
 ];
 
 /**
@@ -210,21 +217,17 @@ const URLS_GESTIONNAIRE = ['/app/edition', '/app/documents', '/app/absences'];
 /**
  * Les raccourcis de tête de barre, pour le rôle donné.
  *
- * ═══ ⚠️ LE GESTIONNAIRE N'A PAS D'ACCUEIL ═══ (2026-09-06, demande du
- * porteur : « en session gestionnaire supprime la page accueil ».)
- *
- * `AccueilApp` est un tableau de bord d'ÉTABLISSEMENT — formateurs, groupes,
- * stagiaires, salles, chronogrammes — c'est-à-dire précisément ce qu'un
- * gestionnaire ne gère pas : il n'a accès qu'à « Édition » et « Documents ».
- * `AccueilRouteur` le renvoyait DÉJÀ vers « Édition » (2026-09-03) : l'entrée du
- * menu ne menait donc nulle part d'autre que là où il est déjà, tout en laissant
- * croire à un écran de plus.
- *
- * ⚠️ LA ROUTE `/app` SURVIT — c'est elle qui redirige. Ce qui disparaît, c'est
- * le LIEN dans le menu : un chemin qu'on ne propose plus, pas un chemin cassé.
+ * ═══ ⚠️ REVIENT SUR « LE GESTIONNAIRE N'A PAS D'ACCUEIL » (2026-09-29,
+ * demande du porteur : « ajouter une page d'accueil pour gestionnaire comme
+ * celui dans le directeur, mais avec des statistiques sur l'absence et la
+ * discipline des stagiaires ») ═══ La décision du 2026-09-06 tenait tant que
+ * `/app` menait au même tableau de bord d'ÉTABLISSEMENT que le directeur —
+ * formateurs, groupes, salles, chronogrammes — hors du ressort du
+ * gestionnaire. `AccueilRouteur` y rend désormais un tableau de bord DIFFÉRENT
+ * pour lui (`AccueilGestionnaire`), centré sur ce qu'il gère : l'absence et la
+ * discipline des stagiaires. Le lien redevient donc pertinent.
  */
-export function raccourcisPourRole(role) {
-  if (role === ROLES.GESTIONNAIRE) return RACCOURCIS.filter((entree) => entree.url !== '/app');
+export function raccourcisPourRole() {
   return RACCOURCIS;
 }
 
@@ -299,13 +302,13 @@ function entreesPartagees(role, partages) {
 
   if (pages.length === 0) return [];
 
-  if (pages.length < SEUIL_CARTE_PARTAGE) {
-    const { directeur, ...seule } = pages[0];
-    // Le formateur : « Partagé », qui mène à la page. Le gestionnaire : l'entrée
-    // du directeur telle quelle, sans son sous-menu — elle s'aligne sur les siennes.
-    if (role === ROLES.FORMATEUR) return [{ ...ENTREE_PARTAGEE, url: seule.url }];
-    const { sousMenu, ...entree } = directeur ?? seule;
-    return [entree];
+  /*
+   * ⚠️ LE GESTIONNAIRE A TOUJOURS LE GROUPE « Partagé », même pour UNE page
+   * (2026-09-23, demande du porteur) : sa barre latérale range ses pages
+   * partagées dans leur propre groupe, et une page seule y a sa place aussi.
+   */
+  if (role === ROLES.FORMATEUR && pages.length < SEUIL_CARTE_PARTAGE) {
+    return [{ ...ENTREE_PARTAGEE, url: pages[0].url }];
   }
 
   return [

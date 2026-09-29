@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { grouperPages } from 'shared/domain';
+import { ordonnerPages } from 'shared/domain';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 
@@ -11,19 +11,6 @@ import { cn } from '@/lib/utils';
  */
 const DELAI_OUVERTURE_MS = 120;
 const DELAI_FERMETURE_MS = 200;
-
-/*
- * ⚠️ DES CLASSES LITTÉRALES : Tailwind lit les classes dans le source, un nom
- * composé à l'exécution (`lg:grid-cols-${n}`) ne serait jamais généré.
- * Une colonne sur téléphone, deux sur tablette, toutes sur grand écran.
- */
-const COLONNES = {
-  1: '',
-  2: 'sm:grid-cols-2',
-  3: 'sm:grid-cols-2 lg:grid-cols-3',
-  4: 'sm:grid-cols-2 lg:grid-cols-4',
-  5: 'sm:grid-cols-2 lg:grid-cols-5',
-};
 
 /**
  * La carte « Partagé » — les pages que le directeur a partagées, rangées en
@@ -136,78 +123,71 @@ export default function CartePagesPartagees({ entree, children, side = 'bottom',
 }
 
 /**
- * Les colonnes elles-mêmes — rendues par la carte ET, dépliées, par le panneau
- * mobile du formateur : un téléphone n'a pas de survol, et la carte y serait un
- * geste de plus pour des liens qui tiennent tous à l'écran.
+ * Les liens eux-mêmes — rendus par la carte ET, dépliés, par le panneau mobile
+ * du formateur : un téléphone n'a pas de survol, et la carte y serait un geste
+ * de plus pour des liens qui tiennent tous à l'écran.
+ *
+ * ⚠️ UNE SEULE LIGNE, SANS EN-TÊTES DE COLONNES (2026-09-23, demande du
+ * porteur) : trois pages seulement se partagent, des colonnes « Planification »
+ * / « Équipes & groupes » ne rangeaient plus rien. L'ordre vient du registre
+ * (`ordonnerPages`) : Affectations, Chronogramme, Emploi du temps.
  */
 export function ColonnesPagesPartagees({ pages, onNavigation, panneau = false }) {
   const { pathname } = useLocation();
-  const colonnes = grouperPages(pages);
+  const liens = ordonnerPages(pages);
 
   if (panneau) {
     return (
-      <div className="space-y-3 pl-4">
-        {colonnes.map((colonne) => (
-          <div key={colonne.cle} className="space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{colonne.libelle}</p>
-            <ul className="space-y-1">
-              {colonne.entrees.map((page) => (
-                <li key={page.url}>
-                  <NavLink
-                    to={page.url}
-                    onClick={onNavigation}
-                    className={({ isActive }) =>
-                      cn('block py-0.5 text-xl', isActive ? 'text-foreground' : 'text-muted-foreground')
-                    }
-                  >
-                    {page.titre}
-                  </NavLink>
-                </li>
-              ))}
-            </ul>
-          </div>
+      <ul className="space-y-1 pl-4">
+        {liens.map((page) => (
+          <li key={page.url}>
+            <NavLink
+              to={page.url}
+              onClick={onNavigation}
+              className={({ isActive }) =>
+                cn('block py-0.5 text-xl', isActive ? 'text-foreground' : 'text-muted-foreground')
+              }
+            >
+              {page.titre}
+            </NavLink>
+          </li>
         ))}
-      </div>
+      </ul>
     );
   }
 
   return (
-    <div
-      className={cn(
-        'grid max-h-[70vh] grid-cols-1 gap-x-10 gap-y-5 overflow-y-auto p-5',
-        COLONNES[Math.min(colonnes.length, 5)]
-      )}
-    >
-      {colonnes.map((colonne) => (
-        <section key={colonne.cle} className="min-w-[9rem]" aria-label={colonne.libelle}>
-          <h3 className="mb-2 text-sm font-semibold text-foreground/70">{colonne.libelle}</h3>
-          <ul className="space-y-0.5">
-            {colonne.entrees.map((page) => {
-              const actif = pathname === page.url || pathname.startsWith(`${page.url}/`);
-              return (
-                <li key={page.url}>
-                  <NavLink
-                    to={page.url}
-                    onClick={onNavigation}
-                    className={cn(
-                      'flex items-center gap-2 whitespace-nowrap rounded-md py-1 text-sm transition-colors',
-                      actif ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'
-                    )}
-                  >
-                    {page.titre}
-                    {/* Dire qu'on n'y fera que lire : sinon on l'ouvre pour modifier et on bute. */}
-                    {page.droit === 'consulter' && (
-                      <span className="rounded bg-muted px-1.5 py-px text-[0.65rem] font-normal text-muted-foreground">
-                        lecture
-                      </span>
-                    )}
-                  </NavLink>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      ))}
-    </div>
+    <ul className="min-w-48 space-y-0.5 p-2">
+      {liens.map((page) => {
+        const actif = pathname === page.url || pathname.startsWith(`${page.url}/`);
+        const Icone = page.icone;
+        return (
+          <li key={page.url}>
+            <NavLink
+              to={page.url}
+              onClick={onNavigation}
+              className={cn(
+                'flex items-center gap-2.5 whitespace-nowrap rounded-md px-2 py-1.5 text-sm transition-colors',
+                actif ? 'bg-accent font-medium text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+              )}
+            >
+              {/* Icône sur fond gris, devant chaque lien (2026-09-24, demande du porteur). */}
+              {Icone && (
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted">
+                  <Icone className="size-4 stroke-[1.7]" />
+                </span>
+              )}
+              <span className="min-w-0 flex-1 truncate">{page.titre}</span>
+              {/* Dire qu'on n'y fera que lire : sinon on l'ouvre pour modifier et on bute. */}
+              {page.droit === 'consulter' && (
+                <span className="shrink-0 rounded bg-muted px-1.5 py-px text-[0.65rem] font-normal text-muted-foreground">
+                  lecture
+                </span>
+              )}
+            </NavLink>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

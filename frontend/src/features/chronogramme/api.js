@@ -31,6 +31,31 @@ export function chargerChronogrammeFormateur(formateur) {
 }
 
 /**
+ * Envoie à ce formateur son chronogramme à remplir (2026-09-22, demande du porteur) : il
+ * obtient le droit de modifier la page, et reçoit un message dédié.
+ */
+export function envoyerChronogrammeFormateur(formateur) {
+  return api.post(`/api/v2/chronogrammes/par-formateur/${encodeURIComponent(formateur)}/envoyer`);
+}
+
+/**
+ * Le même envoi que ci-dessus, pour tous les formateurs de l'année en un clic (2026-09-22,
+ * demande du porteur).
+ */
+export function envoyerChronogrammeATousLesFormateurs() {
+  return api.post('/api/v2/chronogrammes/par-formateur/tous/envoyer');
+}
+
+/**
+ * Renvoie au directeur, pour validation, le chronogramme du formateur CONNECTÉ (2026-09-22,
+ * demande du porteur). Le message qui en résulte porte la grille elle-même — voir
+ * `CarteChronogrammeFormateur`, dans la messagerie.
+ */
+export function renvoyerChronogrammeFormateur(formateur) {
+  return api.post(`/api/v2/chronogrammes/par-formateur/${encodeURIComponent(formateur)}/renvoyer`);
+}
+
+/**
  * ⚠️ Remplacement INTÉGRAL du planning du groupe.
  *
  * `version` (étape d3) : celle du planning sur lequel repose la saisie. Si un
@@ -75,4 +100,62 @@ export function importerChronogramme(fichier) {
  */
 export function chargerCharge() {
   return api.get('/api/v2/chronogrammes/charge');
+}
+
+/**
+ * L'emploi du temps est-il lié au chronogramme ?
+ * ← `api/profile/get_chrono_status.php`
+ *
+ * ⚠️ `liee` ET `planifie` ARRIVENT ENSEMBLE. Le verrou ne mord que si les deux
+ * sont vraies, et deux appels séparés laisseraient l'écran afficher un instant
+ * un verrou déjà levé — ou l'inverse. Le serveur rend `verrouActif` tout
+ * calculé, pour que personne n'en donne une seconde lecture.
+ */
+export function chargerLiaison() {
+  return api.get('/api/v2/chronogrammes/liaison');
+}
+
+/**
+ * Associe ou dissocie l'emploi du temps et le chronogramme.
+ * ← `api/profile/set_liaison_chronogramme.php`
+ *
+ * ⚠️ `liee` PART TOUJOURS EXPLICITEMENT : le serveur refuse une requête sans
+ * lui, plutôt que de faire basculer l'établissement dans un état qu'il n'a pas
+ * demandé.
+ */
+export function definirLiaison(liee) {
+  return api.put('/api/v2/chronogrammes/liaison', { liee });
+}
+
+/**
+ * Complétude de l'emploi du temps face au chronogramme.
+ * ← `api/data/get_completude.php`
+ *
+ * @param {string} [semaine] « 2026-W9 » pour le détail ; absent, un taux par semaine.
+ */
+export function chargerCompletude(semaine) {
+  const requete = semaine ? `?semaine=${encodeURIComponent(semaine)}` : '';
+  return api.get(`/api/v2/chronogrammes/completude${requete}`);
+}
+
+/**
+ * Place les séances « À placer » d'une semaine, sans toucher à ce qui est posé.
+ *
+ * ⚠️ `simulation: true` PAR DÉFAUT, ici comme au serveur : l'écran montre
+ *    d'abord ce qui serait posé, et où, puis confirme.
+ */
+export function placerManquantes(semaine, { simulation = true } = {}) {
+  return api.post('/api/v2/chronogrammes/completude/placer', { semaine, simulation });
+}
+
+/**
+ * Reporte dans le chronogramme les séances déjà posées dans l'emploi du temps.
+ * ← `api/profile/reporter_emploi_vers_chronogramme.php`
+ *
+ * ⚠️ `simulation: true` PAR DÉFAUT, ici comme au serveur : le report réécrit
+ * des volumes sur plusieurs groupes, et annoncer l'ampleur après coup n'est pas
+ * une confirmation.
+ */
+export function reporterVersChronogramme(simulation = true) {
+  return api.post('/api/v2/chronogrammes/report', { simulation });
 }

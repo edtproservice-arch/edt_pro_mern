@@ -72,6 +72,27 @@ const etablissementSchema = new mongoose.Schema(
 
     espaces: [{ type: String, trim: true }],
 
+    /**
+     * ═══ ESPACES MUTUALISÉS (2026-09-21) ═══ Les espaces PROPRES que cet établissement partage
+     * avec d'autres : une entrée par couple (espace, établissement qui l'utilise).
+     *
+     * ⚠️ LE PRÊT VIT CHEZ LE PROPRIÉTAIRE, ET LUI SEUL. Ce que l'emprunteur voit se DÉDUIT en
+     * cherchant les établissements qui le citent : aucune copie chez lui, donc aucune qui
+     * puisse se périmer quand le propriétaire retire le partage ou renomme sa salle. Voir
+     * `shared/domain/emploi/espacesMutualises.js` pour le modèle.
+     */
+    espacesMutualises: [
+      {
+        _id: false,
+        espace: { type: String, required: true, trim: true },
+        etablissementId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'Etablissement',
+          required: true,
+        },
+      },
+    ],
+
     calendrier: {
       ajustementsFeries: [ajustementFerieSchema],
       vacances: [periodeSchema],
@@ -161,5 +182,7 @@ const etablissementSchema = new mongoose.Schema(
 );
 
 etablissementSchema.index({ proprietaireId: 1, anneeScolaire: 1 });
+/** « Qui me prête un espace ? » — lu à chaque ouverture de l'emploi du temps. */
+etablissementSchema.index({ 'espacesMutualises.etablissementId': 1 });
 
 export const Etablissement = mongoose.model('Etablissement', etablissementSchema);

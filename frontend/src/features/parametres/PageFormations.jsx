@@ -7,6 +7,8 @@ import { useDroitPage } from '@/features/partages/useDroitPage';
 import { proprietesEnregistrement } from '@/lib/useBrouillonVersionne';
 import { useAnneeActive } from '@/lib/anneeActive';
 import CadreReglage from './CadreReglage';
+import DialogueSuppressionsPeriodes from './DialogueSuppressionsPeriodes';
+import { annoncerCascade } from './annoncerCascade';
 import ListePeriodes from './ListePeriodes';
 import { useListeEtablissement } from './useListeEtablissement';
 
@@ -25,8 +27,10 @@ export default function PageFormations() {
    */
   const { lectureSeule } = useDroitPage('formations');
   const liste = useListeEtablissement('formations', enregistrerFormations, {
-    onSucces: (resultat) =>
-      toast.success('Formations enregistrées', { description: `${resultat.valeur.length} période(s).` }),
+    onSucces: (resultat) => {
+      toast.success('Formations enregistrées', { description: `${resultat.valeur.length} période(s).` });
+      annoncerCascade(resultat.cascade);
+    },
   });
   const { contexte, brouillon: formations, setBrouillon: setFormations } = liste;
 
@@ -89,6 +93,12 @@ export default function PageFormations() {
         aideVide="Tous les formateurs restent disponibles toute l'année."
       />
     </CadreReglage>
+    {/* ⚠️ Une période nouvelle peut supprimer des séances : jamais sans ce oui (2026-09-23). */}
+    <DialogueSuppressionsPeriodes
+      details={liste.suppressionsAConfirmer}
+      onConfirmer={liste.confirmerSuppressions}
+      onRenoncer={liste.renoncerSuppressions}
+    />
     </>
   );
 }

@@ -69,6 +69,14 @@ function GrilleConsultation({
    * mémoïsé — une fonction neuve à chaque rendu re-rendrait toute la grille.
    */
   onChoisirCase,
+  /**
+   * Facultatif : le `Set` des cours DÉJÀ VALIDÉS par leur formateur — le signe
+   * demandé par le porteur (2026-09-27) « sans cliquer sur la séance ». Une clé
+   * `date|seance|periode|groupe`, la même que `AppelValidation` côté serveur.
+   * Sans lui, la grille reste inchangée (page « Édition », qui ne fait pas
+   * l'appel).
+   */
+  validees,
 }) {
   const assemblees = useMemo(
     () => assemblerConsultation({ sujets, seances, axe, periode }),
@@ -193,6 +201,7 @@ function GrilleConsultation({
               nomsFormateurs={nomsFormateurs}
               etatDuJour={etatDuJour}
               onChoisirCase={onChoisirCase}
+              validees={validees}
             />
           ))}
         </tbody>
@@ -215,6 +224,7 @@ const LigneSujet = memo(function LigneSujet({
   nomsFormateurs,
   etatDuJour,
   onChoisirCase,
+  validees,
 }) {
   return (
     <>
@@ -259,7 +269,10 @@ const LigneSujet = memo(function LigneSujet({
               etat={etatDuJour.get(cellule.jour)}
               finDuJour={(colonne + 1) % creneaux.length === 0}
               finDuTableau={colonne === ligne.cases.length - 1}
+              premiereLigne={rang === 0}
+              derniereLigne={rang === lignes.length - 1}
               onChoisir={onChoisirCase}
+              validees={validees}
             />
           ))}
         </tr>
@@ -271,11 +284,33 @@ const LigneSujet = memo(function LigneSujet({
 /**
  * Une case : la même boîte que sur « Emploi », sans ce qui sert à saisir.
  */
-function Cellule({ cellule, intitule, nomsFormateurs, etat, finDuJour, finDuTableau, onChoisir }) {
+function Cellule({
+  cellule,
+  intitule,
+  nomsFormateurs,
+  etat,
+  finDuJour,
+  finDuTableau,
+  premiereLigne,
+  derniereLigne,
+  onChoisir,
+  validees,
+}) {
   const texteBase = contenuLigne(cellule.seances, intitule, nomsFormateurs);
   const premiere = cellule.seances[0];
   const absente = premiere && cellule.seances.every((seance) => seance.statut === 'absent');
   const rattrapage = cellule.seances.some((seance) => seance.statut === 'rattrape');
+  /*
+   * ⚠️ AU MOINS UNE DES SÉANCES DE LA CASE, PAS TOUTES : un EFM à deux
+   * surveillants, par exemple, n'a qu'un appel — dès que ce cours est validé,
+   * la case l'est, peu importe combien de séances distinctes s'y superposent.
+   */
+  const validee =
+    Boolean(validees) &&
+    etat?.date &&
+    cellule.seances.some((seance) =>
+      validees.has(`${etat.date}|${cellule.seance}|${seance.periode ?? 'jour'}|${seance.groupe}`)
+    );
   const aDistance = String(premiere?.salle ?? '').toUpperCase() === 'TEAMS';
   const efm = Boolean(premiere?.estEfm);
   /*
@@ -310,7 +345,31 @@ function Cellule({ cellule, intitule, nomsFormateurs, etat, finDuJour, finDuTabl
         etat?.vacances && FOND_VACANCES,
         efm && !etat?.vacances && FOND_EFM,
         premiere && !efm && !absente && !etat?.vacances && (aDistance ? FOND_SYNCHRONE : FOND_PRESENTIEL),
-        absente && 'bg-destructive/10'
+        absente && 'bg-destructive/10',
+        /*
+         * ⚠️ FONCÉ PLEIN, TEXTE BLANC (2026-09-27, revient sur le vert pâle et
+         * la pastille : « met le bg des séances validé en vert foncé et le
+         * texte en blanc et supprime l'icône »). Le fond à lui seul porte
+         * désormais tout le signal.
+         *
+         * ⚠️ VIOLET POUR TEAMS, PAS VERT (2026-09-27, demande du porteur :
+         * « si Teams… respecter… le bg en violet foncé ») : la distinction
+         * présentiel/distance (`FOND_PRESENTIEL` vert, `FOND_SYNCHRONE`
+         * violet, ci-dessus) reste vraie même validée — un vert partout
+         * aurait fait croire à un cours en salle.
+         */
+        validee && (aDistance ? 'bg-accent-purple-deep/80' : 'bg-accent-green-deep/80'),
+        /*
+         * ⚠️ UNE TUILE, PAS TROIS BLOCS À ANGLES VIFS (2026-09-28, demande du
+         * porteur : « améliorer le style des séances validées », page Absences
+         * par stagiaire) : coins arrondis aux quatre angles du cours (haut sur
+         * la première ligne, bas sur la dernière), un liseré clair intérieur
+         * qui détache la tuile de sa voisine, et des traits internes éclaircis
+         * — les traits gris de la grille tranchaient sur le fond foncé.
+         */
+        validee && 'shadow-[inset_0_0_0_1px_rgba(255,255,255,0.28)]',
+        validee && !derniereLigne && 'border-b-white/25',
+        validee && !finDuJour && 'border-r-white/25'
       )}
     >
       <Contenu
@@ -349,7 +408,10 @@ function Cellule({ cellule, intitule, nomsFormateurs, etat, finDuJour, finDuTabl
             ? VALEUR_EFM
             : aDistance
                 ? VALEUR_SYNCHRONE
-                : VALEUR_PRESENTIEL
+                : VALEUR_PRESENTIEL,
+          // ⚠️ APRÈS LES AUTRES : sur le vert foncé d'un cours validé, la
+          // couleur de valeur habituelle (vert, violet…) ne se lirait plus.
+          validee && 'text-white'
         )}
       >
         {/* La pastille ↺ d'un rattrapage, sur la ligne Module comme dans la

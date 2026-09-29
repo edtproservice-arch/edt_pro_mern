@@ -35,8 +35,19 @@ export function copierAffectationsPresentiel(groupes, nomSource) {
   const source = groupes.find((groupe) => groupe.nom === nomSource);
   if (!source) return { groupes, touches: 0 };
 
+  /*
+   * ⚠️ LA SALLE VOYAGE AVEC LE FORMATEUR (2026-09-23, décision du porteur).
+   *    Depuis que la salle se déclare PAR GROUPE, une filière à six groupes
+   *    demanderait six fois la même saisie. Le bouton « copier » existait déjà
+   *    pour cette raison sur les formateurs : il aurait été incohérent qu'il
+   *    reporte l'un sans l'autre, et le directeur aurait cru la colonne
+   *    recopiée alors qu'elle ne l'était qu'à moitié.
+   */
   const parModule = new Map(
-    (source.modules ?? []).map((module) => [cleModule(module), module.formateurPresentiel ?? ''])
+    (source.modules ?? []).map((module) => [
+      cleModule(module),
+      { formateur: module.formateurPresentiel ?? '', salles: module.salles },
+    ])
   );
 
   let touches = 0;
@@ -49,8 +60,20 @@ export function copierAffectationsPresentiel(groupes, nomSource) {
     return {
       ...groupe,
       modules: (groupe.modules ?? []).map((module) => {
-        const formateur = parModule.get(cleModule(module));
-        return formateur === undefined ? module : { ...module, formateurPresentiel: formateur };
+        const source = parModule.get(cleModule(module));
+        if (source === undefined) return module;
+        return {
+          ...module,
+          formateurPresentiel: source.formateur,
+          /*
+           * ⚠️ POSÉ SEULEMENT S'IL Y EN A, comme partout ailleurs : un tableau
+           *    vide écrit sur chaque module gonflerait la carte et rendrait
+           *    indiscernable « aucune salle imposée » de « salles effacées ».
+           *    Une source sans salle EFFACE néanmoins celles de la cible —
+           *    sinon « copier » ne copierait pas, il fusionnerait.
+           */
+          ...(source.salles?.length ? { salles: source.salles } : { salles: [] }),
+        };
       }),
     };
   });
@@ -328,6 +351,57 @@ export function activerModule(groupes, cle, module, actif) {
       ...groupe,
       modules: (groupe.modules ?? []).map((m) =>
         cleModule(m) === module ? { ...m, actif } : m
+      ),
+    };
+  });
+}
+
+/**
+ * Déclare LES SALLES où un module se donne, POUR UN GROUPE.
+ *
+ * ═══ ⚠️ AUCUN ÉQUIVALENT DANS L'ANCIEN EDT PRO ═══ (2026-09-23)
+ * Vérifié : `save_affectations.php` ne porte aucune salle, et l'ancienne
+ * génération automatique n'en connaissait qu'au niveau du FORMATEUR
+ * (`autoGenConstraints[formateur].spaces`). Le format e-note n'a pas non plus
+ * de colonne de salle. C'est donc une capacité NOUVELLE, pas un portage — et
+ * c'est pourquoi les salles se rangent hors des lignes e-note, dans
+ * `Base.sallesAffectations`.
+ *
+ * ═══ ⚠️ PAR GROUPE, ET NON PAR ENSEMBLE ═══ (correction du porteur, 2026-09-23)
+ * J'avais d'abord écrit sur tout l'ensemble, en raisonnant que « l'atelier tient
+ * à la MATIÈRE ». **C'est faux dans les faits** : deux groupes de la même
+ * filière suivent le même module dans des salles différentes — et ils ne
+ * peuvent de toute façon pas être dans le même atelier au même moment.
+ *
+ * ⚠️ LE STOCKAGE, LUI, N'A PAS BOUGÉ : `Base.sallesAffectations` était déjà une
+ *    table de clé `GROUPE||MODULE`. C'est ce qui a permis de corriger l'écran
+ *    sans toucher ni au modèle, ni au backend, ni au solveur.
+ *
+ * ⚠️ PLUSIEURS SALLES SONT ADMISES (décision du porteur) : deux ateliers
+ *    identiques existent souvent, et n'en déclarer qu'un rendrait la consigne
+ *    intenable dès que deux groupes ont ce module la même semaine.
+ *
+ * ⚠️ UNE LISTE VIDE EFFACE LA CONSIGNE — elle ne veut pas dire « aucune salle ».
+ *    Le générateur retombe alors sur les salles du formateur, comme avant.
+ */
+export function definirSallesGroupe(groupes, nomGroupe, module, salles) {
+  /*
+   * ⚠️ NORMALISÉ ICI, PAS À L'AFFICHAGE : ces noms servent de CLÉ de comparaison
+   *    avec les espaces de l'établissement, côté générateur. Un espace en trop
+   *    ou un doublon casserait la comparaison sans lever d'erreur — le
+   *    générateur ignorerait simplement la consigne, en silence.
+   */
+  const propres = [
+    ...new Set((salles ?? []).map((salle) => String(salle ?? '').trim()).filter(Boolean)),
+  ].sort();
+
+  return groupes.map((groupe) => {
+    if (groupe.nom !== nomGroupe) return groupe;
+
+    return {
+      ...groupe,
+      modules: (groupe.modules ?? []).map((m) =>
+        cleModule(m) === module ? { ...m, salles: propres } : m
       ),
     };
   });

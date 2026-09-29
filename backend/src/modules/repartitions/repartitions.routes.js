@@ -79,9 +79,34 @@ router.get('/annees', validate({ query: filtreSchema }), async (req, res, next) 
 });
 
 /**
+ * ═══ ⚠️ CES ROUTES SERVENT LA CARTE : ELLES PARLENT `codeFiliereCarte` ═══
+ * (2026-09-26, demande du porteur)
+ *
+ * La répartition DRIF porte DEUX codes pour une même filière : `codeFiliereDrif`
+ * (celui du document officiel) et `codeFiliereCarte` (celui qu'emploie le système
+ * de l'établissement, colonne « Code Filière Carte » du fichier). Sur 1 003
+ * couples, **135 diffèrent** — `GM_OPCM_Q` d'un côté, `CM_OPCM_Q` de l'autre.
+ *
+ * ⚠️ **LE DÉFAUT ÉTAIT ACTIF, PAS THÉORIQUE.** Une carte enregistre le code
+ *    CARTE (c'est celui de la base e-note) ; ces routes cherchaient sur le code
+ *    DRIF. Mesuré sur ISTA BEN M'SIK : `codeFiliereDrif = 'CM_OPCM_Q'` rendait
+ *    **0 ligne**. Les modules affichés venaient alors des seules AFFECTATIONS
+ *    (`rattacherModuleInconnu`), si bien que le module non encore affecté était
+ *    **invisible** et que l'écran annonçait « 38/38 — tout affecté ». Faux.
+ *
+ * ⚠️ `codeFiliereCarte` EST UNE CLÉ VALIDE : jamais vide, et **zéro collision**
+ *    (aucun code carte ne sert à deux codes DRIF) — vérifié sur les 13 359
+ *    lignes avant la bascule.
+ *
+ * ⚠️ **L'ADMINISTRATION DU RÉFÉRENTIEL NE BASCULE PAS** (`repartitions.admin.*`) :
+ *    elle édite le DOCUMENT SOURCE, qui s'identifie par son code DRIF. Confondre
+ *    les deux rendrait l'import DRIF impossible à rapprocher de son fichier.
+ */
+
+/**
  * Filières d'une sélection.
  *
- * Un même intitulé peut porter plusieurs codes DRIF (jour / soir, versions
+ * Un même intitulé peut porter plusieurs codes (jour / soir, versions
  * successives) : c'est le CODE qui identifie, l'intitulé n'est qu'un libellé.
  * Renvoyer l'un sans l'autre était la cause des sélections ambiguës.
  */
@@ -91,7 +116,8 @@ router.get('/filieres', validate({ query: filtreSchema }), async (req, res, next
       { $match: critere(req.validatedQuery) },
       {
         $group: {
-          _id: '$codeFiliereDrif',
+          // ⚠️ Le code que la CARTE stockera — voir l'en-tête ci-dessus.
+          _id: '$codeFiliereCarte',
           intitule: { $first: '$intituleFiliere' },
           typeFormation: { $first: '$typeFormation' },
           creneau: { $first: '$creneau' },
@@ -130,7 +156,9 @@ function ensembleDepuisLignes(lignes) {
   return {
     filiere: premiere
       ? {
-          code: premiere.codeFiliereDrif,
+          code: premiere.codeFiliereCarte,
+          /* Conservé pour l'affichage et le rapprochement avec le document DRIF. */
+          codeDrif: premiere.codeFiliereDrif,
           intitule: premiere.intituleFiliere,
           secteur: premiere.secteur,
           niveau: premiere.niveauFormation,
@@ -161,7 +189,7 @@ router.get('/modules', validate({ query: modulesSchema }), async (req, res, next
     const { filiere, annee } = req.validatedQuery;
 
     const lignes = await Repartition.find({
-      codeFiliereDrif: filiere,
+      codeFiliereCarte: filiere,
       anneeFormation: annee,
     }).sort({ codeModule: 1 });
 
@@ -211,8 +239,9 @@ function lireEnsembles(valeur) {
  * requêtes contre **128 ms** pour celle-ci, avant même de compter le HTTP et
  * l'authentification économisés.
  *
- * Le `$or` reste indexé : chaque branche est un préfixe de l'index unique
- * (codeFiliereDrif, anneeFormation, …).
+ * Le `$or` reste indexé : chaque branche est un préfixe de l'index
+ * `(codeFiliereCarte, anneeFormation, codeModule)`, posé pour cette bascule.
+ * ⚠️ SANS CET INDEX, chaque branche balaierait les 13 359 lignes.
  */
 router.get('/modules-multiples', validate({ query: ensemblesSchema }), async (req, res, next) => {
   try {
@@ -225,7 +254,7 @@ router.get('/modules-multiples', validate({ query: ensemblesSchema }), async (re
 
     const lignes = await Repartition.find({
       $or: demandes.map(({ codeFiliere, anneeFormation }) => ({
-        codeFiliereDrif: codeFiliere,
+        codeFiliereCarte: codeFiliere,
         anneeFormation,
       })),
     }).sort({ codeModule: 1 });
@@ -234,7 +263,7 @@ router.get('/modules-multiples', validate({ query: ensemblesSchema }), async (re
     // moins qu'un aller-retour réseau supplémentaire.
     const parEnsemble = new Map();
     for (const ligne of lignes) {
-      const cle = `${ligne.codeFiliereDrif}||${ligne.anneeFormation}`;
+      const cle = `${ligne.codeFiliereCarte}||${ligne.anneeFormation}`;
       if (!parEnsemble.has(cle)) parEnsemble.set(cle, []);
       parEnsemble.get(cle).push(ligne);
     }

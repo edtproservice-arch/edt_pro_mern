@@ -157,3 +157,74 @@ describe('lireStagiaires', () => {
     expect(lireStagiaires()).toEqual({ stagiaires: [], ignorees: 0 });
   });
 });
+
+describe('lireStagiaires — motif d’admission et téléphone (2026-09-21)', () => {
+  it('lit les deux colonnes, le téléphone restant une chaîne qui commence par 0', () => {
+    const { stagiaires } = lireStagiaires([
+      ligne({ MotifAdmission: 'Admission sur dossier', NTelelephone: '0687623946' }),
+    ]);
+
+    expect(stagiaires[0]).toMatchObject({
+      motifAdmission: 'Admission sur dossier',
+      telephone: '0687623946',
+    });
+  });
+
+  it('accepte l’orthographe correcte de la colonne téléphone', () => {
+    const { stagiaires } = lireStagiaires([ligne({ NTelephone: '0649383822' })]);
+    expect(stagiaires[0].telephone).toBe('0649383822');
+  });
+
+  it('rend des champs vides plutôt que de lever quand les colonnes manquent', () => {
+    const { stagiaires } = lireStagiaires([ligne()]);
+    expect(stagiaires[0]).toMatchObject({ motifAdmission: '', telephone: '' });
+  });
+
+  it('complète depuis la seconde ligne du même stagiaire, sans écraser la première', () => {
+    const { stagiaires } = lireStagiaires([
+      ligne({ MotifAdmission: '', NTelelephone: '' }),
+      ligne({ CodeDiplome: 'ACADA101 (FQ)', MotifAdmission: 'Concours', NTelelephone: '0675189543' }),
+      ligne({ CodeDiplome: 'ACADA102 (FQ)', MotifAdmission: 'Passerelle', NTelelephone: '0600000000' }),
+    ]);
+
+    expect(stagiaires).toHaveLength(1);
+    expect(stagiaires[0]).toMatchObject({ motifAdmission: 'Concours', telephone: '0675189543' });
+  });
+});
+
+describe('lireStagiaires — lieu de naissance et date d’inscription (2026-09-27)', () => {
+  it('lit les deux colonnes', () => {
+    const { stagiaires } = lireStagiaires([
+      ligne({ LieuNaissance: 'CASABLANCA', DateInscription: '22/06/2026' }),
+    ]);
+
+    expect(stagiaires[0]).toMatchObject({
+      lieuNaissance: 'CASABLANCA',
+      dateInscription: '22/06/2026',
+    });
+  });
+
+  it('rend des champs vides plutôt que de lever quand les colonnes manquent', () => {
+    const { stagiaires } = lireStagiaires([ligne()]);
+    expect(stagiaires[0]).toMatchObject({ lieuNaissance: '', dateInscription: '' });
+  });
+
+  it('complète depuis la seconde ligne du même stagiaire, sans écraser la première', () => {
+    const { stagiaires } = lireStagiaires([
+      ligne({ LieuNaissance: '', DateInscription: '' }),
+      ligne({
+        CodeDiplome: 'ACADA101 (FQ)',
+        LieuNaissance: 'RABAT',
+        DateInscription: '01/07/2026',
+      }),
+      ligne({
+        CodeDiplome: 'ACADA102 (FQ)',
+        LieuNaissance: 'FES',
+        DateInscription: '05/07/2026',
+      }),
+    ]);
+
+    expect(stagiaires).toHaveLength(1);
+    expect(stagiaires[0]).toMatchObject({ lieuNaissance: 'RABAT', dateInscription: '01/07/2026' });
+  });
+});

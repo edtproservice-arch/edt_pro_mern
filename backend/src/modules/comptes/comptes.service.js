@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import { ROLES, STATUTS_COMPTE } from 'shared/constants';
 import { ROLES_GERABLES } from 'shared/schemas';
 import { User } from '../../models/User.js';
@@ -70,9 +69,42 @@ export async function creer(etablissementId, donnees) {
     $or: [{ email }, { identifiant: donnees.identifiant }],
   });
   if (existant) {
-    throw conflict("Un compte utilise déjà cet identifiant ou cette adresse", {
-      code: 'COMPTE_EXISTANT',
-    });
+    /*
+     * ═══ ⚠️ UN FORMATEUR MUTUALISÉ REJOINT SON COMPTE, IL N'EN REÇOIT PAS UN
+     * SECOND ═══ (2026-09-24, signalé par le porteur : « je teste avec un
+     * formateur mutualisé [affecté à deux établissements], ça ne marche
+     * pas ».)
+     *
+     * `formateursMutualises.service.js` détecte déjà qu'un même MATRICULE peut
+     * figurer dans les bases de plusieurs établissements — mais rien ne
+     * reliait le COMPTE : le second établissement à créer ce compte recevait
+     * `COMPTE_EXISTANT` (ou, en lot, un « ignoré » silencieux, `creerEnLot`
+     * plus bas), et le formateur restait enfermé dans le premier établissement
+     * qui l'avait créé — sans quoi le sélecteur d'établissement n'a jamais
+     * qu'un seul établissement à proposer.
+     *
+     * ⚠️ SEULEMENT PAR IDENTIFIANT, ET SEULEMENT ENTRE DEUX FORMATEURS : le
+     * matricule est la clé qui porte l'identité dans toute l'application
+     * (séances, affectations, `formateursMutualises.service.js`) — un e-mail
+     * partagé par coïncidence ne prouve rien de tel. Un gestionnaire ou un
+     * stagiaire qui heurterait le même identifiant reste un doublon à
+     * refuser : seul un formateur se mutualise, par construction du métier.
+     */
+    const mutualisable =
+      existant.identifiant === donnees.identifiant &&
+      existant.role === ROLES.FORMATEUR &&
+      donnees.role === ROLES.FORMATEUR &&
+      !existant.etablissementIds.some((id) => id.toString() === String(etablissementId));
+
+    if (!mutualisable) {
+      throw conflict("Un compte utilise déjà cet identifiant ou cette adresse", {
+        code: 'COMPTE_EXISTANT',
+      });
+    }
+
+    existant.etablissementIds.push(etablissementId);
+    await existant.save();
+    return presenter(existant);
   }
 
   const compte = await User.create({
@@ -121,25 +153,29 @@ export async function definirActivation(etablissementId, compteId, actif) {
 }
 
 /**
- * Réinitialise le mot de passe.
+ * Réinitialise le mot de passe — CHOISI PAR LE DIRECTEUR (2026-09-27, demande
+ * du porteur : « je veux que le directeur qui saisie le nouveau mot de
+ * passe »), plus un mot de passe provisoire tiré au hasard : l'écran le
+ * demande avec la même règle que toute création de compte
+ * (`reinitialisationMotDePasseSchema`).
  *
- * Deux cas, volontairement distincts :
- *   - adresse réelle → le mot de passe part par e-mail et n'est PAS renvoyé ;
- *   - adresse de remplissage (`@placeholder.ofppt.ma`) → il est renvoyé une
- *     fois, car aucun autre canal n'existe pour le transmettre au stagiaire.
- * Sans cette distinction, soit on expose inutilement des secrets, soit on rend
- * la réinitialisation inopérante pour la majorité des comptes.
+ * Deux cas, volontairement distincts, pour la SUITE :
+ *   - adresse réelle → le mot de passe part par e-mail, pour que la personne le
+ *     retrouve même si le directeur ne le lui a pas encore communiqué ;
+ *   - adresse de remplissage (`@placeholder.ofppt.ma`) → il est renvoyé à
+ *     l'écran, car aucun autre canal n'existe pour le transmettre au stagiaire
+ *     (le directeur vient de le taper, il le connaît déjà, mais le renvoyer
+ *     confirme la saisie sans qu'il ait à la retaper de mémoire).
  */
-export async function reinitialiserMotDePasse(etablissementId, compteId) {
+export async function reinitialiserMotDePasse(etablissementId, compteId, motDePasse) {
   const compte = await chargerCible(etablissementId, compteId);
 
-  const provisoire = `Aa1${crypto.randomBytes(6).toString('base64url')}`;
-  compte.motDePasse = provisoire;
+  compte.motDePasse = motDePasse;
   await compte.save();
   await RefreshToken.deleteMany({ utilisateurId: compte.id });
 
   if (estPlaceholder(compte.email)) {
-    return { aTransmettre: true, motDePasse: provisoire };
+    return { aTransmettre: true, motDePasse };
   }
 
   await envoyerEmail({
@@ -150,7 +186,7 @@ export async function reinitialiserMotDePasse(etablissementId, compteId) {
     texte:
       `Bonjour ${compte.nomComplet},\n\n` +
       `Le directeur de votre établissement vient de réinitialiser votre mot de passe.\n\n` +
-      `${provisoire}\n\n` +
+      `${motDePasse}\n\n` +
       `Changez-le dès votre prochaine connexion.\n\nL'équipe EDT Pro`,
   });
 

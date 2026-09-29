@@ -143,7 +143,8 @@ describe('Étape 2 — corrections des formateurs', () => {
     // Le lot est refusé en bloc : une application partielle laisserait le
     // directeur croire ses deux corrections enregistrées.
     const base = await Base.findOne({ etablissementId: etablissement.id, anneeScolaire: ANNEE });
-    expect(base.formateurs.find((f) => f.nomComplet === 'AHMED CHERKAOUI').masseHoraire).toBe(60);
+    // 910 h : la masse par défaut posée à l'import, intacte.
+    expect(base.formateurs.find((f) => f.nomComplet === 'AHMED CHERKAOUI').masseHoraire).toBe(910);
   });
 
   it('refuse une adresse mal formée', async () => {
@@ -153,6 +154,130 @@ describe('Étape 2 — corrections des formateurs', () => {
       .send({ formateurs: [{ nomComplet: 'AHMED CHERKAOUI', email: 'pas-une-adresse' }] });
 
     expect(reponse.status).toBe(400);
+  });
+});
+
+describe('Liste des formateurs — ajout et retrait depuis la page Formateurs', () => {
+  const URL_LISTE = '/api/v2/base/formateurs/liste';
+
+  const lireBase = () => Base.findOne({ etablissementId: etablissement.id, anneeScolaire: ANNEE });
+
+  const importer = async () => {
+    const fichier = await classeurEnote([
+      { matricule: '9863', nom: 'AHMED CHERKAOUI' },
+      { matricule: '', nom: 'FATIMA ZAHRA BENALI' },
+    ]);
+    await request(app)
+      .post('/api/v2/base/import')
+      .set('Cookie', cookies)
+      .attach('fichier', fichier, 'base.xlsx');
+  };
+
+  it('ajoute un formateur sans affectation, avec une adresse déduite, et avance la version', async () => {
+    await importer();
+    const avant = (await lireBase()).version;
+
+    const reponse = await request(app)
+      .post(URL_LISTE)
+      .set('Cookie', cookies)
+      .send({ ajouter: [{ nom: '  karim   alami ', matricule: '7777', masseHoraire: 720 }] });
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.body).toMatchObject({ ajoutes: 1, misAJour: 0, retires: 0 });
+
+    const base = await lireBase();
+    const karim = base.formateurs.find((f) => f.nomComplet === 'KARIM ALAMI');
+    expect(karim).toMatchObject({
+      matricule: '7777',
+      masseHoraire: 720,
+      email: 'karim.alami@ofppt.ma',
+    });
+    expect(base.formateurs).toHaveLength(3);
+    // Sans quoi la carte d'un collègue, lue avant, écraserait l'ajout.
+    expect(base.version).toBe(avant + 1);
+  });
+
+  it('ne duplique pas un formateur déjà présent : il est mis à jour, sans effacer par du vide', async () => {
+    await importer();
+
+    const reponse = await request(app)
+      .post(URL_LISTE)
+      .set('Cookie', cookies)
+      .send({ ajouter: [{ nom: 'ahmed cherkaoui', matricule: '', masseHoraire: 500 }] });
+
+    expect(reponse.body).toMatchObject({ ajoutes: 0, misAJour: 1 });
+
+    const base = await lireBase();
+    expect(base.formateurs).toHaveLength(2);
+    const ahmed = base.formateurs.find((f) => f.nomComplet === 'AHMED CHERKAOUI');
+    expect(ahmed.masseHoraire).toBe(500);
+    // Le matricule vide du fichier ne l'a pas effacé.
+    expect(ahmed.matricule).toBe('9863');
+  });
+
+  it('un matricule donné à un formateur qui n’en avait pas emporte ses affectations', async () => {
+    await importer();
+    expect((await lireBase()).affectations.some((a) => a.formateur === 'FATIMA ZAHRA BENALI')).toBe(true);
+
+    await request(app)
+      .post(URL_LISTE)
+      .set('Cookie', cookies)
+      .send({ ajouter: [{ nom: 'FATIMA ZAHRA BENALI', matricule: '10241' }] });
+
+    const base = await lireBase();
+    expect(base.affectations.some((a) => a.formateur === 'FATIMA ZAHRA BENALI')).toBe(false);
+    expect(base.affectations.some((a) => a.formateur === '10241')).toBe(true);
+  });
+
+  it('retire un formateur ET libère ses affectations, pas celles des autres', async () => {
+    await importer();
+
+    const reponse = await request(app)
+      .post(URL_LISTE)
+      .set('Cookie', cookies)
+      .send({ retirer: ['AHMED CHERKAOUI'] });
+
+    expect(reponse.body).toMatchObject({ retires: 1, affectationsLiberees: 1 });
+
+    const base = await lireBase();
+    expect(base.formateurs.map((f) => f.nomComplet)).toEqual(['FATIMA ZAHRA BENALI']);
+    expect(base.affectations).toHaveLength(1);
+    expect(base.affectations[0].formateur).toBe('FATIMA ZAHRA BENALI');
+  });
+
+  it('distingue deux homonymes par un préfixe de prénom', async () => {
+    await importer();
+
+    await request(app)
+      .post(URL_LISTE)
+      .set('Cookie', cookies)
+      .send({ ajouter: [{ nom: 'AMINE CHERKAOUI', matricule: '5555' }] });
+
+    const base = await lireBase();
+    const uniques = base.formateurs.filter((f) => f.nomComplet.endsWith('CHERKAOUI')).map((f) => f.nomUnique);
+    expect(new Set(uniques).size).toBe(2);
+  });
+
+  it('crée la base d’une année neuve au premier ajout', async () => {
+    const reponse = await request(app)
+      .post(URL_LISTE)
+      .set('Cookie', cookies)
+      .send({ ajouter: [{ nom: 'KARIM ALAMI' }] });
+
+    expect(reponse.status).toBe(200);
+    const base = await lireBase();
+    expect(base.formateurs.map((f) => f.nomComplet)).toEqual(['KARIM ALAMI']);
+  });
+
+  it('refuse de retirer sur une année sans base, et refuse une demande vide', async () => {
+    const retrait = await request(app)
+      .post(URL_LISTE)
+      .set('Cookie', cookies)
+      .send({ retirer: ['QUELQU UN'] });
+    expect(retrait.status).toBe(404);
+
+    const vide = await request(app).post(URL_LISTE).set('Cookie', cookies).send({});
+    expect(vide.status).toBe(400);
   });
 });
 
@@ -629,7 +754,102 @@ describe('Étape 4 et clôture', () => {
     expect(relu.espaces).toEqual(['TEAMS']);
   });
 
+  /**
+   * Tout ce que la clôture exige : un nom abrégé, un espace physique, une base avec au moins
+   * un formateur et un groupe — sous l'année demandée.
+   */
+  const preparerConfigurationComplete = async (annee = ANNEE) => {
+    await Etablissement.updateOne(
+      { _id: etablissement.id },
+      { $set: { nomAbrege: 'ISTA TEST', espaces: ['TEAMS', 'Salle 1'] } }
+    );
+    await Base.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: annee,
+      formateurs: [{ matricule: '9863', nomComplet: 'AHMED CHERKAOUI', nomUnique: 'CHERKAOUI' }],
+      groupes: ['DEV101'],
+      origine: 'carte',
+    });
+  };
+
+  it('⚠️ PERMET de clore une configuration incomplète : ce sont les pages qui se verrouillent', async () => {
+    // Rien n'est fait : ni nom abrégé, ni espaces, ni base.
+    const reponse = await request(app)
+      .post('/api/v2/etablissements/courant/configuration-terminee')
+      .set('Cookie', cookies);
+
+    expect(reponse.status).toBe(200);
+    expect((await User.findById(directeur.id)).configurationTerminee).toBe(true);
+
+    // Ce qui manque reste lisible, pour que l'application le dise page par page.
+    const progression = await request(app)
+      .get('/api/v2/etablissements/courant/configuration-progression')
+      .set('Cookie', cookies);
+    expect(progression.body.manquantes).toEqual(['identite', 'espaces', 'base', 'formateurs', 'carte']);
+  });
+
+  describe('progression — de quoi reprendre', () => {
+    const lire = () =>
+      request(app)
+        .get('/api/v2/etablissements/courant/configuration-progression')
+        .set('Cookie', cookies);
+
+    it('un établissement vierge n’a rien fait', async () => {
+      const reponse = await lire();
+
+      expect(reponse.status).toBe(200);
+      expect(reponse.body.etapes).toEqual({
+        identite: false,
+        espaces: false,
+        base: false,
+        formateurs: false,
+        carte: false,
+      });
+      expect(reponse.body.manquantes).toHaveLength(5);
+    });
+
+    it('relit ce qui a été écrit, étape après étape', async () => {
+      await request(app)
+        .patch('/api/v2/etablissements/courant/nom-abrege')
+        .set('Cookie', cookies)
+        .send({ nomAbrege: 'ISTA TEST' });
+      await request(app)
+        .put('/api/v2/etablissements/courant/espaces')
+        .set('Cookie', cookies)
+        .send({ espaces: ['TEAMS', 'Salle 1'] });
+
+      let reponse = await lire();
+      expect(reponse.body.manquantes).toEqual(['base', 'formateurs', 'carte']);
+
+      await request(app)
+        .post('/api/v2/base/formateurs/liste')
+        .set('Cookie', cookies)
+        .send({ ajouter: [{ nom: 'KARIM ALAMI', matricule: '7777' }] });
+
+      reponse = await lire();
+      // La base existe (créée par l'ajout) et compte un formateur ; il manque la carte.
+      expect(reponse.body.manquantes).toEqual(['carte']);
+    });
+
+    it('lit la base de l’ANNÉE demandée, pas d’une autre', async () => {
+      await preparerConfigurationComplete(ANNEE);
+
+      const autreAnnee = await request(app)
+        .get('/api/v2/etablissements/courant/configuration-progression')
+        .set('Cookie', cookies)
+        .set('X-Annee-Scolaire', String(ANNEE + 1));
+
+      expect(autreAnnee.body.manquantes).toEqual(['base', 'formateurs', 'carte']);
+    });
+
+    it('est réservée au directeur', async () => {
+      const sansSession = await request(app).get('/api/v2/etablissements/courant/configuration-progression');
+      expect(sansSession.status).toBe(401);
+    });
+  });
+
   it('marque la configuration terminée, de façon idempotente', async () => {
+    await preparerConfigurationComplete();
     expect((await User.findById(directeur.id)).configurationTerminee).toBe(false);
 
     for (let essai = 0; essai < 2; essai += 1) {
@@ -652,6 +872,7 @@ describe('Étape 4 et clôture', () => {
      * s'ouvrait sur une année vide, sa base étant rangée sous l'autre.
      */
     expect((await Etablissement.findById(etablissement.id)).anneeScolaire).toBe(ANNEE);
+    await preparerConfigurationComplete(ANNEE + 1);
 
     const reponse = await request(app)
       .post('/api/v2/etablissements/courant/configuration-terminee')

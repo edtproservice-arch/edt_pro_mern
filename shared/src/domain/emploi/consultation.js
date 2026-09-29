@@ -2,6 +2,7 @@ import { JOURS, PERIODES } from '../../constants/index.js';
 import { SEANCES_JOUR, SEANCE_SOIR, dureeSeance } from './grille.js';
 import { groupesSeCroisent } from './conflits.js';
 import { enJour } from '../planning/jour.js';
+import { HORAIRES_COURANTS_PAR_DEFAUT, enMinutes } from './horaires.js';
 
 /**
  * Lecture d'une semaine sous trois angles — formateur, groupe, SALLE.
@@ -27,8 +28,8 @@ import { enJour } from '../planning/jour.js';
 
 /** Les trois axes de lecture, et ce que chaque ligne d'une case y montre. */
 export const AXES_CONSULTATION = {
-  formateur: { libelle: 'Formateur', lignes: ['Groupe', 'Module', 'Salle'] },
-  groupe: { libelle: 'Groupe', lignes: ['Formateur', 'Module', 'Salle'] },
+  formateur: { libelle: 'Formateur', lignes: ['Groupe', 'Module', 'Espace'] },
+  groupe: { libelle: 'Groupe', lignes: ['Formateur', 'Module', 'Espace'] },
   salle: { libelle: 'Espace', lignes: ['Formateur', 'Module', 'Groupe'] },
 };
 
@@ -276,16 +277,27 @@ export const LIBELLES_NIVEAUX = {
  * l'omettre ferait disparaître ces heures de toute lecture. On réunit donc les
  * deux sources.
  *
- * ⚠️ « TEAMS » ET « ABSENT » N'EN SONT PAS. Le premier désigne une séance à
- * distance, le second n'a jamais été une salle : les lister ferait une ligne
+ * ⚠️ « TEAMS » EN EST UNE, DÉSORMAIS (2026-09-24, demande du porteur : « en
+ * mode espace, l'espace Teams n'affiche pas »). Une séance à distance occupe
+ * bien un « lieu » du point de vue de cet axe — qui l'utilise et quand — même
+ * si ce n'est pas un local physique ; l'écarter faisait disparaître ces heures
+ * de toute lecture par salle, la même raison qui empêche déjà d'écarter une
+ * salle physique retirée des espaces.
+ *
+ * ⚠️ « ABSENT », LUI, N'A JAMAIS ÉTÉ UNE SALLE : le lister ferait une ligne
  * « occupation » pour un local qui n'existe pas.
  */
 export function sallesDeLaSemaine(espaces = [], seances = []) {
-  const exclues = new Set(['TEAMS', 'ABSENT', '']);
+  const exclues = new Set(['ABSENT', '']);
+
+  // ⚠️ NORMALISÉE EN MAJUSCULES, comme partout ailleurs où « TEAMS » se pose
+  // (`SALLE_DISTANCIEL`) : sans quoi une variante de casse ferait DEUX sujets
+  // distincts dans la liste au lieu d'un seul.
+  const normaliserTeams = (salle) => (salle.toUpperCase() === 'TEAMS' ? 'TEAMS' : salle);
 
   const toutes = new Set(
     [...espaces, ...seances.map((seance) => seance.salle)]
-      .map((salle) => String(salle ?? '').trim())
+      .map((salle) => normaliserTeams(String(salle ?? '').trim()))
       .filter((salle) => !exclues.has(salle.toUpperCase()))
   );
 
@@ -335,9 +347,17 @@ export function sallesDeLaSemaine(espaces = [], seances = []) {
  * @param {Array} parametres.seances
  * @param {string} parametres.axe  `formateur` | `groupe`
  * @param {Map} [parametres.nomsFormateurs]
+ * @param {object} [parametres.horaires]  Le jeu d'horaires EN VIGUEUR (`horairesCourants`) —
+ *   celui que l'administrateur a choisi (hiver, été, ramadan). Sans lui : l'horaire d'hiver.
  * @returns {{heures: number, jours: Array<{jour: string, blocs: Array}>}}
  */
-export function agendaDuSujet({ sujet, seances = [], axe = 'formateur', nomsFormateurs }) {
+export function agendaDuSujet({
+  sujet,
+  seances = [],
+  axe = 'formateur',
+  nomsFormateurs,
+  horaires = HORAIRES_COURANTS_PAR_DEFAUT,
+}) {
   const [jour] = assemblerConsultation({ sujets: [sujet], seances, axe, periode: PERIODES.JOUR });
   const [soir] = assemblerConsultation({ sujets: [sujet], seances, axe, periode: PERIODES.SOIR });
   const aDuSoir = soir.cases.some((c) => c.seances.length > 0);
@@ -356,7 +376,7 @@ export function agendaDuSujet({ sujet, seances = [], axe = 'formateur', nomsForm
       const signature = [
         contenuLigne(c.seances, 'Module'),
         contenuLigne(c.seances, ligneAutreSujet, nomsFormateurs),
-        contenuLigne(c.seances, 'Salle'),
+        contenuLigne(c.seances, 'Espace'),
         // ⚠️ Un RATTRAPAGE ne fusionne pas avec le cours ordinaire qui le suit
         // (2026-09-14) : le bloc porterait sinon la marque ↺ sur des heures qui
         // ne rattrapent rien.
@@ -389,26 +409,26 @@ export function agendaDuSujet({ sujet, seances = [], axe = 'formateur', nomsForm
 
         return {
           creneaux,
-          debut: horaireCreneau(leJour, creneaux[0]).debut,
-          fin: horaireCreneau(leJour, creneaux.at(-1)).fin,
+          debut: horaireCreneau(leJour, creneaux[0], horaires).debut,
+          fin: horaireCreneau(leJour, creneaux.at(-1), horaires).fin,
           // L'horaire de CHAQUE créneau du bloc (2026-09-12, « style en cours »)
           // : `debut`/`fin` bornent le bloc, mais seul le détail dit QUEL
           // créneau se déroule maintenant — et, le Vendredi, qu'on est dans
           // l'écart réel de la prière plutôt que dans un cours.
-          horaires: creneaux.map((creneau) => horaireCreneau(leJour, creneau)),
+          horaires: creneaux.map((creneau) => horaireCreneau(leJour, creneau, horaires)),
           // ⚠️ UNE PAUSE PAR FRONTIÈRE INTERNE, PAS UNE VRAIE MESURE : dans
           // l'horaire officiel, S1 s'arrête exactement quand S2 commence (zéro
           // écart). L'ancien produit affichait pourtant une pause « décorative »
           // entre deux créneaux fusionnés — c'est elle qu'on reproduit,
           // `libellePause` porte la même règle, y compris le cas spécial de la
           // pause déjeuner (S3 à 13:30 → « 30 min », pas 15).
-          pauses: creneaux.slice(1).map((creneau) => libellePause(leJour, creneau)),
+          pauses: creneaux.slice(1).map((creneau) => libellePause(leJour, creneau, horaires)),
           heures: absente
             ? 0
             : arrondir(creneaux.reduce((total, creneau) => total + dureeSeance(creneau), 0)),
           module: contenuLigne(seancesDuBloc, 'Module'),
           autreSujet: contenuLigne(seancesDuBloc, ligneAutreSujet, nomsFormateurs),
-          salle: contenuLigne(seancesDuBloc, 'Salle'),
+          salle: contenuLigne(seancesDuBloc, 'Espace'),
           absente,
           // Le bloc rattrape une absence (2026-09-14) — l'agenda le marque ↺.
           rattrapage: seancesDuBloc.some((s) => s.statut === 'rattrape'),
@@ -434,36 +454,17 @@ export function agendaDuSujet({ sujet, seances = [], axe = 'formateur', nomsForm
 /**
  * Créneau → heure d'horloge, « HH:MM ».
  * ← `get_formateur_timetable.php:189-208` et `get_stagiaire_timetable.php:84-86`
- *   (les deux tables sont identiques, vérifié).
- */
-const HORAIRES_STANDARD = {
-  S1: ['08:30', '11:00'],
-  S2: ['11:00', '13:30'],
-  S3: ['13:30', '16:00'],
-  S4: ['16:00', '18:30'],
-  S5: ['19:00', '21:00'],
-};
-
-/**
- * Vendredi : la prière de midi décale S3/S4 et raccourcit S1/S2.
+ *   (les deux tables étaient identiques, vérifié).
  *
- * ⚠️ S3 REPRISE À 14:30 (2026-09-05, confirmé par le porteur après une
- * première correction à 14:20, elle-même corrigée dans la foulée) — c'est
- * exactement la valeur de `get_formateur_timetable.php:193`, et elle donne
- * un écart de midi de deux heures PILE (12:30 → 14:30), cohérent avec le
- * libellé « Pause 2h » de `libellePause`.
+ * ═══ ⚠️ LES HEURES NE SONT PLUS ÉCRITES ICI (2026-09-20, demande du porteur) ═══
+ * L'administrateur choisit l'horaire en vigueur — hiver, été ou ramadan — et peut en modifier
+ * les valeurs (`horaires.js`). L'appelant passe le jeu en vigueur ; sans lui, c'est l'horaire
+ * d'hiver d'origine. Le vendredi lit son tableau à part : la prière de midi décale S3 et
+ * raccourcit S1/S2, et ce tableau se règle comme le reste.
  */
-const HORAIRES_VENDREDI = {
-  S1: ['08:30', '10:30'],
-  S2: ['10:30', '12:30'],
-  S3: ['14:30', '16:30'],
-  S4: ['16:30', '18:30'],
-  S5: ['19:00', '21:00'],
-};
-
-export function horaireCreneau(jour, creneau) {
-  const table = jour === 'Vendredi' ? HORAIRES_VENDREDI : HORAIRES_STANDARD;
-  const [debut, fin] = table[creneau] ?? ['00:00', '00:00'];
+export function horaireCreneau(jour, creneau, horaires = HORAIRES_COURANTS_PAR_DEFAUT) {
+  const table = jour === 'Vendredi' ? horaires.vendredi : horaires.semaine;
+  const { debut, fin } = table?.[creneau] ?? { debut: '00:00', fin: '00:00' };
   return { debut, fin };
 }
 
@@ -494,8 +495,9 @@ export function instantLocal(d = new Date()) {
  *
  * @param {{date?: Date|string, jour?: string, seance?: string}} seance
  * @param {{date: string, heure: string}} maintenant
+ * @param {object} [horaires]  Le jeu d'horaires en vigueur — la fin d'un créneau en dépend.
  */
-export function seanceTerminee(seance, maintenant) {
+export function seanceTerminee(seance, maintenant, horaires = HORAIRES_COURANTS_PAR_DEFAUT) {
   /* ⚠️ `new Date()` AVANT `enJour`, jamais la chaîne telle quelle : une date
      sérialisée (« 2026-08-30T23:00:00Z ») lue par son préfixe rendrait le jour
      UTC, soit la VEILLE au Maroc. */
@@ -503,7 +505,7 @@ export function seanceTerminee(seance, maintenant) {
   if (!jour || !maintenant?.date) return false;
   if (jour < maintenant.date) return true;
   if (jour > maintenant.date) return false;
-  return horaireCreneau(seance.jour, seance.seance).fin <= maintenant.heure;
+  return horaireCreneau(seance.jour, seance.seance, horaires).fin <= maintenant.heure;
 }
 
 /** « 11:00 » + 15 → « 11h15 ». ← `addMinutes()` de l'ancien produit — sans
@@ -532,13 +534,33 @@ function ajouterMinutes(heure, minutes) {
  * précédent (qui, lui, appliquait par erreur le libellé DÉCORATIF de 15 min
  * — « reprise 14h45 » — à cette même frontière).
  */
-function libellePause(jour, creneauSuivant) {
-  const { debut } = horaireCreneau(jour, creneauSuivant);
-  if (creneauSuivant === 'S3') {
-    const duree = jour === 'Vendredi' ? '2h' : '30 min';
-    return `Pause ${duree} · reprise ${ajouterMinutes(debut, 0)}`;
-  }
+function libellePause(jour, creneauSuivant, horaires) {
+  const { debut } = horaireCreneau(jour, creneauSuivant, horaires);
+
+  /*
+   * ═══ ⚠️ L'ÉCART RÉEL PRIME, SEUL UN ÉCART NUL RESTE « DÉCORATIF » (2026-09-20) ═══
+   * Les horaires se règlent désormais : la pause n'est plus une constante par créneau mais
+   * ce qui sépare la fin du précédent du début du suivant. Hiver : 30 min entre S2 et S3, le
+   * vendredi 2 h ; ramadan : 5 min entre S1 et S2. Quand les deux se touchent, on garde
+   * l'étiquette d'avant — « 15 min » (« 30 min » avant S3) — que l'ancien produit affichait
+   * entre deux créneaux fusionnés.
+   */
+  const precedent = SEANCES_JOUR[SEANCES_JOUR.indexOf(creneauSuivant) - 1];
+  const ecart = precedent
+    ? enMinutes(debut) - enMinutes(horaireCreneau(jour, precedent, horaires).fin)
+    : 0;
+  if (ecart > 0) return `Pause ${dureeLisible(ecart)} · reprise ${ajouterMinutes(debut, 0)}`;
+
+  if (creneauSuivant === 'S3') return `Pause 30 min · reprise ${ajouterMinutes(debut, 0)}`;
   return `Pause 15 min · reprise ${ajouterMinutes(debut, 15)}`;
+}
+
+/** 30 → « 30 min », 120 → « 2h », 90 → « 1h30 ». */
+function dureeLisible(minutes) {
+  if (minutes < 60) return `${minutes} min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, '0')}`;
 }
 
 const arrondir = (valeur) => Math.round(valeur * 100) / 100;

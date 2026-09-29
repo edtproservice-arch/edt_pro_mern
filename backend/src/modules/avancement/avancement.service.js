@@ -2,6 +2,7 @@ import {
   analyserSemaine,
   datesDeLaPlage,
   fusionnerVacances,
+  heuresParJour,
   heuresPosees,
   lignesDepuisAffectations,
   lireAvancementEnote,
@@ -17,14 +18,17 @@ import {
   tauxRegional,
   totalAvancement,
 } from 'shared/domain';
+import { JOURS } from 'shared/constants';
 import { Base } from '../../models/Base.js';
 import { EnoteImport } from '../../models/EnoteImport.js';
 import { Seance } from '../../models/Seance.js';
 import { Etablissement } from '../../models/Etablissement.js';
 import { Chronogramme } from '../../models/Chronogramme.js';
+import { intitulesPourEcran } from '../../lib/intitulesModules.js';
 import { Repartition } from '../../models/Repartition.js';
 import { joursFeries } from '../calendrier/calendrier.service.js';
 import { obtenir as calendrierNational } from '../calendrierNational/calendrierNational.service.js';
+import { obtenir as horairesSeances } from '../horaires/horaires.service.js';
 import { notFound } from '../../lib/httpError.js';
 
 /**
@@ -62,7 +66,7 @@ export async function avancement(etablissementId, anneeScolaire, observation = n
      * jamais rien fait douter du filtre plutôt que des données.
      */
     Base.findOne({ etablissementId, anneeScolaire })
-      .select('affectations formateurs groupeModes')
+      .select('affectations formateurs groupeModes groupes groupeFilieres')
       .lean(),
     /*
      * Le plus RÉCENT des imports de l'année : c'est l'état courant du système
@@ -210,9 +214,13 @@ export async function avancement(etablissementId, anneeScolaire, observation = n
    * l'emporte toujours.
    */
   const maintenant = observation ? null : options.maintenant ?? null;
+  // ⚠️ L'HORAIRE EN VIGUEUR (hiver, été, ramadan — réglé par l'admin) décide de l'heure de fin
+  // d'un créneau : une séance de S1 n'est « terminée » ni à la même heure en hiver et en ramadan.
+  // Lu seulement quand la règle s'applique.
+  const horaires = maintenant ? (await horairesSeances()).courant : undefined;
   const seancesObservees = seances.filter((seance) =>
     maintenant
-      ? seanceTerminee(seance, maintenant)
+      ? seanceTerminee(seance, maintenant, horaires)
       : seance.date && new Date(seance.date) <= borne
   );
 
@@ -258,10 +266,10 @@ export async function avancement(etablissementId, anneeScolaire, observation = n
    * ce sont deux colonnes du même document DRIF, et les chercher séparément
    * ferait deux parcours de la collection pour un seul besoin.
    */
-  const { intitules, massesDrif } = await referentielDesModules([
-    ...lignesEdtpro,
-    ...lignesEnote,
-  ]);
+  const { intitules, massesDrif } = await referentielDesModules(
+    [...lignesEdtpro, ...lignesEnote],
+    base
+  );
 
   /*
    * ⚠️ LA MASSE DRIF EST POSÉE SUR LES LIGNES eDTpro, pas rendue à part : c'est
@@ -293,7 +301,7 @@ export async function avancement(etablissementId, anneeScolaire, observation = n
    * l'établissement, en semaines actives de S1 à S39. Il ne se confond pas avec
    * l'objectif pédagogique, qui compte des jours ouvrés groupe par groupe.
    */
-  const debutAnnee = lundiPremiereSemaine(anneeScolaire);
+  const debutAnnee = lundiPremiereSemaine(anneeScolaire, national.rentrees);
   /*
    * ⚠️ `rentrees` EN PLUS DES VACANCES (2026-09-03, demande du porteur) : sans
    * elle, la S1 comptait comme « active » même quand AUCUN niveau n'avait
@@ -341,8 +349,32 @@ export async function avancement(etablissementId, anneeScolaire, observation = n
     },
     /* Les MÊMES semaines que celles que le rythme régional écarte — c'est ce que
        le graphe signale, et il ne peut pas les désigner autrement. */
-    semainesDeVacances({ anneeScolaire, vacances: vacancesDeLAnnee })
+    semainesDeVacances({ anneeScolaire, vacances: vacancesDeLAnnee, rentrees: national.rentrees }),
+    /* ⚠️ LA MÊME ANCRE QUE `regional` ET `semainesDeVacances` CI-DESSUS : sans
+       elle, une séance stockée en « 2026-W3 » se serait vu attribuer un numéro
+       calculé sur le 1er septembre, quand le rythme régional du même numéro
+       aurait, lui, la rentrée la plus précoce pour origine. */
+    national.rentrees
   );
+
+  /*
+   * ═══ LA GRILLE D'ACTIVITÉ DE L'ACCUEIL ═══ (2026-09-28) — les heures
+   * RÉALISÉES, jour par jour. Sur les séances OBSERVÉES, comme le réalisé : une
+   * séance posée pour jeudi prochain n'a pas encore eu lieu. Le lundi de chaque
+   * semaine voyage avec elle, pour que l'écran sache quels jours sont à venir.
+   */
+  const parJour = heuresParJour(seancesObservees, JOURS, national.rentrees);
+  const lundiS1 = lundiPremiereSemaine(anneeScolaire, national.rentrees);
+  const activite = progression.map((point) => {
+    const lundi = new Date(lundiS1);
+    lundi.setDate(lundi.getDate() + (point.numero - 1) * 7);
+    return {
+      numero: point.numero,
+      debut: enJourLocal(lundi),
+      vacances: point.vacances,
+      jours: parJour.get(point.numero) ?? JOURS.map(() => 0),
+    };
+  });
 
   return {
     anneeScolaire,
@@ -377,6 +409,7 @@ export async function avancement(etablissementId, anneeScolaire, observation = n
     regional,
     semaineCourante,
     progression,
+    activite,
     statutaires,
     faces: {
       edtpro: lignesEdtpro,
@@ -398,10 +431,14 @@ export async function avancement(etablissementId, anneeScolaire, observation = n
  * sujet EST le code, agrégé à travers toutes les filières : il n'y a qu'un
  * libellé à afficher. On choisit le premier par ordre de filière, pour que deux
  * chargements ne rendent pas deux noms différents.
+ *
+ * ⚠️ EXPORTÉE (2026-09-25) : `exportEmargement.service.js` en a besoin à son
+ * tour, pour la même raison — afficher le nom complet à côté du code, en UNE
+ * requête plutôt qu'une par ligne du tableau.
  */
-async function referentielDesModules(lignes) {
+export async function referentielDesModules(lignes, base = null) {
   const codes = [...new Set(lignes.map((ligne) => ligne.module).filter(Boolean))];
-  if (codes.length === 0) return { intitules: {}, massesDrif: {} };
+  if (codes.length === 0) return { intitules: {}, massesDrif: {}, intitulesParGroupe: new Map() };
 
   const references = await Repartition.find({ codeModule: { $in: codes } })
     .select('codeModule module codeFiliereDrif mhpS1 mhpS2 mhsynS1 mhsynS2')
@@ -435,7 +472,24 @@ async function referentielDesModules(lignes) {
     }
   }
 
-  return { intitules, massesDrif };
+  /*
+   * ⚠️ AVEC LA BASE, L'INTITULÉ SE LIT DANS LA FILIÈRE DU GROUPE (2026-09-28,
+   * signalé par le porteur : « M105 » en Génie mécanique s'affichait « Matériel
+   * et mobilier », intitulé de la Restauration). Le « premier par ordre de
+   * filière » ci-dessus n'est plus qu'un repli, pour un groupe sans filière.
+   * Indexé par code, il prend la filière du PREMIER groupe qui porte ce code :
+   * exact pour un stagiaire ou un groupe, au mieux pour une vue qui agrège
+   * plusieurs filières sous un même code.
+   */
+  let intitulesParGroupe = new Map();
+  if (base) {
+    const couples = lignes.filter((ligne) => ligne.groupe && ligne.module);
+    const ecran = await intitulesPourEcran(base, couples);
+    Object.assign(intitules, ecran.parCode);
+    intitulesParGroupe = new Map(Object.entries(ecran.parGroupe));
+  }
+
+  return { intitules, massesDrif, intitulesParGroupe };
 }
 
 

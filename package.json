@@ -15,7 +15,15 @@
     "dev:web": "npm run dev --workspace=frontend",
     "build": "npm run build --workspace=frontend",
     "test": "npm run test --workspaces --if-present",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "refs-libres": "node outils/references-libres.mjs ../gestion_edt/public/*.html",
+    "desktop:dev": "npm run desktop:dev --workspace=frontend",
+    "desktop:build": "npm run desktop:build --workspace=frontend",
+    "desktop:release": "npm run desktop:release --workspace=frontend --"
+  },
+  "devDependencies": {
+    "@babel/parser": "^7.29.8",
+    "@babel/traverse": "^7.29.8"
   },
   "engines": {
     "node": ">=20"

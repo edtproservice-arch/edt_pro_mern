@@ -37,12 +37,14 @@ export function supprimerCompte(id) {
 }
 
 /**
- * Réinitialise le mot de passe. ← reset_user_password.php
+ * Réinitialise le mot de passe — SAISI PAR LE DIRECTEUR (2026-09-27, demande
+ * du porteur), avec la même règle que toute création de compte.
+ * ← reset_user_password.php
  *
  * ⚠️ La réponse ne porte `motDePasse` que pour les comptes SANS adresse réelle
- * (`@placeholder.ofppt.ma`) : ailleurs il part par e-mail et n'apparaît jamais
- * dans une réponse HTTP, contrairement à l'existant qui l'affichait à l'écran.
+ * (`@placeholder.ofppt.ma`) : ailleurs il part par e-mail en plus, mais
+ * n'apparaît jamais dans une réponse HTTP.
  */
-export function reinitialiserMotDePasse(id) {
-  return api.post(`/api/v2/comptes/${id}/mot-de-passe`);
+export function reinitialiserMotDePasse(id, motDePasse) {
+  return api.post(`/api/v2/comptes/${id}/mot-de-passe`, { motDePasse });
 }

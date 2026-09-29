@@ -36,3 +36,4 @@ export * from './avancement/index.js';
 export * from './repartition/index.js';
 export * from './partage/index.js';
 export * from './discipline/index.js';
+export * from './propositions/index.js';

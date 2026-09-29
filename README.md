@@ -76,6 +76,14 @@ et permet aux modules migrés et non migrés de cohabiter.
 MongoDB doit tourner en **replica set**, même mono-nœud : les transactions
 multi-collections en dépendent.
 
+**LibreOffice** (`soffice`) doit être installé sur la machine qui exécute le
+backend — développement compris. L'export PDF de la « vue globale » (page
+Édition) greffe les données dans le canevas Word de l'établissement
+(`backend/src/modules/seances/exportGlobalDocx.js`) puis le convertit en PDF
+via `soffice --headless --convert-to pdf` (`exportGlobalPdf.js`). Sans lui,
+l'export PDF répond une erreur claire ; le Word et l'Excel restent
+disponibles, eux, sans dépendance externe.
+
 ## Bascule développement / production (frontend)
 
 Vite choisit le fichier `.env.*` selon la commande, **pas de bascule manuelle
@@ -109,6 +117,49 @@ domaines différents ; `secure` sur le cookie est déjà forcé par
 `NODE_ENV=production`, voir `backend/src/modules/auth/tokens.js`.) Ajouter
 chaque nouveau domaine (custom domain, preview Vercel) à ces deux listes,
 séparés par des virgules.
+
+## Application de bureau (Tauri)
+
+Le shell Tauri v2 vit dans `frontend/src-tauri`. Il embarque le build du
+frontend et parle à la même API que le web — **aucune base ni backend local**.
+Prérequis : Rust (`rustup`) et WebView2 (inclus dans Windows 11).
+
+| Commande | Comportement |
+|---|---|
+| `npm run desktop:dev` | lance Vite puis ouvre une fenêtre sur `http://localhost:5173` (proxy → backend local, comme le web) |
+| `npm run desktop:build` | build de production (API Railway) + installeurs dans `frontend/src-tauri/target/release/bundle/` (`nsis/*.exe`, `msi/*.msi`) |
+
+Sous Windows, la fenêtre sert l'application depuis `https://tauri.localhost`
+(`useHttpsScheme`). Cette origine doit être ajoutée côté Railway :
+
+```
+HTTP_ORIGINES=https://<votre-projet>.vercel.app,https://tauri.localhost
+WS_ORIGINES=https://<votre-projet>.vercel.app,https://tauri.localhost
+```
+
+(`tauri://localhost` sur macOS/Linux.) Icônes régénérables avec
+`npx tauri icon public/favicon.png` depuis `frontend/`.
+
+### Mises à jour de l'application de bureau
+
+L'interface est **embarquée** dans l'installeur : un changement du backend
+(Railway) profite immédiatement à tous, mais un changement du frontend demande
+une nouvelle version. Les installations la détectent au démarrage (plugin
+`updater`, lecture de `latest.json` dans la dernière Release GitHub) et
+proposent de l'installer.
+
+1. `npm run desktop:release -- 0.2.0` — écrit la version, compile, signe, et
+   prépare `release/desktop-v0.2.0/` (`EDT-Pro_0.2.0_x64-setup.exe` + `latest.json`).
+2. Créer la release **`v0.2.0`** sur GitHub, y déposer ces deux fichiers,
+   la marquer *latest*.
+
+La version doit toujours **augmenter** : une installation ignore une version
+égale ou inférieure à la sienne.
+
+⚠️ **Clé de signature** : `~/.tauri/edt-pro.key` (hors dépôt, jamais commitée).
+Les installations refusent toute mise à jour qui n'est pas signée par elle —
+**la perdre, c'est devoir faire réinstaller tout le monde à la main**.
+Sauvegardez-la. La clé publique correspondante est dans `tauri.conf.json`.
 
 ## Tests
 

@@ -5,6 +5,7 @@ import {
   enregistre,
   estModifie,
   recevoirServeur,
+  renoncer,
   saisir,
 } from './brouillonVersionne';
 
@@ -92,5 +93,15 @@ describe('brouillon versionné — pages « tout ou rien »', () => {
   it('n’est jamais « modifié » avant le premier chargement', () => {
     expect(estModifie(BROUILLON_VIDE)).toBe(false);
     expect(recevoirServeur(BROUILLON_VIDE, undefined)).toBe(BROUILLON_VIDE);
+  });
+});
+
+describe('renoncer — refus d’une cascade de suppressions', () => {
+  it('revient à la référence, garde la version, et n’est plus « modifié »', () => {
+    const etat = { charge: true, brouillon: ['nouveau'], reference: ['en base'], version: 4 };
+    const suivant = renoncer(etat);
+
+    expect(suivant).toEqual({ charge: true, brouillon: ['en base'], reference: ['en base'], version: 4 });
+    expect(estModifie(suivant)).toBe(false);
   });
 });

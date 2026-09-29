@@ -1,7 +1,13 @@
 import { useMemo, useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { CheckCircle2, ChevronRight, Star } from 'lucide-react';
-import { SEUIL_ACHEVEMENT } from 'shared/domain';
+import {
+  FILTRES_VIDES,
+  SEUIL_ACHEVEMENT,
+  completionModules,
+  facettesAvancement,
+  filtrerAvancement,
+} from 'shared/domain';
 import BadgeSemestre from '@/components/common/BadgeSemestre';
 import TableauTriable from '@/components/common/TableauTriable';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +21,7 @@ import {
 import { nombre } from '@/lib/nombres';
 import { cn } from '@/lib/utils';
 import { chargerAchevement } from './api';
+import PanneauFiltres from './PanneauFiltres';
 
 /**
  * L'ACHÈVEMENT des modules — combien sont terminés, et lesquels traînent.
@@ -25,17 +32,39 @@ import { chargerAchevement } from './api';
  * d'œil et tient sur une ligne ; le détail — cent vingt couples groupe/module —
  * n'a pas à occuper la page en permanence. L'écran d'avancement est déjà dense.
  *
- * ⚠️ IL SUIT LES FILTRES : le bilan porte sur les lignes retenues. Filtré sur la
- * 2ᵉ année, « 12 modules achevés sur 40 » parle de cette promotion — c'est
- * précisément la question qu'on pose en filtrant.
+ * ═══ ⚠️⚠️ IL IGNORE LES FILTRES DE LA PAGE (2026-09-25, demande du porteur :
+ * « il faut afficher tous les modules même si pas encore achevé ») ═══
+ * C'était l'inverse jusqu'ici — le bilan suivait les lignes retenues par le
+ * filtre de la page, sur l'idée que « filtré sur la 2ᵉ année, 12 modules
+ * achevés sur 40 parle de cette promotion ». Le porteur est revenu dessus :
+ * filtrer la page sur UN formateur ne doit plus faire disparaître les modules
+ * des AUTRES de ce bilan, qui répond à une question différente — « où en est
+ * l'ÉTABLISSEMENT, dans son ensemble ? ». `lignes` est donc TOUJOURS
+ * `brutes`, l'ensemble non filtré de l'année.
+ *
+ * Ce composant porte son PROPRE filtre (`PanneauFiltres`, réutilisé tel quel),
+ * séparé de celui de la page : une façon de REGARDER cette même liste complète
+ * en modale, pas de la réduire par défaut — elle reste vide à l'ouverture.
  */
 export default function AchevementModules({
-  completion,
+  lignes,
   anneeScolaire,
   dateObservee = null,
   face = 'edtpro',
+  /* Le nom complet de chaque module, par code — résolu par le serveur depuis la
+     répartition DRIF (`Base.affectations` ne garde que le code). */
+  intitules = {},
 }) {
   const [ouvert, setOuvert] = useState(false);
+  const [filtresModale, setFiltresModale] = useState(FILTRES_VIDES);
+
+  const completion = useMemo(() => completionModules(lignes), [lignes]);
+  const facettes = useMemo(() => facettesAvancement(lignes), [lignes]);
+  const retenues = useMemo(
+    () => filtrerAvancement(lignes, filtresModale),
+    [lignes, filtresModale]
+  );
+  const completionFiltree = useMemo(() => completionModules(retenues), [retenues]);
 
   if (!completion || completion.total === 0) return null;
 
@@ -49,11 +78,22 @@ export default function AchevementModules({
       <button
         type="button"
         onClick={() => setOuvert(true)}
-        className="mt-3 flex w-full items-center gap-3 border-t pt-3 text-left transition-colors hover:text-primary"
+        /* ⚠️ `py-2` : le MÊME espace en haut et en bas (demande du porteur, 2026-09-28 :
+           « diminuer le padding top et bottom avec la même épaisseur »). `-mb-4` annule le
+           `p-4` de la carte sous la ligne — sans lui, le bas gardait 24 px contre 8 en haut. */
+        className="-mb-4 mt-2 flex w-full items-center gap-3 border-t py-2 text-left transition-colors hover:text-primary"
       >
         <CheckCircle2 className="size-4 shrink-0 text-success" />
 
-        <span className="text-xs">
+        {/* ⚠️ `leading-none` + `mt-0.5` (demande du porteur, 2026-09-25 :
+            d'abord « centrer le texte et la barre verticalement », puis
+            « déplacer le texte et la barre un peu en bas pour qu'ils soient au
+            centre ») : l'interligne PAR DÉFAUT de `text-xs` dépasse la hauteur
+            réelle des lettres, et le retirer (`leading-none`) resserre la boîte
+            au-dessus de son centre visuel plutôt que de le centrer — d'où ce
+            léger réglage fin vers le bas, à côté d'une icône et d'une barre qui,
+            elles, n'ont pas cet interligne à corriger. */}
+        <span className="mt-0.5 text-xs leading-none">
           <span className="font-medium">{completion.acheves} module(s) achevé(s)</span>
           <span className="text-muted-foreground">
             {' '}
@@ -62,14 +102,14 @@ export default function AchevementModules({
         </span>
 
         {/* La barre reprend la forme de celle du tableau : même lecture partout. */}
-        <span className="hidden h-1.5 max-w-40 flex-1 overflow-hidden rounded-full bg-muted sm:block">
+        <span className="mt-0.5 hidden h-1.5 max-w-40 flex-1 overflow-hidden rounded-full bg-muted sm:block">
           <span
             className="block h-full rounded-full bg-success"
             style={{ width: `${Math.min(100, completion.taux ?? 0)}%` }}
           />
         </span>
 
-        <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
+        <span className="ml-auto flex items-center gap-1 text-xs leading-none text-muted-foreground">
           {nombre(completion.taux)} %
           <ChevronRight className="size-3.5" />
         </span>
@@ -85,22 +125,38 @@ export default function AchevementModules({
           garde sa taille et le tableau prend le reste, avec `min-h-0` pour
           l'autoriser à devenir plus court que son contenu.
         */}
-        <DialogContent className="flex max-h-[85vh] max-w-5xl flex-col overflow-hidden">
+        {/* ⚠️ `max-w-7xl` (demande du porteur, 2026-09-29) : avec l'intitulé
+            sous le code, `max-w-5xl` coupait la colonne « Source » derrière un
+            défilement horizontal alors que l'écran avait la place. */}
+        <DialogContent className="flex max-h-[85vh] max-w-7xl flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>Achèvement des modules</DialogTitle>
             <DialogDescription>
-              {completion.acheves} achevé(s) et {completion.enCours} en cours, sur{' '}
-              {completion.total}. Un module est tenu pour achevé à partir de{' '}
+              {completionFiltree.acheves} achevé(s) et {completionFiltree.enCours} en cours, sur{' '}
+              {completionFiltree.total}. Un module est tenu pour achevé à partir de{' '}
               {SEUIL_ACHEVEMENT} % de sa masse affectée — les modules en cours viennent en premier.
             </DialogDescription>
           </DialogHeader>
 
+          {/*
+            ⚠️ LE FILTRE DE CETTE FENÊTRE, SÉPARÉ DE CELUI DE LA PAGE (2026-09-25,
+            demande du porteur : « je veux ajouter un filtre en modale »). Même
+            composant que celui de la page (`PanneauFiltres`) — sa liste, déjà
+            défilante au-delà de quelques valeurs, répond au « avec un
+            scrollbar » demandé — mais son propre état : fermer cette fenêtre et
+            la rouvrir retrouve la liste complète, jamais un filtre oublié.
+          */}
+          <div className="flex shrink-0 justify-end">
+            <PanneauFiltres facettes={facettes} filtres={filtresModale} onChange={setFiltresModale} />
+          </div>
+
           <Tableau
-            details={completion.details}
+            details={completionFiltree.details}
             ouvert={ouvert}
             anneeScolaire={anneeScolaire}
             dateObservee={dateObservee}
             face={face}
+            intitules={intitules}
           />
         </DialogContent>
       </Dialog>
@@ -127,7 +183,7 @@ export default function AchevementModules({
  * l'existant, qui relisait le texte des cellules et faisait passer « 90 h »
  * avant « 100 h ».
  */
-function Tableau({ details, ouvert, anneeScolaire, dateObservee, face }) {
+function Tableau({ details, ouvert, anneeScolaire, dateObservee, face, intitules }) {
   const avecDates = face === 'edtpro';
 
   /*
@@ -154,13 +210,15 @@ function Tableau({ details, ouvert, anneeScolaire, dateObservee, face }) {
    * `TableauTriable` existe pour éviter.
    */
   const lignes = useMemo(() => {
-    if (!avecDates) return details;
     const parCle = plages.data?.plages ?? {};
     return details.map((detail) => ({
       ...detail,
-      ...datesDuModule(detail, parCle[`${detail.groupe}||${detail.module}`] ?? null),
+      intitule: intitules[detail.module] ?? null,
+      ...(avecDates
+        ? datesDuModule(detail, parCle[`${detail.groupe}||${detail.module}`] ?? null)
+        : {}),
     }));
-  }, [details, avecDates, plages.data]);
+  }, [details, avecDates, plages.data, intitules]);
 
   const colonnes = avecDates ? COLONNES_DATES : COLONNES_HEURES;
 
@@ -171,12 +229,30 @@ function Tableau({ details, ouvert, anneeScolaire, dateObservee, face }) {
         lignes={lignes}
         cleLigne={(ligne) => `${ligne.groupe}||${ligne.module}`}
         vide="Aucun module."
-        /* ⚠️ C'EST ICI QUE LE TABLEAU DEVIENT DÉFILANT : `flex-1` lui donne la
-           hauteur restante de la modale, `min-h-0` l'autorise à être plus court
-           que son contenu — sans quoi il déborderait par le bas, coupé. Le
-           défilement lui-même vit dans l'enveloppe de `Table` (cf.
-           `TableauTriable`), seule ancre possible pour l'en-tête collant. */
-        className="min-h-0 flex-1 overflow-hidden"
+        /*
+         * ⚠️⚠️ `max-h-[...]` EST ICI DEPUIS LE 2026-09-25 — ET C'EST LUI QUI FAIT
+         * RÉELLEMENT DÉFILER LE TABLEAU, PAS `flex-1 min-h-0` (signalé par le
+         * porteur : 245 modules, tableau coupé, aucune barre de défilement).
+         *
+         * ⚠️ LA RAISON EST UNE LIMITE DE FLEXBOX, PAS UN OUBLI DE CLASSE :
+         * `DialogContent` n'a qu'un `max-height` (85 vh), jamais de `height`. Un
+         * conteneur flex dont la hauteur n'est que MAXIMALE — jamais DÉFINITIVE —
+         * ne redistribue pas l'espace restant à ses enfants `flex-1` : le
+         * navigateur calcule d'abord leur taille comme si le conteneur n'avait
+         * AUCUNE limite, avant de ne clipper que le résultat final au moment de
+         * peindre. C'est pour cela que « 7 modules » semblait fonctionner —
+         * rien ne dépassait jamais l'espace réellement disponible — et que
+         * « 245 » a révélé le défaut : le tableau grandissait à sa taille
+         * NATURELLE (9 000 px et plus), simplement rognée par l'`overflow-hidden`
+         * de la modale, sans le moindre défilement pour atteindre le bas.
+         *
+         * `max-h-[calc(85vh-11rem)]` donne au tableau une limite CHIFFRÉE, pas
+         * seulement héritée d'un parent lui-même sans hauteur ferme — 11 rem
+         * couvrant l'en-tête, le bouton « Filtrer » et les marges de la modale.
+         * `min-h-0 flex-1` restent : sur un court tableau, ils continuent de le
+         * laisser aussi bas que son contenu plutôt que d'imposer ce plafond.
+         */
+        className="min-h-0 flex-1 overflow-hidden max-h-[calc(85vh-11rem)]"
       />
 
       {plages.isLoading && (
@@ -190,7 +266,20 @@ function Tableau({ details, ouvert, anneeScolaire, dateObservee, face }) {
 
 const COLONNES_COMMUNES = [
   { id: 'groupe', entete: 'Groupe', tri: (l) => l.groupe, rendu: (l) => <span className="font-medium">{l.groupe}</span> },
-  { id: 'module', entete: 'Module', tri: (l) => l.module, rendu: (l) => l.module },
+  {
+    id: 'module',
+    entete: 'Module',
+    tri: (l) => l.module,
+    /* Le code, puis le nom complet dessous : « EGTSI106 » seul n'apprend rien. */
+    rendu: (l) => (
+      <div className="min-w-48 max-w-72">
+        <div>{l.module}</div>
+        {l.intitule && (
+          <div className="text-xs leading-snug text-muted-foreground">{l.intitule}</div>
+        )}
+      </div>
+    ),
+  },
   {
     id: 'formateur',
     entete: 'Formateur',

@@ -120,11 +120,14 @@ export function plageDeSemaines(numeros = []) {
  *    part de `lundiPremiereSemaine`, comme partout.
  * 2. Il forçait la fin au VENDREDI (`+4 days`). La grille porte SIX jours : un
  *    module qui finit le samedi voyait sa plage close la veille.
+ *
+ * @param {Array<{anneeFormation: number, date: string}>} [rentrees] — voir
+ *   `lundiPremiereSemaine` ; sans elles, l'origine reste le 1er septembre.
  */
-export function datesDeLaPlage(anneeScolaire, plage) {
+export function datesDeLaPlage(anneeScolaire, plage, rentrees = []) {
   if (!Number.isInteger(anneeScolaire) || !plage) return null;
 
-  const origine = lundiPremiereSemaine(anneeScolaire);
+  const origine = lundiPremiereSemaine(anneeScolaire, rentrees);
 
   const debut = new Date(origine);
   debut.setDate(debut.getDate() + (plage.debut - 1) * 7);

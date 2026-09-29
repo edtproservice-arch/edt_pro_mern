@@ -128,6 +128,29 @@ export function grouperPages(entrees) {
   return colonnes.filter((colonne) => colonne.entrees.length > 0);
 }
 
+/**
+ * L'ordre des liens de la carte « Partagé » (2026-09-23, demande du porteur :
+ * les liens sur UNE ligne, Affectations → Chronogramme → Emploi du temps).
+ * Les pages absentes de cette liste suivent, dans leur ordre d'arrivée.
+ */
+export const ORDRE_PAGES_PARTAGEES = ['affectations', 'chronogramme', 'emploi'];
+
+/**
+ * Trie des entrées (chacune porte sa clé dans `page`) selon `ORDRE_PAGES_PARTAGEES`.
+ * Ne retire rien : une page inconnue reste atteignable, en fin de liste.
+ *
+ * @param {{ page: string }[]} entrees
+ * @returns {{ page: string }[]}
+ */
+export function ordonnerPages(entrees) {
+  const rang = (entree) => {
+    const index = ORDRE_PAGES_PARTAGEES.indexOf(entree?.page);
+    return index === -1 ? ORDRE_PAGES_PARTAGEES.length : index;
+  };
+  // `sort` est stable : à rang égal, l'ordre d'arrivée est conservé.
+  return [...(entrees ?? [])].sort((a, b) => rang(a) - rang(b));
+}
+
 /** Les pages qu'on peut réellement proposer au partage aujourd'hui. */
 export const pagesPretes = () => PAGES_COLLABORATIVES.filter((page) => PAGES_PARTAGEABLES[page].prete);
 

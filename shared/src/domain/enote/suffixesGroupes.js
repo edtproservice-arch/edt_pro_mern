@@ -67,8 +67,12 @@ function estFq(codeFiliere) {
  *
  * Les filières CDS et FQ en sont exclues : elles sont déjà désambiguïsées par
  * leur propre suffixe, les compter fausserait la détection d'ambiguïté.
+ *
+ * ⚠️ EXPORTÉE (2026-09-25) : la face e-note de l'avancement en a besoin à son
+ * tour, pour renommer ses groupes EXACTEMENT comme le fait l'import de la
+ * carte — voir `lireAvancementEnote`.
  */
-function indexerFilieresParGroupe(lignes) {
+export function indexerFilieresParGroupe(lignes) {
   const index = new Map();
 
   for (const ligne of lignes) {

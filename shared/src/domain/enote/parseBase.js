@@ -36,6 +36,28 @@ const majuscules = (valeur) => nettoyer(valeur).toUpperCase();
 /** Uniquement des chiffres, et non vide. ← ctype_digit */
 const chiffresSeuls = (valeur) => /^\d+$/.test(String(valeur ?? ''));
 
+/**
+ * Masse statutaire ANNUELLE donnée par défaut à un formateur inconnu.
+ * ← api/setup/parse_formateurs.php:58-59 (`$isVacataire ? 0 : 910`)
+ *
+ * ⚠️ PAS LA SOMME DES HEURES AFFECTÉES (décision du 2026-09-28). L'import PHP
+ * `parse_base_rows.php` prenait cette somme : elle rend un formateur chargé à
+ * 100 % par construction, et fausse tout le bilan de charge de la carte.
+ * Même critère que `emailDeduit()` : matricule non numérique — ou absent —
+ * = vacataire, sans masse statutaire.
+ */
+export const MASSE_STATUTAIRE_PAR_DEFAUT = 910;
+export const MASSE_STATUTAIRE_VACATAIRE = 0;
+
+/** Matricule non numérique — ou absent — = vacataire ; numérique = permanent. */
+export function estVacataire(matricule) {
+  return !chiffresSeuls(String(matricule ?? '').trim());
+}
+
+export function masseStatutaireParDefaut(matricule) {
+  return estVacataire(matricule) ? MASSE_STATUTAIRE_VACATAIRE : MASSE_STATUTAIRE_PAR_DEFAUT;
+}
+
 /** Une adresse utilisable, ou la chaîne vide — jamais `undefined`. */
 function emailNonVide(valeur) {
   return String(valeur ?? '').trim();
@@ -167,8 +189,8 @@ export function construireBase(lignes, options = {}) {
         emailNonVide(emailsConnus.get(formateur.nomComplet)) ||
         emailDeduit(formateur.nomComplet, formateur.matricule),
       masseHoraire: masseConnue ?? 0,
-      // Un formateur inconnu de l'établissement : sa masse sera déduite des
-      // heures qui lui sont affectées, et devra être vérifiée.
+      // Un formateur inconnu de l'établissement : il reçoit la masse par
+      // défaut (910 h, 0 h pour un vacataire), à vérifier par l'établissement.
       estNouveau: masseConnue === undefined,
     };
   });
@@ -275,9 +297,10 @@ export function construireBase(lignes, options = {}) {
   }
 
   // ─── 5. Masse horaire des formateurs encore inconnus ──────────────────────
-  // Aucune valeur par défaut arbitraire : on part du total des heures qui leur
-  // sont affectées dans ce fichier. C'est un point de départ réaliste, que
-  // l'établissement doit vérifier — d'où la liste `nouveauxFormateurs`.
+  // Masse STATUTAIRE par défaut : 910 h, 0 h pour un vacataire. Le total des
+  // heures affectées reste calculé, mais comme information à part
+  // (`heuresAffectees`) : ce n'est pas une capacité. L'établissement vérifie
+  // ces valeurs — d'où la liste `nouveauxFormateurs`.
   const heuresAffectees = new Map();
 
   for (const affectation of affectations) {
@@ -295,12 +318,17 @@ export function construireBase(lignes, options = {}) {
     }
     if (!formateur.estNouveau) continue;
 
-    formateur.masseHoraire = arrondir(heuresAffectees.get(majuscules(identifiant(formateur))) ?? 0, 0);
+    formateur.masseHoraire = masseStatutaireParDefaut(formateur.matricule);
+    formateur.heuresAffectees = arrondir(
+      heuresAffectees.get(majuscules(identifiant(formateur))) ?? 0,
+      0
+    );
 
     nouveauxFormateurs.push({
       matricule: formateur.matricule,
       nomComplet: formateur.nomComplet,
       masseHoraire: formateur.masseHoraire,
+      heuresAffectees: formateur.heuresAffectees,
     });
   }
 

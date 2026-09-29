@@ -1,4 +1,4 @@
-import { TYPES_COURS } from '../../constants/index.js';
+import { JOURS, SEANCES, TYPES_COURS } from '../../constants/index.js';
 import { separerFusion } from '../carte/reconstruction.js';
 import { typeDeSeance } from './conflits.js';
 import { analyserSemaine, normaliserValeurSemaine } from '../planning/semaines.js';
@@ -180,6 +180,117 @@ export function heuresPosees(seances = []) {
 }
 
 /**
+ * L'ordre chronologique d'une séance : numéro de semaine, puis jour, puis
+ * créneau. Partagé par `heuresPoseesParSeance` et `avancementParSeance` — deux
+ * tris écrits séparément auraient fini par diverger d'un caractère, et le
+ * cumul serait redevenu faux dans l'un des deux sans que rien ne le signale.
+ */
+const comparerChronologiquement = (a, b) => {
+  if (a.numero !== b.numero) return a.numero - b.numero;
+  const jourA = JOURS.indexOf(a.jour);
+  const jourB = JOURS.indexOf(b.jour);
+  if (jourA !== jourB) return jourA - jourB;
+  return SEANCES.indexOf(a.creneau) - SEANCES.indexOf(b.creneau);
+};
+
+/** Cumule une liste de séances déjà triées chronologiquement. */
+const cumulerChronologiquement = (lignes) => {
+  let cumul = 0;
+  return [...lignes].sort(comparerChronologiquement).map((ligne) => {
+    cumul = arrondir(cumul + ligne.heures);
+    return { ...ligne, cumul };
+  });
+};
+
+/**
+ * Heures posées par module et par groupe, SÉANCE PAR SÉANCE ET AVEC LEUR
+ * CUMUL — le pendant de `heuresPosees`, déroulé dans le temps. C'est la
+ * version « toutes les clés à la fois » d'`avancementParSeance`, exactement
+ * comme `heuresPosees` l'est d'`avancementModule`.
+ *
+ * (2026-09-24, demande du porteur : « le taux dans les cellules pour chaque
+ * semaine, pas le dernier taux » — précisé ensuite : « en S3 le taux est 14
+ * mais en cellule s'affiche 20 », le cumul de fin de semaine restant faux pour
+ * une séance qui n'est pas la dernière de sa semaine.) Le badge d'une case
+ * lisait jusqu'ici `heuresPosees` — le TOTAL de l'année — si bien que la même
+ * case affichait le même pourcentage qu'on soit en semaine 2 ou en semaine 30.
+ * Chaque case peut désormais retrouver le cumul exact à SA PROPRE séance —
+ * semaine, jour et créneau — plutôt qu'un taux de fin d'année ou de fin de
+ * semaine, tous deux également identiques sur des cases qui n'en sont pas au
+ * même point.
+ *
+ * ⚠️ MÊME RÈGLE DE COMPTAGE QUE `heuresPosees` — absence écartée, surveillance
+ * EFM écartée, séance fusionnée comptée pour chacun de ses groupes ET pour le
+ * libellé fusionné. Les deux décomptes doivent concorder : le dernier cumul de
+ * chaque type redonne exactement les heures de `heuresPosees`.
+ *
+ * @returns {Map<string, {presentiel: Array<{semaine,numero,jour,creneau,heures,cumul}>, synchrone: [...]}>}
+ *   clé « GROUPE||MODULE », chaque liste triée chronologiquement.
+ */
+export function heuresPoseesParSeance(seances = []) {
+  const parCle = new Map();
+
+  for (const seance of seances) {
+    if (seance.statut === 'absent') continue;
+    if (seance.estEfm) continue;
+
+    const module = String(seance.module ?? '').trim();
+    if (module === '') continue;
+
+    const semaine = normaliserValeurSemaine(seance.semaine);
+    if (!semaine) continue;
+
+    const type = typeDeSeance(seance);
+    const ligne = {
+      semaine,
+      numero: analyserSemaine(semaine)?.numero ?? 0,
+      jour: seance.jour ?? null,
+      creneau: seance.seance,
+      heures: arrondir(dureeSeance(seance.seance)),
+    };
+
+    const libelle = String(seance.groupe ?? '').trim();
+    const membres = separerFusion(libelle);
+    const cibles = membres.length > 1 ? [...membres, libelle] : membres;
+
+    for (const groupe of cibles) {
+      const cle = cleModule(groupe, module);
+      const entree = parCle.get(cle) ?? { [TYPES_COURS.PRESENTIEL]: [], [TYPES_COURS.SYNCHRONE]: [] };
+      entree[type].push(ligne);
+      parCle.set(cle, entree);
+    }
+  }
+
+  const resultat = new Map();
+  for (const [cle, parType] of parCle) {
+    resultat.set(cle, {
+      [TYPES_COURS.PRESENTIEL]: cumulerChronologiquement(parType[TYPES_COURS.PRESENTIEL]),
+      [TYPES_COURS.SYNCHRONE]: cumulerChronologiquement(parType[TYPES_COURS.SYNCHRONE]),
+    });
+  }
+
+  return resultat;
+}
+
+/**
+ * Le même `{ taux, prevu, pose, niveau }` qu'`avancementModule`, à partir d'un
+ * CUMUL DÉJÀ CONNU — celui qu'une case de la grille tient de sa propre séance
+ * (`heuresPoseesParSeance`), plutôt que recalculé depuis `heuresPosees`.
+ *
+ * @returns {{taux, prevu, pose, niveau}|null} `null` sans masse prévue — même
+ *   règle qu'`avancementModule` : un pourcentage sur zéro heure prévue ferait
+ *   croire à un retard là où il n'y a rien à faire.
+ */
+export function avancementDepuisCumul(cumul, prevu) {
+  if (!(prevu > 0)) return null;
+
+  const pose = arrondir(cumul);
+  const taux = Math.round((pose / prevu) * 100);
+
+  return { taux, prevu: arrondir(prevu), pose, niveau: niveauAvancement(taux) };
+}
+
+/**
  * Le taux d'avancement d'un module pour un groupe, POUR UN TYPE DE SÉANCE.
  *
  * ⚠️ LE TYPE EST OBLIGATOIRE EN PRATIQUE : sans lui on compare le total posé au
@@ -221,13 +332,21 @@ export const niveauAvancement = (taux) =>
   taux >= AVANCEMENT_ELEVE ? 'haut' : taux >= AVANCEMENT_MOYEN ? 'moyen' : 'bas';
 
 /**
- * L'avancement d'un module, SEMAINE PAR SEMAINE.
+ * L'avancement d'un module, SÉANCE PAR SÉANCE.
  * ← `getCompletionLive()` de emploi.html, déroulé dans le temps
  *
+ * (2026-09-24, demande du porteur : « il faut qu'il calcule l'avancement selon
+ * la séance, pas la semaine ».) La version précédente cumulait les heures
+ * d'une même semaine en UNE seule ligne — « S3 : 10 h » masquait deux séances
+ * distinctes, l'une posée et l'autre pas encore (un rattrapage déplacé, une
+ * séance restée « à planifier »), sous un chiffre qui ne disait plus LAQUELLE
+ * comptait. Chaque ligne est désormais UNE séance réellement posée, dans
+ * l'ordre où elle a eu lieu.
+ *
  * Le badge de la case dit OÙ EN EST le module ; ceci dit COMMENT il y est
- * arrivé — les semaines où il a réellement tourné, celles où il s'est arrêté, et
- * le taux atteint après chacune. C'est ce qu'on vient chercher avant de décider
- * s'il faut lui rendre des heures.
+ * arrivé — les séances qui ont réellement eu lieu, et le taux atteint après
+ * chacune. C'est ce qu'on vient chercher avant de décider s'il faut lui rendre
+ * des heures.
  *
  * ⚠️ MÊME RÈGLE D'APPARIEMENT QUE `heuresPosees`, et c'est essentiel : une
  * séance à distance est posée sur le libellé FUSIONNÉ (« GM101 GM102 ») et
@@ -235,69 +354,52 @@ export const niveauAvancement = (taux) =>
  * simple ici ferait diverger le total de la carte de celui du badge, à quelques
  * heures près — l'écart le plus difficile à expliquer.
  *
- * ⚠️ LES SEMAINES SE TRIENT SUR LEUR NUMÉRO, jamais sur la chaîne : « 2026-W10 »
- * précède « 2026-W2 » dans l'ordre alphabétique, et l'histoire du module se
- * lirait à l'envers. `normaliserValeurSemaine` absorbe au passage le zéro de
- * remplissage (« 2026-W039 ») présent en base.
+ * ⚠️ LE TRI SE FAIT SUR (NUMÉRO DE SEMAINE, JOUR, CRÉNEAU), jamais sur la
+ * chaîne de la semaine : « 2026-W10 » précède « 2026-W2 » dans l'ordre
+ * alphabétique, et l'histoire du module se lirait à l'envers.
+ * `normaliserValeurSemaine` absorbe au passage le zéro de remplissage
+ * (« 2026-W039 ») présent en base. `JOURS`/`SEANCES` donnent l'ordre de la
+ * semaine — sans lui, deux séances de la même semaine se trieraient au hasard
+ * de leur ordre d'arrivée en base, et le cumul pourrait momentanément reculer.
  *
- * @returns {{prevu, pose, taux, semaines: Array<{semaine, numero, heures, cumul, taux}>}}
+ * @returns {{prevu, pose, taux, niveau, seances: Array<{semaine, numero, jour, creneau, heures, cumul, taux}>}}
  */
-export function avancementParSemaine(seances = [], groupe, module, prevu = 0, type = null) {
-  const cibleGroupe = normaliser(groupe);
-  const cibleModule = normaliser(module);
-  const parSemaine = new Map();
+export function avancementParSeance(seances = [], groupe, module, prevu = 0, type = null) {
+  const cle = cleModule(groupe, module);
+  const parType = heuresPoseesParSeance(seances).get(cle) ?? {
+    [TYPES_COURS.PRESENTIEL]: [],
+    [TYPES_COURS.SYNCHRONE]: [],
+  };
 
-  for (const seance of seances) {
-    if (seance.statut === 'absent') continue;
-    // ⚠️ Même règle que `heuresPosees` : une surveillance d'EFM n'est pas un
-    // cours. Les deux décomptes doivent dire la même chose, sinon le total de
-    // la carte au survol s'écarterait du badge de la case.
-    if (seance.estEfm) continue;
-    if (normaliser(seance.module) !== cibleModule || cibleModule === '') continue;
-    // ⚠️ Chaque type se compte à part : une séance TEAMS n'avance pas la masse
-    // présentielle, et réciproquement.
-    if (type && typeDeSeance(seance) !== type) continue;
+  /*
+   * ⚠️ SANS TYPE : LES DEUX MASSES FUSIONNÉES, RE-CUMULÉES ENSEMBLE — cas
+   * laissé pour la seule vue d'ensemble (même remarque qu'`avancementModule`).
+   * Chaque liste porte déjà SON cumul (`heuresPoseesParSeance`) ; celui-ci ne
+   * vaudrait plus rien une fois les deux listes mélangées, d'où le dépouillage
+   * avant de recumuler l'ensemble, chronologiquement.
+   */
+  const seancesTypees = type
+    ? parType[type]
+    : cumulerChronologiquement(
+        [...parType[TYPES_COURS.PRESENTIEL], ...parType[TYPES_COURS.SYNCHRONE]].map(
+          ({ cumul, ...ligne }) => ligne
+        )
+      );
 
-    const libelle = String(seance.groupe ?? '').trim();
-    const membres = separerFusion(libelle);
-    const cibles = (membres.length > 1 ? [...membres, libelle] : membres).map(normaliser);
-    if (!cibles.includes(cibleGroupe)) continue;
-
-    const semaine = normaliserValeurSemaine(seance.semaine);
-    if (!semaine) continue;
-
-    parSemaine.set(semaine, (parSemaine.get(semaine) ?? 0) + dureeSeance(seance.seance));
-  }
-
-  const ordonnees = [...parSemaine.entries()]
-    .map(([semaine, heures]) => ({
-      semaine,
-      numero: analyserSemaine(semaine)?.numero ?? 0,
-      heures: arrondir(heures),
-    }))
-    .sort((a, b) => a.numero - b.numero);
-
-  let cumul = 0;
-  const semaines = ordonnees.map((entree) => {
-    cumul = arrondir(cumul + entree.heures);
-    return {
-      ...entree,
-      cumul,
-      // ⚠️ `null` quand rien n'est prévu, comme `avancementModule` : un
-      // pourcentage sur zéro heure prévue ferait croire à un retard là où il n'y
-      // a rien à faire.
-      taux: prevu > 0 ? Math.round((cumul / prevu) * 100) : null,
-    };
-  });
-
-  const taux = prevu > 0 ? Math.round((cumul / prevu) * 100) : null;
+  const cumulFinal = seancesTypees.length ? seancesTypees.at(-1).cumul : 0;
+  // ⚠️ `null` quand rien n'est prévu, comme `avancementModule` : un pourcentage
+  // sur zéro heure prévue ferait croire à un retard là où il n'y a rien à faire.
+  const taux = prevu > 0 ? Math.round((cumulFinal / prevu) * 100) : null;
 
   return {
     prevu: arrondir(prevu),
-    pose: cumul,
+    pose: cumulFinal,
     taux,
     niveau: taux === null ? null : niveauAvancement(taux),
-    semaines,
+    seances: seancesTypees.map((ligne) => ({
+      ...ligne,
+      taux: prevu > 0 ? Math.round((ligne.cumul / prevu) * 100) : null,
+    })),
   };
 }
 
@@ -319,5 +421,3 @@ export function niveauHeures(heures) {
 export const estSynchrone = (affectation) => affectation?.type === TYPES_COURS.SYNCHRONE;
 
 const arrondir = (valeur) => Math.round(valeur * 100) / 100;
-
-const normaliser = (valeur) => String(valeur ?? '').trim().toUpperCase();

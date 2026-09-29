@@ -105,7 +105,7 @@ export async function placer(etablissementId, anneeScolaire, id, creneau) {
     throw badRequest(
       aDistance
         ? 'Le cours manqué était à distance : son rattrapage se fait sur TEAMS'
-        : 'Le cours manqué était en présentiel : son rattrapage se fait en salle',
+        : 'Le cours manqué était en présentiel : son rattrapage se fait dans un espace',
       { code: 'NATURE_DIFFERENTE' }
     );
   }
@@ -113,7 +113,7 @@ export async function placer(etablissementId, anneeScolaire, id, creneau) {
   if (!aDistance) {
     const etablissement = await Etablissement.findById(etablissementId).select('espaces').lean();
     if (!(etablissement?.espaces ?? []).some((espace) => memeNom(espace, salle))) {
-      throw badRequest(`La salle « ${salle} » n’existe pas dans l’établissement`, {
+      throw badRequest(`L’espace « ${salle} » n’existe pas dans l’établissement`, {
         code: 'SALLE_INCONNUE',
       });
     }
@@ -174,7 +174,16 @@ export async function placer(etablissementId, anneeScolaire, id, creneau) {
           salle,
           statut: 'rattrape',
         },
-        { session, rattrapageDe: courante._id }
+        /*
+         * ⚠️ `verrou: false` (2026-09-28, défaut trouvé par la suite de tests) :
+         *    sous chronogramme planifié — le cas normal —, le verrou refusait
+         *    TOUT placement de rattrapage, puisque c'est une séance neuve. Or la
+         *    règle actée le 2026-09-27 laisse les ABSENCES libres, et le
+         *    rattrapage inscrit lui-même ses 2,5 h au chronogramme juste en
+         *    dessous : comme la génération, il est un producteur légitime. Le
+         *    quota de la carte et les conflits s'appliquent toujours.
+         */
+        { session, rattrapageDe: courante._id, verrou: false }
       );
 
       // ⚠️ À MIDI : minuit local est 23 h UTC la veille au Maroc, et la date

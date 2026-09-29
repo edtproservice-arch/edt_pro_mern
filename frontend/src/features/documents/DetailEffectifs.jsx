@@ -4,6 +4,7 @@ import { ChevronRight, Search, UserX } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import Alerte from '@/components/common/Alerte';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { chargerStagiaires } from './api';
 
@@ -128,38 +129,102 @@ function Groupe({ groupe, ouvert, onBasculer }) {
       </button>
 
       {ouvert && (
-        <div className="border-t px-3 py-2">
+        <div className="border-t">
           {stagiaires.isError ? (
-            <p className="text-sm text-destructive">{stagiaires.error.message}</p>
+            <p className="px-3 py-2 text-sm text-destructive">{stagiaires.error.message}</p>
           ) : stagiaires.isLoading ? (
-            <p className="text-sm text-muted-foreground">Chargement…</p>
+            <p className="px-3 py-2 text-sm text-muted-foreground">Chargement…</p>
           ) : (
-            <ol className="space-y-0.5 text-sm">
-              {liste.map((stagiaire, rang) => (
-                <li key={stagiaire.id} className="flex gap-2">
-                  <span className="w-6 shrink-0 text-right tabular-nums text-muted-foreground">
-                    {rang + 1}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block truncate">
-                      {stagiaire.nom} {stagiaire.prenom}
-                      {/* `dir="rtl"` : sinon chiffres et parenthèses s'inversent. */}
-                      {stagiaire.nomArabe && (
-                        <span dir="rtl" lang="ar" className="mx-2 text-xs text-muted-foreground">
-                          {stagiaire.nomArabe} {stagiaire.prenomArabe}
-                        </span>
-                      )}
-                      <span className="ml-2 tabular-nums text-xs text-muted-foreground">
-                        {stagiaire.matricule}
-                      </span>
-                    </span>
-                  </span>
-                </li>
-              ))}
-            </ol>
+            <TableauStagiaires groupe={groupe.nom} liste={liste} />
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * La liste nominative d'un groupe, en TABLEAU (2026-09-23, demande du porteur :
+ * « toutes les données des stagiaires, de manière structurée »). Une colonne par
+ * donnée : on compare d'une ligne à l'autre, ce qu'une ligne de texte ne permet pas.
+ *
+ * ⚠️ LE TABLEAU DÉFILE EN LARGEUR, PAS LA PAGE : dix colonnes ne tiennent pas
+ * sur un écran étroit.
+ */
+function TableauStagiaires({ groupe, liste }) {
+  if (liste.length === 0) {
+    return <p className="px-3 py-2 text-sm text-muted-foreground">Aucun stagiaire dans ce groupe.</p>;
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <Table className="text-xs">
+        <TableHeader>
+          <TableRow className="bg-muted/40 hover:bg-muted/40">
+            <TableHead className="w-10 text-right">N°</TableHead>
+            <TableHead>Matricule (CEF)</TableHead>
+            <TableHead>Nom et prénom</TableHead>
+            <TableHead className="text-right">الاسم الكامل</TableHead>
+            <TableHead>CIN</TableHead>
+            <TableHead>Date de naissance</TableHead>
+            <TableHead>Lieu de naissance</TableHead>
+            <TableHead>E-mail</TableHead>
+            <TableHead>Niveau · année</TableHead>
+            <TableHead>Autres groupes</TableHead>
+            <TableHead>Site</TableHead>
+            <TableHead>Date d'inscription</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {liste.map((stagiaire, rang) => {
+            // Le groupe ouvert est déjà dans l'en-tête : on ne liste que les AUTRES (FQ…).
+            const autres = (stagiaire.groupes ?? []).filter((g) => g !== groupe);
+            return (
+              <TableRow key={stagiaire.id}>
+                <TableCell className="text-right tabular-nums text-muted-foreground">{rang + 1}</TableCell>
+                <TableCell className="whitespace-nowrap tabular-nums">{stagiaire.matricule}</TableCell>
+                <TableCell className="whitespace-nowrap font-medium">
+                  {[stagiaire.nom, stagiaire.prenom].filter(Boolean).join(' ') || '—'}
+                </TableCell>
+                {/* `dir="rtl"` : sinon chiffres et parenthèses s'inversent. */}
+                <TableCell dir="rtl" lang="ar" className="whitespace-nowrap text-right">
+                  {[stagiaire.nomArabe, stagiaire.prenomArabe].filter(Boolean).join(' ') || '—'}
+                </TableCell>
+                <TableCell className="whitespace-nowrap">{stagiaire.cin || '—'}</TableCell>
+                <TableCell className="whitespace-nowrap tabular-nums">{stagiaire.dateNaissance || '—'}</TableCell>
+                <TableCell className="whitespace-nowrap">{stagiaire.lieuNaissance || '—'}</TableCell>
+                <TableCell className="whitespace-nowrap">
+                  {stagiaire.email ? (
+                    <a href={`mailto:${stagiaire.email}`} className="hover:underline">
+                      {stagiaire.email}
+                    </a>
+                  ) : (
+                    '—'
+                  )}
+                </TableCell>
+                <TableCell className="whitespace-nowrap">
+                  {[stagiaire.niveau, stagiaire.annee].filter(Boolean).join(' · ') || '—'}
+                </TableCell>
+                <TableCell>
+                  {autres.length ? (
+                    <div className="flex flex-wrap gap-1">
+                      {autres.map((g) => (
+                        <Badge key={g} variant="outline" className="font-normal">
+                          {g}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    '—'
+                  )}
+                </TableCell>
+                <TableCell className="whitespace-nowrap">{stagiaire.site || '—'}</TableCell>
+                <TableCell className="whitespace-nowrap tabular-nums">{stagiaire.dateInscription || '—'}</TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
     </div>
   );
 }

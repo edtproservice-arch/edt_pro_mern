@@ -11,7 +11,7 @@ import Alerte from '@/components/common/Alerte';
 import { colonneSemaine } from '@/components/common/decorationCalendrier';
 import { bornesCalendrier } from '@/lib/bornesCalendrier';
 import { cn } from '@/lib/utils';
-import { chargerJoursFeries } from '../api';
+import { chargerCalendrier, chargerJoursFeries } from '../api';
 import PanneauJoursFeries from './PanneauJoursFeries';
 
 /**
@@ -76,6 +76,17 @@ export default function EtapeCalendrier({
    * ni corbeille ni « Écarter » ne sont proposés.
    */
   lectureSeule = false,
+  /*
+   * ═══ ⚠️ LA COLONNE « SEM » A BESOIN DES RENTRÉES (2026-09-27, demande du
+   * porteur : « vérifie que EtapeCalendrier soit aussi corrigé ») ═══
+   * `PageCalendrierNational` — l'écran qui SAISIT les rentrées — les a déjà
+   * dans son propre brouillon : les lui faire redemander à `/api/v2/calendrier`
+   * répondrait un cran en retard sur ce qui vient d'être tapé, et 403 de toute
+   * façon, puisque l'administrateur n'a pas d'établissement (voir
+   * `chargerFeries` ci-dessus). D'où cette prop, prioritaire sur la requête
+   * ci-dessous.
+   */
+  rentrees: rentreesProp,
 }) {
   const [plage, setPlage] = useState();
   const [intitule, setIntitule] = useState('');
@@ -92,6 +103,20 @@ export default function EtapeCalendrier({
     queryFn: () => chargerFeries(anneeScolaire),
     retry: false,
   });
+
+  /*
+   * ⚠️ SEULEMENT CÔTÉ DIRECTEUR (même garde que les fériés) : côté
+   * administrateur, `rentreesProp` est déjà donné, et cette route exige un
+   * établissement qu'il n'a pas.
+   */
+  const estDirecteur = chargerFeries === chargerJoursFeries;
+  const calendrier = useQuery({
+    queryKey: ['calendrier'],
+    queryFn: chargerCalendrier,
+    enabled: estDirecteur && rentreesProp === undefined,
+    retry: false,
+  });
+  const rentrees = rentreesProp ?? calendrier.data?.rentrees ?? [];
 
   const joursFeries = feries.data?.joursFeries ?? [];
   const periodes = valeur.vacances ?? [];
@@ -208,7 +233,7 @@ export default function EtapeCalendrier({
               onMonthChange={setMois}
               // Le calendrier ne sort pas de l'année en cours de configuration :
               // des vacances posées ailleurs n'y seraient jamais relues.
-              {...bornesCalendrier(anneeScolaire)}
+              {...bornesCalendrier(anneeScolaire, rentrees)}
               selected={plage}
               onSelect={setPlage}
               /*
@@ -220,10 +245,12 @@ export default function EtapeCalendrier({
 
                 ⚠️ IMPORTÉE, PAS RECOPIÉE : c'est la MÊME colonne que les stages
                 et les formations. Deux numérotations auraient fini par appeler
-                la même semaine S12 ici et S13 là.
+                la même semaine S12 ici et S13 là — `rentrees` avec, pour la
+                même raison (2026-09-27) : sans elle, cette colonne resterait
+                seule à ignorer la rentrée la plus précoce.
               */
               showWeekNumber
-              {...colonneSemaine()}
+              {...colonneSemaine(undefined, rentrees, anneeScolaire)}
               modifiers={{ ferie: datesFeriees, vacances: datesVacances }}
               modifiersClassNames={{
                 ferie: 'bg-warning/20 font-medium rounded-md',

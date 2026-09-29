@@ -3,44 +3,33 @@ import { CalendarClock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import DialogueContraintes from './DialogueContraintes';
+import { estTeams, identifiantFormateur } from './filtresFormateurs';
 
 /**
- * Colonne « Disponibilité et salles » du tableau des formateurs, et son filtre.
+ * Résumé « Disponibilité et salles » d'un formateur, et le filtre par salle.
  * ← profil-contraintes.js
+ *
+ * Les règles de filtrage (`identifiantFormateur`, `peutUtiliser`…) vivent dans
+ * `filtresFormateurs.js` : pures, donc testées.
  */
-
-/** L'identifiant d'un formateur de la base — la règle de `parseBase`. */
-export function identifiantFormateur(formateur) {
-  const matricule = String(formateur?.matricule ?? '').trim();
-  return matricule !== '' ? matricule : String(formateur?.nomComplet ?? '').trim();
-}
-
-/**
- * Ce formateur peut-il être placé dans cette salle ?
- * ⚠️ AUCUNE SALLE COCHÉE = AUCUNE RESTRICTION (décision du porteur) : il reste
- * retenu par le filtre, comme partout ailleurs.
- */
-export function peutUtiliser(contraintes, salle) {
-  const espaces = contraintes?.espaces ?? [];
-  return espaces.length === 0 || espaces.includes(salle);
-}
+export { estTeams, identifiantFormateur, peutUtiliser } from './filtresFormateurs';
 
 const TOUTES = '__toutes__';
 
 export function FiltreSalle({ salles, valeur, onChange }) {
-  const reelles = salles.filter((s) => String(s).toUpperCase() !== 'TEAMS');
-  if (reelles.length === 0) return null;
+  // TEAMS compris : c'est un espace attribué à tous, et on peut vouloir le vérifier.
+  if (salles.length === 0) return null;
 
   return (
     <div className="flex items-center gap-2">
-      <span className="text-sm text-muted-foreground">Qui peut utiliser</span>
+      <span className="text-sm text-muted-foreground">Espace attribué</span>
       <Select value={valeur || TOUTES} onValueChange={(choix) => onChange(choix === TOUTES ? '' : choix)}>
         <SelectTrigger className="h-8 w-48">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={TOUTES}>toutes les salles</SelectItem>
-          {reelles.map((salle) => (
+          <SelectItem value={TOUTES}>Tous les espaces</SelectItem>
+          {salles.map((salle) => (
             <SelectItem key={salle} value={salle}>
               {salle}
             </SelectItem>
@@ -56,6 +45,8 @@ export function ColonneContraintes({ formateur, contraintes, salles, lectureSeul
   const [ouvert, setOuvert] = useState(false);
   const espaces = contraintes?.espaces ?? [];
   const creneaux = contraintes?.indisponibilites?.length ?? 0;
+  // « TEAMS » d'abord, et seulement s'il est déclaré : attribué à tous, sans rien écrire.
+  const attribues = [...(salles.some(estTeams) ? ['TEAMS'] : []), ...espaces];
 
   return (
     <>
@@ -68,10 +59,10 @@ export function ColonneContraintes({ formateur, contraintes, salles, lectureSeul
         <CalendarClock className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 text-xs leading-tight">
           <span className="block truncate">
-            {espaces.length === 0 ? 'Toutes les salles' : espaces.join(', ')}
+            {attribues.length === 0 ? 'Aucun espace attribué' : attribues.join(', ')}
           </span>
           <span className={creneaux > 0 ? 'block text-destructive' : 'block text-muted-foreground'}>
-            {creneaux === 0 ? 'Toujours disponible' : `${creneaux} créneau(x) à éviter`}
+            {creneaux === 0 ? 'Toujours disponible' : `${creneaux} créneau(x) d'indisponibilité`}
           </span>
         </span>
       </Button>

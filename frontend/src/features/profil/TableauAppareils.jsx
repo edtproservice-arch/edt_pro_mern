@@ -56,29 +56,37 @@ export default function TableauAppareils() {
           titre="Se déconnecter des autres appareils"
           description="Ferme toutes vos sessions ailleurs. Celle-ci reste ouverte."
           action={
+            /* ⚠️ SANS AUTRE APPAREIL, UNE MENTION PLUTÔT QU'UN BOUTON GRISÉ
+               (2026-09-29, demande du porteur) : délavé à 50 %, le rouge doux se
+               lisait comme un défaut d'affichage, en clair comme en sombre. */
+            autres === 0 ? (
+              <span className="text-xs text-muted-foreground">Aucun autre appareil connecté</span>
+            ) : (
             <Button
               variant="ghost"
               size="sm"
               // Rouge DOUX, pas plein : l'action est irréversible mais
               // ordinaire. Un bouton rouge saturé sur un écran de réglages
               // attire l'œil avant tout le reste.
-              className="bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive"
-              disabled={autres === 0 || revocationTotale.isPending}
+              // En sombre, un aplat un peu plus présent : à 10 % il se perdait
+              // dans le fond, et seul le texte rouge restait visible.
+              className="bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive dark:bg-destructive/20 dark:hover:bg-destructive/30"
+              disabled={revocationTotale.isPending}
               onClick={() => setToutRevoquer(true)}
             >
               Se déconnecter partout
             </Button>
+            )
           }
         />
       </Section>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[34rem] text-sm">
+        <table className="w-full min-w-[26rem] text-sm">
           <thead>
             <tr className="border-b text-left text-xs text-muted-foreground">
               <th className="py-2 font-normal">Nom de l&apos;appareil</th>
               <th className="py-2 font-normal">Dernière activité</th>
-              <th className="py-2 font-normal">Adresse IP</th>
               <th className="w-10 py-2" />
             </tr>
           </thead>
@@ -105,7 +113,6 @@ export default function TableauAppareils() {
                 </td>
 
                 <td className="py-3 text-muted-foreground">{quand(appareil.derniereActivite)}</td>
-                <td className="py-3 text-muted-foreground">{appareil.ip || '—'}</td>
 
                 <td className="py-3 text-right">
                   {!appareil.courant && (

@@ -57,6 +57,16 @@ export const activationCompteSchema = z.object({
 });
 
 /**
+ * Réinitialisation du mot de passe (2026-09-27, demande du porteur : « je veux
+ * que le directeur qui saisie le nouveau mot de passe ») — remplace le mot de
+ * passe provisoire généré au hasard : c'est désormais le directeur qui le
+ * choisit, avec la MÊME règle que pour toute création de compte.
+ */
+export const reinitialisationMotDePasseSchema = z.object({
+  motDePasse: motDePasseSchema,
+});
+
+/**
  * Suppression en lot : par identifiants explicites, ou par rôle entier.
  * ← delete_bulk_users.php, qui acceptait les deux formes.
  */

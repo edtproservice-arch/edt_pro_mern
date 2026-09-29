@@ -1,8 +1,9 @@
-import { createContext, useContext, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronDown,
   ChevronRight,
   Copy,
+  DoorOpen,
   ListChecks,
   ListX,
   Plus,
@@ -40,6 +41,7 @@ import Teams from '@/components/icons/Teams';
 import BadgeSemestreCommun from '@/components/common/BadgeSemestre';
 import BadgeRegional from '@/components/common/BadgeRegional';
 import { cn } from '@/lib/utils';
+import ChoixSallesModule from './ChoixSallesModule';
 import { cleCasePresentiel, cleCaseSynchrone, cleEnTeteEnsemble } from './casesCarte';
 
 /** Valeur du choix « aucun formateur » — Radix refuse une valeur vide. */
@@ -79,6 +81,44 @@ const AUCUN = '__aucun__';
 const LectureSeuleCarte = createContext(false);
 
 /*
+ * ═══ FORMATEUR INVITÉ, RESTREINT À SES CASES VIDES (2026-09-27, demande du
+ * porteur) ═══ `null` pour le directeur ou un gestionnaire : accès plein,
+ * inchangé. `{ nom }` pour un formateur invité en partage sur cette page — il
+ * garde les DEUX vues (cette matrice, et « Formateurs »), mais :
+ *   - une case DÉJÀ affectée à quelqu'un d'autre devient un simple texte, plus
+ *     un menu — il ne peut pas reprendre l'affectation d'un collègue ;
+ *   - une case vide ne lui propose QUE lui-même, jamais la liste complète —
+ *     ce n'est pas à lui de désigner un tiers ;
+ *   - les boutons qui touchent au-delà d'une case (copier une colonne entière,
+ *     supprimer un groupe, désactiver un module, ajouter un groupe) restent
+ *     désactivés : leur portée dépasse ce qu'un partage lui accorde.
+ *
+ * ⚠️ `nom` PEUT ÊTRE `null` : le compte est bien un formateur restreint, mais
+ * son matricule ne correspond à AUCUN formateur de la carte (carte modifiée
+ * entre-temps, compte mal lié). Mieux vaut alors ne rien lui laisser choisir
+ * — voir `ChoixFormateur` — qu'échouer en silence côté serveur.
+ *
+ * ⚠️ CE N'EST QU'UN CONFORT D'ÉCRAN. Le serveur revérifie la même règle à
+ * l'enregistrement (`carte.service.js`, `verifierEcritureRestreinte`) — comme
+ * partout ailleurs dans ce projet, l'écran n'est jamais la seule protection.
+ */
+const FormateurRestreintCarte = createContext(null);
+
+/*
+ * ═══ LES ESPACES ATTRIBUÉS À CHAQUE FORMATEUR (2026-09-27, demande du
+ * porteur) ═══ `Map<nomFormateur, string[]>`, construite une fois par
+ * `CarteEtablissement` depuis les contraintes de Paramètres → Formateurs — la
+ * même donnée, pas une seconde saisie. `ChoixSallesModule` s'en sert pour ne
+ * proposer QUE les locaux de CE formateur, et imposer d'office le seul qu'il a.
+ *
+ * ⚠️ UN CONTEXTE, COMME `LectureSeuleCarte` : la donnée ne sert qu'au fond de
+ * la matrice présentielle, trois niveaux sous `GrilleAffectations` — la faire
+ * traverser `Ensemble` puis `MatricePresentiel` en props aurait ajouté deux
+ * relais qui ne s'en servent pas eux-mêmes.
+ */
+const EspacesFormateurCarte = createContext(new Map());
+
+/*
  * ═══ LA CASE OUVERTE, SIGNALÉE À LA PAGE (Phase 5bis, 2026-09-13) ═══
  * Ouvrir la liste d'une cellule — ou le champ d'une masse horaire — l'annonce
  * aux collègues, qui la voient encadrée « X modifie ». Un contexte, pour ne pas
@@ -89,8 +129,22 @@ const OuvertureCase = createContext(null);
 
 export default function GrilleAffectations({
   lectureSeule = false,
+  /**
+   * Formateur invité restreint à ses cases vides — `{ nom }`, ou `null` sans
+   * restriction. Voir `FormateurRestreintCarte`.
+   */
+  formateurRestreint = null,
   groupes,
   formateurs,
+  /**
+   * Espaces de l'établissement, pour déclarer où un module se donne
+   * (2026-09-23). Vide, le sélecteur ne s'affiche pas : sans espace déclaré il
+   * n'y aurait rien à choisir, et un bouton mort ferait chercher l'erreur.
+   */
+  salles = [],
+  /** Voir `EspacesFormateurCarte`. */
+  espacesParNomFormateur = new Map(),
+  onDefinirSalles,
   onAffecter,
   lignesDe,
   onDefinirLignes,
@@ -100,6 +154,12 @@ export default function GrilleAffectations({
   onSupprimer,
   onAjouterGroupe,
   onOuverture = null,
+  /**
+   * Nom d'un groupe à montrer : son ensemble s'ouvre d'emblée, la page défile
+   * jusqu'à lui et sa colonne est surlignée un instant. Absent, ou introuvable
+   * (groupe renommé depuis), la grille est telle qu'avant.
+   */
+  groupeCible = null,
 }) {
   const ensembles = useMemo(() => construireEnsembles(groupes), [groupes]);
 
@@ -123,13 +183,15 @@ export default function GrilleAffectations({
   if (ensembles.length === 0) {
     return (
       <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-        Aucun groupe. Choisissez une filière ci-dessus et générez ses groupes.
+        Aucun groupe. Choisissez une filière et générez ses groupes depuis Paramètres → Carte.
       </div>
     );
   }
 
   return (
     <LectureSeuleCarte.Provider value={lectureSeule}>
+    <FormateurRestreintCarte.Provider value={formateurRestreint}>
+    <EspacesFormateurCarte.Provider value={espacesParNomFormateur}>
     <OuvertureCase.Provider value={onOuverture}>
     <div className="space-y-3">
       {ensembles.map((ensemble) => (
@@ -137,6 +199,8 @@ export default function GrilleAffectations({
           key={ensemble.cle}
           ensemble={ensemble}
           options={options}
+          salles={salles}
+          onDefinirSalles={onDefinirSalles}
           onAffecter={onAffecter}
           lignesDe={lignesDe}
           onDefinirLignes={onDefinirLignes}
@@ -144,11 +208,14 @@ export default function GrilleAffectations({
           onDefinirMasse={onDefinirMasse}
           onCopierGroupe={onCopierGroupe}
           onSupprimer={onSupprimer}
-          onAjouterGroupe={lectureSeule ? null : onAjouterGroupe}
+          onAjouterGroupe={lectureSeule || formateurRestreint ? null : onAjouterGroupe}
+          groupeCible={groupeCible}
         />
       ))}
     </div>
     </OuvertureCase.Provider>
+    </EspacesFormateurCarte.Provider>
+    </FormateurRestreintCarte.Provider>
     </LectureSeuleCarte.Provider>
   );
 }
@@ -156,6 +223,8 @@ export default function GrilleAffectations({
 function Ensemble({
   ensemble,
   options,
+  salles,
+  onDefinirSalles,
   onAffecter,
   lignesDe,
   onDefinirLignes,
@@ -164,6 +233,7 @@ function Ensemble({
   onCopierGroupe,
   onSupprimer,
   onAjouterGroupe,
+  groupeCible = null,
 }) {
   /*
    * ⚠️ FERMÉ AU DÉPART — c'est LA correction de la lenteur (2026-08-19).
@@ -178,9 +248,25 @@ function Ensemble({
    * L'en-tête porte déjà la filière, l'année, le mode et la pastille
    * d'avancement de l'ensemble : de quoi choisir lequel ouvrir sans le déplier.
    */
-  const [ouvert, setOuvert] = useState(false);
+  /*
+   * ⚠️ SEUL L'ENSEMBLE DU GROUPE VISÉ S'OUVRE D'EMBLÉE (badge du schéma de la page
+   * Carte) : un seul bloc de plus monté, la correction de lenteur ci-dessus tient.
+   */
+  const contientCible = groupeCible !== null && ensemble.groupes.some((groupe) => groupe.nom === groupeCible);
+  const [ouvert, setOuvert] = useState(contientCible);
   const [onglet, setOnglet] = useState('presentiel');
   const lectureSeule = useContext(LectureSeuleCarte);
+
+  // Le surlignage s'éteint seul : il dit « c'est ici », pas « c'est sélectionné ».
+  const [surligne, setSurligne] = useState(contientCible);
+  const cadre = useRef(null);
+
+  useEffect(() => {
+    if (!contientCible) return undefined;
+    cadre.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    const minuterie = setTimeout(() => setSurligne(false), 3000);
+    return () => clearTimeout(minuterie);
+  }, [contientCible]);
 
   const modulesSynchrones = ensemble.modules.filter(
     (module) => estActif(module) && heuresSynchrone(module) > 0
@@ -203,7 +289,13 @@ function Ensemble({
   ).length;
 
   return (
-    <div className="overflow-hidden rounded-lg border">
+    <div
+      ref={cadre}
+      className={cn(
+        'scroll-mt-4 overflow-hidden rounded-lg border transition-shadow duration-500',
+        surligne && 'ring-2 ring-primary/50'
+      )}
+    >
       {/* `data-case` : le cadre « X modifie » d'une cellule d'un ensemble REPLIÉ
           chez soi se replie sur cet en-tête — voir `casesCarte.js`. */}
       <button
@@ -273,11 +365,14 @@ function Ensemble({
             <MatricePresentiel
               ensemble={ensemble}
               options={options}
+              salles={salles}
+              onDefinirSalles={onDefinirSalles}
               onAffecter={onAffecter}
               onActiverModule={onActiverModule}
               onDefinirMasse={onDefinirMasse}
               onCopierGroupe={onCopierGroupe}
               onSupprimer={onSupprimer}
+              groupeSurligne={surligne ? groupeCible : null}
             />
           ) : (
             <ListeSynchrone
@@ -299,12 +394,32 @@ function Ensemble({
 function MatricePresentiel({
   ensemble,
   options,
+  salles,
+  onDefinirSalles,
   onAffecter,
   onActiverModule,
   onDefinirMasse,
   onCopierGroupe,
   onSupprimer,
+  groupeSurligne = null,
 }) {
+  /*
+   * ⚠️ EXPLICITE, MALGRÉ LE `fieldset disabled` : le déclencheur d'un `Popover`
+   *    de Radix s'ouvre sur `pointerdown`, que le navigateur transmet même à un
+   *    bouton désactivé par son fieldset — la même raison que pour la liste des
+   *    formateurs, décrite en tête de ce fichier.
+   */
+  const lectureSeule = useContext(LectureSeuleCarte);
+  /*
+   * ⚠️ EXPLICITE ICI AUSSI, MÊME RAISON QUE `lectureSeule` : un formateur
+   * restreint reste dans un `fieldset` ACTIF (ses propres cases doivent rester
+   * cliquables) — copier une colonne, désactiver un module ou supprimer un
+   * groupe dépassent largement ce qu'un partage lui accorde, et doivent donc
+   * se désactiver un par un, pas par le fieldset.
+   */
+  const restreint = Boolean(useContext(FormateurRestreintCarte));
+  const espacesParNomFormateur = useContext(EspacesFormateurCarte);
+
   // Tous les groupes du bloc partagent le mode : la clé d'ensemble le porte.
   const heuresAjustables = masseModifiable(ensemble.groupes[0]);
 
@@ -338,7 +453,13 @@ function MatricePresentiel({
               const affectes = actifs.filter((m) => m.formateurPresentiel).length;
 
               return (
-                <th key={groupe.nom} className="min-w-[240px] border-l p-3 text-left font-medium">
+                <th
+                  key={groupe.nom}
+                  className={cn(
+                    'min-w-[240px] border-l p-3 text-left font-medium transition-colors duration-500',
+                    groupe.nom === groupeSurligne && 'bg-primary/15'
+                  )}
+                >
                   <div className="flex items-center gap-2">
                     {/*
                       Le mode n'est plus répété ici : tous les groupes d'une
@@ -364,6 +485,7 @@ function MatricePresentiel({
                         <Button
                           variant="ghost"
                           size="icon"
+                          disabled={restreint}
                           className="h-7 w-7 text-muted-foreground"
                           title={`Copier les formateurs de ${groupe.nom} vers les autres groupes`}
                           onClick={() => onCopierGroupe(groupe.nom)}
@@ -374,6 +496,7 @@ function MatricePresentiel({
                       <Button
                         variant="ghost"
                         size="icon"
+                        disabled={restreint}
                         className="h-7 w-7 text-muted-foreground hover:text-destructive"
                         title={`Supprimer ${groupe.nom}`}
                         onClick={() => onSupprimer(groupe.nom)}
@@ -391,6 +514,25 @@ function MatricePresentiel({
         <tbody>
           {ensemble.modules.map((moduleRef) => {
             const actif = estActif(moduleRef);
+
+            /*
+             * ⚠️ L'UNION DE CE QUE PORTENT LES GROUPES, pas la valeur du premier
+             *    (2026-09-23) : depuis que chaque groupe a sa salle, un résumé
+             *    qui n'en montrerait qu'une laisserait croire à une consigne
+             *    unique là où il y en a deux.
+             *
+             * ⚠️ Et il se lit sur les GROUPES, jamais sur `moduleRef` :
+             *    `ensemble.modules` est la liste des modules DE LA RÉPARTITION,
+             *    elle ne transporte pas ce que le directeur a saisi.
+             */
+            const sallesDuModule = [
+              ...new Set(
+                ensemble.groupes.flatMap(
+                  (groupe) =>
+                    groupe.modules?.find((m) => cleModule(m) === cleModule(moduleRef))?.salles ?? []
+                )
+              ),
+            ].sort();
 
             return (
               <tr
@@ -423,6 +565,24 @@ function MatricePresentiel({
                       </div>
                       <div className="mt-1.5 text-sm font-medium">{moduleRef.nom}</div>
                       <Heures module={moduleRef} />
+                      {/*
+                        ⚠️ ICI C'EST UN RÉSUMÉ, PAS UNE COMMANDE (2026-09-23,
+                        correction du porteur). La salle se règle DANS CHAQUE
+                        CELLULE, parce que deux groupes de la même filière
+                        suivent le même module dans des salles différentes — et
+                        ne peuvent de toute façon pas occuper le même atelier au
+                        même moment.
+
+                        ⚠️ DEUX CHEMINS D'ÉCRITURE POUR UNE MÊME DONNÉE
+                        FINISSENT TOUJOURS PAR SE CONTREDIRE À L'ÉCRAN : cette
+                        ligne se contente donc de dire ce que les cellules
+                        portent. Pour garnir une filière d'un geste, c'est le
+                        bouton « copier » d'une colonne qui sert — il emporte
+                        les salles avec les formateurs.
+                      */}
+                      {actif && sallesDuModule.length > 0 && (
+                        <ResumeSalles salles={sallesDuModule} />
+                      )}
                     </div>
 
                     {/*
@@ -432,6 +592,7 @@ function MatricePresentiel({
                     */}
                     <Switch
                       checked={actif}
+                      disabled={restreint}
                       onCheckedChange={(valeur) =>
                         onActiverModule(ensemble.cle, moduleRef.code || moduleRef.nom, valeur)
                       }
@@ -499,6 +660,26 @@ function MatricePresentiel({
                           cleFocus={cleCase}
                           onChange={(champ, valeur) =>
                             onDefinirMasse(groupe.nom, cleModule(module), champ, valeur)
+                          }
+                        />
+                      )}
+
+                      {/*
+                        La salle où CE groupe suit ce module (2026-09-23).
+                        ⚠️ Par groupe et non par ensemble : deux groupes de la
+                        même filière ne peuvent pas être dans le même atelier au
+                        même moment.
+                      */}
+                      {onDefinirSalles && (
+                        <ChoixSallesModule
+                          salles={salles ?? []}
+                          espacesAttribues={
+                            espacesParNomFormateur.get(module.formateurPresentiel) ?? []
+                          }
+                          valeur={module.salles ?? []}
+                          lectureSeule={lectureSeule}
+                          onChange={(suivantes) =>
+                            onDefinirSalles(groupe.nom, cleModule(module), suivantes)
                           }
                         />
                       )}
@@ -655,6 +836,17 @@ function LigneSynchrone({
   const disponibles = ensemble.groupes.filter((groupe) => !couvertsAilleurs.has(groupe.nom));
   const tousCoches = disponibles.length > 0 && disponibles.every((g) => ligne.groupes.includes(g.nom));
 
+  /*
+   * ═══ FORMATEUR INVITÉ : LES GROUPES D'UNE SÉANCE QUI N'EST PAS LA SIENNE
+   * NE SE TOUCHENT PAS NON PLUS ═══ `ChoixFormateur` verrouille déjà le NOM
+   * sur une séance prise par un collègue, mais les cases « Groupes concernés »
+   * et le bouton « Supprimer » sont des commandes SÉPARÉES : sans ce verrou,
+   * il pourrait laisser le nom du collègue intact tout en changeant les
+   * groupes qu'il couvre, ou supprimer sa séance entière.
+   */
+  const restriction = useContext(FormateurRestreintCarte);
+  const verrouillee = Boolean(restriction) && Boolean(ligne.formateur) && ligne.formateur !== restriction.nom;
+
   return (
     <div
       className={cn(
@@ -698,7 +890,7 @@ function LigneSynchrone({
               >
                 <Checkbox
                   checked={ligne.groupes.includes(groupe.nom)}
-                  disabled={pris}
+                  disabled={pris || verrouillee}
                   onCheckedChange={(valeur) => basculer(groupe.nom, valeur === true)}
                 />
                 {groupe.nom}
@@ -717,7 +909,7 @@ function LigneSynchrone({
         <Button
           variant="outline"
           size="sm"
-          disabled={disponibles.length === 0}
+          disabled={disponibles.length === 0 || verrouillee}
           title={
             tousCoches
               ? 'Décocher tous les groupes'
@@ -737,6 +929,7 @@ function LigneSynchrone({
         <Button
           variant="outline"
           size="sm"
+          disabled={verrouillee}
           className="text-muted-foreground hover:text-destructive"
           title="Supprimer cette séance"
           onClick={onSupprimer}
@@ -771,6 +964,24 @@ function LigneSynchrone({
  * teintes de la palette DÉCORATIVE (`accent-*`), jamais le bleu structurel :
  * cf. DESIGN_SYSTEM.md, « icônes, badges de catégorie » uniquement.
  */
+/**
+ * Ce que les groupes ont déclaré comme salles, en LECTURE SEULE.
+ *
+ * ⚠️ IL N'ÉCRIT RIEN, et c'est la raison d'être de ce composant : la salle se
+ *    règle dans la cellule du groupe. Deux commandes qui écrivent la même
+ *    donnée à deux mailles différentes finissent toujours par se contredire.
+ */
+function ResumeSalles({ salles }) {
+  return (
+    <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+      <DoorOpen className="h-3.5 w-3.5 shrink-0" />
+      <span className="min-w-0 truncate" title={salles.join(' · ')}>
+        {salles.join(' · ')}
+      </span>
+    </p>
+  );
+}
+
 function Heures({ module }) {
   const synchrone = heuresSynchrone(module);
 
@@ -905,6 +1116,7 @@ function ChampHeure({ libelle, classe, valeur, onChange, onFocus, onBlur }) {
  */
 function ChoixFormateur({ valeur, options, onChange, cleFocus }) {
   const lectureSeule = useContext(LectureSeuleCarte);
+  const restriction = useContext(FormateurRestreintCarte);
   const signaler = useContext(OuvertureCase);
 
   if (options.length === 0) {
@@ -912,6 +1124,45 @@ function ChoixFormateur({ valeur, options, onChange, cleFocus }) {
       <div className="flex h-9 items-center rounded-md border border-dashed px-3 text-xs text-muted-foreground">
         Ajoutez d&apos;abord des formateurs
       </div>
+    );
+  }
+
+  /*
+   * ═══ FORMATEUR INVITÉ : SA CASE, OU RIEN (2026-09-27, demande du porteur) ═══
+   * Une case déjà prise par quelqu'un d'autre n'est même plus un menu — un menu
+   * qu'on ne peut qu'annuler n'est qu'une invitation à essayer. Une case vide,
+   * ou déjà à lui, ne lui propose QUE son propre nom : jamais la liste entière,
+   * qui n'est pas la sienne à distribuer.
+   */
+  if (restriction) {
+    const priseParAutrui = Boolean(valeur) && valeur !== restriction.nom;
+
+    if (priseParAutrui) {
+      return (
+        <div
+          className="flex h-9 items-center rounded-md border px-3 text-sm text-muted-foreground"
+          title="Déjà affecté — ce partage ne permet pas de reprendre l'affectation d'un collègue"
+        >
+          {valeur}
+        </div>
+      );
+    }
+
+    return (
+      <Select
+        value={valeur || AUCUN}
+        onValueChange={(choix) => onChange(choix === AUCUN ? '' : restriction.nom)}
+        onOpenChange={cleFocus && signaler ? (ouvert) => signaler(cleFocus, ouvert) : undefined}
+        disabled={lectureSeule || !restriction.nom}
+      >
+        <SelectTrigger className={cn('w-full', !valeur && 'text-muted-foreground')}>
+          <SelectValue>{valeur || 'Non affecté'}</SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={AUCUN}>Non affecté</SelectItem>
+          {restriction.nom && <SelectItem value={restriction.nom}>{restriction.nom}</SelectItem>}
+        </SelectContent>
+      </Select>
     );
   }
 
@@ -1018,8 +1269,13 @@ const APPARENCES = {
   },
 };
 
-/** Pastille d'état, à côté d'un nom de groupe ou d'ensemble. */
-function Pastille({ etat, className }) {
+/**
+ * Pastille d'état, à côté d'un nom de groupe ou d'ensemble.
+ * ⚠️ EXPORTÉE : le schéma de la page Carte (`ArbreCarte`) colore les badges de ses
+ * groupes avec CETTE pastille — vert terminé, orange partiel, gris vide. Une seconde
+ * palette finirait par diverger de celle de la matrice.
+ */
+export function Pastille({ etat, className }) {
   return (
     <span
       className={cn('inline-block h-2 w-2 shrink-0 rounded-full', APPARENCES[etat].pastille, className)}

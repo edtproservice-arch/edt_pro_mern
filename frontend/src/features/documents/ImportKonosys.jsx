@@ -76,7 +76,8 @@ export default function ImportKonosys({ statistiques }) {
   };
 
   return (
-    <div className="space-y-4">
+    // `contents` : le bouton et le bilan se rangent dans la ligne de la page (PageDocuments).
+    <div className="contents">
       <input
         ref={champFichier}
         type="file"
@@ -181,6 +182,7 @@ export default function ImportKonosys({ statistiques }) {
       */}
       {bilan && (
         <Alerte
+          className="order-last basis-full"
           type={bilan.comptes.supprimes > 0 ? 'avertissement' : 'succes'}
           titre={`${bilan.importes} stagiaire(s) importé(s) — base ${libelleAnnee(bilan.anneeScolaire)}`}
         >

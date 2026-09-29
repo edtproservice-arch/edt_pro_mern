@@ -1,13 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Check, Clock, CopyPlus, UserX } from 'lucide-react';
+import { Check, CheckCheck, Clock, CopyPlus, ShieldCheck, UserX } from 'lucide-react';
+import { ROLES } from 'shared/constants';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
+import { Badge } from '@/components/ui/badge';
 import Alerte from '@/components/common/Alerte';
 import { IndicateurEnregistrement, useEnregistrementAuto } from '@/components/common/enregistrementAuto';
+import { recupererSession } from '@/features/auth/api';
 import { cn } from '@/lib/utils';
-import { chargerAppel, chargerSeancesDuJour, enregistrerAppel } from './api';
+import { chargerAppel, chargerSeancesDuJour, enregistrerAppel, validerAppel } from './api';
 import { adopterVersion, creneauSuivant, marquesCopiees, memesEtats } from './appelOutils';
 
 const ETATS = [
@@ -41,8 +45,38 @@ const REPOS_APPEL = 600;
  * ⚠️ UNE LISTE FERMÉE PENDANT LA PAUSE ENREGISTRE AUSSITÔT : sans cela, fermer le
  * panneau juste après un clic perdrait ce clic, en silence.
  */
-export default function ListeAppel({ appel, dansPanneau }) {
+export default function ListeAppel({ appel, dansPanneau, onAvertissementFermeture, piedAppel }) {
   const cache = useQueryClient();
+  /*
+   * ⚠️ LE RÔLE DÉCIDE DU GESTE (2026-09-27, demande du porteur : « chez le
+   * formateur, un bouton pour valider l'absence, et annule l'enregistrement
+   * automatique » — et « en absence, chez le gestionnaire, je veux un signe
+   * que le formateur a marqué l'absence »). Ce composant reste le MÊME pour
+   * les deux : l'encadrement continue d'enregistrer au fil des clics — il
+   * corrige souvent pour un formateur absent d'esprit ce jour-là — et voit un
+   * signe s'il en manque un. Le formateur, LUI, attesté sa propre liste d'un
+   * geste explicite plutôt que par un clic qui part tout seul.
+   */
+  const session = useQuery({ queryKey: ['session'], queryFn: recupererSession, retry: false });
+  const estFormateur = session.data?.utilisateur?.role === ROLES.FORMATEUR;
+  /*
+   * ⚠️ LE GESTIONNAIRE ET LE DIRECTEUR PEUVENT AUSSI VALIDER (2026-09-28,
+   * demande du porteur : « peut aussi valider l'absence comme le
+   * formateur » puis « si je quitte sans validation, n'accepte pas les
+   * modifications ») — le serveur le permettait déjà (`validerAppel` n'est
+   * restreint qu'à qui peut faire l'appel de ce cours, jamais au seul
+   * formateur, cf. son commentaire).
+   *
+   * ⚠️⚠️ REVIENT SUR « LEUR ENREGISTREMENT AUTOMATIQUE RESTE » : le porteur a
+   * ensuite demandé la MÊME garde pour tous — quitter sans avoir cliqué
+   * « Valider » n'écrit plus rien pour personne, gestionnaire et directeur
+   * compris. `peutValider` sert donc maintenant aux DEUX choses à la fois :
+   * qui voit le bouton, et pour qui l'enregistrement automatique est coupé.
+   */
+  const peutValider =
+    estFormateur ||
+    session.data?.utilisateur?.role === ROLES.GESTIONNAIRE ||
+    session.data?.utilisateur?.role === ROLES.DIRECTEUR;
   const matricules = useMemo(() => appel.stagiaires.map((s) => s.matricule), [appel]);
   const initial = useMemo(
     () => Object.fromEntries(appel.stagiaires.map((s) => [s.matricule, s.marque?.type ?? null])),
@@ -91,17 +125,48 @@ export default function ListeAppel({ appel, dansPanneau }) {
     onError: (erreur) => toast.error('Appel non enregistré', { description: erreur.message }),
   });
 
+  /*
+   * ⚠️ « VALIDER L'APPEL » DU FORMATEUR — la même écriture que ci-dessus, mais
+   * qui pose EN PLUS l'attestation (`validerAppel`, côté serveur). C'est le
+   * SEUL départ pour lui : `modifie` force ci-dessous `useEnregistrementAuto`
+   * au repos, rien ne part avant ce clic.
+   */
+  const valider = useMutation({
+    mutationFn: (valeurs) => validerAppel(corps(valeurs)),
+    onSuccess: (_bilan, valeurs) => {
+      referenceActuelle.current = valeurs;
+      setReference(valeurs);
+      cache.invalidateQueries({ queryKey: ['absences-stagiaires'] });
+      toast.success('Appel validé');
+    },
+    onError: (erreur) => toast.error('Validation impossible', { description: erreur.message }),
+  });
+
+  /*
+   * ⚠️ JAMAIS POUR QUI PEUT VALIDER (`modifie: peutValider ? false : modifie`,
+   * 2026-09-28, revient sur « l'encadrement continue d'enregistrer au fil des
+   * clics ») : c'est ce qui fait qu'une fermeture sans « Valider » n'accepte
+   * aucune modification, pour le formateur comme pour l'encadrement — ses
+   * clics restent dans l'écran, sans repartir tout seuls après la pause.
+   */
   const enregistreUneFois = useEnregistrementAuto({
-    modifie,
+    modifie: peutValider ? false : modifie,
     valeur: etats,
     repos: REPOS_APPEL,
     enCours: enregistrer.isPending,
     onEnregistrer: () => enregistrer.mutate(etats),
   });
 
-  // Ce qu'il faudrait écrire si la liste se fermait maintenant.
+  /*
+   * Ce qu'il faudrait écrire si la liste se fermait maintenant.
+   * ⚠️ PAS POUR QUI PEUT VALIDER (2026-09-28) : fermer le panneau sans avoir
+   * cliqué « Valider » abandonne les changements plutôt que de les enregistrer
+   * en silence — désormais pour tout le monde, formateur ou encadrement. La
+   * liste retrouve son dernier état attesté si on rouvre le même cours sans
+   * avoir fermé le navigateur.
+   */
   const enAttente = useRef(null);
-  enAttente.current = modifie && !enregistrer.isPending ? corps(etats) : null;
+  enAttente.current = !peutValider && modifie && !enregistrer.isPending ? corps(etats) : null;
   useEffect(
     () => () => {
       if (!enAttente.current) return;
@@ -111,6 +176,19 @@ export default function ListeAppel({ appel, dansPanneau }) {
     },
     [cache]
   );
+
+  /*
+   * ⚠️ L'AVERTISSEMENT DE FERMETURE (2026-09-28, demande du porteur : « ajoute
+   * l'avertissement de fermeture sans validation ») — prévient `PanneauAppel`,
+   * qui intercepte alors la fermeture du panneau (croix, clic extérieur) pour
+   * demander confirmation. Vaut pour QUI PEUT valider, dès qu'il a touché la
+   * liste et qu'elle n'est pas (ou plus) attestée — même logique que le bouton
+   * collé en bas, jamais un second calcul.
+   */
+  const avertirFermeture = peutValider && touche && !appel.validation;
+  useEffect(() => {
+    onAvertissementFermeture?.(avertirFermeture);
+  }, [avertirFermeture, onAvertissementFermeture]);
 
   if (appel.stagiaires.length === 0) {
     return (
@@ -133,14 +211,27 @@ export default function ListeAppel({ appel, dansPanneau }) {
         <span className="text-xs text-muted-foreground">
           {compte('absence')} absent(s) · {compte('retard')} retard(s) · {compte(null)} présent(s)
         </span>
-        <span className="sm:ml-auto">
-          <IndicateurEnregistrement
-            modifie={modifie}
-            enCours={enregistrer.isPending}
-            echec={enregistrer.isError && modifie}
-            enregistreUneFois={enregistreUneFois}
-          />
-        </span>
+        {/*
+          ⚠️ LE SIGNE DEMANDÉ PAR LE PORTEUR : « je veux un signe que le
+          formateur a marqué l'absence ». Visible des DEUX côtés — l'encadrement
+          y voit si le formateur a attesté sa liste, le formateur y retrouve sa
+          propre attestation. `appel.validation` vaut `null` dès que la liste a
+          changé depuis (`enregistrerAppel` l'efface) : le signe ne ment donc
+          jamais sur une liste modifiée depuis.
+        */}
+        <BadgeValidation validation={appel.validation} />
+        {/* ⚠️ PAS POUR QUI PEUT VALIDER (2026-09-28) : rien ne part tout seul pour
+            lui, l'indicateur d'enregistrement automatique n'aurait donc rien à dire. */}
+        {!peutValider && (
+          <span className="sm:ml-auto">
+            <IndicateurEnregistrement
+              modifie={modifie}
+              enCours={enregistrer.isPending}
+              echec={enregistrer.isError && modifie}
+              enregistreUneFois={enregistreUneFois}
+            />
+          </span>
+        )}
       </div>
 
       <DupliquerVersSuivant appel={appel} etats={etats} visible={touche || marques > 0} />
@@ -187,7 +278,87 @@ export default function ListeAppel({ appel, dansPanneau }) {
           </li>
         ))}
       </ul>
+
+      {peutValider && (
+        <BarreValidation
+          appel={appel}
+          valider={valider}
+          etats={etats}
+          dansPanneau={dansPanneau}
+          piedAppel={piedAppel}
+        />
+      )}
     </section>
+  );
+}
+
+/**
+ * Le bouton « Valider l'appel », et ce qui prévient qu'il reste à cliquer.
+ *
+ * ═══ ⚠️⚠️ EN DEHORS DE LA ZONE QUI DÉFILE, PAS COLLÉ DEDANS (2026-09-28) ═══
+ * Revient sur `position: sticky` : posé DANS la liste qui défile, il restait
+ * ancré à un point qui n'était pas toujours le vrai bord bas de l'écran — sur
+ * certaines hauteurs de panneau, une ligne continuait de glisser sous lui,
+ * malgré un fond opaque et des marges négatives déjà corrigées deux fois.
+ * `piedAppel` est un nœud posé par `PanneauAppel` HORS de son conteneur qui
+ * défile — un vrai pied de panneau, structurellement immobile, où `createPortal`
+ * dépose ce bouton : plus aucune ligne ne peut jamais passer dessous, quelle
+ * que soit la hauteur de l'écran ou de la liste.
+ * ⚠️ SANS `piedAppel` (la carte hors panneau, non défilante) : rendu sur
+ * place, comme avant.
+ */
+function BarreValidation({ appel, valider, etats, dansPanneau, piedAppel }) {
+  const contenu = (
+    <div
+      className={cn(
+        'flex items-center justify-end gap-2 border-t bg-background px-4 py-2',
+        !piedAppel && (dansPanneau ? '-mx-4 mt-2' : '-mx-2 mt-2 sm:-mx-3'),
+        !appel.validation && 'border-warning/60'
+      )}
+    >
+      {!appel.validation && (
+        <span className="mr-auto text-xs font-medium text-accent-orange-deep">Liste non validée</span>
+      )}
+      <Button
+        type="button"
+        size="sm"
+        variant={appel.validation ? 'outline' : 'default'}
+        disabled={valider.isPending}
+        onClick={() => valider.mutate(etats)}
+      >
+        <CheckCheck className="size-4" />
+        {valider.isPending ? 'Validation…' : "Valider l'appel"}
+      </Button>
+    </div>
+  );
+
+  return piedAppel ? createPortal(contenu, piedAppel) : contenu;
+}
+
+/**
+ * Le signe demandé par le porteur (2026-09-27) : « en absence chez le
+ * gestionnaire je veux un signe que le formateur a marqué l'absence ». Vaut
+ * `null` dès que la liste a changé depuis la validation — jamais de faux « validé ».
+ */
+function BadgeValidation({ validation }) {
+  if (!validation) {
+    return (
+      <Badge variant="outline" className="gap-1 text-muted-foreground">
+        <ShieldCheck className="size-3.5" />
+        Non validé
+      </Badge>
+    );
+  }
+  const date = new Date(validation.valideLe);
+  const quand = Number.isNaN(date.getTime())
+    ? ''
+    : date.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return (
+    <Badge variant="secondary" className="gap-1 border-accent-green bg-accent-green/15 text-accent-green-deep">
+      <CheckCheck className="size-3.5" />
+      Validé{validation.validateurNom ? ` par ${validation.validateurNom}` : ''}
+      {quand && ` le ${quand}`}
+    </Badge>
   );
 }
 

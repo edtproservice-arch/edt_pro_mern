@@ -65,34 +65,77 @@ const invitationSchema = new mongoose.Schema(
   { _id: false, strict: true }
 );
 
+/**
+ * Une séance d'une proposition — ou une séance SAUVEGARDÉE au moment où la
+ * proposition l'a remplacée (`anciennes`), pour que « Retirer » la restaure.
+ */
+const seanceProposeeSchema = new mongoose.Schema(
+  {
+    jour: { type: String, enum: JOURS, required: true },
+    seance: { type: String, enum: SEANCES, required: true },
+    groupe: { type: String, trim: true, required: true },
+    module: { type: String, trim: true, required: true },
+    salle: { type: String, trim: true, default: '' },
+  },
+  { _id: false, strict: true }
+);
+
+const ETATS_JOUR = ['en_attente', 'appliquee', 'refusee'];
+
+/**
+ * La proposition d'emploi du temps d'un formateur (Phase 9 b, 2026-09-23).
+ * ← `[PROPOSITION_JSON]…[/PROPOSITION_JSON]` dans le corps du message.
+ *
+ * ═══ LA GRILLE D'UNE SEMAINE, PAS UN DÉPLACEMENT ═══
+ * La première modélisation (depuis → vers) décrivait un seul déplacement ; ce
+ * que les formateurs envoient, et ce que le directeur valide jour par jour,
+ * c'est leur semaine entière. Remodelée avant toute écriture — aucune donnée
+ * n'existait sous l'ancienne forme.
+ *
+ * ⚠️ L'ÉTAT EST ENREGISTRÉ PAR JOUR, jamais recalculé. `apply_proposition.php`
+ * comparait la proposition à la grille pour deviner si elle était appliquée : la
+ * moindre retouche du directeur la faisait redevenir « à appliquer ».
+ *
+ * ⚠️ AUCUNE ROUTE DE LA MESSAGERIE NE L'ÉCRIT, comme `invitation` : seul le
+ * service des propositions le pose. Le formateur et l'établissement viennent du
+ * compte connecté, jamais du client.
+ */
 const propositionSchema = new mongoose.Schema(
   {
+    etablissementId: { type: mongoose.Schema.Types.ObjectId, ref: 'Etablissement', required: true },
+    anneeScolaire: { type: Number, required: true },
+    semaine: { type: String, trim: true, required: true },
+
+    /** Le MATRICULE — jamais le nom (constat §4.2, « formateurs qui disparaissent »). */
+    formateurMatricule: { type: String, trim: true, required: true },
+
+    seances: { type: [seanceProposeeSchema], default: [] },
+    motif: { type: String, trim: true, default: '' },
+
+    /*
+     * `partielle` : au moins un jour appliqué. `remplacee` : le formateur en a
+     * renvoyé une autre pour la même semaine avant qu'elle soit traitée.
+     */
     statut: {
       type: String,
-      enum: ['en_attente', 'acceptee', 'refusee'],
+      enum: ['en_attente', 'partielle', 'appliquee', 'refusee', 'remplacee'],
       default: 'en_attente',
     },
-
-    /** Séance d'origine et créneau souhaité. */
-    seanceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Seance', default: null },
-    semaine: { type: String, trim: true, default: '' },
-
-    depuis: {
-      jour: { type: String, enum: [...JOURS, ''], default: '' },
-      seance: { type: String, enum: [...SEANCES, ''], default: '' },
-    },
-    vers: {
-      jour: { type: String, enum: [...JOURS, ''], default: '' },
-      seance: { type: String, enum: [...SEANCES, ''], default: '' },
-      salle: { type: String, trim: true, default: '' },
+    jours: {
+      type: new mongoose.Schema(
+        Object.fromEntries(JOURS.map((jour) => [jour, { type: String, enum: ETATS_JOUR, default: 'en_attente' }])),
+        { _id: false, strict: true }
+      ),
+      default: () => ({}),
     },
 
-    motif: { type: String, trim: true, default: '' },
+    /** Ce que l'application a remplacé, jour par jour — la cible de « Retirer ». */
+    anciennes: { type: [seanceProposeeSchema], default: [] },
 
     traiteePar: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     traiteeLe: { type: Date, default: null },
   },
-  { _id: false }
+  { _id: false, strict: true }
 );
 
 const messageSchema = new mongoose.Schema(
@@ -170,8 +213,34 @@ const messageSchema = new mongoose.Schema(
     proposition: { type: propositionSchema, default: null },
 
     invitation: { type: invitationSchema, default: null },
+
+    /**
+     * Le chronogramme d'UN FORMATEUR, quand un message le renvoie pour validation
+     * (2026-09-22, demande du porteur : « après le formateur rempli le chronogramme, il renvoie
+     * au directeur pour valider » — « en message envoyé s'affiche le chronogramme »).
+     *
+     * ⚠️ UN INSTANTANÉ, PAS UN LIEN. Il porte exactement ce que rend
+     * `chronogramme.service.js#obtenirParFormateur` au moment de l'envoi : lignes, semaines,
+     * plannings. Le message reste donc lisible même si le chronogramme change ensuite — c'est
+     * la preuve de ce qui a été soumis CE JOUR-LÀ, pas une fenêtre sur l'état courant.
+     *
+     * ⚠️ `Mixed`, COMME LES AUTRES INSTANTANÉS DE CE PROJET (`HorairesSeances.horaires`) : sa
+     * forme est celle, déjà stable et testée, du domaine du chronogramme — la dupliquer en
+     * sous-schéma Mongoose serait une seconde définition à tenir à jour.
+     *
+     * ⚠️ AUCUNE ROUTE PUBLIQUE NE L'ÉCRIT, comme `invitation` : le schéma d'envoi de la
+     * messagerie ne le déclare pas, Zod le retire. Seul le service du chronogramme le pose.
+     */
+    chronogrammeFormateur: { type: mongoose.Schema.Types.Mixed, default: null },
   },
-  { timestamps: true, strict: true }
+  /*
+   * ⚠️ `minimize: false` (2026-09-22) : par défaut, Mongoose SUPPRIME un objet imbriqué vide à
+   * l'écriture. `chronogrammeFormateur.plannings` est vide dès qu'aucune heure n'est encore
+   * posée — un chronogramme tout juste rempli à la main, sans écriture en base par groupe,
+   * n'est pas un cas rare. Sans ce réglage, la carte du message perdrait silencieusement cette
+   * clé, comme rencontré sur `HorairesSeances.horaires`.
+   */
+  { timestamps: true, strict: true, minimize: false }
 );
 
 /** Boîte de réception, et compteur de non-lus. */
@@ -183,5 +252,11 @@ messageSchema.index({ expediteurId: 1, brouillon: 1, updatedAt: -1 });
 
 /** Propositions en attente, pour le directeur. */
 messageSchema.index({ 'proposition.statut': 1, destinataireId: 1 });
+
+/** Les propositions d'une semaine : cases « RÉSERVÉ » des collègues, remplacement. */
+messageSchema.index(
+  { 'proposition.etablissementId': 1, 'proposition.semaine': 1, 'proposition.statut': 1 },
+  { partialFilterExpression: { proposition: { $type: 'object' } } }
+);
 
 export const Message = mongoose.model('Message', messageSchema);

@@ -1,4 +1,5 @@
 import {
+  DROITS_PAGE,
   TYPES,
   anneeDuNomGroupe,
   chargesHebdomadaires,
@@ -7,7 +8,9 @@ import {
   fusionnerVacances,
   lireFeuilleChronogramme,
   semainesChronogramme,
+  semainesDeLaLigne,
   semainesEnFormation,
+  semainesFermees,
   semaineDe,
   separerFusion,
 } from 'shared/domain';
@@ -15,15 +18,18 @@ import { AbsenceFormateur } from '../../models/AbsenceFormateur.js';
 import mongoose from 'mongoose';
 import { lireToutesLesFeuilles } from '../../lib/classeur.js';
 import { construireClasseur } from './classeur.service.js';
-import { TYPES_COURS } from 'shared/constants';
+import { ROLES, TYPES_COURS } from 'shared/constants';
 import { Base } from '../../models/Base.js';
 import { Chronogramme } from '../../models/Chronogramme.js';
 import { Etablissement } from '../../models/Etablissement.js';
-import { Repartition } from '../../models/Repartition.js';
-import { badRequest, notFound } from '../../lib/httpError.js';
+import { User } from '../../models/User.js';
+import { badRequest, forbidden, notFound } from '../../lib/httpError.js';
+import { cleGroupeModule, intitulesParGroupe } from '../../lib/intitulesModules.js';
 import { conditionVersion, estDoublon, versionPerimee } from '../../lib/versionOptimiste.js';
 import { joursFeries as joursFeriesEtablissement } from '../calendrier/calendrier.service.js';
 import { obtenir as calendrierNational } from '../calendrierNational/calendrierNational.service.js';
+import { inviter as inviterSurPage } from '../partages/partages.service.js';
+import { envoyer as envoyerMessage } from '../messagerie/messagerie.service.js';
 
 /**
  * Vacances RÉELLES d'un établissement : celles du réseau, moins celles qu'il a
@@ -238,6 +244,41 @@ function modulesDuGroupe(base, groupe, intitules = new Map(), contexte = {}) {
 }
 
 /**
+ * Les semaines fermées de chaque LIGNE d'un groupe — pour la cascade des
+ * périodes (2026-09-23, `modules/fermetures`).
+ *
+ * ⚠️ LA MÊME LECTURE QUE L'ÉCRAN : colonne (`semainesChronogramme`), puis ligne
+ * (`semainesDeLaLigne` avec les formations de TOUS les formateurs du module).
+ * Une seconde règle écrite dans la cascade supprimerait des heures dans une
+ * semaine que l'écran montre encore ouverte.
+ *
+ * @returns {(module: string) => Set<number>}  un module inconnu de la base
+ *   prend les fermetures de la colonne
+ */
+export function fermeturesDesLignes(
+  base,
+  groupe,
+  { anneeScolaire, joursFeries = [], vacances = [], stages = [], formations = [], rentrees = [] }
+) {
+  const semaines = semainesChronogramme(anneeScolaire, {
+    joursFeries,
+    vacances,
+    stages,
+    groupe,
+    rentrees,
+  });
+  const colonne = semainesFermees(semaines);
+  const parModule = new Map(
+    modulesDuGroupe(base, groupe, new Map(), { semaines, formations }).map((module) => [
+      module.code,
+      semainesFermees(semainesDeLaLigne(semaines, { formation: module.formationSemaines })),
+    ])
+  );
+
+  return (module) => parModule.get(module) ?? colonne;
+}
+
+/**
  * Semaines où AUCUN des formateurs du module n'est disponible.
  *
  * ⚠️ ON RETIENT LE PLUS PETIT NOMBRE DE JOURS (2026-08-26). Depuis que les
@@ -264,28 +305,14 @@ function semainesToutesEnFormation(semaines, formateurs, formations) {
 }
 
 /**
- * Code de module → intitulé, depuis la répartition DRIF.
+ * Code de module → intitulé, DANS LA FILIÈRE DU GROUPE.
  *
- * Une seule requête, bornée aux codes réellement présents : le référentiel
- * compte 13 359 lignes, les charger toutes pour en lire vingt serait le défaut
- * que le §4.4 relève sur les emplois du temps.
+ * ⚠️ PLUS PAR CODE SEUL (2026-09-28, signalé par le porteur : en Génie
+ * mécanique, « M111 » s'affichait « Maximiser la marge bénéficiaire d'un
+ * établissement touristique »). Un même code vit dans des dizaines de
+ * filières : c'est `intitulesParGroupe` qui tranche, par filière et année du
+ * groupe — la même règle que la carte d'affectation.
  */
-/** Intitulés d'une liste de codes — la requête que les deux vues partagent. */
-async function intitulesParCode(codes) {
-  const uniques = [...new Set(codes.filter((code) => String(code).trim() !== ''))];
-  if (uniques.length === 0) return new Map();
-
-  const lignes = await Repartition.find({ codeModule: { $in: uniques } })
-    .select('codeModule module')
-    .lean();
-
-  return new Map(
-    lignes
-      .filter((ligne) => String(ligne.module ?? '').trim() !== '')
-      .map((ligne) => [ligne.codeModule, ligne.module])
-  );
-}
-
 async function intitulesModules(base, groupe) {
   const codes = new Set();
 
@@ -297,7 +324,11 @@ async function intitulesModules(base, groupe) {
     if (code !== '') codes.add(code);
   }
 
-  return intitulesParCode([...codes]);
+  const table = await intitulesParGroupe(
+    base,
+    [...codes].map((module) => ({ groupe, module }))
+  );
+  return new Map([...codes].map((code) => [code, table.get(cleGroupeModule(groupe, code))]).filter(([, nom]) => nom));
 }
 
 /** Groupes de l'année, avec l'état de leur chronogramme. ← get_chrono_status.php */
@@ -463,6 +494,171 @@ export async function listerFormateurs(etablissementId, anneeScolaire) {
       masseAnnuelle: masseStatutaire(base, cle),
     }))
     .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+}
+
+/**
+ * Envoie à UN formateur son chronogramme À REMPLIR (2026-09-22, demande du porteur : « le
+ * directeur envoie le chronogramme du formateur, à fin de remplir »).
+ *
+ * ═══ CE QUE « ENVOYER » VEUT DIRE ═══
+ * Deux gestes, faits d'un clic depuis la ligne du formateur en mode formateur :
+ *   1. Il obtient le droit de MODIFIER la page « Chronogramme » — la même page que le
+ *      directeur, avec le même bouton « Partager » en tête. On ne réinvente pas un second
+ *      mécanisme d'accès : `inviterSurPage` est celui de la boîte « Partager ».
+ *   2. Il reçoit un message DÉDIÉ, distinct du message générique d'invitation — c'est lui qui
+ *      dit CE QU'IL Y A À FAIRE (remplir son chronogramme), là où l'invitation ne dit que ce
+ *      qu'elle ouvre.
+ *
+ * ⚠️ TOUJOURS UN MESSAGE, MÊME SI L'ACCÈS EXISTAIT DÉJÀ. `inviterSurPage` ne prévient que les
+ * NOUVEAUX invités (silence sur un droit simplement remonté) : un directeur qui reclique
+ * « Envoyer » pour relancer quelqu'un doit voir partir quelque chose.
+ *
+ * ⚠️ LE FORMATEUR DOIT AVOIR UN COMPTE. Sans lui, aucun message ne peut être remis et aucun
+ * droit ne peut être accordé — le service le dit plutôt que d'échouer en silence.
+ */
+export async function envoyerAuFormateur(etablissementId, anneeScolaire, directeur, formateur) {
+  const base = await Base.findOne({ etablissementId, anneeScolaire }).select('formateurs');
+  if (!base) {
+    throw notFound('Aucune base pour cette année scolaire', { code: 'BASE_ABSENTE' });
+  }
+
+  const matricule = String(formateur).trim();
+  const nom = nomDuFormateur(base, matricule);
+
+  const compte = await User.findOne({
+    identifiant: matricule,
+    role: ROLES.FORMATEUR,
+    etablissementIds: etablissementId,
+    estActif: true,
+  });
+  if (!compte) {
+    throw badRequest(
+      `${nom} n’a pas de compte formateur actif : aucun message ne peut lui être remis.`,
+      { code: 'COMPTE_INTROUVABLE' }
+    );
+  }
+
+  /*
+   * ⚠️ `notifier: false` (2026-09-22) : le message générique d'invitation ne part pas — CE
+   * message-ci porte lui-même l'invitation (ci-dessous) ET la grille à remplir. En envoyer deux
+   * aurait annoncé la même chose deux fois dans la même boîte.
+   */
+  const partage = await inviterSurPage(etablissementId, anneeScolaire, 'chronogramme', directeur, {
+    utilisateurIds: [String(compte.id)],
+    droit: DROITS_PAGE.MODIFIER,
+    notifier: false,
+  });
+
+  const membre = partage.membres.find((m) => m.id === String(compte.id));
+  const enAttente = membre?.statut === 'en_attente';
+
+  /*
+   * ═══ LA GRILLE PART AVEC LE MESSAGE, MODIFIABLE (2026-09-22, demande du porteur : « le
+   * formateur doit voir le chronogramme en message, pas dans une autre page » ; « s'il valide,
+   * ça enregistre pour ce formateur ») ═══ `modifiable: true` dit à l'écran de la messagerie
+   * d'ouvrir la saisie sur place, au lieu du rendu en lecture seule d'un chronogramme RENVOYÉ
+   * (voir `renvoyerAuDirecteur`) : c'est le seul repère qui distingue les deux sens du même
+   * instantané.
+   */
+  const grille = { ...(await obtenirParFormateur(etablissementId, anneeScolaire, matricule)), modifiable: true };
+
+  await envoyerMessage(directeur.id, {
+    destinataires: [String(compte.id)],
+    sujet: 'Votre chronogramme est à remplir',
+    // Plus d'« Acceptez d'abord » : le partage ouvre la page d'office (2026-09-23, voir
+    // `membreAccepte` dans partages.service.js) — la grille est modifiable dès réception.
+    corps:
+      `${directeur.nomComplet} vous demande de remplir votre chronogramme de l’année ` +
+      `${anneeScolaire}-${anneeScolaire + 1}, ci-dessous : vos modules y sont déjà listés, il ne reste ` +
+      `qu’à répartir les heures sur les semaines, puis Valider.`,
+    // ⚠️ LA MÊME INVITATION QUE `inviterSurPage` VIENT DE POSER — construite ici plutôt que
+    // relue, puisqu'on en connaît déjà chaque champ. « Accepter » sur CE message a le même
+    // effet que sur un message générique : c'est le PARTAGE qui change, pas le message.
+    invitation: {
+      pages: ['chronogramme'],
+      etablissementId,
+      anneeScolaire,
+      droit: DROITS_PAGE.MODIFIER,
+      droits: [{ page: 'chronogramme', droit: DROITS_PAGE.MODIFIER }],
+      statut: enAttente ? 'en_attente' : 'acceptee',
+    },
+    chronogrammeFormateur: grille,
+  });
+
+  return { envoye: true, nom, enAttente };
+}
+
+/**
+ * « Envoyer à tous » (2026-09-22, demande du porteur) : le même envoi que `envoyerAuFormateur`,
+ * pour chaque formateur de l'année — un clic au lieu d'un par ligne.
+ *
+ * ⚠️ UN ÉCHEC SUR L'UN N'ARRÊTE PAS LES AUTRES. Le cas le plus courant est celui déjà connu de
+ * `envoyerAuFormateur` : un formateur affecté sans compte actif (`COMPTE_INTROUVABLE`). Le
+ * bilan le signale par son nom plutôt que de faire échouer tout le lot pour une seule ligne.
+ */
+export async function envoyerATousLesFormateurs(etablissementId, anneeScolaire, directeur) {
+  const formateurs = await listerFormateurs(etablissementId, anneeScolaire);
+
+  const envoyes = [];
+  const echecs = [];
+
+  for (const { identifiant, nom } of formateurs) {
+    try {
+      const resultat = await envoyerAuFormateur(etablissementId, anneeScolaire, directeur, identifiant);
+      envoyes.push({ identifiant, nom: resultat.nom, enAttente: resultat.enAttente });
+    } catch (erreur) {
+      echecs.push({ identifiant, nom, motif: erreur.message });
+    }
+  }
+
+  return { total: formateurs.length, envoyes, echecs };
+}
+
+/**
+ * Renvoie au directeur le chronogramme d'un formateur, POUR VALIDATION (2026-09-22, demande du
+ * porteur : « après le formateur rempli le chronogramme, il renvoie au directeur pour valider »).
+ *
+ * ═══ POURQUOI UN MESSAGE, PAS UN STATUT SUR LA DONNÉE ═══
+ * Le chronogramme d'un formateur n'est pas un document à lui : c'est une VUE sur les plannings de
+ * plusieurs groupes, chacun modifiable par d'autres personnes (ses collègues du même groupe). Y
+ * accrocher un drapeau « validé » figerait un état qui ne lui appartient qu'en partie, et se
+ * périmerait au premier module ajouté. Le message, lui, dit ce qui s'est passé À CET INSTANT — au
+ * directeur de rouvrir la grille et juger, comme il le ferait de vive voix.
+ *
+ * ⚠️ SEULEMENT SON PROPRE CHRONOGRAMME. `:formateur` vient de la requête ; sans ce contrôle,
+ * n'importe quel compte « peut modifier » la page pourrait soumettre le travail d'un collègue en
+ * se faisant passer pour lui.
+ */
+export async function renvoyerAuDirecteur(etablissementId, anneeScolaire, expediteur, formateur) {
+  const matricule = String(formateur).trim();
+  const lesien = String(expediteur.identifiant ?? '').trim();
+  if (lesien === '' || lesien.toUpperCase() !== matricule.toUpperCase()) {
+    throw forbidden('Vous ne pouvez renvoyer que votre propre chronogramme', {
+      code: 'CHRONOGRAMME_AUTRUI',
+    });
+  }
+
+  const etablissement = await Etablissement.findById(etablissementId).select('proprietaireId');
+  if (!etablissement) {
+    throw notFound('Établissement introuvable', { code: 'ETABLISSEMENT_INCONNU' });
+  }
+
+  /*
+   * ⚠️ LA GRILLE PART AVEC LE MESSAGE (2026-09-22, demande du porteur : « en message envoyé
+   * s'affiche le chronogramme ») : le directeur juge sur ce qu'il voit, sans rouvrir la page. Ce
+   * sont exactement les données de `GET .../par-formateur/:formateur` — la même fonction, pour
+   * ne jamais rendre deux formes différentes de la même grille.
+   */
+  const grille = await obtenirParFormateur(etablissementId, anneeScolaire, matricule);
+
+  await envoyerMessage(expediteur.id, {
+    destinataires: [String(etablissement.proprietaireId)],
+    sujet: 'Chronogramme rempli — à valider',
+    corps: `${expediteur.nomComplet} vous renvoie son chronogramme de l’année ${anneeScolaire}-${anneeScolaire + 1}, ci-dessous, pour validation.`,
+    chronogrammeFormateur: grille,
+  });
+
+  return { envoye: true };
 }
 
 /**
@@ -632,7 +828,12 @@ export async function obtenirParFormateur(etablissementId, anneeScolaire, format
       .map((semaine) => ({ numero: semaine.numero, jours: semaine.joursStage }));
   }
 
-  const intitules = await intitulesParCode([...parCle.values()].map((ligne) => ligne.code));
+  // ⚠️ PAR (GROUPE, MODULE) : un formateur enseigne souvent dans plusieurs
+  // filières, où le même code ne désigne pas le même module.
+  const intitules = await intitulesParGroupe(
+    base,
+    [...parCle.values()].map((ligne) => ({ groupe: ligne.groupe, module: ligne.code }))
+  );
 
   const plannings = await Chronogramme.find({
     etablissementId,
@@ -655,7 +856,7 @@ export async function obtenirParFormateur(etablissementId, anneeScolaire, format
       .map((ligne) => ({
         groupe: ligne.groupe,
         code: ligne.code,
-        intitule: intitules.get(ligne.code) ?? '',
+        intitule: intitules.get(cleGroupeModule(ligne.groupe, ligne.code)) ?? '',
         masses: { presentiel: arrondir(ligne.presentiel), synchrone: arrondir(ligne.synchrone) },
         estRegional: ligne.estRegional,
         formateursPresentiel: ligne.presentiel > 0 ? [nomDuFormateur(base, String(formateur).trim())] : [],

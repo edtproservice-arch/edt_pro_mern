@@ -1,9 +1,9 @@
-import { instantLocal, semestreDe, separerFusion } from 'shared/domain';
-import { TYPES_COURS } from 'shared/constants';
+import { estVacataire, filieresParGroupe, instantLocal, semestreDe, separerFusion } from 'shared/domain';
+import { ROLES, TYPES_COURS } from 'shared/constants';
 import { Base } from '../../models/Base.js';
 import { Stagiaire } from '../../models/Stagiaire.js';
 import { Repartition } from '../../models/Repartition.js';
-import { intitulesModules } from '../../lib/intitulesModules.js';
+import { cleGroupeModule, intitulesParGroupe, intitulesPourEcran } from '../../lib/intitulesModules.js';
 import { notFound } from '../../lib/httpError.js';
 import * as seancesService from '../seances/seances.service.js';
 import * as avancementService from '../avancement/avancement.service.js';
@@ -64,9 +64,24 @@ export async function semaines(etablissementId, anneeScolaire) {
 }
 
 /**
- * Code de module → intitulé complet : `lib/intitulesModules.js` (partagé avec
- * les absences de formateurs).
+ * Code de module → intitulé complet : `lib/intitulesModules.js`.
+ *
+ * ⚠️ DANS LA FILIÈRE DU GROUPE DE LA SÉANCE, jamais par code seul (2026-09-28) :
+ * « M105 » est « Fabrication mécanique » en Génie mécanique et « Matériel et
+ * mobilier » en Restauration. `modules` reste indexé par code (l'agenda le lit
+ * ainsi) ; `modulesParGroupe` départage un formateur à plusieurs filières.
  */
+const CHAMPS_FILIERE = 'affectations groupes groupeFilieres';
+
+async function intitulesDesSeances(etablissementId, anneeScolaire, seances, base = null) {
+  const source =
+    base ?? (await Base.findOne({ etablissementId, anneeScolaire }).select(CHAMPS_FILIERE).lean());
+  const { parCode, parGroupe } = await intitulesPourEcran(
+    source,
+    seances.map((s) => ({ groupe: s.groupe, module: s.module }))
+  );
+  return { modules: parCode, modulesParGroupe: parGroupe };
+}
 
 /**
  * La semaine d'UN formateur : sa ligne seule, et les motifs d'absence qui LE
@@ -75,12 +90,11 @@ export async function semaines(etablissementId, anneeScolaire) {
 export async function emploiFormateur(etablissementId, anneeScolaire, valeur, matricule) {
   const grille = await seancesService.semaine(etablissementId, anneeScolaire, valeur);
   const seances = grille.seances.filter((s) => s.formateurMatricule === matricule);
-  const codes = [...new Set(seances.map((s) => String(s.module ?? '').trim()).filter(Boolean))];
 
   return {
     ...grille,
     seances,
-    modules: await intitulesModules(codes),
+    ...(await intitulesDesSeances(etablissementId, anneeScolaire, seances)),
     /*
      * ⚠️ LES STAGES DE SES COLLÈGUES N'ONT RIEN À FAIRE ICI : un stage ferme un
      * GROUPE, jamais un formateur — la liste ne le concerne pas. Les
@@ -108,17 +122,16 @@ export async function emploiFormateur(etablissementId, anneeScolaire, valeur, ma
 export async function emploiStagiaire(etablissementId, anneeScolaire, valeur, groupes) {
   const [grille, base] = await Promise.all([
     seancesService.semaine(etablissementId, anneeScolaire, valeur),
-    Base.findOne({ etablissementId, anneeScolaire }).select('formateurs').lean(),
+    Base.findOne({ etablissementId, anneeScolaire }).select(`formateurs ${CHAMPS_FILIERE}`).lean(),
   ]);
 
   const concerne = (groupeSeance) => separerFusion(groupeSeance).some((g) => groupes.includes(g));
   const seances = grille.seances.filter((s) => concerne(s.groupe));
-  const codes = [...new Set(seances.map((s) => String(s.module ?? '').trim()).filter(Boolean))];
 
   return {
     ...grille,
     seances,
-    modules: await intitulesModules(codes),
+    ...(await intitulesDesSeances(etablissementId, anneeScolaire, seances, base ?? {})),
     jours: grille.jours.map((jour) => ({
       ...jour,
       stages: jour.stages.filter((s) => groupes.includes(s.groupe)),
@@ -216,7 +229,7 @@ export async function avancementStagiaire(etablissementId, anneeScolaire, observ
  */
 export async function affectationsFormateur(etablissementId, anneeScolaire, matricule) {
   const base = await Base.findOne({ etablissementId, anneeScolaire })
-    .select('affectations')
+    .select(CHAMPS_FILIERE)
     .lean();
 
   if (!base) {
@@ -227,16 +240,9 @@ export async function affectationsFormateur(etablissementId, anneeScolaire, matr
     (a) => String(a.formateur ?? '').trim() === matricule
   );
 
-  const codes = [...new Set(miennes.map((a) => String(a.module ?? '').trim()).filter(Boolean))];
-  const references =
-    codes.length > 0
-      ? await Repartition.find({ codeModule: { $in: codes } }).select('codeModule module').lean()
-      : [];
-  // ⚠️ LE CHAMP LISIBLE S'APPELLE `module`, PAS `intitule` — c'est `codeModule`
-  // qui porte le CODE. Une seule ligne par code : le référentiel en porte
-  // plusieurs (une par filière), et deux lectures ne doivent pas rendre deux
-  // noms différents pour la même personne.
-  const intitules = Object.fromEntries(references.map((r) => [r.codeModule, r.module]));
+  // ⚠️ PAR (GROUPE, MODULE), dans la filière du groupe : un formateur enseigne
+  // souvent dans plusieurs filières, où le même code n'est pas le même module.
+  const intitules = await intitulesParGroupe(base, miennes);
 
   /*
    * ═══ ⚠️ UNE LIGNE PAR (GROUPE, MODULE), COMME « PROGRAMME » ═══ (2026-09-06,
@@ -266,7 +272,7 @@ export async function affectationsFormateur(etablissementId, anneeScolaire, matr
       lignes.set(cle, {
         groupe: a.groupe,
         module,
-        intitule: intitules[module] ?? '',
+        intitule: intitules.get(cleGroupeModule(a.groupe, module)) ?? '',
         presentiel: 0,
         synchrone: 0,
         estRegional: false,
@@ -333,7 +339,7 @@ export async function affectationsFormateur(etablissementId, anneeScolaire, matr
  */
 export async function programmeStagiaire(etablissementId, anneeScolaire, groupes) {
   const base = await Base.findOne({ etablissementId, anneeScolaire })
-    .select('affectations formateurs')
+    .select(`formateurs ${CHAMPS_FILIERE}`)
     .lean();
 
   if (!base) {
@@ -396,8 +402,8 @@ export async function programmeStagiaire(etablissementId, anneeScolaire, groupes
     }
   }
 
-  const codes = [...new Set([...lignes.values()].map((ligne) => ligne.module))];
-  const intitules = await intitulesModules(codes);
+  // ⚠️ DANS LA FILIÈRE DU GROUPE, pas par code seul — voir `intitulesParGroupe`.
+  const intitules = await intitulesParGroupe(base, [...lignes.values()]);
 
   return {
     anneeScolaire,
@@ -405,7 +411,7 @@ export async function programmeStagiaire(etablissementId, anneeScolaire, groupes
     modules: [...lignes.values()]
       .map(({ heuresS1, heuresS2, ...ligne }) => ({
         ...ligne,
-        intitule: intitules[ligne.module] ?? '',
+        intitule: intitules.get(cleGroupeModule(ligne.groupe, ligne.module)) ?? '',
         // ⚠️ LE SEMESTRE SE DÉDUIT DES MASSES, par la MÊME fonction que les deux
         // faces de l'avancement : un module qui porte des heures des deux côtés
         // est ANNUEL. Deux règles auraient classé le même module différemment
@@ -449,4 +455,119 @@ export async function groupesDuStagiaire(etablissementId, anneeScolaire, matricu
     groupes: stagiaire.groupes ?? [],
     groupePrincipal: stagiaire.groupePrincipal || stagiaire.groupes?.[0] || null,
   };
+}
+
+/**
+ * L'intitulé de filière d'UN groupe du stagiaire connecté — il précise la
+ * recherche des ressources en ligne d'un module (« M102 » existe dans des
+ * dizaines de filières, avec des contenus sans rapport).
+ *
+ * ⚠️ DÉDUITE CÔTÉ SERVEUR, JAMAIS REÇUE DU CLIENT : le groupe demandé doit être
+ * l'un des siens, sinon on retombe sur sa filière principale.
+ *   - groupe principal → `Stagiaire.filiere` (l'import Konosys) ;
+ *   - autre groupe (FQ) → `Base.groupeFilieres` puis l'intitulé du référentiel
+ *     DRIF, faute de quoi la filière principale.
+ *
+ * @returns {Promise<string>} vide si rien n'est connu — la recherche se fait
+ *   alors sur le seul nom du module.
+ */
+export async function filiereDuGroupe(etablissementId, anneeScolaire, matricule, groupe) {
+  const champs = 'groupes groupePrincipal filiere';
+  const stagiaire =
+    (await Stagiaire.findOne({ etablissementId, anneeScolaire, matricule }).select(champs).lean()) ??
+    (await Stagiaire.findOne({ etablissementId, matricule }).sort({ anneeScolaire: -1 }).select(champs).lean());
+  if (!stagiaire) return '';
+
+  const principale = String(stagiaire.filiere ?? '').trim();
+  const principal = stagiaire.groupePrincipal || stagiaire.groupes?.[0] || '';
+  if (!groupe || groupe === principal || !(stagiaire.groupes ?? []).includes(groupe)) return principale;
+
+  // ⚠️ `filieresParGroupe` + `codeFiliereCarte` : la même source que la carte.
+  const base = await Base.findOne({ etablissementId, anneeScolaire }).select(CHAMPS_FILIERE).lean();
+  const code = filieresParGroupe(base).get(groupe);
+  if (!code) return principale;
+
+  const repartition = await Repartition.findOne({ codeFiliereCarte: code }).select('intituleFiliere').lean();
+  return String(repartition?.intituleFiliere ?? '').trim() || principale;
+}
+
+/**
+ * La fiche du compte connecté — les informations « supplémentaires » de la
+ * page Compte (2026-09-29, demande du porteur).
+ *   - formateur : matricule, permanent ou vacataire (matricule numérique ou non),
+ *     masse horaire statutaire, métier (déduit des modules affectés) et groupes
+ *     (← `Base.formateurs` et `Base.affectations`, l'import e-note) ;
+ *   - stagiaire : CEF, filière, niveau, année, groupe principal et FQ
+ *     (← `Stagiaire`, l'import Konosys).
+ *
+ * ⚠️ JAMAIS D'ERREUR POUR UNE FICHE ABSENTE : la page Compte doit s'ouvrir
+ * même avant l'import — on rend alors le seul matricule, lu sur le compte.
+ * ⚠️ Ni téléphone ni motif d'admission : ils restent non exposés (cf. Stagiaire.js).
+ */
+export async function ficheCompte(etablissementId, anneeScolaire, role, matricule) {
+  if (role === ROLES.FORMATEUR) {
+    const base = await Base.findOne({ etablissementId, anneeScolaire })
+      .select(`formateurs ${CHAMPS_FILIERE}`)
+      .lean();
+
+    const formateur = (base?.formateurs ?? []).find((f) => String(f.matricule ?? '').trim() === matricule);
+    const miennes = (base?.affectations ?? []).filter((a) => String(a.formateur ?? '').trim() === matricule);
+    const groupes = [...new Set(miennes.map((a) => String(a.groupe ?? '').trim()).filter(Boolean))].sort(
+      (a, b) => a.localeCompare(b, 'fr')
+    );
+
+    return {
+      role,
+      matricule,
+      nomComplet: formateur?.nomComplet ?? null,
+      statut: estVacataire(matricule) ? 'vacataire' : 'permanent',
+      masseHoraire: formateur?.masseHoraire ?? null,
+      metiers: base ? await metiersDuFormateur(base, miennes) : [],
+      groupes,
+    };
+  }
+
+  const champs = 'matricule nom prenom nomArabe prenomArabe groupes groupePrincipal filiere niveau annee site dateNaissance anneeScolaire';
+  const stagiaire =
+    (await Stagiaire.findOne({ etablissementId, anneeScolaire, matricule }).select(champs).lean()) ??
+    (await Stagiaire.findOne({ etablissementId, matricule }).sort({ anneeScolaire: -1 }).select(champs).lean());
+
+  if (!stagiaire) return { role, matricule };
+
+  const groupePrincipal = stagiaire.groupePrincipal || stagiaire.groupes?.[0] || '';
+  return {
+    role,
+    matricule,
+    nom: stagiaire.nom,
+    prenom: stagiaire.prenom,
+    nomArabe: [stagiaire.prenomArabe, stagiaire.nomArabe].filter(Boolean).join(' '),
+    groupePrincipal,
+    autresGroupes: (stagiaire.groupes ?? []).filter((g) => g && g !== groupePrincipal),
+    filiere: stagiaire.filiere,
+    niveau: stagiaire.niveau,
+    annee: stagiaire.annee,
+    site: stagiaire.site,
+    dateNaissance: stagiaire.dateNaissance,
+  };
+}
+
+/**
+ * Le métier d'un formateur, DÉDUIT des modules qui lui sont affectés : chaque
+ * module porte un `metier` dans la répartition DRIF, lu dans la filière de son
+ * groupe (même résolution que l'intitulé — un code vit dans des dizaines de
+ * filières). Pondéré par les heures : le premier est le métier principal.
+ *
+ * @returns {Promise<Array<{metier: string, heures: number}>>} heures décroissantes
+ */
+async function metiersDuFormateur(base, affectations) {
+  const table = await intitulesParGroupe(base, affectations, 'metier');
+  const heures = new Map();
+  for (const a of affectations) {
+    const metier = table.get(cleGroupeModule(a.groupe, a.module));
+    if (!metier) continue;
+    heures.set(metier, (heures.get(metier) ?? 0) + Number(a.s1Heures ?? 0) + Number(a.s2Heures ?? 0));
+  }
+  return [...heures]
+    .map(([metier, total]) => ({ metier, heures: Math.round(total) }))
+    .sort((a, b) => b.heures - a.heures || a.metier.localeCompare(b.metier, 'fr'));
 }

@@ -7,10 +7,12 @@ import {
   facettesDesGroupes,
   filtrerGroupes,
   filtrerSujets,
+  horaireCreneau,
   instantLocal,
   sallesDeLaSemaine,
   seanceTerminee,
 } from './consultation.js';
+import { NOMS_HORAIRES, erreursHoraire, horaireParDefaut, horairesCourants } from './horaires.js';
 
 /**
  * Lecture d'une semaine sous trois angles (F5 — page « Édition »).
@@ -37,8 +39,8 @@ describe('AXES_CONSULTATION', () => {
    * les deux. Répéter le sujet dans ses propres cases ne dirait rien.
    */
   it('les trois axes, avec ce que chaque ligne montre', () => {
-    expect(AXES_CONSULTATION.formateur.lignes).toEqual(['Groupe', 'Module', 'Salle']);
-    expect(AXES_CONSULTATION.groupe.lignes).toEqual(['Formateur', 'Module', 'Salle']);
+    expect(AXES_CONSULTATION.formateur.lignes).toEqual(['Groupe', 'Module', 'Espace']);
+    expect(AXES_CONSULTATION.groupe.lignes).toEqual(['Formateur', 'Module', 'Espace']);
     expect(AXES_CONSULTATION.salle.lignes).toEqual(['Formateur', 'Module', 'Groupe']);
   });
 });
@@ -206,17 +208,25 @@ describe('sallesDeLaSemaine', () => {
   });
 
   /*
-   * ⚠️ « TEAMS » N'EST PAS UNE SALLE — c'est une séance à distance ; « ABSENT »
-   * ne l'a jamais été. Les lister ferait une ligne d'occupation pour un local
-   * qui n'existe pas.
+   * ⚠️ « ABSENT » N'A JAMAIS ÉTÉ UNE SALLE. Le lister ferait une ligne
+   * d'occupation pour un local qui n'existe pas.
    */
-  it('⚠️ écarte TEAMS et ABSENT', () => {
-    const salles = sallesDeLaSemaine(
-      ['A12', 'TEAMS'],
-      [seance({ salle: 'ABSENT' }), seance({ salle: 'teams' })]
-    );
+  it('⚠️ écarte ABSENT', () => {
+    const salles = sallesDeLaSemaine(['A12'], [seance({ salle: 'ABSENT' })]);
 
     expect(salles).toEqual(['A12']);
+  });
+
+  /*
+   * ⚠️ « TEAMS » EN EST UNE, DÉSORMAIS (2026-09-24, demande du porteur) : une
+   * séance à distance occupe bien un « lieu » du point de vue de cet axe.
+   * Normalisée en MAJUSCULES — une variante de casse ne doit pas faire deux
+   * sujets distincts dans la liste.
+   */
+  it('⚠️ retient TEAMS, normalisée en majuscules', () => {
+    const salles = sallesDeLaSemaine(['A12', 'TEAMS'], [seance({ salle: 'teams' })]);
+
+    expect(salles).toEqual(['A12', 'TEAMS']);
   });
 
   it('⚠️ garde une salle retirée des espaces mais qui porte encore des séances', () => {
@@ -429,11 +439,11 @@ describe('agendaDuSujet', () => {
       module: 'M101',
       autreSujet: 'GM101',
       salle: 'A12',
-      // ← get_formateur_timetable.php:201-202 (jour non-Vendredi) : S1
-      // 08:30-11:00, S2 11:00-13:30.
-      debut: '08:30',
-      fin: '13:30',
-      pauses: ['Pause 15 min · reprise 11h15'],
+      // Horaire d'HIVER par défaut (2026-09-20, valeurs du porteur) : S1 08:00-10:30,
+      // S2 10:30-13:00 — S1 et S2 se touchent, la pause reste « décorative ».
+      debut: '08:00',
+      fin: '13:00',
+      pauses: ['Pause 15 min · reprise 10h45'],
     });
   });
 
@@ -650,10 +660,11 @@ describe('seanceTerminee — la règle du badge « Terminé » de l’agenda', (
     expect(seanceTerminee(vendrediS2, le('12:30'))).toBe(true);
   });
 
-  it('⚠️ l’horaire dépend du jour : S2 finit à 12:30 le Vendredi, à 13:30 ailleurs', () => {
+  it('⚠️ l’horaire dépend du jour : S2 finit à 12:30 le Vendredi, à 13:00 ailleurs', () => {
     const jeudiS2 = { date: new Date(2026, 8, 10), jour: 'Jeudi', seance: 'S2' };
-    const maintenant = { date: '2026-09-10', heure: '13:00' };
+    const maintenant = { date: '2026-09-10', heure: '12:59' };
     expect(seanceTerminee(jeudiS2, maintenant)).toBe(false);
+    expect(seanceTerminee(jeudiS2, { date: '2026-09-10', heure: '13:00' })).toBe(true);
     expect(seanceTerminee({ ...vendrediS2 }, { date: '2026-09-11', heure: '13:00' })).toBe(true);
   });
 
@@ -673,5 +684,96 @@ describe('seanceTerminee — la règle du badge « Terminé » de l’agenda', (
 describe('instantLocal', () => {
   it('rend la date et l’heure LOCALES, avec leurs zéros de tête', () => {
     expect(instantLocal(new Date(2026, 8, 5, 8, 7))).toEqual({ date: '2026-09-05', heure: '08:07' });
+  });
+});
+
+describe('horaires réglables — hiver, été, ramadan (2026-09-20)', () => {
+  const ramadan = () => horairesCourants({ actif: 'ramadan' });
+
+  it('les valeurs d’origine sont celles du porteur', () => {
+    expect(horaireCreneau('Lundi', 'S1')).toEqual({ debut: '08:00', fin: '10:30' });
+    expect(horaireCreneau('Lundi', 'S3')).toEqual({ debut: '13:30', fin: '16:00' });
+    expect(horaireCreneau('Lundi', 'S4')).toEqual({ debut: '16:00', fin: '18:30' });
+    // L'été reprend l'hiver.
+    expect(horairesCourants({ actif: 'ete' })).toEqual(horairesCourants({ actif: 'hiver' }));
+  });
+
+  it('le ramadan resserre les créneaux', () => {
+    const h = ramadan();
+    expect(horaireCreneau('Mardi', 'S1', h)).toEqual({ debut: '08:30', fin: '10:20' });
+    expect(horaireCreneau('Mardi', 'S2', h)).toEqual({ debut: '10:25', fin: '12:15' });
+    expect(horaireCreneau('Mardi', 'S3', h)).toEqual({ debut: '12:45', fin: '14:40' });
+    expect(horaireCreneau('Mardi', 'S4', h)).toEqual({ debut: '14:40', fin: '16:30' });
+  });
+
+  it('⚠️ le soir ne dépend pas du réglage', () => {
+    expect(horaireCreneau('Lundi', 'S5', ramadan())).toEqual({ debut: '19:00', fin: '21:00' });
+  });
+
+  it('un réglage abîmé retombe sur l’origine, créneau par créneau', () => {
+    const h = horairesCourants({
+      actif: 'inconnu',
+      horaires: { hiver: { semaine: { S1: { debut: '07:45', fin: 'n’importe quoi' } } } },
+    });
+    expect(horaireCreneau('Lundi', 'S1', h)).toEqual({ debut: '07:45', fin: '10:30' });
+    expect(horaireCreneau('Lundi', 'S2', h)).toEqual({ debut: '10:30', fin: '13:00' });
+  });
+
+  it('l’agenda et « terminée » suivent le jeu en vigueur', () => {
+    const agenda = agendaDuSujet({
+      sujet: '9863',
+      axe: 'formateur',
+      horaires: ramadan(),
+      seances: [seance({ seance: 'S1' }), seance({ seance: 'S2' })],
+    });
+    const lundi = agenda.jours.find((j) => j.jour === 'Lundi');
+    expect(lundi.blocs[0]).toMatchObject({
+      debut: '08:30',
+      fin: '12:15',
+      // 5 min d'écart réel entre S1 et S2 : la pause le dit.
+      pauses: ['Pause 5 min · reprise 10h25'],
+      heures: 5, // ⚠️ la durée comptable ne bouge pas
+    });
+
+    const lundiS1 = { date: new Date(2026, 8, 7), jour: 'Lundi', seance: 'S1' };
+    const t = (heure) => ({ date: '2026-09-07', heure });
+    expect(seanceTerminee(lundiS1, t('10:20'), ramadan())).toBe(true);
+    expect(seanceTerminee(lundiS1, t('10:20'))).toBe(false); // hiver : finit à 10:30
+  });
+
+  it('le libellé de la pause déjeuner est l’écart réel', () => {
+    const agenda = (horaires) =>
+      agendaDuSujet({
+        sujet: '9863',
+        axe: 'formateur',
+        horaires,
+        seances: [seance({ seance: 'S2' }), seance({ seance: 'S3' })],
+      }).jours.find((j) => j.jour === 'Lundi').blocs[0].pauses;
+    expect(agenda(horairesCourants({ actif: 'hiver' }))).toEqual(['Pause 30 min · reprise 13h30']);
+    expect(agenda(ramadan())).toEqual(['Pause 30 min · reprise 12h45']);
+  });
+
+  describe('erreursHoraire', () => {
+    const jeu = () => horaireParDefaut('hiver');
+
+    it('les jeux d’origine sont cohérents', () => {
+      for (const nom of NOMS_HORAIRES) expect(erreursHoraire(horaireParDefaut(nom))).toEqual([]);
+    });
+
+    it('refuse une fin avant le début', () => {
+      const h = jeu();
+      h.semaine.S2.fin = '10:00';
+      expect(erreursHoraire(h)).toContainEqual(expect.objectContaining({ tableau: 'semaine', creneau: 'S2', champ: 'fin' }));
+    });
+
+    it('refuse un créneau qui chevauche le précédent, mais accepte un écart', () => {
+      const chevauche = jeu();
+      chevauche.semaine.S2.debut = '10:00';
+      expect(erreursHoraire(chevauche)).toContainEqual(expect.objectContaining({ creneau: 'S2', champ: 'debut' }));
+
+      const ecart = jeu();
+      ecart.semaine.S2.debut = '10:45';
+      expect(erreursHoraire(ecart)).toEqual([]);
+    });
   });
 });

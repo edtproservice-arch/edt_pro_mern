@@ -6,7 +6,7 @@ import {
   analyserSemaine,
   libelleSemaine,
   lundiDeLaSemaine,
-  semaineDe,
+  semaineAffichable,
   valeurSemaine,
 } from 'shared/domain';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/h
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { chargerCalendrier, chargerJoursFeries } from '@/features/configuration/api';
 import { bornesCalendrier } from '@/lib/bornesCalendrier';
+import { nombre } from '@/lib/nombres';
 import { cn } from '@/lib/utils';
 
 /**
@@ -37,9 +38,28 @@ import { cn } from '@/lib/utils';
 /** ⚠️ `semaineDe` LÈVE sur autre chose qu'une `Date` : on garde en amont. */
 const estDate = (valeur) => valeur instanceof Date && !Number.isNaN(valeur.getTime());
 
-export default function SelecteurSemaine({ semaine, anneeScolaire, remplies = [], onChanger }) {
+export default function SelecteurSemaine({
+  semaine,
+  anneeScolaire,
+  remplies = [],
+  /*
+   * ═══ ⚠️ LE TAUX DE CONFORMITÉ, PAS SEULEMENT « REMPLIE » (2026-09-27,
+   * demande du porteur : « S4 pas encore complet à 98 % → point orange, S5
+   * complet à 100 % → vert, 0 % → rouge ») ═══
+   * `remplies` ne dit que « des séances existent » — vrai dès la première
+   * heure posée, même très loin du chronogramme. `completudes` porte le
+   * VRAI taux, déjà calculé par `completudeDeLAnnee` pour cet usage précis
+   * (voir son commentaire : « pour le calendrier »).
+   *
+   * ⚠️ OPTIONNEL, PAR COMPATIBILITÉ : les autres écrans qui réutilisent ce
+   * sélecteur (Édition, Mon emploi du temps, rattrapage) ne le passent pas
+   * encore — sans lui, le point retombe sur le simple vert de `remplies`,
+   * inchangé pour eux.
+   */
+  completudes = [],
+  onChanger,
+}) {
   const [ouvert, setOuvert] = useState(false);
-  const analyse = semaine ? analyserSemaine(semaine) : null;
 
   /*
    * ⚠️ LE CALENDRIER MONTRE FÉRIÉS ET VACANCES. Sans eux, on choisit une semaine
@@ -60,6 +80,17 @@ export default function SelecteurSemaine({ semaine, anneeScolaire, remplies = []
     enabled: ouvert,
     retry: false,
   });
+
+  /*
+   * ⚠️ LA MÊME ANCRE QUE LE RESTE DE L'APPLICATION (2026-09-25, demande du
+   * porteur : « je veux que ça change dans TOUS les calendriers de la
+   * plateforme »). Sans elle, ce sélecteur continuerait de numéroter S1 sur le
+   * 1er septembre alors que le chronogramme et l'avancement l'ancrent déjà sur
+   * la rentrée la plus précoce — la même semaine se lirait sous deux numéros
+   * différents selon l'écran.
+   */
+  const rentrees = calendrier.data?.rentrees ?? [];
+  const analyse = semaine ? analyserSemaine(semaine, rentrees) : null;
 
   const datesFeriees = useMemo(
     () => (feries.data?.joursFeries ?? []).map((jour) => new Date(`${jour.date}T00:00:00`)),
@@ -87,17 +118,23 @@ export default function SelecteurSemaine({ semaine, anneeScolaire, remplies = []
     [remplies]
   );
 
+  /* Le taux de conformité de chaque semaine déjà calculée, par sa valeur. */
+  const tauxParSemaine = useMemo(
+    () => new Map(completudes.map((entree) => [entree.semaine, entree.taux])),
+    [completudes]
+  );
+
   // Hors de l'année active, une semaine choisie n'aurait aucune séance à
   // montrer et la grille reviendrait vide sans rien qui l'explique.
-  const bornes = bornesCalendrier(anneeScolaire);
+  const bornes = bornesCalendrier(anneeScolaire, rentrees);
 
   const choisir = useCallback(
     (jour) => {
       if (!estDate(jour)) return;
-      onChanger(valeurSemaine(jour));
+      onChanger(valeurSemaine(jour, rentrees));
       setOuvert(false);
     },
-    [onChanger]
+    [onChanger, rentrees]
   );
 
   /*
@@ -118,12 +155,15 @@ export default function SelecteurSemaine({ semaine, anneeScolaire, remplies = []
           {...proprietes}
           courante={semaine}
           avecSeances={avecSeances}
+          tauxParSemaine={tauxParSemaine}
           bornes={bornes}
+          rentrees={rentrees}
+          anneeScolaire={anneeScolaire}
           onChoisir={choisir}
         />
       ),
     }),
-    [feriesParDate, semaine, avecSeances, bornes, choisir]
+    [feriesParDate, semaine, avecSeances, tauxParSemaine, bornes, rentrees, anneeScolaire, choisir]
   );
 
 
@@ -189,16 +229,36 @@ export default function SelecteurSemaine({ semaine, anneeScolaire, remplies = []
            * `Date` valides — et `semaineDe` LÈVE dans ce cas, ce qui démontait la
            * page entière au lieu de laisser un jour non sélectionné.
            */
-          selected={(jour) => estDate(jour) && valeurSemaine(jour) === semaine}
+          selected={(jour) => estDate(jour) && valeurSemaine(jour, rentrees) === semaine}
           onDayClick={choisir}
         />
 
           <div className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1 text-[0.7rem] text-muted-foreground">
             <Reperage classe="bg-warning/25">jour férié</Reperage>
             <Reperage classe="bg-primary/10">vacances</Reperage>
-            <Reperage classe="bg-accent-green" ronde>
-              semaine remplie
-            </Reperage>
+            {/*
+              ⚠️ LA LÉGENDE SUIT CE QUE LE POINT MONTRE VRAIMENT (2026-09-27) :
+              un taux de conformité quand `completudes` en porte un, le simple
+              « remplie » d'avant sinon — jamais les deux en même temps,
+              puisque l'un remplace l'autre pour cette semaine.
+            */}
+            {completudes.length > 0 ? (
+              <>
+                <Reperage classe="bg-destructive" ronde>
+                  0 %
+                </Reperage>
+                <Reperage classe="bg-warning" ronde>
+                  incomplète
+                </Reperage>
+                <Reperage classe="bg-accent-green" ronde>
+                  complète
+                </Reperage>
+              </>
+            ) : (
+              <Reperage classe="bg-accent-green" ronde>
+                semaine remplie
+              </Reperage>
+            )}
           </div>
         </div>
       </PopoverContent>
@@ -242,10 +302,20 @@ function NumeroSemaine({
   week,
   courante,
   avecSeances,
+  tauxParSemaine,
   bornes,
+  rentrees = [],
+  anneeScolaire,
   onChoisir,
   // `asChild` n'est pas un attribut DOM et n'a rien à faire sur un `<th>`.
   asChild,
+  /*
+   * ⚠️ EXCLU DU SPREAD (2026-09-27) : `children` porte le numéro ISO déjà
+   * rendu par react-day-picker, et un `<th {...proprietes} />` qui ne l'exclut
+   * pas le laisserait réapparaître à la place d'une cellule vide — la même
+   * fuite corrigée dans `decorationCalendrier.jsx`.
+   */
+  children,
   ...proprietes
 }) {
   const premierJour = week?.days?.[0]?.date;
@@ -254,9 +324,49 @@ function NumeroSemaine({
   if (!estDate(premierJour)) return <th {...proprietes} />;
 
   const lundi = lundiDeLaSemaine(premierJour);
-  const valeur = valeurSemaine(lundi);
+  const numero = Number.isInteger(anneeScolaire)
+    ? semaineAffichable(anneeScolaire, premierJour, rentrees)
+    : null;
+
+  /*
+   * ⚠️ ANTÉRIEURE À L'ANCRE : NI NUMÉRO NI BOUTON (2026-09-27, demande du
+   * porteur : « il faut qu'il y ait un seul S1 »). `semaineDe` rangeait cette
+   * semaine dans la S1 elle-même — juste pour CLASSER une donnée, pas pour
+   * numéroter un calendrier — et la colonne répétait alors « 1 » sur autant de
+   * lignes que de semaines antérieures à une rentrée tardive. Une semaine qui
+   * n'existe pas encore dans l'année ne peut de toute façon s'ouvrir sur rien.
+   */
+  if (numero === null) {
+    return (
+      <th {...proprietes} className={cn(proprietes.className, 'p-0 align-middle')}>
+        <span className="mx-auto block h-7 w-7" aria-hidden="true" />
+      </th>
+    );
+  }
+
+  const valeur = valeurSemaine(lundi, rentrees);
   const estCourante = valeur === courante;
   const remplie = avecSeances.has(valeur);
+
+  /*
+   * ═══ ⚠️ LE TAUX DE CONFORMITÉ, QUAND IL EXISTE, REMPLACE « REMPLIE »
+   * (2026-09-27, demande du porteur) ═══ 0 % en rouge, 100 % en vert, tout le
+   * reste en orange — la semaine qui a des séances mais n'est pas encore au
+   * niveau du chronogramme (98 %, par exemple) ne peut plus se confondre avec
+   * celle qui l'a atteint.
+   */
+  const taux = tauxParSemaine?.get(valeur);
+  const conforme = typeof taux === 'number';
+  const pastille = conforme
+    ? taux === 100
+      ? 'bg-accent-green'
+      : taux === 0
+        ? 'bg-destructive'
+        : 'bg-warning'
+    : remplie
+      ? 'bg-accent-green'
+      : null;
+  const titrePastille = conforme ? ` — ${nombre(taux)} % conforme au chronogramme` : remplie ? ' — déjà remplie' : '';
 
   const horsAnnee =
     (bornes?.startMonth && lundi < bornes.startMonth) ||
@@ -272,7 +382,7 @@ function NumeroSemaine({
         title={
           horsAnnee
             ? 'Cette semaine est hors de l’année scolaire active'
-            : `Semaine ${semaineDe(premierJour).numero}${remplie ? ' — déjà remplie' : ''}`
+            : `Semaine ${numero}${titrePastille}`
         }
         className={cn(
           'relative mx-auto flex h-7 w-7 items-center justify-center rounded-md',
@@ -281,12 +391,12 @@ function NumeroSemaine({
           estCourante ? 'bg-primary text-primary-foreground' : 'text-primary hover:bg-primary/10'
         )}
       >
-        {semaineDe(premierJour).numero}
+        {numero}
         {/* ⚠️ UNE PASTILLE, PAS UNE COULEUR DE FOND : le fond dit déjà quelle
             semaine est ouverte, et deux significations sur le même aplat ne se
             distinguent plus. */}
-        {remplie && !estCourante && (
-          <span className="absolute bottom-0.5 size-1 rounded-full bg-accent-green" />
+        {pastille && !estCourante && (
+          <span className={cn('absolute bottom-0.5 size-1 rounded-full', pastille)} />
         )}
       </button>
     </th>

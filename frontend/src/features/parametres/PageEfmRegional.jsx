@@ -15,8 +15,7 @@ import {
   dateRentree,
   droitSuffit,
   surveillantsPossibles,
-  valeurSemaine,
-} from 'shared/domain';
+  valeurSemaine, libelleSemaine } from 'shared/domain';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
@@ -152,7 +151,7 @@ export default function PageEfmRegional() {
     onSuccess: (bilan) => {
       setRefus(null);
       toast.success('EFM planifié', {
-        description: `${bilan.posees} surveillance(s) posée(s) en ${bilan.semaine}.`,
+        description: `${bilan.posees} surveillance(s) posée(s) en ${libelleSemaine(bilan.semaine, { court: true })}.`,
       });
       /* La grille de l'emploi du temps doit relire : les séances viennent
          d'apparaître, et son cache ne le sait pas. */
@@ -354,10 +353,10 @@ export default function PageEfmRegional() {
                 )}
               </Champ>
 
-              <Champ libelle="Salle">
+              <Champ libelle="Espace">
                 <Select value={salle} onValueChange={setSalle}>
                   <SelectTrigger className="h-9 text-sm">
-                    <SelectValue placeholder="Choisir une salle…" />
+                    <SelectValue placeholder="Choisir un espace…" />
                   </SelectTrigger>
                   <SelectContent className="max-h-72">
                     {salles.map((nom) => (

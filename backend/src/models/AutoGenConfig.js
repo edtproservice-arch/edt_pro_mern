@@ -28,7 +28,7 @@ const contrainteFormateurSchema = new mongoose.Schema(
     heures: { type: Number, default: 0, min: 0 },
     /** Nombre de séances à distance imposées. */
     seancesTeams: { type: Number, default: 0, min: 0 },
-    /** Salles attribuées à ce formateur. Vide = aucune restriction. */
+    /** Salles attribuées à ce formateur. Vide = aucune salle attribuée (rien n'est pré-rempli). */
     espaces: [{ type: String, trim: true }],
     /** Créneaux à éviter (S1-S4). En saisie manuelle ils ne ferment rien. */
     indisponibilites: [creneauSchema],
@@ -62,6 +62,44 @@ const autoGenConfigSchema = new mongoose.Schema(
      * rend la génération rejouable (§7, Phase 6).
      */
     graine: { type: Number, default: null },
+
+    /**
+     * ═══ L'EMPLOI DU TEMPS EST-IL LIÉ AU CHRONOGRAMME ? ═══ (2026-09-27)
+     * ← table `liaison_chronogramme` + `set_liaison_chronogramme.php`
+     *
+     * **Lié** (défaut) : le chronogramme fixe les volumes ; la saisie manuelle
+     * qui les modifierait est refusée, et la génération automatique produit la
+     * grille à partir de lui.
+     * **Dissocié** : l'emploi du temps est tenu à la main, librement.
+     *
+     * ⚠️ **L'ABSENCE DE DOCUMENT VAUT « LIÉ »**, comme l'absence de ligne dans
+     *    l'ancien : aucun établissement ne change de comportement au
+     *    déploiement, et un `AutoGenConfig` jamais créé ne déverrouille rien
+     *    par surprise. C'est ce que `default: true` garantit ICI, mais tout
+     *    lecteur doit AUSSI retomber sur `true` quand le document est absent —
+     *    Mongoose n'applique pas un défaut à un document qui n'existe pas.
+     *
+     * ⚠️ **POURQUOI ICI ET PAS SUR `Base`** : `carte.service.js` fait
+     *    `findOneAndDelete` puis `create` — la carte est REMPLACÉE EN BLOC à
+     *    chaque enregistrement. Un drapeau posé là serait effacé au premier
+     *    enregistrement de carte, sans que rien ne le signale.
+     */
+    chronogrammeLie: { type: Boolean, default: true },
+
+    /**
+     * Sel de pseudonymisation des traces de génération (F6 · d).
+     *
+     * ═══ ⚠️ IL NE DOIT JAMAIS QUITTER LA PRODUCTION ═══ C'est lui, et lui seul,
+     * qui permettrait de remonter d'un pseudonyme à un matricule. Rangé ici
+     * plutôt que dans la trace : le mettre à côté des données qu'il protège
+     * reviendrait à ne rien protéger. Tiré une fois, puis jamais changé — le
+     * faire tourner casserait la stabilité des pseudonymes d'une semaine à
+     * l'autre, qui est précisément ce qu'un modèle de préférence doit voir.
+     *
+     * ⚠️ `select: false` : il ne part dans AUCUNE lecture qui ne le demande
+     *    explicitement, y compris celles du service de génération.
+     */
+    selTraces: { type: String, default: null, select: false },
   },
   { timestamps: true, strict: true }
 );

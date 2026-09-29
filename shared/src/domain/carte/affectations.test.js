@@ -9,6 +9,7 @@ import {
   synchronesEffectifs,
   activerModule,
   definirMasseHoraire,
+  definirSallesGroupe,
   masseModifiable,
   libererFormateursInconnus,
   renommerGroupes,
@@ -115,6 +116,37 @@ describe('copierAffectationsPresentiel', () => {
 
     copierAffectationsPresentiel(depart, 'DEV101');
     expect(depart[1].modules[0].formateurPresentiel).toBe('');
+  });
+
+  it('emporte AUSSI les salles (2026-09-23)', () => {
+    /*
+     * ⚠️ DEPUIS QUE LA SALLE SE DÉCLARE PAR GROUPE, une filière à six groupes
+     *    demanderait six fois la même saisie. Recopier le formateur sans la
+     *    salle laisserait croire la colonne reportée alors qu'elle ne le serait
+     *    qu'à moitié — le pire des deux.
+     */
+    const depart = [
+      groupe('DEV101', [module('M101', { formateurPresentiel: 'AHMED', salles: ['Atelier A'] })]),
+      groupe('DEV102', [module('M101')]),
+    ];
+
+    const { groupes } = copierAffectationsPresentiel(depart, 'DEV101');
+
+    expect(groupes[1].modules[0].formateurPresentiel).toBe('AHMED');
+    expect(groupes[1].modules[0].salles).toEqual(['Atelier A']);
+  });
+
+  it('EFFACE la salle de la cible quand la source n’en a pas', () => {
+    // ⚠️ Sinon « copier » ne copierait pas, il FUSIONNERAIT : la cible garderait
+    //    un atelier que la colonne source ne demande plus.
+    const depart = [
+      groupe('DEV101', [module('M101', { formateurPresentiel: 'AHMED' })]),
+      groupe('DEV102', [module('M101', { salles: ['Atelier B'] })]),
+    ];
+
+    const { groupes } = copierAffectationsPresentiel(depart, 'DEV101');
+
+    expect(groupes[1].modules[0].salles).toEqual([]);
   });
 });
 
@@ -352,6 +384,89 @@ describe('activerModule', () => {
     activerModule(depart, CLE, 'M101', false);
 
     expect(depart[0].modules[0].actif).toBeUndefined();
+  });
+});
+
+describe('definirSallesGroupe', () => {
+  it('déclare la salle sur CE groupe seulement', () => {
+    /*
+     * ⚠️ LA PROPRIÉTÉ DEMANDÉE PAR LE PORTEUR (2026-09-23) : deux groupes de la
+     *    même filière suivent le même module dans des salles différentes — et
+     *    ils ne peuvent de toute façon pas être dans le même atelier au même
+     *    moment. La première version écrivait sur tout l'ensemble.
+     */
+    const depart = [
+      groupe('DEV101', [module('M101'), module('M102')]),
+      groupe('DEV102', [module('M101'), module('M102')]),
+    ];
+
+    const groupes = definirSallesGroupe(depart, 'DEV101', 'M101', ['Atelier soudure']);
+
+    expect(groupes[0].modules[0].salles).toEqual(['Atelier soudure']);
+    // Le groupe voisin garde la sienne — c'est tout l'objet de la correction.
+    expect(groupes[1].modules[0].salles).toBeUndefined();
+    // Et les autres modules du même groupe ne bougent pas.
+    expect(groupes[0].modules[1].salles).toBeUndefined();
+  });
+
+  it('laisse DEUX groupes porter des salles DIFFÉRENTES pour le même module', () => {
+    const depart = [
+      groupe('DEV101', [module('M101')]),
+      groupe('DEV102', [module('M101')]),
+    ];
+
+    let groupes = definirSallesGroupe(depart, 'DEV101', 'M101', ['Atelier A']);
+    groupes = definirSallesGroupe(groupes, 'DEV102', 'M101', ['Atelier B']);
+
+    expect(groupes[0].modules[0].salles).toEqual(['Atelier A']);
+    expect(groupes[1].modules[0].salles).toEqual(['Atelier B']);
+  });
+
+  it('accepte PLUSIEURS salles, dédoublonnées et triées', () => {
+    /*
+     * ⚠️ TRIÉES ET DÉDOUBLONNÉES ICI, PAS À L'AFFICHAGE : ces noms servent de
+     *    clé de comparaison avec les espaces de l'établissement côté
+     *    générateur. Un doublon ou une espace en trop ferait ignorer la
+     *    consigne — sans la moindre erreur.
+     */
+    const depart = [groupe('DEV101', [module('M101')])];
+    const groupes = definirSallesGroupe(depart, 'DEV101', 'M101', [
+      ' Atelier B ',
+      'Atelier A',
+      'Atelier B',
+      '',
+      null,
+    ]);
+
+    expect(groupes[0].modules[0].salles).toEqual(['Atelier A', 'Atelier B']);
+  });
+
+  it('une liste vide EFFACE la consigne — elle ne veut pas dire « aucune salle »', () => {
+    const depart = [groupe('DEV101', [module('M101', { salles: ['Atelier A'] })])];
+    const groupes = definirSallesGroupe(depart, 'DEV101', 'M101', []);
+
+    expect(groupes[0].modules[0].salles).toEqual([]);
+  });
+
+  it('ignore un groupe qui n’existe pas, sans rien casser', () => {
+    const depart = [groupe('DEV101', [module('M101')])];
+    const groupes = definirSallesGroupe(depart, 'DEV999', 'M101', ['Atelier A']);
+
+    expect(groupes[0].modules[0].salles).toBeUndefined();
+  });
+
+  it('laisse l’affectation du formateur intacte', () => {
+    const depart = [groupe('DEV101', [module('M101', { formateurPresentiel: 'AHMED' })])];
+    const groupes = definirSallesGroupe(depart, 'DEV101', 'M101', ['Atelier A']);
+
+    expect(groupes[0].modules[0].formateurPresentiel).toBe('AHMED');
+  });
+
+  it('ne modifie pas le tableau d’origine', () => {
+    const depart = [groupe('DEV101', [module('M101')])];
+    definirSallesGroupe(depart, 'DEV101', 'M101', ['Atelier A']);
+
+    expect(depart[0].modules[0].salles).toBeUndefined();
   });
 });
 

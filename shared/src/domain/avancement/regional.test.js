@@ -79,38 +79,42 @@ describe('tauxRegional', () => {
   });
 
   /*
-   * ═══ ⚠️⚠️ LES SEMAINES AVANT LA RENTRÉE NE COMPTENT PAS (2026-09-03,
-   * demande du porteur) ═══ Le réglage réel de l'établissement pour
-   * 2026-2027 : 2ᵉ et 3ᵉ années le 7 septembre (S2), 1ʳᵉ le 11. La S1
-   * (31 août) ne porte donc AUCUN cours nulle part.
+   * ═══ ⚠️⚠️⚠️ S1 EST LA SEMAINE DE LA RENTRÉE LA PLUS PRÉCOCE (2026-09-25,
+   * demande du porteur — REVIENT SUR LA VERSION DU 2026-09-03 ci-dessus) ═══
+   * Le réglage réel de l'établissement pour 2026-2027 : 2ᵉ et 3ᵉ années le
+   * 7 septembre, 1ʳᵉ le 11. `lundiPremiereSemaine` ancre désormais S1 sur le
+   * 7 septembre (un lundi) au lieu du 31 août — la S1 elle-même DEVIENT la
+   * semaine où l'établissement ouvre, plutôt qu'une semaine qu'on exclut du
+   * calcul.
    */
-  describe('avant l’ouverture de l’établissement', () => {
+  describe('quand une rentrée est déclarée — S1 se déplace', () => {
     const RENTREES = [
       { anneeFormation: 1, date: '2026-09-11' },
       { anneeFormation: 2, date: '2026-09-07' },
       { anneeFormation: 3, date: '2026-09-07' },
     ];
 
-    it('rend 0 % à la S1, avant que le premier niveau n’ait sa rentrée', () => {
-      const resultat = taux({ aujourdhui: '2026-09-01', rentrees: RENTREES });
+    it('rend 0 % avant l’ouverture — même à la date de l’ancienne S1', () => {
+      // 31 août : c'était la S1 avant cette révision. Avec une rentrée
+      // déclarée, l'année n'a même pas encore commencé à cette date.
+      const resultat = taux({ aujourdhui: '2026-08-31', rentrees: RENTREES });
 
       expect(resultat.passees).toBe(0);
       expect(resultat.taux).toBe(0);
     });
 
     /*
-     * ⚠️ EXCLUE DU TOTAL, PAS SEULEMENT DES SEMAINES PASSÉES — même traitement
-     * qu'une semaine de vacances : l'année active ne commence qu'à l'ouverture,
-     * exactement comme `tauxObjectifPedagogique` fait démarrer un groupe à SA
-     * rentrée plutôt qu'à la S1.
+     * ⚠️ PLUS D'EXCLUSION À PART : l'ancre elle-même ne compte plus jamais une
+     * semaine antérieure à l'ouverture parmi S1..S39, donc les 39 semaines
+     * comptent toutes dans le total dès qu'aucune n'est en vacances.
      */
-    it('retire la S1 du total, comme une semaine de vacances', () => {
+    it('compte les 39 semaines, sans rien retirer pour l’ouverture', () => {
       const resultat = taux({ aujourdhui: '2027-12-31', rentrees: RENTREES });
 
-      expect(resultat.total).toBe(SEMAINES_ANNEE_REGIONALE - 1);
+      expect(resultat.total).toBe(SEMAINES_ANNEE_REGIONALE);
     });
 
-    it('compte la S2 dès son lundi — la 2ᵉ et la 3ᵉ année ont repris', () => {
+    it('compte S1 dès son lundi — la rentrée la plus précoce ouvre l’année', () => {
       const resultat = taux({ aujourdhui: '2026-09-07', rentrees: RENTREES });
 
       expect(resultat.passees).toBe(1);
@@ -118,21 +122,23 @@ describe('tauxRegional', () => {
 
     /*
      * ⚠️ SANS RENTRÉE DÉCLARÉE, RIEN NE CHANGE : la même règle que partout
-     * ailleurs — tant que l'admin n'a rien saisi, le calcul retombe sur la S1.
+     * ailleurs — tant que l'admin n'a rien saisi, le calcul retombe sur le
+     * 1er septembre.
      */
-    it('sans rentrée déclarée, retombe sur la S1', () => {
+    it('sans rentrée déclarée, retombe sur le 1er septembre', () => {
       const resultat = taux({ aujourdhui: '2026-08-31' });
 
       expect(resultat.passees).toBe(1);
       expect(resultat.total).toBe(SEMAINES_ANNEE_REGIONALE);
     });
 
-    /* Les deux exclusions se cumulent, sans se marcher dessus. */
+    /* La rentrée déplace l'ancre, les vacances retirent toujours leurs
+       propres semaines — les deux se cumulent sans se marcher dessus. */
     it('se combine avec une semaine de vacances', () => {
       const vacances = [{ debut: '2026-12-07', fin: '2026-12-20' }];
       const resultat = taux({ aujourdhui: '2027-12-31', rentrees: RENTREES, vacances });
 
-      expect(resultat.total).toBe(SEMAINES_ANNEE_REGIONALE - 1 - 2);
+      expect(resultat.total).toBe(SEMAINES_ANNEE_REGIONALE - 2);
     });
   });
 });

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { ROLES } from 'shared/constants';
 import {
@@ -14,7 +15,6 @@ import {
   FACETTES,
   FILTRES_VIDES,
   agregerAvancement,
-  completionModules,
   dimensionComplement,
   facettesAvancement,
   filtrerAvancement,
@@ -96,7 +96,17 @@ export default function PageAvancement() {
    * pas un troisième découpage par sujet.
    */
   const [vue, setVue] = useState('graphique');
-  const [filtres, setFiltres] = useState(FILTRES_VIDES);
+  /*
+   * `?groupe=…` (répétable) et `?formateur=…` (2026-09-28) : depuis l'accueil,
+   * un groupe en retard ouvre la page filtrée sur LUI — ses modules, un par
+   * bâton. Lus une seule fois : un point de départ, le filtre reste libre.
+   */
+  const [parametres] = useSearchParams();
+  const [filtres, setFiltres] = useState(() => ({
+    ...FILTRES_VIDES,
+    groupe: parametres.getAll('groupe').filter(Boolean),
+    formateur: parametres.getAll('formateur').filter(Boolean),
+  }));
   /*
    * ═══ ⚠️ LA DATE OBSERVÉE REMBOBINE L'ÉCRAN ═══ (décision du porteur,
    * 2026-08-31 : la chronologie porte sur le graphe à BÂTONS et le tableau, pas
@@ -169,14 +179,20 @@ export default function PageAvancement() {
   );
   const total = useMemo(() => totalAvancement(retenues), [retenues]);
   // Tout l'établissement, filtres ignorés : c'est ce que la courbe — et sa carte
-  // au survol — décrivent.
+  // d'établissement en tête de graphe — décrivent.
   const totalEtablissement = useMemo(() => totalAvancement(brutes), [brutes]);
   /*
-   * ⚠️ L'ACHÈVEMENT SE CALCULE SUR LES LIGNES RETENUES, comme le reste : filtré
-   * sur la 2ᵉ année, « 12 modules achevés sur 40 » parle de cette promotion —
-   * c'est précisément la question qu'on pose en filtrant.
+   * ⚠️⚠️ L'ACHÈVEMENT NE SUIT PLUS LES FILTRES DE LA PAGE (2026-09-25, demande
+   * du porteur : « il faut afficher tous les modules même si pas encore
+   * achevé » — précisé : « toujours [tous], mais je veux ajouter un filtre en
+   * modale »). C'était le choix inverse jusqu'ici (« filtré sur la 2ᵉ année,
+   * 12 modules achevés sur 40 parle de cette promotion ») ; le porteur est
+   * revenu dessus : filtrer la page sur UN formateur ne doit plus faire
+   * disparaître les modules des autres de ce bilan, qui répond à une question
+   * différente — « où en est l'établissement, dans son ensemble ? ». `brutes`,
+   * pas `retenues` : `AchevementModules` calcule lui-même son propre décompte,
+   * et porte SON propre filtre, séparé de celui de la page.
    */
-  const completion = useMemo(() => completionModules(retenues), [retenues]);
 
   /*
    * ═══ ⚠️ L'AXE MODULE S'OUVRE SUR UN SEUL GROUPE ═══ (demande du porteur,
@@ -380,9 +396,13 @@ export default function PageAvancement() {
           alors chercher « Paramètres → Affectations » fait perdre le fil.
         */}
         {face === 'enote' && source && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <p className="text-xs text-muted-foreground">
-              D’après <span className="font-medium text-foreground">{source.fichier}</span> —{' '}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Le bouton D'ABORD (même style que « Documents », 2026-09-23) — agrandi pour
+                s'aligner sur la hauteur de l'alerte, à côté de laquelle il ne vit plus au fil du texte. */}
+            {peutImporter && <BoutonImportEnote className="h-9 text-sm" />}
+
+            <Alerte type="info" className="min-w-64 flex-1 px-3 py-1.5">
+              D’après <span className="font-medium">{source.fichier}</span> —{' '}
               {source.lignes} ligne(s), importé le{' '}
               {new Date(source.importeLe).toLocaleDateString('fr-FR', {
                 day: '2-digit',
@@ -390,8 +410,7 @@ export default function PageAvancement() {
                 year: 'numeric',
               })}
               .
-            </p>
-            {peutImporter && <BoutonImportEnote />}
+            </Alerte>
           </div>
         )}
 
@@ -414,10 +433,11 @@ export default function PageAvancement() {
           semaineCourante={requete.data?.semaineCourante ?? null}
           /* ⚠️ SOUS FILTRE, LES CHIFFRES DÉCRIVENT LA SÉLECTION et ne répètent
              donc plus la courbe, qui reste celle de tout l'établissement : ils
-             reviennent à l'écran. Sans filtre, ils sont dans la carte au survol de
-             la légende. */
+             reviennent à l'écran. Sans filtre, ils sont dans la carte
+             d'établissement en tête de graphe. */
           filtre={nombreDeFiltres(filtres) > 0}
-          completion={completion}
+          lignesAchevement={brutes}
+          intitules={intitules}
           /* En vue graphique, ils vivent à droite du graphe — cf. plus bas. */
           chiffresAilleurs={chiffresLateraux}
           anneeScolaire={requete.data?.anneeScolaire}
@@ -627,16 +647,27 @@ export default function PageAvancement() {
                    * hauteur naturelle — 199 px contre 456, un cadre court posé à
                    * côté d'un grand qui se lisait comme un reste de place.
                    */
-                  'w-full shrink-0 rounded-lg border lg:self-stretch',
+                  'w-full shrink-0 lg:self-stretch',
                   /*
                    * ⚠️ REPLIÉ, IL REND SA LARGEUR AU GRAPHE : c'est tout l'intérêt
                    * du geste. Garder 18 rem pour un seul bouton reviendrait à
                    * masquer le contenu sans rien libérer. Il ne reste qu'un rail,
                    * comme la barre latérale de l'application en mode icônes.
+                   *
+                   * ⚠️ ET SANS BORDURE, REPLIÉ (demande du porteur, 2026-09-25) :
+                   * un rectangle bordé autour du seul bouton dessinait une carte
+                   * vide, alors qu'il ne reste plus rien à y montrer.
                    */
-                  panneauTaux ? 'p-3 lg:w-72' : 'p-2 lg:w-12'
+                  panneauTaux ? 'rounded-lg border p-3 lg:w-72' : 'p-2 lg:w-12',
+                  // ⚠️ LE PANNEAU NE COMMANDE PAS LA HAUTEUR DE LA RANGÉE (2026-09-28,
+                  // demande du porteur : « aligner avec la carte du graphe ») : avec
+                  // « Les plus avancés », il devenait plus haut que le graphe. Son
+                  // contenu est posé en absolu (ci-dessous) ; c'est le graphe qui
+                  // fixe la hauteur, et le contenu défile s'il dépasse.
+                  'lg:relative'
                 )}
               >
+                <div className="lg:absolute lg:inset-0 lg:overflow-hidden lg:p-[inherit]">
                 <div
                   className={cn(
                     'flex items-center gap-2',
@@ -664,6 +695,13 @@ export default function PageAvancement() {
                     disposition="colonne"
                   />
                 )}
+
+                {/* ⚠️ LA PLACE QUI RESTAIT EN BAS DE LA CARTE (2026-09-28, demande du
+                    porteur : « puisqu'il reste un espace, affiche les trois
+                    modules les plus avancés »). Sur les lignes VISIBLES : le
+                    classement suit le filtre, comme l'anneau au-dessus. */}
+                {panneauTaux && <PlusAvances lignes={visibles} />}
+                </div>
               </aside>
             )}
           </div>
@@ -730,3 +768,39 @@ function resumerValeurs(cle, valeurs = []) {
 }
 
 
+
+/**
+ * Les trois plus avancés — réalisé ÷ prévu, parmi les lignes affichées.
+ *
+ * ⚠️ SEULES COMPTENT LES LIGNES QUI ONT UNE MASSE PRÉVUE : diviser par zéro
+ * classerait en tête un module sans heures. Sans barre de progression
+ * (2026-09-28, demande du porteur) : le rang et le pourcentage suffisent.
+ */
+function PlusAvances({ lignes }) {
+  const classees = lignes
+    .filter((ligne) => ligne.prevu > 0 && ligne.realise > 0)
+    .map((ligne) => ({ sujet: ligne.sujet, taux: Math.round((ligne.realise / ligne.prevu) * 100) }))
+    .sort((a, b) => b.taux - a.taux)
+    .slice(0, 3);
+
+  if (classees.length === 0) return null;
+
+  return (
+    <div className="mt-3 border-t pt-2">
+      <p className="mb-1.5 text-xs font-medium">Les plus avancés</p>
+      <ol className="space-y-1.5">
+        {classees.map(({ sujet, taux }, rang) => (
+          <li key={sujet} className="text-xs">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="min-w-0 truncate">
+                <span className="mr-1.5 text-muted-foreground">{rang + 1}</span>
+                {sujet}
+              </span>
+              <span className="font-medium tabular-nums">{taux} %</span>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}

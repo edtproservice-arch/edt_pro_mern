@@ -1,14 +1,8 @@
 import { useState } from 'react';
-import {
-  BarChart3,
-  ChevronDown,
-  Download,
-  MousePointerSquareDashed,
-  RotateCcw,
-  Trash2,
-} from 'lucide-react';
+import { BarChart3, ChevronDown, Download, MousePointerSquareDashed, RotateCcw, Sparkles, Trash2 } from 'lucide-react';
 import { libelleSemaine } from 'shared/domain';
 import { Button } from '@/components/ui/button';
+import { ButtonGroup } from '@/components/ui/button-group';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,6 +15,8 @@ import {
 import ConfirmationAction from '@/components/common/ConfirmationAction';
 import { Kbd } from '@/components/ui/kbd';
 import CommandesZoom from '@/components/common/CommandesZoom';
+import BoutonCompletude from './BoutonCompletude';
+import BoutonLiaison from '@/features/chronogramme/BoutonLiaison';
 import { cn } from '@/lib/utils';
 
 /**
@@ -48,6 +44,9 @@ export default function MenuGrille({
   onImporterSemaine,
   onReinitialiser,
   onStatistiques,
+  onGenerer,
+  /** Dissocié du chronogramme : la génération est coupée (2026-09-27). */
+  generationCoupee = false,
   zoom,
   onZoom,
   /*
@@ -56,6 +55,12 @@ export default function MenuGrille({
    * pas — les montrer pour qu'ils échouent en 403 serait un bouton qui ment.
    */
   outilsDirecteur = true,
+  /**
+   * Le rapport de conformité, colonne à droite de la grille (2026-09-28) :
+   * c'est la page qui le dispose ; le bouton du taux l'ouvre ou le ferme.
+   */
+  rapportOuvert = false,
+  onOuvrirRapport,
 }) {
   /*
    * ═══ ⚠️ LE MENU EST CONTRÔLÉ, ET C'EST NÉCESSAIRE ═══
@@ -120,10 +125,73 @@ export default function MenuGrille({
       </DropdownMenu>
       )}
 
+      {/*
+        ⚠️ AVANT LE GROUPE GÉNÉRER / RAPPORT (2026-09-27, demande du porteur :
+        « statistiques puis le groupe, changer l'ordre ») : une action isolée
+        n'a pas à s'intercaler entre Importer et le groupe qui la suit — elle
+        se lit mieux avant, avec les autres outils de consultation.
+      */}
       <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={onStatistiques}>
         <BarChart3 className="size-3.5" />
         Statistiques
       </Button>
+
+      {/* ── Génération automatique (F6), et son rapport de conformité ──────
+          ⚠️⚠️ SOUDÉS EN UN SEUL GROUPE (2026-09-27, demande du porteur : « le
+          bouton rapport à côté du bouton générer, en groupe ») : le rapport dit
+          l'ÉCART au chronogramme, Générer le COMBLE — les deux répondent à la
+          même question, posée dans les deux sens. `BoutonCompletude` vivait
+          jusqu'ici loin de Générer, à côté de Publier, une action sans rapport
+          avec la conformité.
+
+          ⚠️⚠️ `BoutonCompletude` RESTE HORS DE `outilsDirecteur` (correction
+          faite en écrivant ce groupe) : lui SEUL doit rester visible « de TOUS,
+          y compris d'un invité en consultation » — c'est Générer qui reste
+          réservé au directeur, COMME AVANT, pas l'inverse. Un `ButtonGroup` qui
+          ne reçoit que `BoutonCompletude` (Générer absent) se comporte comme un
+          bouton seul ; rien ne change pour cet invité.
+      */}
+      <ButtonGroup>
+        {outilsDirecteur && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 text-xs"
+            onClick={onGenerer}
+            /*
+             * ⚠️ FIGÉ QUAND L'EMPLOI EST DISSOCIÉ. La grille est alors tenue à la
+             *    main, et la génération n'a plus de source qui fasse foi : elle
+             *    écraserait la saisie sans que rien ne le signale — justement ce
+             *    que la dissociation protège. Le serveur le refuse aussi ; ce
+             *    bouton évite d'avoir à essayer pour l'apprendre.
+             */
+            disabled={enCours || generationCoupee}
+            title={
+              generationCoupee
+                ? 'Emploi du temps dissocié du chronogramme : la génération automatique est coupée. Réassociez-le pour la relancer.'
+                : undefined
+            }
+          >
+            <Sparkles className="size-3.5" />
+            Générer
+          </Button>
+        )}
+
+        {/*
+          ⚠️ ENTRE GÉNÉRER ET RAPPORT, PAS AILLEURS (demande du porteur,
+          2026-09-27) : c'est le réglage qui décide si Générer a une source qui
+          fait foi, et ce que Rapport mesure l'écart contre — sa place naturelle
+          est entre les deux. Réservé au directeur, comme Générer : lui seul
+          décide si le chronogramme fait loi.
+        */}
+        {outilsDirecteur && <BoutonLiaison className="h-8 gap-1.5 text-xs" />}
+
+        <BoutonCompletude
+          semaine={semaineCourante}
+          ouvert={rapportOuvert}
+          onOuvrir={onOuvrirRapport}
+        />
+      </ButtonGroup>
 
       {/*
         ── Zoom, sélection et réinitialisation, à droite ───────────────────────

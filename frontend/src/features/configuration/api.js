@@ -125,8 +125,19 @@ export function exporterCarte(carte) {
  * `version` : celle de la base que l'écran a lue (étape d3). Absente — c'est
  * le cas de l'assistant de configuration — l'écriture passe sans condition.
  */
-export function enregistrerCarte(carte, version) {
-  return api.post('/api/v2/base/carte', version === undefined ? carte : { ...carte, version });
+export function enregistrerCarte(carte, version, confirmerSuppressions = false) {
+  /*
+   * ⚠️ `confirmerSuppressions` N'EST ENVOYÉ QUE S'IL EST VRAI (2026-09-22).
+   *    Retirer un groupe de la carte détruit sa planification, ses séances et
+   *    le rattachement de ses stagiaires : le serveur refuse en 409 tant que ce
+   *    drapeau est absent, et rend le détail chiffré de ce qui partirait.
+   *    L'envoyer « par confort » reviendrait à désarmer le garde-fou.
+   */
+  return api.post('/api/v2/base/carte', {
+    ...carte,
+    ...(version === undefined ? {} : { version }),
+    ...(confirmerSuppressions ? { confirmerSuppressions: true } : {}),
+  });
 }
 
 /* ─── Étape 2 : formateurs ──────────────────────────────────────────────── */
@@ -150,6 +161,16 @@ export function corrigerFormateurs(corrections) {
   return api.patch('/api/v2/base/formateurs', { formateurs });
 }
 
+/**
+ * Ajoute, met à jour et retire des formateurs directement dans la base.
+ *
+ * @param {{ajouter?: Array<{nom: string, matricule?: string, email?: string, masseHoraire?: number}>,
+ *          retirer?: string[]}} modification  `retirer` : des `nomComplet`
+ */
+export function modifierListeFormateurs({ ajouter = [], retirer = [] }) {
+  return api.post('/api/v2/base/formateurs/liste', { ajouter, retirer });
+}
+
 /* ─── Étape 3 : calendrier ──────────────────────────────────────────────── */
 
 /**
@@ -161,8 +182,17 @@ export function chargerJoursFeries(anneeScolaire) {
   return api.get(`/api/v2/calendrier/jours-feries?annee=${anneeScolaire}`);
 }
 
-export function enregistrerCalendrier(calendrier) {
-  return api.put('/api/v2/calendrier', calendrier);
+/*
+ * ⚠️ `confirmerSuppressions` (2026-09-23) : de nouvelles vacances qui recouvrent
+ * des séances sont refusées en 409 « PERIODES_SUPPRESSIONS » ; l'écran renvoie la
+ * même saisie avec ce drapeau une fois la question lue. Envoyé seulement s'il est
+ * vrai, comme pour la carte.
+ */
+const drapeauConfirmation = ({ confirmerSuppressions } = {}) =>
+  confirmerSuppressions ? { confirmerSuppressions: true } : {};
+
+export function enregistrerCalendrier(calendrier, options) {
+  return api.put('/api/v2/calendrier', { ...calendrier, ...drapeauConfirmation(options) });
 }
 
 /** Calendrier enregistré : périodes de vacances et ajustements de fériés. */
@@ -178,7 +208,10 @@ export function chargerCalendrier() {
  * personne d'autre ne voit encore la page — et écrit sans condition.
  */
 export function enregistrerEspaces(espaces, version) {
-  return api.put('/api/v2/etablissements/courant/espaces', { espaces, version });
+  // ⚠️ Un entier, sinon rien : passée telle quelle à `useMutation`, cette fonction reçoit
+  // en second argument l'objet de contexte de TanStack Query — et l'envoyait au serveur.
+  const versionLue = Number.isInteger(version) ? version : undefined;
+  return api.put('/api/v2/etablissements/courant/espaces', { espaces, version: versionLue });
 }
 
 /* ─── Clôture ───────────────────────────────────────────────────────────── */
@@ -190,6 +223,16 @@ export function chargerEtablissementCourant() {
 }
 
 /**
+ * Tous les établissements auxquels le compte connecté a accès — pour le
+ * choisir après la connexion, ou en changer sans se déconnecter, quand un
+ * compte (formateur mutualisé, directeur en supervisant plusieurs…) en
+ * compte plus d'un. ← `GET /api/v2/etablissements`.
+ */
+export function chargerMesEtablissements() {
+  return api.get('/api/v2/etablissements');
+}
+
+/**
  * Nom abrégé (étape 5).
  *
  * Il figure sur les documents imprimés, là où le nom officiel ne tient pas :
@@ -197,6 +240,14 @@ export function chargerEtablissementCourant() {
  */
 export function enregistrerNomAbrege(nomAbrege) {
   return api.patch('/api/v2/etablissements/courant/nom-abrege', { nomAbrege });
+}
+
+/**
+ * Où en est la configuration : ce qui est FAIT, lu dans les données du serveur.
+ * → `{ etapes: {identite, espaces, base, formateurs, carte}, manquantes: string[] }`
+ */
+export function chargerProgressionConfiguration() {
+  return api.get('/api/v2/etablissements/courant/configuration-progression');
 }
 
 export function terminerConfiguration() {
@@ -213,13 +264,21 @@ export function chargerContexte() {
  * Remplacement complet : l'écran envoie la liste telle qu'affichée, une période
  * retirée doit disparaître.
  */
-export function enregistrerStages(stages, version) {
-  return api.put('/api/v2/etablissements/courant/stages', { stages, version });
+export function enregistrerStages(stages, version, options) {
+  return api.put('/api/v2/etablissements/courant/stages', {
+    stages,
+    version,
+    ...drapeauConfirmation(options),
+  });
 }
 
 /** Formations suivies par les formateurs — ils y sont indisponibles. */
-export function enregistrerFormations(formations, version) {
-  return api.put('/api/v2/etablissements/courant/formations', { formations, version });
+export function enregistrerFormations(formations, version, options) {
+  return api.put('/api/v2/etablissements/courant/formations', {
+    formations,
+    version,
+    ...drapeauConfirmation(options),
+  });
 }
 
 /**

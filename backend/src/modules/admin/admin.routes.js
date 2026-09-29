@@ -1,6 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { changementStatutSchema, listeUtilisateursSchema } from 'shared/schemas';
+import {
+  changementStatutSchema,
+  listeUtilisateursSchema,
+  reinitialisationMotDePasseSchema,
+} from 'shared/schemas';
 import { ROLES } from 'shared/constants';
 import { validate } from '../../middleware/validate.js';
 import { authenticate } from '../../middleware/authenticate.js';
@@ -68,12 +72,15 @@ router.patch(
 
 router.post(
   '/utilisateurs/:id/mot-de-passe',
-  validate({ params: identifiantMongo }),
+  validate({ params: identifiantMongo, body: reinitialisationMotDePasseSchema }),
   async (req, res, next) => {
     try {
-      await service.reinitialiserMotDePasse(req.params.id);
-      // Le mot de passe provisoire part par e-mail, jamais dans la réponse.
-      res.json({ success: true, message: 'Nouveau mot de passe envoyé par e-mail.' });
+      // `motDePasse` en retour n'est présent que pour les comptes sans adresse
+      // réelle — le service décide, la route se contente de relayer.
+      res.json({
+        success: true,
+        ...(await service.reinitialiserMotDePasse(req.params.id, req.body.motDePasse)),
+      });
     } catch (error) {
       next(error);
     }

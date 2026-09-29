@@ -1,4 +1,5 @@
 import { api } from '@/lib/apiClient';
+import { estPagePublique } from '@/lib/pagesPubliques';
 
 /**
  * Battement de cœur — ← `public/api-interceptor.js` (bloc 0) de l'existant.
@@ -30,6 +31,13 @@ export function demarrerBattementCoeur() {
 
   const battre = () => {
     if (document.visibilityState !== 'visible') return;
+    /*
+     * ⚠️ PAS SUR UNE PAGE PUBLIQUE : un visiteur n'a pas de session, la route y
+     * répondrait 401 à chaque battement. Le battement est monté à la racine, donc il
+     * tourne sur la connexion et l'inscription aussi — et cette requête, inutile, était
+     * ce qui renvoyait le visiteur vers la connexion (voir `gererExpirationsession`).
+     */
+    if (estPagePublique(window.location.pathname)) return;
     /*
      * ⚠️ L'ÉCHEC EST AVALÉ : une session expirée ou un réseau coupé ne doivent
      * pas remplir la console d'erreurs pour un signal accessoire. Rien de ce que

@@ -178,6 +178,21 @@ function ouvrir() {
           planifierReconnexion();
           return;
         }
+        /*
+         * ⚠️ PAS DEUX RÉAUTHENTIFICATIONS EN MOINS DE DIX SECONDES SANS DÉLAI. Un
+         * rafraîchissement réussi pose de nouveaux jetons : la socket rouverte doit être
+         * acceptée. Si le serveur la refuse ENCORE aussitôt, le cycle « refus →
+         * rafraîchissement → réouverture » n'avait aucun frein — des dizaines de requêtes
+         * par seconde, comptées par la limitation de débit. Le second passage rapide
+         * repasse donc par l'attente progressive des reconnexions ordinaires.
+         */
+        const maintenant = Date.now();
+        const tropTot = maintenant - derniereReauthentification < 10_000;
+        derniereReauthentification = maintenant;
+        if (tropTot) {
+          planifierReconnexion();
+          return;
+        }
         tentative = 0;
         ouvrir();
       });
@@ -187,6 +202,8 @@ function ouvrir() {
     planifierReconnexion();
   };
 }
+
+let derniereReauthentification = 0;
 
 function planifierReconnexion() {
   if (pages.size === 0 || minuteurReconnexion) return;

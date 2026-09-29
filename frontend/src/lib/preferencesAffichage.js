@@ -11,7 +11,33 @@ import { creerStockage } from './stockageLocal';
 const AFFICHAGE = creerStockage('edtpro.affichage', { petitTexte: false, pleineLargeur: false });
 
 export const lireAffichage = AFFICHAGE.obtenir;
-export const useAffichage = AFFICHAGE.utiliser;
+
+/**
+ * Pages TOUJOURS en pleine largeur, quel que soit le réglage (demande du
+ * porteur) : leurs grilles — semaines du chronogramme, tableau des
+ * affectations — sont illisibles dans une colonne bornée.
+ */
+const PAGES_PLEINE_LARGEUR = [
+  '/app/parametres/chronogramme',
+  '/app/parametres/affectations',
+  '/app/parametres/carte',
+];
+
+export function pleineLargeurImposee(pathname = '') {
+  return PAGES_PLEINE_LARGEUR.some(
+    (page) => pathname === page || pathname.startsWith(`${page}/`)
+  );
+}
+
+/**
+ * Le réglage tel qu'il s'applique à la page `pathname` : la préférence de
+ * l'utilisateur, sauf sur les pages qui imposent la pleine largeur.
+ */
+export function useAffichage(pathname) {
+  const affichage = AFFICHAGE.utiliser();
+  if (!pleineLargeurImposee(pathname) || affichage.pleineLargeur) return affichage;
+  return { ...affichage, pleineLargeur: true };
+}
 
 export function basculerAffichage(clef) {
   // ⚠️ Un objet NEUF à chaque bascule : `useSyncExternalStore` compare par

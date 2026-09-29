@@ -57,6 +57,10 @@ function GrilleEmploi({
   contexte = CONTEXTE_VIDE,
   fiches,
   posees,
+  // ⚠️ SEULEMENT POUR LE BADGE D'UNE CASE (2026-09-24) — `posees` reste le
+  // total de l'année, qui juge un quota ; cet index rend le cumul ATTEINT À LA
+  // SÉANCE EXACTE de la case. Voir `Indicateurs` dans `CaseEmploi`.
+  poseesParSeance,
   selection = SELECTION_VIDE,
   brouillons = BROUILLONS_VIDES,
   conflits = CONFLITS_VIDES,
@@ -66,6 +70,8 @@ function GrilleEmploi({
   seanceEnDeplacement = null,
   onChanger,
   onOuvrirCase,
+  verrouChronogramme = false,
+  onVerrou,
   onFermerCase,
   onDebuterSelection,
   onEtendreSelection,
@@ -312,7 +318,26 @@ function GrilleEmploi({
    */
   const occupationDuSujet = useCallback(
     (sujet, cellule, contenu) => {
-      if (axe !== 'groupe' || contenu) return null;
+      if (contenu) return null;
+
+      /*
+       * ═══ ⚠️ UN FORMATEUR MUTUALISÉ QUI ENSEIGNE DANS UN AUTRE ÉTABLISSEMENT : CASE FIGÉE ═══
+       * (2026-09-21, demande du porteur : « vérifier les chevauchements des formateurs mutualisés,
+       * et figer ces séances ».) La semaine dit, par jour, quels créneaux un formateur commun a déjà
+       * ailleurs (`formateursAilleurs`). La case se ferme avant le clic, comme celle d'un formateur
+       * en formation, et nomme l'établissement. Le serveur refuse de toute façon la pose.
+       *
+       * ⚠️ JAMAIS SUR UNE CASE REMPLIE (règle déjà écrite plus haut) : on doit pouvoir retirer une
+       * séance posée avant que le formateur ne devienne mutualisé.
+       */
+      if (axe === 'formateur') {
+        const ailleurs = (etatDuJour.get(cellule.jour)?.formateursAilleurs ?? []).find(
+          (o) => o.matricule === sujet && o.seance === cellule.seance && o.periode === periode
+        );
+        return ailleurs ? { par: ailleurs.par, groupe: ailleurs.groupe, ailleurs: true } : null;
+      }
+
+      if (axe !== 'groupe') return null;
 
       const surLeCreneau = parCreneau.get(`${cellule.jour}||${cellule.seance}||${periode}`);
       if (!surLeCreneau?.length) return null;
@@ -323,7 +348,7 @@ function GrilleEmploi({
 
       return conflit ? { par: conflit.seance.groupe, module: conflit.seance.module } : null;
     },
-    [axe, parCreneau, periode, contexte.groupesFq]
+    [axe, parCreneau, periode, contexte.groupesFq, etatDuJour]
   );
 
   /*
@@ -449,7 +474,34 @@ function GrilleEmploi({
               seance,
               enEdition,
               etat: etatDuJour.get(cellule.jour),
-              seanceDuSujet: rang === 0 ? { total: ligne.heures, niveau: ligne.niveau } : null,
+              /*
+               * ⚠️ LE BADGE D'HEURES DIT LA CHARGE DE CE QUE LA CASE NOMME, pas
+               * celle de la ligne (2026-09-19, signalé par le porteur : « la
+               * liste dit GE102 (GC) 37,5 h, la case dit 10 h »).
+               *
+               * Il affichait `ligne.heures` — la charge du FORMATEUR de la ligne,
+               * déjà écrite dans l'en-tête à gauche, donc répétée à l'identique
+               * sur chacune de ses cases. Posé sous le nom d'un GROUPE, ce
+               * « 10 h » se lisait comme les heures de ce groupe, alors que la
+               * liste déroulante du même groupe en disait 37,5 : deux chiffres
+               * exacts pour deux grandeurs différentes, présentés pareil.
+               *
+               * La case nomme le groupe (vue par formateur) ou le formateur (vue
+               * par groupe) : c'est SA charge qu'elle affiche, celle-là même que
+               * la liste propose — `chargeGroupes` / `chargeFormateurs`, les
+               * mêmes Maps. La charge de la ligne reste dans l'en-tête.
+               */
+              seanceDuSujet:
+                rang === 0 && seance
+                  ? {
+                      total:
+                        Math.round(
+                          ((axe === 'groupe' ? chargeFormateurs : chargeGroupes).get(
+                            axe === 'groupe' ? seance.formateurMatricule : seance.groupe
+                          ) ?? 0) * 100
+                        ) / 100,
+                    }
+                  : null,
               absence: absenceDuSujet(ligne.sujet, cellule.jour),
               occupation: occupationDuSujet(ligne.sujet, cellule, seance),
               // En vue par groupe, c'est le formateur DE LA SÉANCE qui compte.
@@ -486,6 +538,7 @@ function GrilleEmploi({
                 contraintes: indexContraintes,
                 jour: cellule.jour,
                 creneau: cellule.seance,
+                periode,
               }),
             };
           })
@@ -546,7 +599,10 @@ function GrilleEmploi({
      * qu'aucune erreur ne le signale. `clip` coupe SANS créer ce conteneur :
      * l'en-tête s'accroche au vrai défilement, celui de la page.
      */
-    <div className="overflow-clip rounded-lg border" style={{ zoom: zoom / 100 }}>
+    <div
+      className={cn('overflow-clip rounded-lg border')}
+      style={{ zoom: zoom / 100 }}
+    >
       <table className="w-full table-fixed select-none border-separate border-spacing-0 text-xs">
         <colgroup>
           <col className="w-[6.5rem]" />
@@ -754,7 +810,7 @@ function GrilleEmploi({
                       axe={axe}
                       etat={p.etat}
                       fiches={fiches}
-                      posees={posees}
+                      poseesParSeance={poseesParSeance}
                       seanceDuSujet={p.seanceDuSujet}
                       selectionnee={selection.has(cle)}
                       enConflit={conflits.has(cle)}
@@ -819,6 +875,8 @@ function GrilleEmploi({
                        */
                       onChanger={onChanger}
                       onOuvrir={onOuvrirCase}
+                      verrou={verrouChronogramme}
+                      onVerrou={onVerrou}
                       onFermer={onFermerCase}
                       onDeplacer={onDeplacer}
                       onSelectionner={onSelectionner}
@@ -1035,6 +1093,7 @@ function optionsDeLaCase({
   contraintes,
   jour,
   creneau,
+  periode,
 }) {
   /*
    * ⚠️ LE CONFLIT SE CHERCHE AVEC `detecterConflits`, LA MÊME FONCTION QUE LE
@@ -1052,7 +1111,7 @@ function optionsDeLaCase({
       (conflit) => conflit.type === genre
     );
 
-  if (intitule === 'Salle') {
+  if (intitule === 'Espace') {
     /*
      * ⚠️ L'ABSENCE SE MARQUE DEPUIS LA LIGNE « SALLE », comme dans l'existant où
      * l'on y saisissait « ABSENT ». La différence : elle ne REMPLACE plus la
@@ -1094,10 +1153,37 @@ function optionsDeLaCase({
        * sont pas des salles ; TEAMS n'est pas un local, et dix séances peuvent
        * l'employer au même moment — c'est déjà ce que dit `estSalleReelle`.
        */
-      const pris = estSalleReelle(option.valeur) && dejaPris('salle', option.valeur, 'salle');
+      const reelle = estSalleReelle(option.valeur);
+      const pris = reelle && dejaPris('salle', option.valeur, 'salle');
+      /*
+       * ═══ ⚠️ UN ESPACE MUTUALISÉ DÉJÀ PRIS AILLEURS : OPTION FIGÉE (2026-09-25,
+       * demande du porteur : « en select espace il faut figé ») ═══
+       * Le pendant, pour une salle, de ce que fait déjà `formateursAilleurs` pour
+       * un formateur mutualisé : fermer l'option AVANT le clic plutôt que de
+       * laisser choisir ce que le serveur refusera de toute façon au clic sur
+       * « Enregistrer ». `espacesAilleurs` porte, jour par jour, les créneaux où
+       * une pièce partagée a déjà cours chez l'autre établissement.
+       *
+       * ⚠️ COMPARAISON EN MAJUSCULES, comme `cle()` côté serveur : les deux
+       * établissements peuvent orthographier différemment la casse du même
+       * espace (« Salle 8 » vs « salle 8 »).
+       */
+      const ailleurs =
+        reelle &&
+        !pris &&
+        (etatDuJour?.espacesAilleurs ?? []).find(
+          (o) =>
+            o.salle.trim().toUpperCase() === option.valeur.trim().toUpperCase() &&
+            o.seance === creneau &&
+            o.periode === periode
+        );
       const attribuee = attribuees.includes(option.valeur);
-      if (!pris && !attribuee) return option;
-      return { ...option, desactive: pris, meta: { pris, attribuee } };
+      if (!pris && !ailleurs && !attribuee) return option;
+      return {
+        ...option,
+        desactive: pris || Boolean(ailleurs),
+        meta: { pris, attribuee, occupeAilleurs: ailleurs ? ailleurs.par : null },
+      };
     });
   }
 
@@ -1112,15 +1198,21 @@ function optionsDeLaCase({
        * quelqu'un qui n'est pas dans l'établissement ce jour-là.
        */
       const absent = (etatDuJour?.formations ?? []).some((f) => memeNom(f.matricule, option.valeur));
-      const pris = !absent && dejaPris('formateurMatricule', option.valeur, 'formateur');
+      // Un formateur mutualisé qui a cours dans un autre établissement à ce créneau (2026-09-21).
+      const ailleurs =
+        !absent &&
+        (etatDuJour?.formateursAilleurs ?? []).some(
+          (o) => o.matricule === option.valeur && o.seance === creneau && o.periode === periode
+        );
+      const pris = !absent && !ailleurs && dejaPris('formateurMatricule', option.valeur, 'formateur');
 
       return {
         ...option,
-        desactive: absent || pris,
+        desactive: absent || ailleurs || pris,
         meta: {
           heures: chargeFormateurs?.get(option.valeur) ?? 0,
           pris,
-          absence: absent ? 'en formation' : null,
+          absence: absent ? 'en formation' : ailleurs ? 'occupé ailleurs' : null,
           // Signalé, jamais éteint : la décision reste au directeur.
           aEviter: creneauAEviter(contraintes, option.valeur, jour, creneau),
         },

@@ -63,7 +63,7 @@ export async function definir(etablissementId, anneeScolaire, { formateur, espac
   // et le formateur paraîtrait sans restriction.
   const inconnues = (espaces ?? []).filter((salle) => !salles.includes(salle));
   if (inconnues.length > 0) {
-    throw badRequest(`Salle(s) inconnue(s) : ${inconnues.join(', ')}`, { code: 'SALLE_INCONNUE' });
+    throw badRequest(`Espace(s) inconnu(s) : ${inconnues.join(', ')}`, { code: 'SALLE_INCONNUE' });
   }
 
   const propre = normaliserContraintes({ espaces, indisponibilites }, salles);

@@ -126,4 +126,10 @@ seanceSchema.index({ etablissementId: 1, anneeScolaire: 1, module: 1, groupe: 1 
 /** Absences (F8) et consultation formateur (F14). */
 seanceSchema.index({ etablissementId: 1, formateurMatricule: 1, date: 1 });
 
+/**
+ * Un formateur mutualisé (affecté dans plusieurs établissements) ne peut pas être à deux endroits :
+ * le contrôle de chevauchement cherche ses séances dans LES AUTRES établissements (2026-09-21).
+ */
+seanceSchema.index({ formateurMatricule: 1, anneeScolaire: 1, semaine: 1, jour: 1, seance: 1 });
+
 export const Seance = mongoose.model('Seance', seanceSchema);

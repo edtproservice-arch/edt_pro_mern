@@ -123,7 +123,7 @@ describe('Import e-note', () => {
     expect(trace.lignes).toHaveLength(2);
   });
 
-  it('signale les formateurs dont la masse horaire est déduite', async () => {
+  it('donne la masse statutaire par défaut aux formateurs nouveaux', async () => {
     const fichier = await classeurEnote([ligneEnote()]);
 
     const reponse = await request(app)
@@ -131,11 +131,14 @@ describe('Import e-note', () => {
       .set('Cookie', cookies)
       .attach('fichier', fichier, 'base.xlsx');
 
-    // 60 h affectées, aucune masse saisie : la valeur est déduite et doit être
-    // vérifiée par l'établissement.
+    // 60 h affectées, aucune masse saisie : 910 h par défaut (matricule
+    // numérique), PAS la somme des affectations — à vérifier par l'établissement.
     expect(reponse.body.nouveauxFormateurs).toEqual([
-      { matricule: '9863', nomComplet: 'AHMED CHERKAOUI', masseHoraire: 60 },
+      { matricule: '9863', nomComplet: 'AHMED CHERKAOUI', masseHoraire: 910, heuresAffectees: 60 },
     ]);
+
+    const base = await Base.findOne({ etablissementId: etablissement.id });
+    expect(base.formateurs[0].masseHoraire).toBe(910);
   });
 
   it("n'écrase pas une masse horaire déjà corrigée lors d'un réimport", async () => {
@@ -148,7 +151,7 @@ describe('Import e-note', () => {
     await request(app)
       .patch('/api/v2/base/formateurs/masse-horaire')
       .set('Cookie', cookies)
-      .send({ matricule: '9863', masseHoraire: 910 });
+      .send({ matricule: '9863', masseHoraire: 720 });
 
     const reimport = await request(app)
       .post('/api/v2/base/import')
@@ -161,7 +164,7 @@ describe('Import e-note', () => {
     expect(reimport.body.nouveauxFormateurs).toEqual([]);
 
     const base = await Base.findOne({ etablissementId: etablissement.id });
-    expect(base.formateurs[0].masseHoraire).toBe(910);
+    expect(base.formateurs[0].masseHoraire).toBe(720);
   });
 
   it('remplace la base au réimport, sans accumuler', async () => {

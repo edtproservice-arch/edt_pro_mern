@@ -12,10 +12,11 @@
  */
 
 /** Une séance PRÉSENTIELLE posée. */
-export const FOND_PRESENTIEL = 'bg-accent-green/15';
+/* En sombre, un voile plus léger : à 15 % la grille entière virait au vert. */
+export const FOND_PRESENTIEL = 'bg-accent-green/15 dark:bg-accent-green/[0.08]';
 
 /** Une séance SYNCHRONE — le violet Teams, comme sur la carte d'affectations. */
-export const FOND_SYNCHRONE = 'bg-accent-purple/25';
+export const FOND_SYNCHRONE = 'bg-accent-purple/25 dark:bg-accent-purple-mid/[0.12]';
 
 /** Vacances : la colonne est fermée pour tout l'établissement. */
 export const FOND_VACANCES = 'bg-primary/10';
@@ -172,7 +173,9 @@ export const SEMAINE_PLEINE = 30;
  */
 export function couleurCharge(total, seuil = SEMAINE_PLEINE) {
   if (!total) return 'text-muted-foreground';
-  if (total < seuil) return 'text-primary bg-primary/10';
+  // En sombre, le bleu des TEXTES est le bleu doux (`sky-deep`) : `primary` est
+  // calibré pour porter du blanc sur un bouton, en texte il éblouit.
+  if (total < seuil) return 'text-primary bg-primary/10 dark:text-accent-sky-deep';
   if (total === seuil) return 'text-success bg-success/10';
   return 'text-destructive bg-destructive/10';
 }
@@ -187,7 +190,7 @@ export function couleurCharge(total, seuil = SEMAINE_PLEINE) {
 export function couleurChargeTexte(total, seuil = SEMAINE_PLEINE) {
   return couleurCharge(total, seuil)
     .split(' ')
-    .filter((classe) => classe.startsWith('text-'))
+    .filter((classe) => classe.startsWith('text-') || classe.startsWith('dark:text-'))
     .join(' ');
 }
 

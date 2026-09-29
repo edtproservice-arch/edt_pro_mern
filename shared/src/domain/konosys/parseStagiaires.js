@@ -28,6 +28,21 @@ export const COLONNES_KONOSYS = {
   codeDiplome: ['CodeDiplome', 'codediplome1'],
   site: ['Site'],
   libelleLong: ['LibelleLong'],
+  /*
+   * ═══ MOTIF D'ADMISSION ET TÉLÉPHONE (2026-09-21, demande du porteur : « je vais les utiliser
+   * après ») ═══ Lus et CONSERVÉS, sans encore servir : « Concours », « Admission sur dossier »,
+   * « Passerelle » ; le numéro du stagiaire. ⚠️ Konosys écrit « NTelelephone » (avec deux « le ») —
+   * l'orthographe correcte est acceptée aussi, au cas où l'export serait corrigé.
+   */
+  motifAdmission: ['MotifAdmission'],
+  telephone: ['NTelelephone', 'NTelephone'],
+  /*
+   * ═══ LIEU DE NAISSANCE ET DATE D'INSCRIPTION (2026-09-27, demande du porteur :
+   * « je vais les utiliser après ») ═══ Lus et CONSERVÉS, sans encore servir —
+   * même traitement que le motif d'admission et le téléphone ci-dessus.
+   */
+  lieuNaissance: ['LieuNaissance'],
+  dateInscription: ['DateInscription'],
 };
 
 const texte = (valeur) => String(valeur ?? '').trim();
@@ -120,6 +135,13 @@ export function lireStagiaires(lignes = []) {
         cin: champ(ligne, COLONNES_KONOSYS.cin),
         dateNaissance: champ(ligne, COLONNES_KONOSYS.dateNaissance),
         site: champ(ligne, COLONNES_KONOSYS.site),
+        motifAdmission: champ(ligne, COLONNES_KONOSYS.motifAdmission),
+        // ⚠️ EN TEXTE : un numéro commence par 0, et une conversion en nombre le perdrait.
+        telephone: champ(ligne, COLONNES_KONOSYS.telephone),
+        lieuNaissance: champ(ligne, COLONNES_KONOSYS.lieuNaissance),
+        // ⚠️ EN TEXTE elle aussi, comme `dateNaissance` : l'existant y stocke des
+        // formats hétérogènes, pas toujours convertibles en `Date`.
+        dateInscription: champ(ligne, COLONNES_KONOSYS.dateInscription),
         /*
          * ⚠️ L'adresse n'est PAS lue dans le fichier : `upload.php:74` la
          * FABRIQUE à partir du matricule. Konosys n'en fournit pas.
@@ -136,6 +158,18 @@ export function lireStagiaires(lignes = []) {
 
     // Ligne supplémentaire du même stagiaire : on ajoute son groupe…
     if (groupe !== '' && !existant.groupes.includes(groupe)) existant.groupes.push(groupe);
+
+    // …et on complète ce que la première ligne n'avait pas (motif, téléphone), sans rien écraser.
+    if (existant.motifAdmission === '') {
+      existant.motifAdmission = champ(ligne, COLONNES_KONOSYS.motifAdmission);
+    }
+    if (existant.telephone === '') existant.telephone = champ(ligne, COLONNES_KONOSYS.telephone);
+    if (existant.lieuNaissance === '') {
+      existant.lieuNaissance = champ(ligne, COLONNES_KONOSYS.lieuNaissance);
+    }
+    if (existant.dateInscription === '') {
+      existant.dateInscription = champ(ligne, COLONNES_KONOSYS.dateInscription);
+    }
 
     /*
      * …et la ligne DIPLÔMANTE l'emporte pour l'identité scolaire. Sans cela, un

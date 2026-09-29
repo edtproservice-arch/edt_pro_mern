@@ -98,7 +98,12 @@ export default function PageFormateurs() {
     <>
       <EnTetePartage page="formateurs" clesARelire={[['base']]} />
       <CadreReglage titre="Formateurs" {...ecriture}>
-        <EtapeFormateurs onModification={setCorrections} lectureSeule={lectureSeule} avecContraintes />
+        <EtapeFormateurs
+          onModification={setCorrections}
+          lectureSeule={lectureSeule}
+          avecContraintes
+          avecAjout
+        />
       </CadreReglage>
     </>
   );

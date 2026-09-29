@@ -472,7 +472,9 @@ export async function listerAppareils(utilisateurId, jetonCourant) {
   return appareils.map((a) => ({
     id: a.id,
     appareil: a.appareil,
-    ip: a.ip,
+    // ⚠️ PAS D'ADRESSE IP dans la liste (2026-09-21, demande du porteur : « annuler carrément ») :
+    // en développement elle vaut toujours `::1`, et l'écran n'en a plus l'usage. Elle reste
+    // enregistrée avec la session, pour la sécurité et l'audit.
     derniereActivite: a.derniereActivite,
     creeLe: a.createdAt,
     courant: a.empreinte === empreinteCourante,

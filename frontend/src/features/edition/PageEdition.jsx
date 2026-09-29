@@ -1,6 +1,16 @@
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Moon, Printer, Sun } from 'lucide-react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import {
+  ChevronDown,
+  ClipboardCheck,
+  File,
+  FileSpreadsheet,
+  FileText,
+  Moon,
+  Printer,
+  Sun,
+} from 'lucide-react';
 import {
   AXES_CONSULTATION,
   SEANCES_JOUR,
@@ -16,16 +26,32 @@ import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import Alerte from '@/components/common/Alerte';
 import CommandesZoom from '@/components/common/CommandesZoom';
 import CadreReglage from '@/features/parametres/CadreReglage';
-import { chargerContexte, chargerSemaine, chargerSemaines } from '@/features/emploi/api';
+import {
+  chargerContexte,
+  chargerSemaine,
+  chargerSemaines,
+  exporterEmargement,
+  exporterEmploiGlobal,
+  exporterEmploiIndividuel,
+} from '@/features/emploi/api';
 import NavigationSemaine from '@/features/emploi/NavigationSemaine';
 import { useSemaineSuivie } from '@/features/emploi/useSemaineSuivie';
 import AvatarsPresence from '@/features/tempsReel/AvatarsPresence';
 import BoutonPartager from '@/features/partages/BoutonPartager';
 import { recupererSession } from '@/features/auth/api';
-import { ROLES } from 'shared/constants';
+import { JOURS, ROLES } from 'shared/constants';
 import { PortailEnTete } from '@/components/layout/enTetePage';
 import { useSalleEmploi } from '@/features/tempsReel/useSalleEmploi';
 import { useAnneeActive } from '@/lib/anneeActive';
@@ -55,10 +81,14 @@ import { ChoixSujets, FiltreGroupes, FiltreSeances } from './FiltresDetaillee';
  *   - une vue GLOBALE, tout le monde d'un coup, faite pour l'impression ;
  *   - une vue DÉTAILLÉE, un sujet à la fois, cherché par son nom.
  *
- * ⚠️ LES SIX EXPORTS PDF DE L'EXISTANT NE SONT PAS ICI (décision du porteur) :
- * ils partent en Phase 10 avec les autres documents — badges, convocations,
- * émargement — pour une seule décision « client ou serveur ». L'impression du
- * navigateur couvre le besoin courant en attendant.
+ * ⚠️ LE TÉLÉCHARGEMENT WORD/PDF/EXCEL EST ICI, DEPUIS 2026-09-23 (demande du
+ * porteur) : `exportGlobal.service.js` (vue globale) ou `exportIndividuel.service.js`
+ * (vue détaillée, une page par sujet affiché) régénèrent le canevas transmis
+ * par l'établissement — mêmes données, mêmes filtres que l'écran — sous le
+ * MÊME bouton, celui qui sert aussi l'impression navigateur : « le bouton ne
+ * se double pas, il regarde la vue affichée » (demande du porteur, 2026-09-24).
+ * Les badges, convocations et feuilles d'émargement de l'existant restent
+ * hors périmètre.
  */
 export default function PageEdition() {
   const anneeChoisie = useAnneeActive();
@@ -211,6 +241,42 @@ export default function PageEdition() {
     seances,
     filtre,
   ]);
+
+  /*
+   * ═══ TÉLÉCHARGER : LE MÊME BOUTON, LA MÊME FONCTIONNALITÉ QU'« IMPRIMER »
+   * ═══ (2026-09-23, demande du porteur.) « Imprimer » reste l'impression du
+   * navigateur (rapide, aucun aller-retour serveur) ; « Télécharger » produit
+   * le MÊME contenu — même axe, mêmes filtres — au format Word, PDF ou Excel,
+   * en respectant le canevas transmis par l'établissement.
+   *
+   * ⚠️ UN SEUL BOUTON POUR LES DEUX VUES (2026-09-24, demande du porteur :
+   * « n'ajoute pas un autre bouton — le même bouton Imprimer, en vue globale
+   * télécharge la globale, en vue détaillée télécharge la détaillée, selon
+   * le filtre »). `exportGlobal` reconstruit la grille JOURS-EN-COLONNES ;
+   * `exportIndividuel` reconstruit la vue détaillée, UNE PAGE PAR SUJET
+   * actuellement affiché (`affiches` — les mêmes filtres pilotent les deux
+   * services côté serveur). `periode` ne vaut que pour la globale : la
+   * détaillée décide seule, sujet par sujet, de sa colonne S5.
+   */
+  const telechargement = useMutation({
+    mutationFn: (format) =>
+      detaillee
+        ? exporterEmploiIndividuel(semaine, { format, axe, choisis, filtre, filtreGroupes })
+        : exporterEmploiGlobal(semaine, { format, axe, periode, choisis, filtre, filtreGroupes }),
+    onError: (erreur) => toast.error('Téléchargement impossible', { description: erreur.message }),
+  });
+
+  /*
+   * ═══ ÉMARGEMENT JOURNALIER (2026-09-24, demande du porteur : « je veux
+   * ajouter l'emploi du temps journalier, voici le canvas ») ═══
+   * Un second bouton, à côté du précédent : il ne dépend NI de l'axe NI des
+   * filtres de cet écran — l'émargement est TOUJOURS par formateur, pour UN
+   * jour choisi dans le menu, quelle que soit la vue affichée à l'écran.
+   */
+  const telechargementEmargement = useMutation({
+    mutationFn: ({ jour, format }) => exporterEmargement(semaine, { jour, format }),
+    onError: (erreur) => toast.error('Téléchargement impossible', { description: erreur.message }),
+  });
 
   const changerAxe = (valeur) => {
     setAxe(valeur);
@@ -418,26 +484,98 @@ export default function PageEdition() {
           <CommandesZoom zoom={zoom} onZoom={setZoom} />
 
           {/*
-            ⚠️ « IMPRIMER » NE S'AFFICHE QUE S'IL Y A QUELQUE CHOSE À IMPRIMER :
-            posé à côté d'un « aucune correspondance », il proposerait d'imprimer
-            une page vide.
+            ⚠️ LE BOUTON NE S'AFFICHE QUE S'IL Y A QUELQUE CHOSE À SORTIR :
+            posé à côté d'un « aucune correspondance », il proposerait de
+            télécharger une page vide.
 
-            ⚠️ L'IMPRESSION DU NAVIGATEUR, PAS UN PDF. Les six exports de
-            l'existant partent en Phase 10 ; `window.print()` couvre le besoin
-            courant, et les règles `print:` ne laissent que la grille sur le
-            papier.
+            ⚠️ PLUS D'IMPRESSION NAVIGATEUR DANS LE MENU (2026-09-23, demande
+            du porteur) : seul le téléchargement — Word, PDF ou Excel, MÊME
+            contenu (axe, filtres) que l'écran, dans le canevas transmis par
+            l'établissement — reste proposé sous ce bouton.
           */}
           {!grille.isError && sujets.length > 0 && affiches.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 gap-1.5 text-xs"
-              onClick={() => window.print()}
-            >
-              <Printer className="size-3.5" />
-              Imprimer
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 text-xs"
+                  disabled={telechargement.isPending}
+                >
+                  <Printer className="size-3.5" />
+                  Imprimer
+                  <ChevronDown className="size-3.5 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem onSelect={() => telechargement.mutate('docx')}>
+                  <FileText className="size-3.5 text-blue-600" />
+                  Télécharger en Word
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => telechargement.mutate('pdf')}>
+                  <File className="size-3.5 text-red-600" />
+                  Télécharger en PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => telechargement.mutate('xlsx')}>
+                  <FileSpreadsheet className="size-3.5 text-green-600" />
+                  Télécharger en Excel
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
+
+          {/*
+            ⚠️ INDÉPENDANT DE L'AXE ET DES FILTRES DE L'ÉCRAN — l'émargement
+            est TOUJOURS la feuille de signature par FORMATEUR, pour LE JOUR
+            choisi dans le menu ; il ne se cale pas sur la vue « Par groupe »
+            ou « Par salle » affichée au même instant.
+          */}
+          {!grille.isError && Boolean(semaine) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 text-xs"
+                  disabled={telechargementEmargement.isPending}
+                >
+                  <ClipboardCheck className="size-3.5" />
+                  Journalier
+                  <ChevronDown className="size-3.5 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+
+              <DropdownMenuContent align="end" className="w-52">
+                {JOURS.map((jour) => (
+                  <DropdownMenuSub key={jour}>
+                    <DropdownMenuSubTrigger>{jour}</DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent>
+                      <DropdownMenuItem
+                        onSelect={() => telechargementEmargement.mutate({ jour, format: 'docx' })}
+                      >
+                        <FileText className="size-3.5 text-blue-600" />
+                        Word
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() => telechargementEmargement.mutate({ jour, format: 'pdf' })}
+                      >
+                        <File className="size-3.5 text-red-600" />
+                        PDF
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() => telechargementEmargement.mutate({ jour, format: 'xlsx' })}
+                      >
+                        <FileSpreadsheet className="size-3.5 text-green-600" />
+                        Excel
+                      </DropdownMenuItem>
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
         </div>
       </div>
 
@@ -449,7 +587,7 @@ export default function PageEdition() {
       ) : sujets.length === 0 ? (
         <Alerte type="avertissement" titre={`Aucun ${AXES_CONSULTATION[axe].libelle.toLowerCase()}`}>
           {axe === 'salle'
-            ? 'Déclarez vos salles depuis « Paramètres → Espaces ».'
+            ? 'Déclarez vos espaces depuis « Paramètres → Espaces ».'
             : axe === 'groupe' && periode === 'soir'
               ? 'La grille du soir ne concerne que les groupes dont le nom porte « CDS ».'
               : 'Importez votre base e-note ou construisez votre carte depuis « Paramètres → Affectations ».'}

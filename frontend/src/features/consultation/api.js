@@ -24,3 +24,24 @@ export const chargerGroupesConsultation = () => api.get('/api/v2/consultation/gr
  * ← `tableMatieres.html`
  */
 export const chargerProgrammeConsultation = () => api.get('/api/v2/consultation/programme');
+
+/**
+ * Les absences du compte connecté : son registre pour un formateur, sa fiche de
+ * discipline (absences, retards, indisciplines, note) pour un stagiaire.
+ */
+export const chargerMesAbsences = () => api.get('/api/v2/consultation/absences');
+
+/**
+ * Ressources en ligne d'un module — vidéos, cours, exercices — cherchées sur le
+ * web par le serveur avec les mots-clés « ofppt », « ofppt life », « ofppt info ».
+ */
+export const chargerRessourcesModule = ({ intitule, code = '', groupe = '' }) =>
+  api.get(
+    `/api/v2/consultation/programme/ressources?${new URLSearchParams({ intitule, code, groupe })}`
+  );
+
+/**
+ * La fiche du compte connecté — matricule et groupes enseignés pour un
+ * formateur ; CEF, filière, niveau et groupes pour un stagiaire.
+ */
+export const chargerFicheCompte = () => api.get('/api/v2/consultation/fiche');

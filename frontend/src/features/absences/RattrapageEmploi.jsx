@@ -167,7 +167,7 @@ export default function RattrapageEmploi({ absence, choisi, onChoisir }) {
           onChanger={setSemaine}
         />
         <p className="text-xs text-muted-foreground">
-          Cliquez sur une case libre : la séance s’y place avec le groupe, le module et la salle de
+          Cliquez sur une case libre : la séance s’y place avec le groupe, le module et l’espace de
           l’absence.
         </p>
       </div>

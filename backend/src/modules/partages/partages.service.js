@@ -37,6 +37,24 @@ async function charger(etablissementId, anneeScolaire, page) {
 
 const identite = (utilisateur) => ({ id: String(utilisateur.id), role: utilisateur.role });
 
+/*
+ * ═══ UN PARTAGE OUVRE LA PAGE D'OFFICE (2026-09-23, décision du porteur) ═══
+ * « Je n'ai pas besoin de validation par l'autre personne » : l'invité est inscrit
+ * ACCEPTÉ, la page apparaît tout de suite dans son menu. Renverse la règle du
+ * 2026-09-12 (« aucun accès tant qu'il n'a pas accepté »). Le directeur garde la
+ * main : c'est lui qui retire un accès, l'invité n'a plus à répondre.
+ *
+ * ⚠️ `repondreInvitation` reste en place : les messages envoyés avant le
+ * changement portent encore des boutons, et les appels ne doivent pas tomber en 404.
+ */
+const membreAccepte = (utilisateurId, droit, directeur) => ({
+  utilisateurId,
+  droit,
+  invitePar: directeur.id,
+  statut: 'accepte',
+  accepteLe: new Date(),
+});
+
 /**
  * Refuse une page qui n'accepte pas encore d'invités (étape d).
  *
@@ -126,8 +144,15 @@ export async function pagesPartageesAvec(utilisateur, etablissementId, anneeScol
     : [];
   const parPage = new Map(partages.map((p) => [p.page, p]));
 
+  /*
+   * ⚠️ TOUTES LES PAGES, PAS SEULEMENT LES PRÊTES (2026-09-23) : la garde de
+   * route lit son droit ICI. « Documents » ne se partage plus, mais le
+   * gestionnaire la consulte par son RÔLE — absente de la liste, la garde le
+   * renvoyait vers l'accueil, donc vers « Édition ». `droitSurPage` ne rend,
+   * pour une page non prête, que le droit du rôle (`partagee: false`, hors menu).
+   */
   const resultat = [];
-  for (const page of pretes) {
+  for (const page of Object.keys(PAGES_PARTAGEABLES)) {
     const acces = droitSurPage(identite(utilisateur), parPage.get(page) ?? null, page);
     if (!acces) continue;
     // L'accès de l'administrateur en collaboration compte comme un partage : ce
@@ -272,12 +297,19 @@ function droitsAccordes(pages, droit, droits = {}) {
  * — Emploi en modification, Absences en consultation — et chacune de ses pages
  * entre dans l'invitation. `droit` reste celui des pages qu'il ne nomme pas.
  */
+/**
+ * @param {boolean} [reglages.notifier] `false` : ne PAS envoyer le message générique
+ *   d'invitation aux nouveaux invités (2026-09-22). Réservé aux appelants qui envoient
+ *   eux-mêmes un message plus précis, portant la même invitation — `chronogramme.service.js`
+ *   pour « Envoyer à un formateur » : deux messages annonçant la même chose auraient encombré
+ *   la boîte de réception pour rien.
+ */
 export async function inviter(
   etablissementId,
   anneeScolaire,
   page,
   directeur,
-  { utilisateurIds, droit = DROITS_PAGE.MODIFIER, pages = [], droits = {} }
+  { utilisateurIds, droit = DROITS_PAGE.MODIFIER, pages = [], droits = {}, notifier = true }
 ) {
   // La page de la route en tête : c'est elle que la boîte affiche ensuite.
   const toutes = [...new Set([page, ...pages, ...Object.keys(droits)])];
@@ -317,15 +349,16 @@ export async function inviter(
         for (const id of invites) {
           const existant = partage.membres.find((m) => String(m.utilisateurId) === id);
           if (existant) {
-            // Le droit change ; le statut, lui, reste : une invitation en attente
-            // attend toujours, une invitation acceptée n'a pas à l'être de nouveau.
+            // Le droit change. Un membre resté en attente (invité avant le
+            // 2026-09-23) est ouvert au passage : réinviter vaut accès.
             existant.droit = droitPage;
+            if (existant.statut === 'en_attente') {
+              existant.statut = 'accepte';
+              existant.accepteLe = new Date();
+            }
           } else {
-            /*
-             * ⚠️ `en_attente` EXPLICITE : tant que la personne n'a pas accepté,
-             * elle n'a aucun accès (demande du porteur, 2026-09-12).
-             */
-            partage.membres.push({ utilisateurId: id, droit: droitPage, invitePar: directeur.id, statut: 'en_attente' });
+            // Accepté d'office — voir `membreAccepte`.
+            partage.membres.push(membreAccepte(id, droitPage, directeur));
             nouvellesPages.set(id, [...(nouvellesPages.get(id) ?? []), cible]);
           }
         }
@@ -359,15 +392,17 @@ export async function inviter(
     const cle = pagesNouvelles.join('|');
     parJeu.set(cle, [...(parJeu.get(cle) ?? []), id]);
   }
-  for (const [cle, destinataires] of parJeu) {
-    await notifierInvites(directeur, destinataires, { etablissementId, anneeScolaire, pages: cle.split('|') }, accordes);
+  if (notifier) {
+    for (const [cle, destinataires] of parJeu) {
+      await notifierInvites(directeur, destinataires, { etablissementId, anneeScolaire, pages: cle.split('|') }, accordes);
+    }
   }
 
   return presenter(etablissementId, anneeScolaire, page);
 }
 
 const annonceDroit = (droit) =>
-  droit === DROITS_PAGE.MODIFIER ? 'vous pourrez modifier' : 'vous pourrez consulter';
+  droit === DROITS_PAGE.MODIFIER ? 'vous pouvez modifier' : 'vous pouvez consulter';
 
 /**
  * Le droit d'une page dans une invitation. `droits` est UN droit pour toutes
@@ -384,19 +419,19 @@ export function redigerInvitation(nomDirecteur, pages, droits) {
   if (pages.length === 1) {
     const [page] = pages;
     return {
-      sujet: `Invitation à collaborer sur « ${libellePage(page)} »`,
+      sujet: `« ${libellePage(page)} » partagée avec vous`,
       corps:
-        `${nomDirecteur} vous invite à collaborer sur « ${libellePage(page)} » de l’établissement ` +
+        `${nomDirecteur} vous a donné accès à « ${libellePage(page)} » de l’établissement ` +
         `(${annonceDroit(droitAnnonce(droits, page))}).\n\n` +
-        `Acceptez l’invitation ci-dessous : la page apparaîtra alors dans votre menu.`,
+        `La page est déjà dans votre menu.`,
     };
   }
   const lignes = pages.map((page) => `• ${libellePage(page)} — ${annonceDroit(droitAnnonce(droits, page))}`);
   return {
-    sujet: `Invitation à collaborer sur ${pages.length} pages`,
+    sujet: `${pages.length} pages partagées avec vous`,
     corps:
-      `${nomDirecteur} vous invite à collaborer sur ces pages de l’établissement :\n${lignes.join('\n')}\n\n` +
-      `Acceptez l’invitation ci-dessous : les pages apparaîtront alors dans votre menu.`,
+      `${nomDirecteur} vous a donné accès à ces pages de l’établissement :\n${lignes.join('\n')}\n\n` +
+      `Elles sont déjà dans votre menu.`,
   };
 }
 
@@ -426,7 +461,8 @@ async function notifierInvites(directeur, destinataires, { etablissementId, anne
     await envoyerMessage(directeur.id, {
       destinataires,
       ...redigerInvitation(directeur.nomComplet, pages, accordes),
-      invitation: { etablissementId, anneeScolaire, pages, droit, droits },
+      // Accès déjà ouvert (`membreAccepte`) : le message l'annonce, il n'attend rien.
+      invitation: { etablissementId, anneeScolaire, pages, droit, droits, statut: 'acceptee', reponduLe: new Date() },
     });
   } catch (erreur) {
     logger.warn({ err: erreur }, 'Message d’invitation non envoyé');
@@ -671,7 +707,7 @@ export async function reglerPagesMembre(etablissementId, anneeScolaire, directeu
           existant.droit = voulu;
         } else {
           partage ??= new Partage({ etablissementId, anneeScolaire, page });
-          partage.membres.push({ utilisateurId: id, droit: voulu, invitePar: directeur.id, statut: 'en_attente' });
+          partage.membres.push(membreAccepte(id, voulu, directeur));
           nouvelles.push(page);
         }
         await partage.save({ session });

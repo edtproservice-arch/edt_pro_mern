@@ -265,10 +265,12 @@ describe('Le gel de la rentrée', () => {
   /*
    * ═══ L'EXEMPLE DU PORTEUR ═══
    * En 2026-2027, les 2ᵉ années rentrent le 7 septembre, les 1ʳᵉ le 11. La
-   * semaine 2 va du lundi 7 au samedi 12.
+   * semaine du lundi 7 au samedi 12 est la **S1** : depuis le 2026-09-25, S1
+   * est la semaine de la rentrée la plus précoce (c'était la S2 quand S1
+   * partait du 1er septembre, d'où l'ancienne version de ces tests).
    */
   it('refuse une séance posée avant la rentrée du groupe, et NOMME la date', async () => {
-    const reponse = await poser('DEVOWFS101', 'M101', 'Mardi', '2026-W2');
+    const reponse = await poser('DEVOWFS101', 'M101', 'Mardi', '2026-W1');
 
     expect(reponse.status).toBe(400);
     expect(reponse.body.code).toBe('AVANT_RENTREE');
@@ -282,7 +284,7 @@ describe('Le gel de la rentrée', () => {
    * vacances.
    */
   it('laisse la 2ᵉ année travailler le même jour', async () => {
-    const reponse = await poser('DEVOWFS201', 'M201', 'Mardi', '2026-W2');
+    const reponse = await poser('DEVOWFS201', 'M201', 'Mardi', '2026-W1');
 
     expect(reponse.status).toBe(200);
     expect(await Seance.countDocuments()).toBe(1);
@@ -290,7 +292,7 @@ describe('Le gel de la rentrée', () => {
 
   it('laisse la 1ʳᵉ année travailler à partir de sa rentrée', async () => {
     /* Le vendredi 11 septembre, jour de la rentrée des 1ʳᵉ années. */
-    const reponse = await poser('DEVOWFS101', 'M101', 'Vendredi', '2026-W2');
+    const reponse = await poser('DEVOWFS101', 'M101', 'Vendredi', '2026-W1');
 
     expect(reponse.status).toBe(200);
   });
@@ -302,7 +304,7 @@ describe('Le gel de la rentrée', () => {
   it('ne gèle rien quand aucune rentrée n’est paramétrée', async () => {
     await CalendrierNational.deleteMany({});
 
-    const reponse = await poser('DEVOWFS101', 'M101', 'Mardi', '2026-W2');
+    const reponse = await poser('DEVOWFS101', 'M101', 'Mardi', '2026-W1');
     expect(reponse.status).toBe(200);
   });
 
@@ -313,7 +315,7 @@ describe('Le gel de la rentrée', () => {
    */
   it('annonce dans la semaine quelles années sont encore gelées', async () => {
     const reponse = await request(app)
-      .get('/api/v2/seances/2026-W2')
+      .get('/api/v2/seances/2026-W1')
       .set(enTete(cookiesDirecteur));
 
     const mardi = reponse.body.jours.find((j) => j.jour === 'Mardi');

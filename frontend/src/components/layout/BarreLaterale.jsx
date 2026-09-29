@@ -24,7 +24,6 @@ import BoutonEpingle from './BoutonEpingle';
 import SelecteurAnnee from './SelecteurAnnee';
 import { ENTREES, navigationPourRole, raccourcisPourRole } from './navigation';
 import { usePartagesAvecMoi } from '@/features/partages/usePartagesAvecMoi';
-import CartePagesPartagees from '@/features/partages/CartePagesPartagees';
 import { useFavoris } from '@/lib/favoris';
 import { compterNonLus } from '@/features/messagerie/api';
 import { recupererSession } from '@/features/auth/api';
@@ -65,7 +64,14 @@ function CompteurMessages() {
 
   if (!data?.nonLus) return null;
 
-  return <SidebarMenuBadge>{data.nonLus}</SidebarMenuBadge>;
+  /* Une pastille bleue, comme celle de la barre du haut : un chiffre nu se
+     confondait avec le texte du menu. `!` : le badge du kit force sa propre
+     couleur de texte au survol et sur l'entrée active. */
+  return (
+    <SidebarMenuBadge className="rounded-full bg-primary text-[0.65rem] font-semibold !text-primary-foreground">
+      {data.nonLus > 99 ? '99+' : data.nonLus}
+    </SidebarMenuBadge>
+  );
 }
 
 export default function BarreLaterale(proprietes) {
@@ -85,11 +91,13 @@ export default function BarreLaterale(proprietes) {
      d'accueil (voir `raccourcisPourRole`). */
   const raccourcis = raccourcisPourRole(session.data?.utilisateur?.role);
   /*
-   * ⚠️ « Partagé » a un sous-menu, mais ce n'est pas un réglage : il reste dans le
-   * groupe Navigation, à sa place dans l'ordre du rôle, et s'ouvre en CARTE au
-   * survol plutôt qu'en liste dépliée sous « Paramètres ».
+   * ⚠️ « Partagé » a son PROPRE GROUPE (2026-09-23, demande du porteur : « en
+   * gestionnaire, les pages partagées avec un titre et groupées comme
+   * Paramètres chez le directeur »). Il se déplie en place, comme les réglages,
+   * au lieu de s'ouvrir en carte au survol.
    */
-  const sansEntree = navigation.filter((entree) => !entree.sousMenu || entree.partage);
+  const sansEntree = navigation.filter((entree) => !entree.sousMenu);
+  const partagees = navigation.filter((entree) => entree.partage);
   const avecSousMenu = navigation.filter((entree) => entree.sousMenu && !entree.partage);
 
   return (
@@ -156,22 +164,29 @@ export default function BarreLaterale(proprietes) {
               );
             })}
 
-            {sansEntree.map((entree) =>
-              entree.partage ? (
-                <EntreePartagee key={entree.url} entree={entree} pathname={pathname} />
-              ) : (
-                <SidebarMenuItem key={entree.url}>
-                  <SidebarMenuButton asChild tooltip={entree.titre} isActive={pathname === entree.url}>
-                    <NavLink to={entree.url}>
-                      <entree.icone className="stroke-[1.7]" />
-                      <span>{entree.titre}</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )
-            )}
+            {sansEntree.map((entree) => (
+              <SidebarMenuItem key={entree.url}>
+                <SidebarMenuButton asChild tooltip={entree.titre} isActive={pathname === entree.url}>
+                  <NavLink to={entree.url}>
+                    <entree.icone className="stroke-[1.7]" />
+                    <span>{entree.titre}</span>
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
           </SidebarMenu>
         </SidebarGroup>
+
+        {partagees.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Pages partagées</SidebarGroupLabel>
+            <SidebarMenu>
+              {partagees.map((entree) => (
+                <SousMenu key={entree.url} entree={entree} pathname={pathname} />
+              ))}
+            </SidebarMenu>
+          </SidebarGroup>
+        )}
 
         {/*
           ⚠️ LE GROUPE DISPARAÎT SANS SOUS-MENU. Seul le directeur en porte un
@@ -201,36 +216,13 @@ export default function BarreLaterale(proprietes) {
   );
 }
 
-/**
- * « Partagé » dans la barre latérale — plusieurs pages partagées avec un
- * gestionnaire (2026-09-12, demande du porteur : « et pour le gestionnaire »).
- * La même carte que dans la barre du formateur, ouverte À DROITE : sous
- * l'entrée, elle recouvrirait les liens suivants de la barre.
- *
- * ⚠️ PAS D'INFOBULLE, même barre repliée en icônes : la carte s'ouvre au même
- * survol et porte déjà le titre de chaque page — une bulle par-dessus la
- * masquerait.
- */
-function EntreePartagee({ entree, pathname }) {
-  const actif = entree.sousMenu.some((sous) => pathname.startsWith(sous.url));
-
-  return (
-    <SidebarMenuItem>
-      <CartePagesPartagees entree={entree} side="right" align="start">
-        <SidebarMenuButton isActive={actif}>
-          <entree.icone className="stroke-[1.7]" />
-          <span>{entree.titre}</span>
-          <ChevronRight className="ml-auto stroke-[1.7] opacity-60" />
-        </SidebarMenuButton>
-      </CartePagesPartagees>
-    </SidebarMenuItem>
-  );
-}
-
 function SousMenu({ entree, pathname }) {
   // Ouvert d'office quand on se trouve dedans : sinon la page courante n'est
   // signalée nulle part dans le menu.
-  const dedans = pathname.startsWith(entree.url);
+  // « Partagé » n'a pas d'adresse à lui : on est dedans quand on est sur l'une de ses pages.
+  const dedans = entree.partage
+    ? entree.sousMenu.some((sous) => pathname.startsWith(sous.url))
+    : pathname.startsWith(entree.url);
 
   return (
     <Collapsible asChild defaultOpen={dedans} className="group/collapsible">

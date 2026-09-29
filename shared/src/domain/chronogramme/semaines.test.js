@@ -284,10 +284,15 @@ describe('semainesDeLaLigne', () => {
  * Le gel des semaines antérieures à la rentrée.
  * (demande du porteur, 2026-09-02 : « figé sur l'emploi ET le chronogramme ».)
  *
- * Repères de l'année 2026-2027, tels que le porteur les a saisis :
- *   S1 = lundi 31 août → samedi 5 septembre
- *   S2 = lundi 7 septembre → samedi 12 septembre
- *   1ʳᵉ année : rentrée le vendredi 11 · 2ᵉ et 3ᵉ : lundi 7
+ * ═══ ⚠️⚠️ S1 EST DÉSORMAIS LA SEMAINE DE LA RENTRÉE LA PLUS PRÉCOCE
+ * (2026-09-25, demande du porteur) ═══ Avant cette révision, S1 restait au
+ * 1er septembre même quand aucun niveau n'y avait cours ; seul le gel PAR
+ * GROUPE (`joursRentree`) fermait ou réduisait la colonne. `rentrees` ancre
+ * maintenant S1 ELLE-MÊME sur la rentrée la plus précoce (voir
+ * `lundiPremiereSemaine`) — les repères ci-dessous en tiennent compte :
+ *   S1 = lundi 7 septembre → samedi 12 septembre (2ᵉ et 3ᵉ années : rentrée)
+ *   S2 = lundi 14 septembre → samedi 19 septembre
+ *   1ʳᵉ année : rentrée le vendredi 11 (dans S1) · 2ᵉ et 3ᵉ : lundi 7 (ouvre S1)
  */
 const RENTREES = [
   { anneeFormation: 1, date: '2026-09-11' },
@@ -307,7 +312,14 @@ describe('semainesChronogramme — rentrée', () => {
   });
 
   it('FERME une semaine entièrement antérieure à la rentrée du groupe', () => {
-    const semaines = semainesChronogramme(ANNEE, { groupe: 'GM101', rentrees: RENTREES });
+    // Un écart plus large que dans le reste de la suite : la 1ʳᵉ année
+    // reprend trois semaines après la plus précoce, laissant S1 entièrement
+    // avant sa rentrée.
+    const rentreesEcartees = [
+      { anneeFormation: 1, date: '2026-09-21' },
+      { anneeFormation: 2, date: '2026-09-07' },
+    ];
+    const semaines = semainesChronogramme(ANNEE, { groupe: 'GM101', rentrees: rentreesEcartees });
     const s1 = semaines.find((s) => s.numero === 1);
 
     expect(s1.disponible).toBe(false);
@@ -315,21 +327,23 @@ describe('semainesChronogramme — rentrée', () => {
     expect(s1.joursDisponibles).toBe(0);
     // La date attendue repart avec la semaine : l'écran doit pouvoir dire
     // POURQUOI la colonne est fermée, pas seulement qu'elle l'est.
-    expect(s1.rentree).toBe('2026-09-11');
+    expect(s1.rentree).toBe('2026-09-21');
   });
 
   it('RÉDUIT — sans fermer — la semaine à cheval sur la rentrée', () => {
-    // La 1ʳᵉ année reprend le VENDREDI : le vendredi et le samedi sont ouverts.
-    // Fermer la colonne interdirait de planifier deux journées bien réelles.
-    const s2 = semainesChronogramme(ANNEE, {
+    // La 1ʳᵉ année reprend le VENDREDI, DANS la S1 (qui ouvre le 7 sur la
+    // rentrée des 2ᵉ/3ᵉ années) : le vendredi et le samedi sont ouverts pour
+    // elle. Fermer la colonne interdirait de planifier deux journées bien
+    // réelles.
+    const s1 = semainesChronogramme(ANNEE, {
       groupe: 'GM101',
       rentrees: RENTREES,
-    }).find((s) => s.numero === 2);
+    }).find((s) => s.numero === 1);
 
-    expect(s2.joursRentree).toBe(4);
-    expect(s2.joursDisponibles).toBe(2);
-    expect(s2.disponible).toBe(true);
-    expect(s2.motif).toBe(null);
+    expect(s1.joursRentree).toBe(4);
+    expect(s1.joursDisponibles).toBe(2);
+    expect(s1.disponible).toBe(true);
+    expect(s1.motif).toBe(null);
   });
 
   it('gèle les années SÉPARÉMENT — la 2ᵉ est déjà rentrée quand la 1ʳᵉ ne l’est pas', () => {
@@ -337,8 +351,9 @@ describe('semainesChronogramme — rentrée', () => {
     const premiere = semainesChronogramme(ANNEE, { ...options, groupe: 'GM101' });
     const deuxieme = semainesChronogramme(ANNEE, { ...options, groupe: 'GMOEMCM201' });
 
-    expect(premiere.find((s) => s.numero === 2).joursRentree).toBe(4);
-    expect(deuxieme.find((s) => s.numero === 2).joursRentree).toBe(0);
+    // La 2ᵉ année ouvre S1 elle-même : aucun jour ne lui manque.
+    expect(premiere.find((s) => s.numero === 1).joursRentree).toBe(4);
+    expect(deuxieme.find((s) => s.numero === 1).joursRentree).toBe(0);
   });
 
   /*
@@ -354,12 +369,19 @@ describe('semainesChronogramme — rentrée', () => {
   });
 
   it('l’emporte sur le STAGE, qui ne peut pas précéder l’existence du groupe', () => {
+    // Même écart que le test de fermeture, pour retomber sur une semaine
+    // ENTIÈREMENT fermée par la rentrée — seule façon de départager le motif
+    // d'un stage qui la recouvre aussi.
+    const rentreesEcartees = [
+      { anneeFormation: 1, date: '2026-09-21' },
+      { anneeFormation: 2, date: '2026-09-07' },
+    ];
     // Un groupe pas encore rentré n'est pas « en stage » : l'annoncer ainsi
     // enverrait corriger ses dates de stage, une fausse piste.
     const s1 = semainesChronogramme(ANNEE, {
       groupe: 'GM101',
-      rentrees: RENTREES,
-      stages: [{ groupe: 'GM101', debut: '2026-08-31', fin: '2026-09-05' }],
+      rentrees: rentreesEcartees,
+      stages: [{ groupe: 'GM101', debut: '2026-09-07', fin: '2026-09-09' }],
     }).find((s) => s.numero === 1);
 
     expect(s1.motif).toBe('rentree');
@@ -369,7 +391,7 @@ describe('semainesChronogramme — rentrée', () => {
     const s1 = semainesChronogramme(ANNEE, {
       groupe: 'GM101',
       rentrees: RENTREES,
-      vacances: [{ debut: '2026-09-01', fin: '2026-09-02' }],
+      vacances: [{ debut: '2026-09-07', fin: '2026-09-08' }],
     }).find((s) => s.numero === 1);
 
     expect(s1.motif).toBe('vacances');
@@ -381,15 +403,15 @@ describe('semainesChronogramme — rentrée', () => {
    * fermerait une semaine qui ne l'est pas.
    */
   it('ne cumule pas les jours de rentrée et de stage qui se recouvrent', () => {
-    const s2 = semainesChronogramme(ANNEE, {
+    const s1 = semainesChronogramme(ANNEE, {
       groupe: 'GM101',
       rentrees: RENTREES,
       stages: [{ groupe: 'GM101', debut: '2026-09-07', fin: '2026-09-09' }],
-    }).find((s) => s.numero === 2);
+    }).find((s) => s.numero === 1);
 
     // 4 jours avant la rentrée, 3 jours de stage inclus dans ces quatre :
     // il reste bien 2 jours, pas moins.
-    expect(s2.joursDisponibles).toBe(2);
+    expect(s1.joursDisponibles).toBe(2);
   });
 });
 

@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
+import ExcelJS from 'exceljs';
 import { createApp } from '../../src/app.js';
 import { User } from '../../src/models/User.js';
 import { Etablissement } from '../../src/models/Etablissement.js';
 import { Base } from '../../src/models/Base.js';
 import { Chronogramme } from '../../src/models/Chronogramme.js';
 import { AbsenceFormateur } from '../../src/models/AbsenceFormateur.js';
+import { AutoGenConfig } from '../../src/models/AutoGenConfig.js';
 import { oublierMemoire } from '../../src/modules/calendrier/joursFeries.service.js';
 import { ROLES, STATUTS_COMPTE, TYPES_COURS } from 'shared/constants';
 import { dateDuJour, enJour } from 'shared/domain';
@@ -111,6 +113,16 @@ const heuresDe = async (groupe, semaine) => {
   return cellules.find((cellule) => cellule.semaine === semaine)?.heures ?? 0;
 };
 
+/*
+ * ⚠️ `superagent` NE BUFFÉRISE EN `Buffer` QUE LES TYPES MIME QU'IL CONNAÎT —
+ * ni le Word ni l'Excel n'en font partie, et `reponse.body` resterait `{}`.
+ */
+const bufferiser = (res, callback) => {
+  const morceaux = [];
+  res.on('data', (chunk) => morceaux.push(chunk));
+  res.on('end', () => callback(null, Buffer.concat(morceaux)));
+};
+
 describe('synchronisation depuis la grille', () => {
   it('⚠️ MARQUER ABSENT crée l’absence — sans passer par un second appel', async () => {
     /*
@@ -181,8 +193,9 @@ describe('synchronisation depuis la grille', () => {
 
 describe('PATCH /absences/:id — rattrapage', () => {
   it('REPORTE 2,5 h dans la semaine du rattrapage', async () => {
-    await chronogrammeAvec('GM101', [{ semaine: 'S16', heures: 5, type: 'P' }]);
     await poserSeance({ statut: 'absent' });
+    // ⚠️ La séance d'abord : planifié, le chronogramme VERROUILLE l'ajout (2026-09-27).
+    await chronogrammeAvec('GM101', [{ semaine: 'S16', heures: 5, type: 'P' }]);
     const absence = await AbsenceFormateur.findOne({});
 
     // ⚠️ 2026-12-14 tombe en S16 — VÉRIFIÉ avec `semaineDe`, pas supposé : la
@@ -203,11 +216,12 @@ describe('PATCH /absences/:id — rattrapage', () => {
      * semaine ET les ajouterait dans la nouvelle — le chronogramme annoncerait
      * 5 h de plus que la réalité.
      */
+    await poserSeance({ statut: 'absent' });
+    // ⚠️ La séance d'abord : planifié, le chronogramme VERROUILLE l'ajout (2026-09-27).
     await chronogrammeAvec('GM101', [
       { semaine: 'S16', heures: 5, type: 'P' },
       { semaine: 'S17', heures: 5, type: 'P' },
     ]);
-    await poserSeance({ statut: 'absent' });
     const absence = await AbsenceFormateur.findOne({});
 
     const patch = (date) =>
@@ -224,8 +238,9 @@ describe('PATCH /absences/:id — rattrapage', () => {
   });
 
   it('⚠️ CONFIRMER DEUX FOIS la même date ne compte pas double', async () => {
-    await chronogrammeAvec('GM101', [{ semaine: 'S16', heures: 5, type: 'P' }]);
     await poserSeance({ statut: 'absent' });
+    // ⚠️ La séance d'abord : planifié, le chronogramme VERROUILLE l'ajout (2026-09-27).
+    await chronogrammeAvec('GM101', [{ semaine: 'S16', heures: 5, type: 'P' }]);
     const absence = await AbsenceFormateur.findOne({});
 
     for (let essai = 0; essai < 2; essai += 1) {
@@ -239,8 +254,9 @@ describe('PATCH /absences/:id — rattrapage', () => {
   });
 
   it('ANNULER le rattrapage reprend les heures', async () => {
-    await chronogrammeAvec('GM101', [{ semaine: 'S16', heures: 5, type: 'P' }]);
     await poserSeance({ statut: 'absent' });
+    // ⚠️ La séance d'abord : planifié, le chronogramme VERROUILLE l'ajout (2026-09-27).
+    await chronogrammeAvec('GM101', [{ semaine: 'S16', heures: 5, type: 'P' }]);
     const absence = await AbsenceFormateur.findOne({});
 
     const patch = (date) =>
@@ -259,9 +275,10 @@ describe('PATCH /absences/:id — rattrapage', () => {
   it('⚠️ UNE FUSION reporte dans le chronogramme de CHAQUE groupe', async () => {
     // Une séance synchrone couvre plusieurs groupes, et chacun a son planning :
     // n'en reporter qu'un laisserait les autres avec des heures jamais données.
+    await poserSeance({ statut: 'absent', groupe: 'GM101 GM102' });
+    // ⚠️ La séance d'abord : planifié, le chronogramme VERROUILLE l'ajout (2026-09-27).
     await chronogrammeAvec('GM101', [{ semaine: 'S16', heures: 5, type: 'P' }]);
     await chronogrammeAvec('GM102', [{ semaine: 'S16', heures: 2.5, type: 'S' }]);
-    await poserSeance({ statut: 'absent', groupe: 'GM101 GM102' });
     const absence = await AbsenceFormateur.findOne({});
 
     await request(app)
@@ -462,8 +479,9 @@ describe('import d’une semaine et réinitialisation', () => {
      * des cours qui n'existent plus — des heures que personne ne viendrait
      * donner ni chercher.
      */
-    await chronogrammeAvec('GM101', [{ semaine: 'S16', heures: 5, type: 'P' }]);
     await poserDans(SEMAINE, { statut: 'absent' });
+    // ⚠️ La séance d'abord : planifié, le chronogramme VERROUILLE l'ajout (2026-09-27).
+    await chronogrammeAvec('GM101', [{ semaine: 'S16', heures: 5, type: 'P' }]);
     const absence = await AbsenceFormateur.findOne({});
     await request(app)
       .patch(`/api/v2/absences/${absence.id}`)
@@ -471,6 +489,13 @@ describe('import d’une semaine et réinitialisation', () => {
       .send({ dateRattrapage: '2026-12-14' });
     expect(await heuresDe('GM101', 'S16')).toBe(7.5);
 
+    // ⚠️ Réinitialiser est REFUSÉ sous chronogramme planifié (décision du
+    //    2026-09-27) : on dissocie d'abord — c'est le seul état où ce geste existe.
+    await AutoGenConfig.updateOne(
+      { etablissementId: etablissement.id, anneeScolaire: ANNEE },
+      { $set: { chronogrammeLie: false } },
+      { upsert: true }
+    );
     await request(app)
       .post('/api/v2/seances/reinitialiser')
       .set('Cookie', cookies)
@@ -529,8 +554,9 @@ describe('POST /absences/:id/rattrapage — placer dans la grille (2026-09-14)',
   });
 
   it('⚠️ REPORTE les heures au chronogramme UNE SEULE FOIS', async () => {
-    await chronogrammeAvec('GM101', [{ semaine: 'S4', heures: 5, type: 'P' }]);
     const absence = await absente();
+    // ⚠️ La séance d'abord : planifié, le chronogramme VERROUILLE l'ajout (2026-09-27).
+    await chronogrammeAvec('GM101', [{ semaine: 'S4', heures: 5, type: 'P' }]);
 
     await placer(absence.id);
 
@@ -548,11 +574,12 @@ describe('POST /absences/:id/rattrapage — placer dans la grille (2026-09-14)',
   });
 
   it('⚠️⚠️ DÉPLACER reprend l’ancien créneau ET ses heures', async () => {
+    const absence = await absente();
+    // ⚠️ La séance d'abord : planifié, le chronogramme VERROUILLE l'ajout (2026-09-27).
     await chronogrammeAvec('GM101', [
       { semaine: 'S4', heures: 5, type: 'P' },
       { semaine: 'S5', heures: 5, type: 'P' },
     ]);
-    const absence = await absente();
 
     await placer(absence.id);
     const reponse = await placer(absence.id, { ...CIBLE, semaine: '2026-W5', jour: 'Mardi' });
@@ -566,14 +593,16 @@ describe('POST /absences/:id/rattrapage — placer dans la grille (2026-09-14)',
 
   it('⚠️ UN PLACEMENT REFUSÉ NE PERD PAS le rattrapage déjà posé', async () => {
     // L'ancien est retiré dans la transaction : un refus l'annule, il reste là.
-    await chronogrammeAvec('GM101', [{ semaine: 'S4', heures: 5, type: 'P' }]);
     const absence = await absente();
-    await placer(absence.id);
     // Le formateur a déjà cours (GM102) le mardi S1 de la W5.
+    // ⚠️ Posée AVANT de planifier : planifié, le chronogramme VERROUILLE l'ajout
+    //    (2026-09-27), et le conflit que ce test cherche n'existerait pas.
     await request(app)
       .put('/api/v2/seances/2026-W5/case')
       .set('Cookie', cookies)
       .send({ jour: 'Mardi', seance: 'S1', periode: 'jour', formateurMatricule: '9863', groupe: 'GM102', module: 'M101', salle: 'A12' });
+    await chronogrammeAvec('GM101', [{ semaine: 'S4', heures: 5, type: 'P' }]);
+    await placer(absence.id);
 
     const refus = await placer(absence.id, { ...CIBLE, semaine: '2026-W5', jour: 'Mardi', seance: 'S1' });
 
@@ -583,8 +612,9 @@ describe('POST /absences/:id/rattrapage — placer dans la grille (2026-09-14)',
   });
 
   it('ANNULER retire la séance, les heures et la date', async () => {
-    await chronogrammeAvec('GM101', [{ semaine: 'S4', heures: 5, type: 'P' }]);
     const absence = await absente();
+    // ⚠️ La séance d'abord : planifié, le chronogramme VERROUILLE l'ajout (2026-09-27).
+    await chronogrammeAvec('GM101', [{ semaine: 'S4', heures: 5, type: 'P' }]);
     await placer(absence.id);
 
     const reponse = await request(app)
@@ -598,8 +628,9 @@ describe('POST /absences/:id/rattrapage — placer dans la grille (2026-09-14)',
   });
 
   it('⚠️ VIDER la case du rattrapage dans la grille rend l’absence « à rattraper »', async () => {
-    await chronogrammeAvec('GM101', [{ semaine: 'S4', heures: 5, type: 'P' }]);
     const absence = await absente();
+    // ⚠️ La séance d'abord : planifié, le chronogramme VERROUILLE l'ajout (2026-09-27).
+    await chronogrammeAvec('GM101', [{ semaine: 'S4', heures: 5, type: 'P' }]);
     await placer(absence.id);
 
     await request(app)
@@ -732,5 +763,126 @@ describe('⚠️ La DATE d’une absence, sans décalage de fuseau', () => {
     expect(absence.dateAbsence).toBe(attendu);
     // Et ce jour EST un lundi : un décalage d'un jour en ferait un dimanche.
     expect(new Date(`${absence.dateAbsence}T12:00:00`).getDay()).toBe(1);
+  });
+});
+
+/**
+ * Export Word / PDF / Excel du registre (2026-09-29, demande du porteur :
+ * « en absence je veux ajouter qu'il être exporté en Word et PDF et Excel »).
+ * ← `exportAbsences.service.js` : `absences.service.js#lister` fait tout le
+ *   calcul, déjà couvert par ses propres tests — ici on vérifie seulement le
+ *   branchement HTTP et le filtre.
+ */
+describe('POST /absences/export', () => {
+  it('rend un .docx exploitable, avec son en-tête de téléchargement', async () => {
+    await poserSeance({ statut: 'absent' });
+
+    const reponse = await request(app)
+      .post('/api/v2/absences/export')
+      .set('Cookie', cookies)
+      .buffer(true)
+      .parse(bufferiser)
+      .send({ format: 'docx' });
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-type']).toContain('wordprocessingml.document');
+    expect(reponse.headers['content-disposition']).toContain('.docx');
+    expect(reponse.body.subarray(0, 2).toString()).toBe('PK');
+  });
+
+  it('rend un .xlsx dont le tableau porte bien la séance absente', async () => {
+    await poserSeance({ statut: 'absent' });
+
+    const reponse = await request(app)
+      .post('/api/v2/absences/export')
+      .set('Cookie', cookies)
+      .buffer(true)
+      .parse(bufferiser)
+      .send({ format: 'xlsx' });
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-type']).toContain('spreadsheetml.sheet');
+
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(reponse.body);
+    const feuille = classeur.worksheets[0];
+    expect(feuille.getRow(5).getCell(5).value).toBe('BRAHIM LOURID');
+    expect(feuille.getRow(5).getCell(6).value).toBe('GM101');
+  });
+
+  it('⚠️ MONTRE « 2026-S4 », PAS L’IDENTIFIANT INTERNE « 2026-W4 » (2026-09-29, demande du porteur)', async () => {
+    await poserSeance({ statut: 'absent' });
+
+    const reponse = await request(app)
+      .post('/api/v2/absences/export')
+      .set('Cookie', cookies)
+      .buffer(true)
+      .parse(bufferiser)
+      .send({ format: 'xlsx' });
+
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(reponse.body);
+    const semaine = classeur.worksheets[0].getRow(5).getCell(2).value;
+
+    expect(semaine).toBe(`${ANNEE}-S3`);
+  });
+
+  it('rend un .pdf', async () => {
+    await poserSeance({ statut: 'absent' });
+
+    const reponse = await request(app)
+      .post('/api/v2/absences/export')
+      .set('Cookie', cookies)
+      .send({ format: 'pdf' });
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-type']).toBe('application/pdf');
+    expect(reponse.body.subarray(0, 5).toString()).toBe('%PDF-');
+  }, 30_000);
+
+  it('⚠️ RESPECTE LE FILTRE, comme l’écran — « sans rattrapage » exclut les rattrapées', async () => {
+    await poserSeance({ statut: 'absent' });
+    await poserSeance({ statut: 'absent', seance: 'S2' });
+
+    const registre = await request(app).get('/api/v2/absences').set('Cookie', cookies);
+    const s1 = registre.body.absences.find((absence) => absence.seance === 'S1');
+    await request(app)
+      .patch(`/api/v2/absences/${s1.id}`)
+      .set('Cookie', cookies)
+      .send({ dateRattrapage: '2026-10-05' });
+
+    const reponse = await request(app)
+      .post('/api/v2/absences/export')
+      .set('Cookie', cookies)
+      .buffer(true)
+      .parse(bufferiser)
+      .send({ format: 'xlsx', rattrapees: false });
+
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(reponse.body);
+    const feuille = classeur.worksheets[0];
+    // ⚠️ « toutes » trierait S1 (rattrapée, à exclure) avant S2 par date
+    // décroissante — seule S2 doit rester, en ligne 5.
+    expect(feuille.getRow(5).getCell(4).value).toBe('S2');
+    expect(feuille.getRow(6).getCell(1).value).toBeNull();
+  });
+
+  it('⚠️ REFUSE plutôt que de rendre un document VIDE quand rien ne correspond au filtre', async () => {
+    const reponse = await request(app)
+      .post('/api/v2/absences/export')
+      .set('Cookie', cookies)
+      .send({ format: 'pdf' });
+
+    expect(reponse.status).toBe(400);
+    expect(reponse.body.code).toBe('EXPORT_VIDE');
+  });
+
+  it('refuse un format inconnu', async () => {
+    const reponse = await request(app)
+      .post('/api/v2/absences/export')
+      .set('Cookie', cookies)
+      .send({ format: 'jpeg' });
+
+    expect(reponse.status).toBe(400);
   });
 });

@@ -36,6 +36,40 @@ export function chargerSemaine(semaine) {
 }
 
 /**
+ * Télécharge la « vue globale » d'une semaine — Word, PDF ou Excel — telle
+ * qu'affichée à l'écran (page Édition) : même axe, même filtre. ← demande du
+ * porteur, canevas Word « EMPLOI GLOBAL FORMATEURS » transmis.
+ */
+export function exporterEmploiGlobal(semaine, options) {
+  return api.telecharger(`/api/v2/seances/${encodeURIComponent(semaine)}/export`, options, {
+    nomParDefaut: `emploi-global.${options.format}`,
+  });
+}
+
+/**
+ * Télécharge l'émargement JOURNALIER — Word, PDF ou Excel — d'UN jour de la
+ * semaine : un formateur par bloc de cours continu, son taux d'avancement du
+ * moment. ← demande du porteur, canevas Word « EMARGEMENT_Lundi » transmis.
+ */
+export function exporterEmargement(semaine, options) {
+  return api.telecharger(`/api/v2/seances/${encodeURIComponent(semaine)}/emargement`, options, {
+    nomParDefaut: `emargement-${options.jour}.${options.format}`,
+  });
+}
+
+/**
+ * Télécharge la vue DÉTAILLÉE — Word, PDF ou Excel, une page par sujet
+ * actuellement affiché (mêmes filtres que `exporterEmploiGlobal`). ← demande
+ * du porteur, canevas Word « EDT_TEACHER_… » transmis, puis (même jour) :
+ * « le même bouton Imprimer, selon la vue affichée ».
+ */
+export function exporterEmploiIndividuel(semaine, options) {
+  return api.telecharger(`/api/v2/seances/${encodeURIComponent(semaine)}/individuel`, options, {
+    nomParDefaut: `emploi-detaille.${options.format}`,
+  });
+}
+
+/**
  * Pose ou remplace UNE séance.
  *
  * ⚠️ `id` DIT « je remplace celle-ci ». Sans lui la pose est une CRÉATION, et

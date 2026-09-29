@@ -7,6 +7,8 @@ import { useDroitPage } from '@/features/partages/useDroitPage';
 import { proprietesEnregistrement } from '@/lib/useBrouillonVersionne';
 import { useAnneeActive } from '@/lib/anneeActive';
 import CadreReglage from './CadreReglage';
+import DialogueSuppressionsPeriodes from './DialogueSuppressionsPeriodes';
+import { annoncerCascade } from './annoncerCascade';
 import ListePeriodes from './ListePeriodes';
 import { useListeEtablissement } from './useListeEtablissement';
 
@@ -26,8 +28,10 @@ export default function PageStages() {
    */
   const { lectureSeule } = useDroitPage('stages');
   const liste = useListeEtablissement('stages', enregistrerStages, {
-    onSucces: (resultat) =>
-      toast.success('Stages enregistrés', { description: `${resultat.valeur.length} période(s).` }),
+    onSucces: (resultat) => {
+      toast.success('Stages enregistrés', { description: `${resultat.valeur.length} période(s).` });
+      annoncerCascade(resultat.cascade);
+    },
   });
   const { contexte, brouillon: stages, setBrouillon: setStages } = liste;
 
@@ -84,6 +88,12 @@ export default function PageStages() {
         aideVide="Tous les groupes restent disponibles toute l'année."
       />
     </CadreReglage>
+    {/* ⚠️ Une période nouvelle peut supprimer des séances : jamais sans ce oui (2026-09-23). */}
+    <DialogueSuppressionsPeriodes
+      details={liste.suppressionsAConfirmer}
+      onConfirmer={liste.confirmerSuppressions}
+      onRenoncer={liste.renoncerSuppressions}
+    />
     </>
   );
 }

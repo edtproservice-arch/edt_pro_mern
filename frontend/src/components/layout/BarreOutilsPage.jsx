@@ -24,7 +24,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { basculerFavori, useFavoris } from '@/lib/favoris';
-import { basculerAffichage, useAffichage } from '@/lib/preferencesAffichage';
+import {
+  basculerAffichage,
+  pleineLargeurImposee,
+  useAffichage,
+} from '@/lib/preferencesAffichage';
 import { depuis, useModifications } from '@/lib/derniereModification';
 import { annuler, usePeutAnnuler } from '@/lib/annulation';
 import { cn } from '@/lib/utils';
@@ -46,7 +50,8 @@ export default function BarreOutilsPage() {
   const { pathname } = useLocation();
 
   const favoris = useFavoris();
-  const affichage = useAffichage();
+  const affichage = useAffichage(pathname);
+  const largeurImposee = pleineLargeurImposee(pathname);
   const modifications = useModifications();
   const pleinEcran = usePleinEcran();
   const annulable = usePeutAnnuler(pathname);
@@ -137,6 +142,8 @@ export default function BarreOutilsPage() {
             libelle="Pleine largeur"
             icone={MoveHorizontal}
             actif={affichage.pleineLargeur}
+            // Allumé et grisé là où la page l'impose : l'éteindre n'aurait aucun effet.
+            desactive={largeurImposee}
             onBasculer={() => basculerAffichage('pleineLargeur')}
           />
 

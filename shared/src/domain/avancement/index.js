@@ -20,7 +20,7 @@ export {
   semainesDeVacances,
   tauxRegional,
 } from './regional.js';
-export { progressionEtablissement } from './progression.js';
+export { heuresParJour, progressionEtablissement } from './progression.js';
 export { massesGlobalesParGroupe, referenceDeLAxe } from './references.js';
 export {
   SEUIL_ACHEVEMENT,

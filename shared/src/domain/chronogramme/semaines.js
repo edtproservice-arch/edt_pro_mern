@@ -87,7 +87,16 @@ export function semainesChronogramme(
     throw new TypeError('semainesChronogramme attend une année entière');
   }
 
-  const lundi = lundiPremiereSemaine(annee);
+  /*
+   * ⚠️⚠️ `rentrees` ANCRE AUSSI S1 ICI, PAS SEULEMENT LE GEL PAR GROUPE
+   * (2026-09-25, demande du porteur) : avant cette révision, `rentrees`
+   * servait uniquement à `joursAvantRentree` ci-dessous, jamais à situer S1
+   * elle-même — la colonne restait au 1er septembre même quand aucun niveau
+   * n'y avait cours. `lundiPremiereSemaine` porte maintenant la même règle que
+   * partout ailleurs (voir son en-tête) : S1 devient la semaine de la rentrée
+   * la plus précoce.
+   */
+  const lundi = lundiPremiereSemaine(annee, rentrees);
   const semaines = [];
 
   for (let numero = 1; numero <= NOMBRE_SEMAINES; numero += 1) {

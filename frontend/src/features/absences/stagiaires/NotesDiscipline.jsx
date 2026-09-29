@@ -25,7 +25,7 @@ import ListeGroupes from './ListeGroupes';
  * chiffre sans sa règle ne se défend pas. La ligne dit ce qui retire des points
  * et ce qui n'en retire pas — le justifié.
  */
-export default function NotesDiscipline() {
+export default function NotesDiscipline({ groupeInitial = null }) {
   const [fiche, setFiche] = useState(null);
   const [comportement, setComportement] = useState(null);
 
@@ -38,7 +38,10 @@ export default function NotesDiscipline() {
         formation, la note reste sur 15.
       </p>
 
-      <ListeGroupes detail={(groupe) => <NotesDuGroupe groupe={groupe} onOuvrirFiche={setFiche} onComportement={setComportement} />} />
+      <ListeGroupes
+        detail={(groupe) => <NotesDuGroupe groupe={groupe} onOuvrirFiche={setFiche} onComportement={setComportement} />}
+        groupeInitial={groupeInitial}
+      />
 
       <FicheStagiaire matricule={fiche} onFermer={() => setFiche(null)} />
       <DialogueComportement matricule={comportement} onFermer={() => setComportement(null)} />

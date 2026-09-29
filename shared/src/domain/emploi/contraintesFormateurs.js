@@ -8,8 +8,9 @@ import { detecterConflits, estSalleReelle } from './conflits.js';
  *
  * ═══ CE QUE CES CONTRAINTES VEULENT DIRE ═══
  * - `espaces` : les salles où l'on place ce formateur de préférence. Une liste
- *   VIDE veut dire « aucune restriction » (décision du porteur, 2026-09-17) —
- *   l'ancien générateur, lui, ne plaçait jamais un formateur sans salle cochée.
+ *   VIDE veut dire « AUCUNE salle attribuée » (2026-09-19, demande du porteur ; le
+ *   2026-09-17 on la lisait « aucune restriction ») : rien n'est pré-rempli, et
+ *   toutes les salles restent au choix — l'attribution ne ferme jamais une salle.
  * - `indisponibilites` : les créneaux à ÉVITER. En saisie manuelle, ils ne
  *   ferment rien (décision du porteur) : la grille le signale, et le directeur
  *   reste libre de poser la séance.

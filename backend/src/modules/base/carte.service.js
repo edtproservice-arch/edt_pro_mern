@@ -4,12 +4,20 @@ import {
   construireBase,
   emailDeduit,
   modulesInactifs,
+  sallesParAffectation,
   nomsGroupesDeLaCarte,
+  resoudreHomonymes,
 } from 'shared/domain';
 import { Base } from '../../models/Base.js';
 import { EnoteImport } from '../../models/EnoteImport.js';
 import { Stagiaire } from '../../models/Stagiaire.js';
-import { badRequest } from '../../lib/httpError.js';
+import { badRequest, HttpError } from '../../lib/httpError.js';
+import {
+  cascader,
+  compterReferences,
+  groupesRetires,
+  pese,
+} from './cascadeGroupes.js';
 import { conditionVersion, versionPerimee } from '../../lib/versionOptimiste.js';
 
 /**
@@ -103,13 +111,108 @@ export async function completerColonnesServeur(
 }
 
 /**
+ * Clé d'une affectation, insensible à l'ordre — utilisée pour comparer deux
+ * versions des affectations d'un enregistrement à l'autre.
+ */
+function cleAffectation(affectation) {
+  return `${affectation.groupe}|${affectation.module}|${affectation.type}`;
+}
+
+/**
+ * Un formateur invité en partage ne peut que RÉCLAMER une case encore vide,
+ * ou se retirer d'une case qu'il a lui-même prise — jamais toucher celle d'un
+ * collègue, ni créer ou retirer un groupe (2026-09-27, demande du porteur).
+ *
+ * ⚠️ CE N'EST PAS L'ÉCRAN QUI LE GARANTIT — LUI DÉJÀ LE FAIT (`GrilleAffectations`,
+ * `VueFormateurs`) — MAIS CETTE FONCTION : un appel direct de la route, sans
+ * passer par l'écran, doit être refusé exactement pareil. C'est la même
+ * exigence que `exigerDroitPage` un cran plus haut — l'écran évite l'erreur,
+ * le serveur l'empêche.
+ *
+ * ⚠️ COMPARAISON SUR `affectations[].formateur`, qui porte déjà le matricule
+ * quand il existe (`identifiant()` de `parseBase.js`) — la MÊME clé que
+ * `req.utilisateur.identifiant` du compte connecté. Pas besoin de retrouver
+ * son nom dans la carte : le matricule suffit, des deux côtés.
+ *
+ * @param {object|null} existante   Le document `Base` avant cet enregistrement.
+ * @param {string[]} groupes        Les groupes de la carte qui va s'enregistrer.
+ * @param {object[]} affectations   Les affectations qui vont s'enregistrer.
+ * @param {string} identifiantFormateur  Le matricule du compte restreint — voir
+ *   le garde-fou ci-dessous quand il ne désigne personne dans la carte.
+ */
+function verifierEcritureRestreinte({ existante, groupes, affectations, identifiantFormateur }) {
+  const soi = String(identifiantFormateur ?? '').trim();
+
+  const refuser = () => {
+    throw new HttpError(
+      403,
+      soi === ''
+        ? "Ce compte formateur n'a pas de matricule reconnu dans la carte : aucune affectation n'est modifiable depuis ce partage."
+        : "Ce partage ne permet de choisir que les modules encore sans formateur — pas de modifier une affectation déjà faite.",
+      { code: 'AFFECTATION_RESTREINTE' }
+    );
+  };
+
+  const avant = new Map((existante?.affectations ?? []).map((a) => [cleAffectation(a), a.formateur]));
+  const apres = new Map(affectations.map((a) => [cleAffectation(a), a.formateur]));
+
+  /*
+   * ⚠️ REJOUER LA MÊME CARTE RESTE PERMIS MÊME SANS MATRICULE RÉSOLU : rien n'y
+   * change, donc rien à autoriser. C'est le cas d'une resoumission après un 409
+   * de version périmée (l'écran reprend la version en place et réenregistre) —
+   * un compte de test sans matricule, ou un formateur dont le compte n'a pas
+   * encore été relié, ne doit pas y trébucher. Le `soi` vide ne bloque que les
+   * cases qui changent réellement, ci-dessous.
+   */
+  for (const cle of new Set([...avant.keys(), ...apres.keys()])) {
+    const valeurAvant = avant.get(cle);
+    const valeurApres = apres.get(cle);
+    if (valeurAvant === valeurApres) continue;
+    // Réclamer une case encore vide, ou se retirer d'une case qu'on tenait : permis.
+    if (soi !== '' && valeurAvant === undefined && valeurApres === soi) continue;
+    if (soi !== '' && valeurAvant === soi && valeurApres === undefined) continue;
+    refuser();
+  }
+
+  const groupesAvant = new Set(existante?.groupes ?? []);
+  const groupesApres = new Set(groupes);
+  const memeEnsemble =
+    groupesAvant.size === groupesApres.size && [...groupesAvant].every((g) => groupesApres.has(g));
+  if (!memeEnsemble) refuser();
+}
+
+/**
  * Enregistre la carte comme base de l'année.
  *
  * ⚠️ REMPLACEMENT, pas fusion : la carte affichée fait foi. C'est le
  * comportement de `save_affectations.php`, et l'écran l'annonce
  * (« L'enregistrement remplace la base de l'année scolaire sélectionnée »).
  */
-export async function enregistrerCarte({ etablissementId, anneeScolaire, carte, version }) {
+export async function enregistrerCarte({
+  etablissementId,
+  anneeScolaire,
+  carte,
+  version,
+  /*
+   * ⚠️ FAUX PAR DÉFAUT, ET C'EST TOUT LE GARDE-FOU (2026-09-22). Retirer
+   *    un groupe n'est pas un geste : c'est un ÉCART entre deux versions de
+   *    la carte, et la carte est remplacée à chaque enregistrement comme à
+   *    chaque import e-note. Une cascade automatique voudrait dire qu'une
+   *    feuille Excel manquante efface une année de travail sans que
+   *    personne ait cliqué sur « supprimer ». On refuse donc, on chiffre,
+   *    et on attend un oui explicite.
+   */
+  confirmerSuppressions = false,
+  /*
+   * ═══ FORMATEUR INVITÉ, RESTREINT À SES CASES VIDES (2026-09-27, demande du
+   * porteur) ═══ Le matricule (`req.utilisateur.identifiant`) du compte
+   * connecté, SEULEMENT s'il s'agit d'un formateur invité en partage —
+   * `undefined`/`null` pour le directeur, un gestionnaire, ou l'administrateur
+   * en collaboration : accès plein, inchangé. Posé par la route, jamais déduit
+   * ici — c'est `exigerDroitPage` et le rôle du compte qui en décident.
+   */
+  identifiantFormateurRestreint = null,
+}) {
   const lignes = carteVersLignesEnote(carte, anneeScolaire);
 
   /*
@@ -205,6 +308,56 @@ export async function enregistrerCarte({ etablissementId, anneeScolaire, carte, 
   });
 
   /*
+   * ═══ UN FORMATEUR SANS MODULE RESTE UN FORMATEUR (2026-09-19) ═══
+   * `construireBase` ne connaît un formateur que par les lignes qui le nomment : celui
+   * qu'aucun module n'emploie n'en a aucune, et sortait de la base à
+   * l'enregistrement. Depuis que l'ajout se fait depuis la page Formateurs, c'est
+   * un formateur tout juste ajouté — pas encore affecté — que la première
+   * modification de la carte aurait effacé.
+   *
+   * La carte fait foi sur la liste : ceux qu'elle porte et que les lignes ne disent
+   * pas sont ajoutés, puis les noms uniques recalculés sur l'ensemble.
+   */
+  const presents = new Set(structure.formateursDetails.map((formateur) => formateur.nomComplet));
+  const sansModule = [];
+
+  for (const formateur of carte.formateurs ?? []) {
+    const nomComplet = String(formateur?.nom ?? '')
+      .trim()
+      .toUpperCase();
+    if (nomComplet === '' || presents.has(nomComplet)) continue;
+    presents.add(nomComplet);
+
+    const matricule = String(formateur.matricule ?? '').trim();
+    const cleMatricule = matricule.toUpperCase();
+
+    sansModule.push({
+      nomComplet,
+      matricule,
+      nomUnique: '',
+      email:
+        (cleMatricule !== '' ? emailsConnus.get(cleMatricule) : '') ||
+        emailsConnus.get(nomComplet) ||
+        emailDeduit(nomComplet, matricule),
+      masseHoraire:
+        (cleMatricule !== '' ? massesConnues.get(cleMatricule) : undefined) ??
+        massesConnues.get(nomComplet) ??
+        0,
+    });
+  }
+
+  if (sansModule.length > 0) {
+    const tous = [...structure.formateursDetails, ...sansModule];
+    const resolus = resoudreHomonymes(
+      tous.map(({ nomComplet, matricule }) => ({ nomComplet, matricule }))
+    );
+
+    structure.formateursDetails = tous
+      .map((formateur, index) => ({ ...formateur, nomUnique: resolus[index].nomUnique }))
+      .sort((a, b) => (a.nomComplet < b.nomComplet ? -1 : a.nomComplet > b.nomComplet ? 1 : 0));
+  }
+
+  /*
    * ⚠️⚠️ LA CARTE FAIT FOI SUR LA LISTE DES GROUPES, PAS LES LIGNES.
    *
    * `construireBase` déduit `groupes` des lignes e-note produites. Or un module
@@ -247,6 +400,8 @@ export async function enregistrerCarte({ etablissementId, anneeScolaire, carte, 
 
   const session = await mongoose.startSession();
   let base;
+  /** Ce que le retrait de groupes a emporté — vide s'il n'y en avait pas. */
+  let cascade = null;
 
   try {
     await session.withTransaction(async () => {
@@ -270,6 +425,62 @@ export async function enregistrerCarte({ etablissementId, anneeScolaire, carte, 
         }
       }
 
+      /*
+       * ⚠️ SUR `precedente`, PAS SUR `existante` LU PLUS HAUT : c'est le document
+       * que CETTE transaction vient de supprimer, sous condition de version — le
+       * même que celui d'où repart le calcul de la cascade juste en dessous. Un
+       * conflit de version doit se voir d'ABORD (409, ci-dessus) : une carte
+       * refusée pour être périmée ne dit rien de ce qu'un formateur a le droit
+       * d'y changer.
+       */
+      if (identifiantFormateurRestreint) {
+        verifierEcritureRestreinte({
+          existante: precedente,
+          groupes,
+          affectations: structure.affectations,
+          identifiantFormateur: identifiantFormateurRestreint,
+        });
+      }
+
+      /*
+       * ═══ ⚠️ LA CASCADE, DANS LA TRANSACTION QUI REMPLACE LA CARTE ═══
+       * (2026-09-22) Ici, `precedente` est la carte telle qu'elle était : c'est
+       * le seul instant où l'on peut voir ce que le nouvel enregistrement fait
+       * disparaître. En dehors de cette transaction, un échec laisserait une
+       * carte neuve et des séances à moitié effacées.
+       */
+      const retires = groupesRetires(precedente, {
+        groupes,
+        affectations: structure.affectations,
+      });
+
+      if (retires.length > 0) {
+        const references = await compterReferences(
+          etablissementId,
+          anneeScolaire,
+          retires,
+          session
+        );
+        const porteuses = references.filter((detail) => pese(detail) > 0);
+
+        if (porteuses.length > 0 && !confirmerSuppressions) {
+          /*
+           * ⚠️ 409 ET NON 400 : ce n'est pas une requête mal formée, c'est un
+           *    CONFLIT avec l'état existant — le même code que la version
+           *    périmée, et l'écran sait déjà le distinguer d'une erreur de
+           *    saisie. Le détail voyage dans `details` : sans les chiffres, le
+           *    directeur confirmerait à l'aveugle.
+           */
+          throw new HttpError(409, 'Des groupes retirés sont encore utilisés', {
+            code: 'GROUPES_ENCORE_UTILISES',
+            details: porteuses,
+          });
+        }
+
+        cascade = await cascader(etablissementId, anneeScolaire, retires, session);
+        cascade.groupes = retires;
+      }
+
       const [creee] = await Base.create(
         [
           {
@@ -287,6 +498,13 @@ export async function enregistrerCarte({ etablissementId, anneeScolaire, carte, 
             modulesInactifs: modulesInactifs(carte),
             // ⚠️ Même raison : la filière se déduisait des affectations, et un
             // groupe qui n'en a aucune perdait son identité.
+            /*
+             * ⚠️ RANGÉ À PART DES LIGNES, comme `modulesInactifs` : le format
+             *    e-note n'a aucune colonne de salle — vérifié aussi dans
+             *    l'ancien EDT Pro, qui n'attribue des salles qu'au FORMATEUR.
+             *    Sans cela, elles ne survivraient pas à l'aller-retour.
+             */
+            sallesAffectations: sallesParAffectation(carte),
             groupeFilieres: Object.fromEntries(
               (carte?.groupes ?? [])
                 .filter((groupe) => String(groupe?.codeFiliere ?? '').trim() !== '')
@@ -311,6 +529,12 @@ export async function enregistrerCarte({ etablissementId, anneeScolaire, carte, 
     // Ce qui a été retiré, et ce qui reste : une suppression muette laisse
     // croire que l'ancienne base est toujours là.
     supprime: { base: Boolean(existante) },
+    /*
+     * ⚠️ RENDU À L'ÉCRAN, PAS SEULEMENT FAIT. Une cascade muette laisse
+     *    croire qu'un simple enregistrement a eu lieu, alors qu'une
+     *    planification entière vient de disparaître.
+     */
+    cascade,
     tracesImportConservees: tracesConservees,
     effectifs: {
       formateurs: structure.formateurs.length,

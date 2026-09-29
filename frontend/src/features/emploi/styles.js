@@ -53,4 +53,4 @@ export const BORD_PLEIN = 'border-r-2 border-r-slate-300 dark:border-r-slate-600
 export const BORD_TABLEAU = 'border-r';
 
 /** Intitulés de ligne, abrégés : « Formateur » n'entre pas dans 2,25 rem. */
-export const ABREGES = { Formateur: 'Frm', Groupe: 'Grp', Module: 'Mod', Salle: 'Sal' };
+export const ABREGES = { Formateur: 'Frm', Groupe: 'Grp', Module: 'Mod', Espace: 'Esp' };

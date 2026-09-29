@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { FileSpreadsheet, Loader2, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -7,10 +7,12 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import Alerte from '@/components/common/Alerte';
 import ConfirmationAction from '@/components/common/ConfirmationAction';
-import { enregistrerCarte, exporterCarte } from '../api';
+import { chargerContraintesFormateurs, chargerEtablissementCourant, enregistrerCarte, exporterCarte } from '../api';
+import { identifiantFormateur } from '../etapes/filtresFormateurs';
 import { useCarte } from './useCarte';
 import SelecteurFiliere from './SelecteurFiliere';
 import ListeFormateurs from './ListeFormateurs';
+import ArbreCarte from './ArbreCarte';
 import GrilleAffectations, { Legende } from './GrilleAffectations';
 import BilanCharge from './BilanCharge';
 import VueFormateurs from './VueFormateurs';
@@ -59,17 +61,130 @@ export default function CarteEtablissement({
    */
   lectureSeule = false,
   /*
+   * ═══ FORMATEUR INVITÉ, RESTREINT À SES CASES VIDES (2026-09-27, demande du
+   * porteur) ═══ Le matricule (`utilisateur.identifiant`) du compte connecté,
+   * SEULEMENT s'il s'agit d'un formateur invité en partage sur cette page —
+   * `null` pour le directeur, un gestionnaire, ou un invité « peut consulter »
+   * (déjà couvert par `lectureSeule`). Résolu ici en `{ nom }` : les deux vues
+   * (matrice et « Formateurs ») raisonnent sur le NOM, pas le matricule.
+   */
+  matriculeFormateurRestreint = null,
+  /*
    * Page collaborative (Phase 5bis) : reçoit `(cle, ouvert)` quand une case de
    * la matrice s'ouvre ou se ferme — les collègues la voient encadrée.
    */
   onOuverture = null,
+  /*
+   * ⚠️ LA LISTE DES FORMATEURS (ajout, import Excel, retrait) n'est plus dans la
+   * carte des RÉGLAGES : elle est passée à la page Formateurs (2026-09-19, demande
+   * du porteur). L'ASSISTANT la garde ici — il construit la carte de zéro, avant
+   * que la base existe, donc avant qu'une page Formateurs ait quoi que ce soit à
+   * montrer.
+   */
+  avecListeFormateurs = true,
+  /*
+   * ═══ DEUX PAGES SE PARTAGENT CETTE CARTE (2026-09-19, demande du porteur) ═══
+   * « Configuration de la filière » (choisir une filière, générer ses groupes) est
+   * passée dans Paramètres → Carte ; Paramètres → Affectations ne garde que ce
+   * qu'on y FAIT — le bilan, la matrice, la vue par formateur, l'export.
+   *
+   * ⚠️ MÊME ÉTAT, MÊME ENREGISTREMENT : c'est la même carte, enregistrée d'un bloc
+   * avec la version de la base. Deux composants distincts auraient chacun leur
+   * copie, et l'un écraserait l'autre. L'ASSISTANT garde les deux (défauts).
+   */
+  avecSelecteurFiliere = true,
+  avecAffectations = true,
+  /*
+   * Le schéma établissement → années → filières, avec ses « − » et « + » : la page
+   * Carte seulement. ⚠️ Il lit et modifie CETTE carte (`carte.groupes`) — d'où sa
+   * place ici plutôt que dans la page, qui ne tient pas l'état des groupes.
+   */
+  avecArbre = false,
+  /** Groupe à montrer dans la matrice (`?groupe=` de la page) — voir `GrilleAffectations`. */
+  groupeCible = null,
+  /** Où mène le badge d'un groupe du schéma — voir `ArbreCarte`. Absent : un lien vers Paramètres. */
+  onOuvrirGroupe = null,
 }) {
   const carte = useCarte({
     groupesInitiaux: carteInitiale?.groupes ?? [],
     formateursInitiaux: carteInitiale?.formateurs ?? [],
   });
+
+  /*
+   * ═══ LE MATRICULE RÉSOLU EN NOM DE LA CARTE (2026-09-27) ═══ Les comptes
+   * formateur sont créés depuis cette même carte, matricule pour matricule
+   * (`comptes.service.js`, `candidatsFormateurs`) : c'est la clé fiable pour
+   * retrouver SON `formateurs[].nom` — celui que `formateurPresentiel` et les
+   * séances synchrones portent, pas son identifiant de connexion.
+   *
+   * ⚠️ `{ nom: null }`, PAS `null`, QUAND LE MATRICULE NE CORRESPOND À RIEN :
+   * la carte a pu changer sous ses pieds (matricule corrigé, formateur retiré).
+   * `GrilleAffectations` s'en sert pour ne rien lui laisser choisir plutôt que
+   * de deviner — voir `FormateurRestreintCarte`.
+   */
+  const formateurRestreint = useMemo(() => {
+    if (!matriculeFormateurRestreint) return null;
+    const cle = String(matriculeFormateurRestreint).trim();
+    const trouve = carte.formateurs.find((f) => String(f.matricule ?? '').trim() === cle);
+    return { nom: trouve?.nom ?? null };
+  }, [matriculeFormateurRestreint, carte.formateurs]);
+
+  /*
+   * ═══ LES ESPACES, POUR DÉCLARER OÙ UN MODULE SE DONNE ═══ (2026-09-23)
+   * Même clé de cache que les pages de réglages : elle est presque toujours
+   * déjà chargée, et cette requête ne coûte alors rien.
+   *
+   * ⚠️ `retry: false` ET UN REPLI VIDE : l'assistant de configuration monte
+   *    cette carte AVANT que l'établissement ait des espaces — et même avant
+   *    qu'il existe. Sans espace, `GrilleAffectations` n'affiche simplement pas
+   *    le sélecteur, plutôt qu'un bouton mort où chercher son erreur.
+   */
+  const etablissement = useQuery({
+    queryKey: ['etablissement-courant'],
+    queryFn: chargerEtablissementCourant,
+    retry: false,
+  });
+  const salles = etablissement.data?.etablissement?.espaces ?? [];
+
+  /*
+   * ═══ LES ESPACES ATTRIBUÉS À CHAQUE FORMATEUR (2026-09-27, demande du
+   * porteur) ═══ Mêmes contraintes que Paramètres → Formateurs (clé de cache
+   * partagée) : « Salles de ce module » ne propose plus toute la carte, mais
+   * seulement les locaux que CE formateur peut utiliser — et les impose d'office
+   * s'il n'en a qu'un.
+   *
+   * ⚠️ `retry: false` ET UN REPLI VIDE : un invité qui n'a que le droit sur
+   *    « affectations » n'a pas forcément celui sur « formateurs » ou « emploi »
+   *    que cette route exige (`exigerDroitPage(['formateurs', 'emploi'], ...)`)
+   *    — un 403 ici ne doit pas casser la carte, seulement renoncer au filtre.
+   */
+  const contraintes = useQuery({
+    queryKey: ['base', 'contraintes'],
+    queryFn: chargerContraintesFormateurs,
+    retry: false,
+  });
+
+  const espacesParNomFormateur = useMemo(() => {
+    const parFormateur = new Map(
+      (contraintes.data?.contraintes ?? []).map((entree) => [entree.formateur, entree])
+    );
+    const map = new Map();
+    for (const formateur of carte.formateurs) {
+      const cle = identifiantFormateur({ matricule: formateur.matricule, nomComplet: formateur.nom });
+      map.set(formateur.nom, parFormateur.get(cle)?.espaces ?? []);
+    }
+    return map;
+  }, [contraintes.data, carte.formateurs]);
+
   const [aConfirmer, setAConfirmer] = useState(null);
   const [remplacementAConfirmer, setRemplacementAConfirmer] = useState(false);
+  const [groupeARetirer, setGroupeARetirer] = useState(null);
+  /*
+   * ⚠️ CE QUE L'ENREGISTREMENT DÉTRUIRAIT, quand le serveur a refusé en 409.
+   *    Il porte les CHIFFRES — heures de chronogramme, séances, stagiaires —
+   *    parce que « des références existent » ferait confirmer à l'aveugle.
+   */
+  const [suppressionsAConfirmer, setSuppressionsAConfirmer] = useState(null);
   const [message, setMessage] = useState(null);
   /*
    * ⚠️ LA MATRICE RESTE LA VUE PAR DÉFAUT : c'est par elle qu'on CONSTRUIT une
@@ -79,13 +194,32 @@ export default function CarteEtablissement({
   const [vue, setVue] = useState('ensemble');
 
   const enregistrement = useMutation({
-    mutationFn: () =>
-      enregistrerCarte({
-        formateurs: carte.formateurs,
-        groupes: carte.groupes,
-      }),
+    mutationFn: (confirmerSuppressions = false) =>
+      enregistrerCarte(
+        {
+          formateurs: carte.formateurs,
+          groupes: carte.groupes,
+        },
+        undefined,
+        confirmerSuppressions
+      ),
     onSuccess: (resultat) => {
       setMessage(resultat);
+      setSuppressionsAConfirmer(null);
+      /*
+       * ⚠️ UNE CASCADE NE PASSE PAS EN SILENCE. Le directeur vient de perdre une
+       *    planification entière : le lui dire APRÈS est le minimum, même s'il
+       *    l'a confirmé — entre la confirmation et le résultat, il peut s'être
+       *    trompé de groupe.
+       */
+      if (resultat.cascade) {
+        const { groupes: partis, chronogrammes, seances, stagiaires } = resultat.cascade;
+        toast.warning(`${partis.join(', ')} retiré(s) de la carte`, {
+          description:
+            `${chronogrammes} chronogramme(s) et ${seances} séance(s) supprimé(s), ` +
+            `${stagiaires} stagiaire(s) détaché(s). Les absences sont conservées.`,
+        });
+      }
       toast.success('Carte enregistrée', {
         description:
           `${resultat.effectifs.groupes} groupe(s), ${resultat.effectifs.affectations} affectation(s).` +
@@ -95,7 +229,18 @@ export default function CarteEtablissement({
       });
       onEnregistree?.();
     },
-    onError: (erreur) => toast.error('Enregistrement impossible', { description: erreur.message }),
+    onError: (erreur) => {
+      /*
+       * ═══ ⚠️ UN REFUS QUI DEMANDE, PAS UN REFUS QUI BLOQUE ═══
+       * Le serveur a vu que des groupes retirés sont encore utilisés et n'a
+       * RIEN écrit. On montre ce qui partirait, et le directeur tranche.
+       */
+      if (erreur.code === 'GROUPES_ENCORE_UTILISES') {
+        setSuppressionsAConfirmer(erreur.details ?? []);
+        return;
+      }
+      toast.error('Enregistrement impossible', { description: erreur.message });
+    },
   });
 
   /*
@@ -173,6 +318,52 @@ export default function CarteEtablissement({
     toast.success(`Groupe ${nom} supprimé`);
   }
 
+  /**
+   * « + » d'une filière : un groupe VIERGE de plus dans cette filière et cette année.
+   * Le gabarit (niveau, secteur, créneau, mode, modules) est celui du premier
+   * groupe de l'ensemble — rien à ressaisir. Pour reprendre aussi les
+   * affectations d'un groupe, le bouton « Groupe » d'Affectations le propose.
+   */
+  function ajouterGroupeDeFiliere(filiere) {
+    const modele = filiere.modele;
+    ajouterGroupe({
+      filiere: {
+        code: modele.codeFiliere,
+        intitule: modele.intituleFiliere,
+        niveau: modele.niveau,
+        secteur: modele.secteur,
+        typeFormation: modele.typeFormation,
+        creneau: modele.creneau,
+      },
+      annee: filiere.annee,
+      mode: modele.mode,
+      // Sans les formateurs ni la fusion d'un autre groupe : celui-ci part vierge.
+      modules: (modele.modules ?? []).map(({ groupeFusion, ...module }) => module),
+      dupliquerDepuis: null,
+    });
+  }
+
+  /**
+   * ⚠️ RETIRER UN GROUPE SE CONFIRME TOUJOURS, quelle que soit son année (2026-09-19,
+   * demande du porteur). La confirmation n'était demandée que pour un groupe qui
+   * portait des formateurs : un groupe de 3ème année, souvent encore vierge, partait
+   * sans un mot. La même boîte sert au « − » d'une filière et à la corbeille de la
+   * matrice ; elle dit seulement ce que le retrait emporte.
+   */
+  function demanderRetrait(nom) {
+    const groupe = carte.groupes.find((candidat) => candidat.nom === nom);
+    const affectes = (groupe?.modules ?? []).filter(
+      (module) => module.formateurPresentiel || module.formateurSynchrone
+    ).length;
+
+    setGroupeARetirer({ nom, affectes });
+  }
+
+  /** « − » : le DERNIER groupe de la filière (le numéro le plus haut — celui qu'un « + » vient de créer). */
+  function retirerGroupeDeFiliere(filiere) {
+    demanderRetrait(filiere.groupes[filiere.groupes.length - 1]);
+  }
+
   function activerModule(cle, module, actif) {
     carte.activerModule(cle, module, actif);
     toast[actif ? 'success' : 'info'](
@@ -245,31 +436,51 @@ export default function CarteEtablissement({
         (groupes projetés, synchrones compris) : le classeur ne peut donc pas
         montrer d'autres chiffres que l'écran.
       */}
-      <BilanCharge
-        bilan={carte.bilan}
-        statistiques={stats}
-        carte={{ groupes: carte.groupes, formateurs: carte.formateurs }}
-      />
+      {avecAffectations && (
+        <BilanCharge
+          bilan={carte.bilan}
+          statistiques={stats}
+          carte={{ groupes: carte.groupes, formateurs: carte.formateurs }}
+        />
+      )}
 
       {!lectureSeule && (
         <>
-          <SelecteurFiliere
-            onGenerer={genererGroupes}
-            enCours={enregistrement.isPending}
-            // L'aperçu du nommage doit reprendre après les groupes déjà créés.
-            groupes={carte.groupes}
-          />
+          {avecSelecteurFiliere && (
+            <SelecteurFiliere
+              onGenerer={genererGroupes}
+              enCours={enregistrement.isPending}
+              // Le « 1 » n'a de sens que suivi du « 2 » de la liste des formateurs.
+              numerote={avecListeFormateurs}
+              // L'aperçu du nommage doit reprendre après les groupes déjà créés.
+              groupes={carte.groupes}
+            />
+          )}
 
-          <ListeFormateurs
-            formateurs={carte.formateurs}
-            groupes={carte.groupes}
-            onAjouter={carte.ajouterFormateur}
-            onRetirer={carte.retirerFormateur}
-            onRemplacer={carte.remplacerFormateurs}
-          />
+          {avecListeFormateurs && (
+            <ListeFormateurs
+              formateurs={carte.formateurs}
+              groupes={carte.groupes}
+              onAjouter={carte.ajouterFormateur}
+              onRetirer={carte.retirerFormateur}
+              onRemplacer={carte.remplacerFormateurs}
+            />
+          )}
         </>
       )}
 
+      {/* Sous le formulaire : c'est lui qui crée les groupes que ce schéma range. */}
+      {avecArbre && (
+        <ArbreCarte
+          groupes={carte.groupes}
+          onAjouterGroupe={lectureSeule ? undefined : ajouterGroupeDeFiliere}
+          onRetirerGroupe={lectureSeule ? undefined : retirerGroupeDeFiliere}
+          retraitPossible={carte.groupes.length > 1}
+          onOuvrirGroupe={onOuvrirGroupe}
+        />
+      )}
+
+      {avecAffectations && (
       <div className="space-y-3">
         {/*
           La légende vaut pour TOUS les ensembles : elle est donnée une fois, en
@@ -333,7 +544,20 @@ export default function CarteEtablissement({
           <VueFormateurs
             lectureSeule={lectureSeule}
             groupes={carte.groupes}
-            formateurs={carte.formateurs}
+            /*
+             * ⚠️ EN MODE FORMATEUR INVITÉ, LA LISTE C'EST LUI SEUL (2026-09-27,
+             * demande du porteur) : « Affectations par formateur » montre
+             * l'établissement entier au directeur, mais un partage n'a pas
+             * vocation à révéler la charge de ses collègues — seulement la
+             * sienne. `VueFormateurs` n'a besoin d'AUCUN autre changement :
+             * une fiche unique y applique déjà ses propres règles (case grisée
+             * si prise, retrait limité à ses lignes).
+             */
+            formateurs={
+              formateurRestreint
+                ? carte.formateurs.filter((f) => f.nom === formateurRestreint.nom)
+                : carte.formateurs
+            }
             lignesDe={carte.lignesSynchronesDe}
             onAffecter={carte.affecter}
             onDefinirLignes={carte.definirLignesSynchrone}
@@ -341,26 +565,32 @@ export default function CarteEtablissement({
         ) : (
           <GrilleAffectations
             lectureSeule={lectureSeule}
+            formateurRestreint={formateurRestreint}
             groupes={carte.groupes}
             formateurs={carte.formateurs}
             onAffecter={carte.affecter}
             lignesDe={carte.lignesSynchronesDe}
             onDefinirLignes={carte.definirLignesSynchrone}
+            salles={salles}
+            espacesParNomFormateur={espacesParNomFormateur}
+            onDefinirSalles={carte.definirSallesGroupe}
             onActiverModule={activerModule}
             onDefinirMasse={carte.definirMasseHoraire}
             onCopierGroupe={copierGroupe}
-            onSupprimer={supprimerGroupe}
+            onSupprimer={demanderRetrait}
             onAjouterGroupe={ajouterGroupe}
             onOuverture={onOuverture}
+            groupeCible={groupeCible}
           />
         )}
       </div>
+      )}
 
       {/*
         Le bilan d'enregistrement reste à l'écran — le toast disparaît, et c'est
         le seul endroit qui dit ce qui a réellement été écrit en base.
       */}
-      {message && (
+      {avecAffectations && message && (
         <Alerte type="succes" titre="Carte enregistrée">
           {message.effectifs.groupes} groupe(s), {message.effectifs.formateurs} formateur(s),{' '}
           {message.effectifs.affectations} affectation(s).
@@ -373,6 +603,7 @@ export default function CarteEtablissement({
         </Alerte>
       )}
 
+      {avecAffectations && (
       <div className="flex flex-col gap-2 sm:flex-row">
         {/*
           L'export est SECONDAIRE : c'est l'enregistrement qui fait foi. Le
@@ -412,6 +643,7 @@ export default function CarteEtablissement({
           </Button>
         )}
       </div>
+      )}
 
       {/*
         Dernier garde-fou avant l'écrasement. L'avertissement plus haut informe ;
@@ -436,6 +668,81 @@ export default function CarteEtablissement({
         onConfirmer={() => {
           setRemplacementAConfirmer(false);
           enregistrement.mutate();
+        }}
+      />
+
+      {/*
+        ═══ ⚠️ LE REFUS CHIFFRÉ, AVANT TOUTE DESTRUCTION ═══ (2026-09-22)
+        Le serveur a REFUSÉ l'enregistrement en 409 sans rien écrire, parce que
+        des groupes retirés portent encore une planification. Ce dialogue montre
+        ce qui partirait, groupe par groupe — « 955 h de chronogramme, 62
+        séances, 9 stagiaires à détacher ». Sans ces nombres, on confirmerait à
+        l'aveugle, et la carte est remplacée à chaque enregistrement comme à
+        chaque import e-note.
+      */}
+      <ConfirmationAction
+        ouvert={Boolean(suppressionsAConfirmer)}
+        onOpenChange={(ouvert) => !ouvert && setSuppressionsAConfirmer(null)}
+        titre={
+          suppressionsAConfirmer?.length === 1
+            ? `Retirer ${suppressionsAConfirmer[0].groupe} supprimera son contenu`
+            : `Retirer ${suppressionsAConfirmer?.length ?? 0} groupes supprimera leur contenu`
+        }
+        description={
+          <span className="block space-y-2">
+            <span className="block">
+              Ces groupes ne sont plus dans la carte, mais ils portent encore des données.
+              Enregistrer les supprimera définitivement.
+            </span>
+            <span className="block space-y-1">
+              {(suppressionsAConfirmer ?? []).map((detail) => (
+                <span key={detail.groupe} className="block text-xs">
+                  <strong>{detail.groupe}</strong> —{' '}
+                  {[
+                    detail.heuresPlanifiees > 0 && `${detail.heuresPlanifiees} h de chronogramme`,
+                    detail.seances > 0 && `${detail.seances} séance(s)`,
+                    detail.stagiairesADetacher > 0 &&
+                      `${detail.stagiairesADetacher} stagiaire(s) à détacher`,
+                    detail.stages > 0 && `${detail.stages} stage(s)`,
+                    detail.liensFq > 0 && `${detail.liensFq} lien(s) FQ`,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </span>
+              ))}
+            </span>
+            {/*
+              ⚠️ CE QUI SURVIT COMPTE AUTANT : sans cette phrase, un directeur
+              renoncerait de peur d'effacer l'historique disciplinaire de ses
+              stagiaires — qui, lui, ne bouge pas.
+            */}
+            <span className="block text-xs">
+              Les stagiaires sont <strong>détachés, jamais supprimés</strong>, et leurs absences
+              sont conservées.
+            </span>
+          </span>
+        }
+        libelleConfirmation="Supprimer et enregistrer"
+        destructive
+        onConfirmer={() => enregistrement.mutate(true)}
+      />
+
+      <ConfirmationAction
+        ouvert={Boolean(groupeARetirer)}
+        onOpenChange={(ouvert) => !ouvert && setGroupeARetirer(null)}
+        titre={groupeARetirer ? `Retirer ${groupeARetirer.nom} ?` : ''}
+        description={
+          groupeARetirer
+            ? groupeARetirer.affectes > 0
+              ? `${groupeARetirer.affectes} module(s) de ce groupe ont un formateur : ils seront libérés avec lui.`
+              : "Ce groupe n'a aucun formateur affecté. Il sera retiré de la carte."
+            : ''
+        }
+        libelleConfirmation="Retirer le groupe"
+        destructive
+        onConfirmer={() => {
+          supprimerGroupe(groupeARetirer.nom);
+          setGroupeARetirer(null);
         }}
       />
 

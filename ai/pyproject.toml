@@ -1,0 +1,23 @@
+[project]
+name = "edtpro-generateur"
+version = "1.0.0"
+description = "Résolution du placement des séances pour EDT Pro. Aucune règle métier."
+requires-python = ">=3.10"
+
+# ⚠️ AUCUNE DÉPENDANCE OBLIGATOIRE, ET C'EST VOULU : le solveur, ses tests et
+#    le mode CLI ne doivent rien exiger d'installé — ni sur le poste d'un
+#    développeur, ni sur le serveur. Le jour où cette liste cesse d'être vide,
+#    c'est qu'une règle métier a commencé à migrer ici.
+dependencies = []
+
+[project.optional-dependencies]
+# Façade HTTP seule. Requise le jour où un modèle entraîné devra rester chargé
+# en mémoire entre deux appels ; inutile tant que Node appelle en sous-processus.
+api = ["fastapi>=0.110", "uvicorn>=0.27"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["generateur"]

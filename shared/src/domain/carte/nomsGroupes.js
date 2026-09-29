@@ -141,7 +141,17 @@ export function genererNomsGroupes({
 
   const prefixe = prefixeNomGroupe(codeFiliere);
   const conflits = conflitsDePrefixe(prefixe, codeFiliere, groupesExistants);
-  const suffixe = suffixeGroupe(codeFiliere, { desambiguiser: conflits.size > 0 });
+  /*
+   * ⚠️ UN GROUPE AJOUTÉ GARDE LE SUFFIXE DE SA FILIÈRE (2026-09-19, demande du porteur).
+   * Le suffixe se déduit du code filière — « (CDS) » — ou d'une désambiguïsation ;
+   * mais celui d'un groupe DÉJÀ LÀ peut venir d'ailleurs, tel « (FQ) » posé par
+   * l'import e-note. Un « + » sur PIE201 (FQ), PIE202 (FQ) rendait PIE203, seul de sa
+   * filière sans suffixe : autre nom, autre groupe pour l'emploi du temps.
+   * Ce que portent les groupes existants l'emporte donc sur ce qu'on en déduit.
+   */
+  const suffixe =
+    suffixeDesGroupesExistants(groupesExistants, { codeFiliere, prefixe }) ||
+    suffixeGroupe(codeFiliere, { desambiguiser: conflits.size > 0 });
 
   const annee = Number.parseInt(anneeFormation, 10) || 1;
   const base = annee * 100;
@@ -154,6 +164,35 @@ export function genererNomsGroupes({
   }
 
   return { noms, prefixe, suffixe, conflits, depart };
+}
+
+/**
+ * Suffixe que portent déjà les groupes de CETTE filière : « (FQ) » pour PIE201 (FQ).
+ * Les plus hauts numéros font foi (c'est à leur suite qu'on numérote). '' si aucun
+ * groupe de la filière n'en porte.
+ */
+function suffixeDesGroupesExistants(groupesExistants, { codeFiliere, prefixe }) {
+  let retenu = '';
+  let numeroRetenu = -1;
+
+  for (const groupe of groupesExistants) {
+    if ((groupe?.codeFiliere ?? '') !== codeFiliere) continue;
+
+    const nom = String(groupe?.nom ?? '').trim();
+    const base = sansSuffixe(nom);
+    if (prefixeDuNom(base) !== prefixe) continue;
+
+    const suffixe = nom.slice(base.length);
+    if (suffixe === '') continue;
+
+    const numero = Number.parseInt(base.slice(prefixe.length), 10);
+    if (Number.isInteger(numero) && numero > numeroRetenu) {
+      retenu = suffixe;
+      numeroRetenu = numero;
+    }
+  }
+
+  return retenu;
 }
 
 /**

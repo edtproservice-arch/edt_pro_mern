@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Link, useSearchParams } from 'react-router-dom';
+import { ROLES } from 'shared/constants';
 import CarteEtablissement from '@/features/configuration/carte/CarteEtablissement';
 import { repliCase } from '@/features/configuration/carte/casesCarte';
 import { enregistrerCarte } from '@/features/configuration/api';
+import { recupererSession } from '@/features/auth/api';
 import Alerte from '@/components/common/Alerte';
 import EnTetePartage from '@/features/partages/EnTetePartage';
 import { useDroitPage } from '@/features/partages/useDroitPage';
@@ -40,7 +43,27 @@ const VUE_CARTE = {};
 const REPOS_CARTE = 300;
 
 /**
+ * Où continuer : les groupes de la carte s'affectent depuis « Affectations ». Le
+ * schéma lui-même vit dans `CarteEtablissement` (`avecArbre`), qui tient les groupes.
+ */
+function SuiteDeLaCarte() {
+  return (
+    <div className="mt-3 flex justify-end text-sm">
+      <Link to="/app/parametres/affectations" className="font-medium underline underline-offset-2">
+        Affecter les formateurs →
+      </Link>
+    </div>
+  );
+}
+
+/**
  * Carte d'établissement : filières, groupes et affectations.
+ *
+ * ═══ DEUX PAGES, UNE MÊME MACHINE (2026-09-19) ═══
+ * `variante="carte"` (Paramètres → Carte) porte la configuration de la filière ;
+ * `variante="affectations"` porte le reste. Le droit, la salle temps réel, la
+ * version et l'enregistrement automatique sont ceux de « affectations » pour les
+ * deux : une seule carte, un seul enregistrement — pas deux copies qui s'écrasent.
  * ← partials/affectation-carte.html + assets/js/affectation-carte.js
  *
  * ═══ ELLE PART DE CE QUI EST ENREGISTRÉ ═══
@@ -59,10 +82,45 @@ const REPOS_CARTE = 300;
  * des autres pages ne s'applique pas tel quel. La version et l'adoption sont
  * tenues ici ; la carte, elle, se REPOSE par `reprendre`, comme pour « Défaire ».
  */
-export default function PageAffectations() {
+export default function PageAffectations({
+  variante = 'affectations',
+  /*
+   * ⚠️ MONTÉE DANS L'ASSISTANT DE CONFIGURATION (étapes 5 et 6), la page n'a plus
+   * d'adresse à lire ni de page voisine où renvoyer :
+   *   - `groupeVise` remplace `?groupe=` : le groupe à montrer vient de l'assistant ;
+   *   - `surOuvrirGroupe` est ce que fait le badge d'un groupe — passer à l'étape
+   *     suivante, au lieu de quitter l'assistant pour Paramètres.
+   */
+  groupeVise = null,
+  surOuvrirGroupe = null,
+}) {
+  const estCarte = variante === 'carte';
+  // Le groupe visé par un badge du schéma de la page Carte : `?groupe=PIE201 (FQ)`.
+  const [parametres] = useSearchParams();
+  const groupeCible = groupeVise ?? parametres.get('groupe');
   const cache = useQueryClient();
   const { lectureSeule } = useDroitPage('affectations');
   const enregistree = useCarteEnregistree();
+
+  /*
+   * ═══ FORMATEUR INVITÉ, RESTREINT À SES CASES VIDES (2026-09-27, demande du
+   * porteur) ═══ Un formateur n'atteint jamais cette page par son rôle seul —
+   * `affectations` ne fait pas partie de `parRole` (`shared/domain/partage/pages.js`) :
+   * s'il est là, c'est forcément par un partage. `lectureSeule` couvre déjà
+   * l'invité « peut consulter » ; celui-ci a la modification, mais seulement
+   * sur ce que la carte ne porte pas encore — jamais le plein accès du
+   * directeur ou d'un gestionnaire, qui restent inchangés.
+   *
+   * ⚠️ MÊME CLÉ DE CACHE (`['session']`) QUE LA BARRE ET `usePartagesAvecMoi` :
+   * la session est presque toujours déjà chargée, cette requête ne coûte rien
+   * de plus.
+   */
+  const session = useQuery({ queryKey: ['session'], queryFn: recupererSession, retry: false });
+  const utilisateurConnecte = session.data?.utilisateur;
+  const matriculeFormateurRestreint =
+    !lectureSeule && utilisateurConnecte?.role === ROLES.FORMATEUR
+      ? utilisateurConnecte.identifiant
+      : null;
 
   /*
    * ═══ LA BASE D'UN COLLÈGUE ARRIVE AVEC SON ANNONCE (2026-09-13) ═══
@@ -299,16 +357,31 @@ export default function PageAffectations() {
           et c'est elle qui porte curseurs et case ouverte. */}
       <EnTetePartage page="affectations" salle={salle} />
       <CadreReglage
-        titre="Affectations"
+        titre={estCarte ? 'Carte' : 'Affectations'}
         chargement={enregistree.chargement}
         erreur={enregistree.erreur}
         repos={REPOS_CARTE}
         {...ecriture}
       >
-        {enregistree.groupesSansFiliere.length > 0 && (
+        {!estCarte && enregistree.groupesSansFiliere.length > 0 && (
           <Alerte type="avertissement" titre="Filière introuvable pour certains groupes">
             {enregistree.groupesSansFiliere.join(', ')} — leurs modules ne peuvent pas être retrouvés
             dans la répartition DRIF. Régénérez-les depuis leur filière pour les compléter.
+          </Alerte>
+        )}
+
+        {/*
+          ⚠️ L'AJOUT DES FORMATEURS N'EST PLUS ICI (2026-09-19, demande du porteur) :
+          il est dans Paramètres → Formateurs. Sans formateur, les listes de la
+          matrice sont vides — et rien à l'écran ne dirait pourquoi ni où aller.
+        */}
+        {!estCarte && enregistree.carte && enregistree.carte.formateurs.length === 0 && (
+          <Alerte type="info" titre="Aucun formateur à affecter">
+            Ajoutez-les, ou importez un classeur Excel, depuis{' '}
+            <Link to="/app/parametres/formateurs" className="font-medium underline underline-offset-2">
+              Paramètres → Formateurs
+            </Link>
+            .
           </Alerte>
         )}
 
@@ -327,6 +400,13 @@ export default function PageAffectations() {
               reprendre.current = fonction;
             }}
             lectureSeule={lectureSeule}
+            matriculeFormateurRestreint={matriculeFormateurRestreint}
+            avecListeFormateurs={false}
+            avecSelecteurFiliere={estCarte}
+            avecAffectations={!estCarte}
+            avecArbre={estCarte}
+            onOuvrirGroupe={surOuvrirGroupe}
+            groupeCible={estCarte ? null : groupeCible}
             // Un invité « peut consulter » n'ouvre rien — et le serveur ne
             // relaierait pas sa case.
             onOuverture={lectureSeule ? null : surOuverture}
@@ -339,6 +419,9 @@ export default function PageAffectations() {
             repli={repliCase}
           />
         </div>
+
+        {/* Dans l'assistant, « Suivant » mène aux affectations : ce lien ferait quitter le parcours. */}
+        {estCarte && !surOuvrirGroupe && <SuiteDeLaCarte />}
       </CadreReglage>
     </>
   );

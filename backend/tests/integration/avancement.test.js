@@ -389,6 +389,8 @@ describe('GET /avancement/achevement — les plages des modules', () => {
    * module peut être à 100 % et avoir fini deux mois après la date prévue.
    */
   it('rend la plage prévue au chronogramme et celle posée dans la grille', async () => {
+    // ⚠️ La séance d'abord : planifié, le chronogramme VERROUILLE l'ajout (2026-09-27).
+    await poserSeance();
     await Chronogramme.create({
       etablissementId: etablissement.id,
       anneeScolaire: ANNEE,
@@ -400,8 +402,6 @@ describe('GET /avancement/achevement — les plages des modules', () => {
         ],
       },
     });
-    await poserSeance();
-
     /* Même borne que les taux : la séance est en W3, on observe sa fin. */
     const { plages } = (
       await request(app)

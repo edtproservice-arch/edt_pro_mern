@@ -59,7 +59,7 @@ export default function CarteModule({ groupe, module, children }) {
         <span className={ENVELOPPE}>{children}</span>
       </HoverCardTrigger>
 
-      <HoverCardContent align="start" className="w-80 p-0 text-xs">
+      <HoverCardContent align="start" className="w-96 p-0 text-xs">
         <Contenu groupe={groupe} module={module} />
       </HoverCardContent>
     </HoverCard>
@@ -149,7 +149,7 @@ function Contenu({ groupe, module }) {
  * chaque carte ferait chercher ce qui manque là où il n'y a simplement rien.
  */
 function Bloc({ titre, avancement, icone }) {
-  const { prevu, pose, taux, niveau, semaines } = avancement ?? {};
+  const { prevu, pose, taux, niveau, seances } = avancement ?? {};
   if (!prevu && !pose) return null;
 
   return (
@@ -180,21 +180,35 @@ function Bloc({ titre, avancement, icone }) {
         {prevu > 0 && <Jauge taux={taux} />}
       </div>
 
-      {semaines?.length > 0 && (
+      {/*
+        ⚠️ UNE LIGNE PAR SÉANCE, PAS PAR SEMAINE (2026-09-24, demande du
+        porteur) : « S3 : 10 h » masquait deux séances distinctes — laquelle a
+        eu lieu, laquelle reste à poser. La clé combine les quatre coordonnées
+        d'une séance : deux séances peuvent tomber sur le même jour et le même
+        créneau à des semaines différentes.
+      */}
+      {seances?.length > 0 && (
         <div className="max-h-40 overflow-y-auto border-t">
           <table className="w-full">
             <thead className="sticky top-0 bg-tableau-tete text-[0.65rem] text-tableau-tete-foreground">
               <tr>
                 <th className="px-3 py-1 text-left font-medium">Semaine</th>
+                <th className="px-2 py-1 text-left font-medium">Séance</th>
                 <th className="px-2 py-1 text-right font-medium">Heures</th>
                 <th className="px-2 py-1 text-right font-medium">Cumul</th>
                 <th className="px-3 py-1 text-right font-medium">Taux</th>
               </tr>
             </thead>
             <tbody>
-              {semaines.map((entree) => (
-                <tr key={entree.semaine} className="border-b last:border-b-0">
+              {seances.map((entree) => (
+                <tr
+                  key={`${entree.semaine}-${entree.jour}-${entree.creneau}`}
+                  className="border-b last:border-b-0"
+                >
                   <td className="px-3 py-1">{libelleSemaine(entree.semaine, { court: true })}</td>
+                  <td className="px-2 py-1 text-muted-foreground">
+                    {entree.jour ? `${entree.jour.slice(0, 3)}. ${entree.creneau}` : entree.creneau}
+                  </td>
                   <td className={cn('px-2 py-1 text-right tabular-nums', couleurChargeTexte(entree.heures, 20))}>
                     {entree.heures} h
                   </td>

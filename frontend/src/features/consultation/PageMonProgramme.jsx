@@ -1,7 +1,8 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Clock, Presentation } from 'lucide-react';
+import { Clock, Globe, Presentation } from 'lucide-react';
 import Teams from '@/components/icons/Teams';
+import { Button } from '@/components/ui/button';
 import Alerte from '@/components/common/Alerte';
 import BadgeRegional from '@/components/common/BadgeRegional';
 import BadgeSemestre from '@/components/common/BadgeSemestre';
@@ -11,6 +12,7 @@ import { MARGE_PAGE } from '@/components/common/apparenceGrille';
 import CadreReglage from '@/features/parametres/CadreReglage';
 import { nombre } from '@/lib/nombres';
 import { chargerProgrammeConsultation } from './api';
+import TiroirRessources from './TiroirRessources';
 
 /**
  * « Programme » — la table des matières de l'année d'un stagiaire (F14).
@@ -18,13 +20,11 @@ import { chargerProgrammeConsultation } from './api';
  *   l'existant (2026-09-05, demande du porteur).
  *
  * ═══ ⚠️ CE QUI N'EST PAS REPRIS, ET POURQUOI ═══
- * L'existant ouvrait un TIROIR au clic sur un module — quatre onglets (cours,
- * exercices, TP, résumé) remplis par `search_ofppt.php`, un relais de recherche
- * Google, et par l'API de Wikipédia. Ce relais n'est PAS migré : il appartient
- * à F16 (« Assistant vocal + IA », Phase 6), dont le plan dit que la clé d'API
- * doit passer côté serveur. Le porter ici en aurait fait un second chantier,
- * avec son secret à héberger — la page rend donc ce qu'elle sait rendre
- * aujourd'hui : le programme lui-même.
+ * L'existant remplissait son tiroir par `search_ofppt.php`, un relais Google
+ * à clé d'API. Le tiroir est REVENU (2026-09-28, demande du porteur) mais sans
+ * clé : le bouton globe d'une ligne ouvre `TiroirRessources` à droite, rempli par le
+ * serveur (DuckDuckGo + YouTube, mots-clés « ofppt », « ofppt life »,
+ * « ofppt info ») — voir `ressources.service.js`.
  */
 export default function PageMonProgramme() {
   const requete = useQuery({
@@ -32,6 +32,8 @@ export default function PageMonProgramme() {
     queryFn: chargerProgrammeConsultation,
     retry: false,
   });
+
+  const [moduleOuvert, setModuleOuvert] = useState(null);
 
   const modules = requete.data?.modules ?? [];
   const groupes = requete.data?.groupes ?? [];
@@ -131,6 +133,9 @@ export default function PageMonProgramme() {
             collant={`-${MARGE_PAGE}px`}
             vide="Aucun module au programme."
             cleLigne={(ligne) => `${ligne.groupe}-${ligne.module}`}
+            /* ⚠️ LA LIGNE ENTIÈRE OUVRE AUSSI LES RESSOURCES (2026-09-28, demande
+               du porteur), en plus du bouton globe qui rend l'action visible. */
+            surClicLigne={setModuleOuvert}
             lignes={modules}
             colonnes={[
               ...(avecGroupe
@@ -214,10 +219,34 @@ export default function PageMonProgramme() {
                 tri: (ligne) => ligne.semestre ?? '',
                 rendu: (ligne) => <BadgeSemestre semestre={ligne.semestre} long />,
               },
+              {
+                /* ⚠️ `entete: ''` : en forme « cartes », `TableauTriable` range
+                   cette colonne en pied de carte, comme une colonne d'actions.
+                   ⚠️ UN BOUTON GLOBE, PAS UN CLIC SUR LE NOM (2026-09-28, demande
+                   du porteur) : l'action se voit, au lieu de se deviner. */
+                id: 'ressources',
+                entete: '',
+                aligne: 'droite',
+                rendu: (ligne) => (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="size-8"
+                    onClick={() => setModuleOuvert(ligne)}
+                    title="Rechercher des ressources (vidéos, cours, exercices)"
+                    aria-label={`Rechercher des ressources pour ${ligne.intitule || ligne.module}`}
+                  >
+                    <Globe className="size-4" />
+                  </Button>
+                ),
+              },
             ]}
           />
         </div>
       )}
+
+      <TiroirRessources module={moduleOuvert} onFermer={() => setModuleOuvert(null)} />
     </CadreReglage>
   );
 }

@@ -1,5 +1,13 @@
 import { TYPES_COURS } from '../../constants/index.js';
-import { prefixeDuNom } from './nomsGroupes.js';
+import { prefixeDuNom, sansSuffixe } from './nomsGroupes.js';
+/*
+ * ⚠️ ALIAS OBLIGATOIRE : ce fichier a DÉJÀ un `cleModule` local, qui désigne
+ *    autre chose — `code||nom` d'un module du référentiel. Celui-ci désigne
+ *    un couple `GROUPE||MODULE`, la clé du quota. Deux notions, un seul nom :
+ *    les importer tel quel masquait le local et changeait silencieusement le
+ *    sens de trois appels.
+ */
+import { cleModule as cleAffectation } from '../emploi/indicateurs.js';
 
 /**
  * Reconstruction de la carte à partir de la base enregistrée.
@@ -20,9 +28,18 @@ import { prefixeDuNom } from './nomsGroupes.js';
  *     métiers et les modules ENCORE SANS FORMATEUR.
  */
 
-/** Année de formation lue dans le numéro du groupe : « DEVOWFS201 » → 2. */
+/**
+ * Année de formation lue dans le numéro du groupe : « DEVOWFS201 » → 2.
+ *
+ * ⚠️ LES SUFFIXES SE RETIRENT D'ABORD (2026-09-19). Le numéro doit être le dernier
+ * mot du nom, et un groupe de cours du soir, de FQ ou désambiguïsé se termine par
+ * une parenthèse : « DEV301 (CDS) » se lisait 1ère année. À l'enregistrement, tout
+ * allait bien ; au rechargement, le groupe retombait dans l'ensemble de la 1ère
+ * année — sans ses modules, dans la mauvaise branche — et paraissait ne pas avoir
+ * été enregistré. Vrai pour toute année au-delà de la première.
+ */
 export function anneeDuNomGroupe(nom) {
-  const chiffres = /(\d{3,4})\s*$/.exec(String(nom ?? '').trim());
+  const chiffres = /(\d{3,4})\s*$/.exec(sansSuffixe(String(nom ?? '').trim()));
   if (!chiffres) return 1;
 
   const annee = Number.parseInt(chiffres[1].charAt(0), 10);
@@ -182,6 +199,15 @@ export function reconstruireGroupes(base, referentiel = new Map()) {
     ])
   );
 
+  /*
+   * ⚠️ MÊME RAISON QUE LES MODULES DÉSACTIVÉS (2026-09-23) : le format e-note
+   * n'a aucune colonne de salle, donc elles se relisent à part. Sans cette
+   * table, la carte reviendrait sans salles à l'écran — et le premier
+   * enregistrement les effacerait. C'est l'incident déjà vécu avec `espaces`,
+   * documenté dans le présentateur de `base.service.js`.
+   */
+  const sallesParModule = lireTable(base?.sallesAffectations);
+
   // ─── 2. Un groupe par nom, garni des modules officiels de son ensemble ────
   for (const nom of base?.groupes ?? []) {
     const codeFiliere = filiereParGroupe.get(nom) ?? '';
@@ -212,6 +238,14 @@ export function reconstruireGroupes(base, referentiel = new Map()) {
         // ailleurs, et l'écrire à `true` ferait diverger les deux formes.
         ...(inactifs.get(nom)?.has(String(module.code ?? module.nom).trim().toUpperCase())
           ? { actif: false }
+          : {}),
+        /*
+         * ⚠️ POSÉ SEULEMENT S'IL Y EN A, comme `actif` : un tableau vide écrit
+         *    partout gonflerait la carte et rendrait indiscernable « aucune
+         *    salle imposée » de « salles effacées ».
+         */
+        ...(sallesParModule[cleAffectation(nom, module.code ?? module.nom)]?.length
+          ? { salles: sallesParModule[cleAffectation(nom, module.code ?? module.nom)] }
           : {}),
         reference: { mhpS1: module.mhpS1, mhpS2: module.mhpS2 },
       })),

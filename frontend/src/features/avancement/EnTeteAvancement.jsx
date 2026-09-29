@@ -1,13 +1,21 @@
-import { Presentation } from 'lucide-react';
+import { useState } from 'react';
+import { PanelRightClose, PanelRightOpen, Presentation } from 'lucide-react';
+import { taux } from 'shared/domain';
 import Teams from '@/components/icons/Teams';
-import CarteAuSurvol from '@/components/common/CarteAuSurvol';
+import { Button } from '@/components/ui/button';
+import { ButtonGroup } from '@/components/ui/button-group';
 import { nombre } from '@/lib/nombres';
+import { cn } from '@/lib/utils';
+import { basculerPanneauEtablissement, usePanneauEtablissement } from '@/lib/panneauTaux';
 import AnneauTaux from './AnneauTaux';
 import GrapheProgression, {
   COULEURS_PROGRESSION as COULEURS,
   COULEUR_VACANCES,
 } from './GrapheProgression';
 import AchevementModules from './AchevementModules';
+
+/** Référence stable : évite de refaire les calculs d'`AchevementModules` à chaque rendu. */
+const VIDE = [];
 
 /**
  * L'en-tête de la page : le taux global, son détail, et la progression de
@@ -46,9 +54,9 @@ export default function EnTeteAvancement({
   total,
   /*
    * ⚠️ LE TOTAL DE TOUT L'ÉTABLISSEMENT, filtres ignorés (2026-09-17, demande du
-   * porteur) : la carte au survol de « Avancement de l'établissement » résume la
-   * COURBE, qui ne se filtre jamais. Y montrer la sélection (un groupe) faisait
-   * lire le taux d'une promotion sous le nom de l'établissement.
+   * porteur) : le panneau à droite du graphe résume la COURBE, qui ne se filtre
+   * jamais. Y montrer la sélection (un groupe) ferait lire le taux d'une
+   * promotion sous le nom de l'établissement.
    */
   totalEtablissement = total,
   face,
@@ -63,7 +71,8 @@ export default function EnTeteAvancement({
    * quelques centimètres n'apprendraient rien et prendraient deux étages.
    */
   chiffresAilleurs = false,
-  completion = null,
+  lignesAchevement = VIDE,
+  intitules,
   anneeScolaire,
   dateObservee = null,
 }) {
@@ -119,7 +128,7 @@ export default function EnTeteAvancement({
    * ═══ ⚠️ LES CHIFFRES SE MASQUENT QUAND ILS RÉPÈTENT LA COURBE ═══ (demande du
    * porteur, 2026-08-31.) Sans filtre, l'anneau dit exactement où la courbe
    * orange finit : deux fois la même chose, sur deux étages. Ils restent
-   * accessibles au survol de leur repère dans la légende.
+   * accessibles dans le panneau de l'établissement, à droite du graphe.
    *
    * ⚠️ AVEC UN FILTRE, ILS NE RÉPÈTENT PLUS RIEN : ils décrivent la SÉLECTION,
    * quand la courbe reste celle de tout l'établissement. C'est même la
@@ -133,148 +142,180 @@ export default function EnTeteAvancement({
    * 2026-08-31, qui revient sur l'exception que j'avais posée pour e-note.)
    * Un seul comportement à retenir plutôt qu'un par face.
    * ⚠️ CONSÉQUENCE ASSUMÉE : sur la face e-note, l'état DÉCLARÉ — ce que cette
-   * face apporte de propre — n'est plus à l'écran par défaut. Il reste à un
-   * survol de la légende, et revient dès qu'un filtre est posé.
+   * face apporte de propre — n'est plus à l'écran par défaut. Il ne revient que
+   * dès qu'un filtre est posé.
    */
   const chiffresVisibles = chiffresAAfficher({ filtre, avecCourbe }) && !chiffresAilleurs;
   const chiffresEnTete = !avecCourbe;
 
+  /* ⚠️ SA PROPRE PRÉFÉRENCE DE POSTE, INDÉPENDANTE de celle du graphe à
+     bâtons (correction du porteur, 2026-09-25) : replier ce panneau-ci ne doit
+     pas replier l'autre, sur un écran qu'on ne regarde pas forcément. */
+  const panneauEtablissement = usePanneauEtablissement();
+
   return (
-    <section className="rounded-lg border p-4">
-      {/*
-        ⚠️ EN TÊTE SEULEMENT S'IL N'Y A PAS DE COURBE : il n'y a alors rien
-        au-dessus de quoi les poser. Dès qu'une courbe existe, ils passent en
-        DESSOUS — la lecture d'ensemble vient d'abord, le détail chiffré la
-        commente.
-      */}
-      {chiffresVisibles && chiffresEnTete && <Chiffres total={total} face={face} filtre={filtre} />}
-
-      {!avecCourbe && regional && (
-        /*
-          ⚠️ LE RYTHME RÉGIONAL RESTE ÉCRIT MÊME SANS COURBE : un taux de 0,6 %
-          ne veut rien dire tant qu'on ne sait pas ce que la région attend à
-          cette date. Sans cette ligne, la face e-note perdrait l'information.
-        */
-        <p className="mt-3 border-t pt-3 text-xs">
-          <span className="text-muted-foreground">Rythme régional attendu : </span>
-          <span className="font-medium text-foreground">{nombre(regional.taux)} %</span>
-          <span className="text-muted-foreground">
-            {' '}
-            — {regional.passees} semaine(s) active(s) sur {regional.total}, de la S1 à la S39.
-          </span>
-        </p>
-      )}
-
-      {avecCourbe && (
-        <>
-      <div
-        className={`flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1${
-          chiffresVisibles && chiffresEnTete ? ' mt-3 border-t pt-3' : ''
-        }`}
-      >
-        <h2 className="text-sm font-medium">Semaine par semaine, face au rythme régional</h2>
+    /*
+     * ⚠️ `lg:items-stretch` (correction du porteur, 2026-09-25 : « augmenter le
+     * height du card […] pour aligner avec le card du taux ») — c'est la valeur
+     * PAR DÉFAUT de flexbox, explicitée ici parce que ce fichier utilisait
+     * `items-start` avant : les deux cartes gardaient alors leur hauteur
+     * NATURELLE, et celle du graphe, plus courte, laissait un vide sous la
+     * carte de l'établissement plutôt que de s'aligner sur son bas.
+     */
+    <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch">
+      <section className="min-w-0 flex-1 rounded-lg border p-4">
         {/*
-          ⚠️ L'ÉCART EST ÉCRIT, PAS SEULEMENT DESSINÉ. C'est la seule question
-          qu'on pose à ce graphe — « sommes-nous en avance ou en retard ? » — et
-          la lire sur deux nappes qui se frôlent demande de viser à l'œil.
+          ⚠️ EN TÊTE SEULEMENT S'IL N'Y A PAS DE COURBE : il n'y a alors rien
+          au-dessus de quoi les poser. Dès qu'une courbe existe, ils passent en
+          DESSOUS — la lecture d'ensemble vient d'abord, le détail chiffré la
+          commente.
         */}
-        <p className="text-xs">
-          {/*
-            ⚠️ « À LA {SEMAINE} », PAS « AUJOURD'HUI ». Ce chiffre cumule les
-            heures posées JUSQU'À CETTE SEMAINE ; celui du bandeau compte TOUT ce
-            qui est posé, semaines à venir comprises. Les deux sont justes et
-            diffèrent — les nommer pareil ferait chercher une erreur de calcul.
-          */}
-          <span className="text-muted-foreground">À la {courante?.libelle ?? 'semaine en cours'} : </span>
-          <span className="font-medium tabular-nums">{nombre(atteint)} %</span>
-          <span className="text-muted-foreground"> contre {nombre(attendu)} % attendus — </span>
-          <span
-            className={
-              ecart >= 0 ? 'font-medium text-success' : 'font-medium text-destructive'
-            }
-          >
-            {ecart >= 0 ? `+${nombre(ecart)}` : nombre(ecart)} point(s)
-          </span>
-        </p>
-      </div>
+        {chiffresVisibles && chiffresEnTete && <Chiffres total={total} face={face} filtre={filtre} />}
 
-      {/*
-        ⚠️ LE TRACÉ VIT DANS `GrapheProgression`, PARTAGÉ AVEC L'ACCUEIL : c'est
-        le MÊME graphe, cadré autrement — l'année entière ici, une fenêtre autour
-        de la semaine en cours là-bas. Deux copies auraient divergé au premier
-        ajustement de couleur ou de règle.
-      */}
-      <div className="mt-2">
-        <GrapheProgression progression={progression} courante={courante} />
-      </div>
-
-      {/* La légende sous le graphe, comme le modèle. */}
-      <div className="mt-2 flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-xs">
-        {/*
-          ⚠️ LES CHIFFRES SONT ICI, AU SURVOL DE LEUR PROPRE REPÈRE (demande du
-          porteur) : c'est le seul endroit où l'on peut les chercher sans les
-          avoir sous les yeux — la légende nomme la courbe qu'ils résument.
-
-          ⚠️ RIEN N'EST MONTÉ AU REPOS : `CarteAuSurvol` ne rend qu'un `span` tant
-          qu'on ne survole pas, comme partout ailleurs dans le projet.
-        */}
-        <CarteAuSurvol
-          enveloppe="inline-block"
+        {!avecCourbe && regional && (
           /*
-            ⚠️ `w-96` ET NON `w-80` : avec `whitespace-nowrap`, une ligne trop
-            longue ne se replie plus — elle DÉBORDE. « En présentiel 74 /
-            14 115,5 h » demande ~300 px à côté d'un anneau de 72 : dans 320 px
-            moins la marge intérieure, le « h » sortait de la carte. Les deux
-            réglages vont ensemble, on ne peut pas garder l'un sans l'autre.
+            ⚠️ LE RYTHME RÉGIONAL RESTE ÉCRIT MÊME SANS COURBE : un taux de 0,6 %
+            ne veut rien dire tant qu'on ne sait pas ce que la région attend à
+            cette date. Sans cette ligne, la face e-note perdrait l'information.
           */
-          largeur="w-96"
-          align="center"
-          contenu={() => <Chiffres total={totalEtablissement} face={face} disposition="carte" />}
-        >
-          <Repere
-            couleur={COULEURS.avancement}
-            libelle="Avancement de l’établissement"
-            /* ⚠️ UN SOULIGNÉ POINTILLÉ : un libellé qui cache un détail doit le
-               DIRE. Sans ce signal, la carte reste introuvable pour qui ne
-               survole pas la légende par hasard. */
-            indice
-          />
-        </CarteAuSurvol>
-        <Repere couleur={COULEURS.regional} libelle="Rythme régional attendu" />
-        {/*
-          ⚠️ LA BANDE SE NOMME, sinon elle passe pour un artefact du tracé. Elle
-          n'apparaît que si la fenêtre en contient une — annoncer des vacances
-          qu'on ne voit nulle part ferait chercher ce qui manque.
-        */}
-        {aDesVacances && <Repere couleur={COULEUR_VACANCES} libelle="Vacances" />}
-        {dernier && (
-          <span className="text-muted-foreground">
-            Année régionale : S1 à S{dernier.numero}
-          </span>
+          <p className="mt-3 border-t pt-3 text-xs">
+            <span className="text-muted-foreground">Rythme régional attendu : </span>
+            <span className="font-medium text-foreground">{nombre(regional.taux)} %</span>
+            <span className="text-muted-foreground">
+              {' '}
+              — {regional.passees} semaine(s) active(s) sur {regional.total}, de la S1 à la S39.
+            </span>
+          </p>
         )}
-      </div>
 
-          {chiffresVisibles && !chiffresEnTete && (
-            <div className="mt-3 border-t pt-3">
-              <Chiffres total={total} face={face} filtre={filtre} />
+        {avecCourbe && (
+          <>
+            <div
+              className={`flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1${
+                chiffresVisibles && chiffresEnTete ? ' mt-3 border-t pt-3' : ''
+              }`}
+            >
+              <h2 className="text-sm font-medium">Semaine par semaine, face au rythme régional</h2>
+              {/*
+                ⚠️ L'ÉCART EST ÉCRIT, PAS SEULEMENT DESSINÉ. C'est la seule question
+                qu'on pose à ce graphe — « sommes-nous en avance ou en retard ? » — et
+                la lire sur deux nappes qui se frôlent demande de viser à l'œil.
+              */}
+              <p className="text-xs">
+                {/*
+                  ⚠️ « À LA {SEMAINE} », PAS « AUJOURD'HUI ». Ce chiffre cumule les
+                  heures posées JUSQU'À CETTE SEMAINE ; celui du bandeau compte TOUT
+                  ce qui est posé, semaines à venir comprises. Les deux sont justes
+                  et diffèrent — les nommer pareil ferait chercher une erreur de
+                  calcul.
+                */}
+                <span className="text-muted-foreground">
+                  À la {courante?.libelle ?? 'semaine en cours'} :{' '}
+                </span>
+                <span className="font-medium tabular-nums">{nombre(atteint)} %</span>
+                <span className="text-muted-foreground"> contre {nombre(attendu)} % attendus — </span>
+                <span className={ecart >= 0 ? 'font-medium text-success' : 'font-medium text-destructive'}>
+                  {ecart >= 0 ? `+${nombre(ecart)}` : nombre(ecart)} point(s)
+                </span>
+              </p>
             </div>
-          )}
 
-          {/*
-            ⚠️ L'ACHÈVEMENT EST UNE AUTRE QUESTION QUE LE TAUX : « combien
-            d'heures sont faites » et « combien de modules sont TERMINÉS » ne se
-            déduisent pas l'un de l'autre — un établissement à 60 % peut n'avoir
-            achevé aucun module. D'où sa propre ligne, sous la courbe.
-          */}
-          <AchevementModules
-            completion={completion}
-            anneeScolaire={anneeScolaire}
-            dateObservee={dateObservee}
-            face={face}
-          />
-        </>
+            {/*
+              ⚠️ LE TRACÉ VIT DANS `GrapheProgression`, PARTAGÉ AVEC L'ACCUEIL : c'est
+              le MÊME graphe, cadré autrement — l'année entière ici, une fenêtre autour
+              de la semaine en cours là-bas. Deux copies auraient divergé au premier
+              ajustement de couleur ou de règle.
+
+              ⚠️ `hauteur={260}`, PAS LE DÉFAUT (demande du porteur, 2026-09-25 :
+              la carte s'est agrandie pour s'aligner sur celle de l'établissement,
+              et cet espace en plus doit revenir au TRACÉ, pas rester un vide sous
+              la ligne « module(s) achevé(s) »). Un défaut passé ici seul, sans
+              toucher `GrapheProgression` : la vue ZOOMÉE de l'accueil, qui ne
+              passe pas ce prop, garde sa hauteur habituelle.
+            */}
+            <div className="mt-2">
+              <GrapheProgression progression={progression} courante={courante} hauteur={260} />
+            </div>
+
+            {/* La légende sous le graphe, comme le modèle. */}
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-xs">
+              <Repere couleur={COULEURS.avancement} libelle="Avancement de l’établissement" />
+              <Repere couleur={COULEURS.regional} libelle="Rythme régional attendu" />
+              {/*
+                ⚠️ LA BANDE SE NOMME, sinon elle passe pour un artefact du tracé. Elle
+                n'apparaît que si la fenêtre en contient une — annoncer des vacances
+                qu'on ne voit nulle part ferait chercher ce qui manque.
+              */}
+              {aDesVacances && <Repere couleur={COULEUR_VACANCES} libelle="Vacances" />}
+              {dernier && (
+                <span className="text-muted-foreground">
+                  Année régionale : S1 à S{dernier.numero}
+                </span>
+              )}
+            </div>
+
+            {chiffresVisibles && !chiffresEnTete && (
+              <div className="mt-3 border-t pt-3">
+                <Chiffres total={total} face={face} filtre={filtre} />
+              </div>
+            )}
+
+            {/*
+              ⚠️ L'ACHÈVEMENT EST UNE AUTRE QUESTION QUE LE TAUX : « combien
+              d'heures sont faites » et « combien de modules sont TERMINÉS » ne se
+              déduisent pas l'un de l'autre — un établissement à 60 % peut n'avoir
+              achevé aucun module. D'où sa propre ligne, sous la courbe.
+            */}
+            <AchevementModules
+              lignes={lignesAchevement}
+              intitules={intitules}
+              anneeScolaire={anneeScolaire}
+              dateObservee={dateObservee}
+              face={face}
+            />
+          </>
+        )}
+      </section>
+
+      {/*
+        ═══ ⚠️ UNE CARTE EXTERNE, PAS DANS CELLE DU GRAPHE (demande du porteur,
+        2026-09-25 : « la card je veux qu'il être en externe du card Semaine par
+        semaine, face au rythme régional ») ═══ Posé DANS la section du graphe,
+        le panneau semblait un détail de celui-ci ; en carte à part — comme le
+        panneau du graphe à bâtons, qui n'est pas non plus dans le cadre de son
+        graphe — il se lit comme une donnée de RANG ÉGAL, pas un sous-élément.
+        Les deux cartes s'ALIGNENT en hauteur via `lg:items-stretch` sur leur
+        parent, ci-dessus — en dessous de `lg`, elles sont empilées et chacune
+        garde sa hauteur naturelle.
+
+        ⚠️ REPLIÉE, ELLE PERD AUSSI SON CADRE (demande du porteur, 2026-09-25 :
+        « si je masque le taux, les bordures du card doivent aussi être
+        masquées ») : un rectangle bordé autour du seul bouton de bascule
+        dessinait une carte vide, alors qu'il ne reste plus rien à y montrer.
+      */}
+      {avecCourbe && (
+        <aside
+          className={cn(
+            'w-full shrink-0',
+            panneauEtablissement ? 'rounded-lg border p-3 lg:w-72' : 'p-2 lg:w-12'
+          )}
+        >
+          <div
+            className={cn(
+              'flex items-center gap-2',
+              panneauEtablissement ? 'mb-2 justify-between' : 'justify-center'
+            )}
+          >
+            {panneauEtablissement && <span className="text-xs font-medium">Établissement</span>}
+            <BasculePanneau ouvert={panneauEtablissement} />
+          </div>
+
+          {panneauEtablissement && (
+            <Chiffres total={totalEtablissement} face={face} disposition="colonne" />
+          )}
+        </aside>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -291,27 +332,55 @@ function Mesure({ icone, libelle, realise, prevu }) {
   );
 }
 
-function Repere({ couleur, libelle, indice = false }) {
+function Repere({ couleur, libelle }) {
   return (
     <span className="flex items-center gap-1.5">
       <span className="block size-3 rounded-sm" style={{ background: couleur }} />
-      <span className={indice ? 'underline decoration-dotted underline-offset-2' : undefined}>
-        {libelle}
-      </span>
+      <span>{libelle}</span>
     </span>
+  );
+}
+
+/**
+ * Replier ou déplier le panneau de l'établissement, à droite de CE graphe —
+ * sa propre préférence, indépendante de celle du graphe à bâtons.
+ *
+ * ⚠️ COPIÉE DE `PageAvancement`, PAS IMPORTÉE : ce fichier est importé PAR
+ * `PageAvancement`, l'importer en retour créerait une dépendance circulaire.
+ * Le composant est trivial ; deux copies d'un bouton de deux lignes ne
+ * divergeront pas comme diverge un calcul.
+ *
+ * ⚠️ L'ICÔNE DIT CE QU'UN CLIC PRODUIT, jamais l'état courant — la règle déjà
+ * posée pour l'épingle de la barre latérale et le panneau du graphe à bâtons.
+ */
+function BasculePanneau({ ouvert }) {
+  const Icone = ouvert ? PanelRightClose : PanelRightOpen;
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="size-6"
+      aria-pressed={ouvert}
+      title={ouvert ? 'Masquer le taux' : 'Afficher le taux'}
+      onClick={basculerPanneauEtablissement}
+    >
+      <Icone className="size-3.5" />
+      <span className="sr-only">{ouvert ? 'Masquer le taux' : 'Afficher le taux'}</span>
+    </Button>
   );
 }
 
 /**
  * Le taux global et son détail — anneau, présentiel, distanciel, modules.
  *
- * ⚠️ UN SEUL COMPOSANT POUR LES DEUX EMPLACEMENTS : à l'écran quand un filtre
- * est actif, et dans la carte au survol de la légende sinon. Deux versions
- * auraient divergé au premier ajustement — c'est la cause n°1 d'instabilité du
- * §4.2, appliquée à un bloc de chiffres.
+ * ⚠️ UN SEUL COMPOSANT POUR TOUS LES EMPLACEMENTS : le bloc de tête, le panneau
+ * à droite de CE graphe, et celui à droite du graphe à bâtons. Des versions
+ * séparées auraient divergé au premier ajustement — c'est la cause n°1
+ * d'instabilité du §4.2, appliquée à un bloc de chiffres.
  */
 /**
- * Les chiffres s'affichent-ils à l'écran, ou seulement au survol de la légende ?
+ * Les chiffres s'affichent-ils à l'écran ?
  *
  * ⚠️ EXPORTÉE : la page en a besoin pour décider si le panneau latéral du graphe
  * a quelque chose à montrer. Recopier la condition là-bas l'aurait fait diverger
@@ -320,17 +389,74 @@ function Repere({ couleur, libelle, indice = false }) {
 export const chiffresAAfficher = ({ filtre, avecCourbe }) => filtre || !avecCourbe;
 
 /**
- * @param {'large'|'carte'|'colonne'} [disposition]
+ * Les trois mesures que l'anneau peut afficher, et leur couleur — la même
+ * palette que `GrapheAvancement` pour le présentiel et le distanciel, afin
+ * qu'un mode se lise de la même teinte d'un graphe à l'autre.
+ */
+const MODES_ANNEAU = [
+  { cle: 'total', libelle: 'Total', couleur: 'hsl(var(--accent-orange))' },
+  { cle: 'distanciel', libelle: 'Distanciel', couleur: 'hsl(var(--accent-purple-mid))' },
+  { cle: 'presentiel', libelle: 'Présentiel', couleur: 'hsl(var(--accent-green))' },
+];
+
+/**
+ * La bascule Total / Distanciel / Présentiel au-dessus de l'anneau.
+ *
+ * ═══ ⚠️ UN SEUL ANNEAU, TROIS MESURES (demande du porteur, 2026-09-25 : « je
+ * n'aime pas [le demi-cercle empilé qui les montrait toutes les trois à la
+ * fois], utilise Radial Chart - Shape [...] avec un bouton groupe bascule
+ * total, distanciel, présentiel ») ═══
+ * Les essais précédents cherchaient à montrer les trois chiffres EN MÊME
+ * TEMPS sur le même anneau — empilé, ou en pistes concentriques — et aucun ne
+ * convenait : soit deux mesures devenaient invisibles, soit le taux global
+ * qu'on vient lire en premier se perdait parmi les autres. Le porteur préfère
+ * un anneau simple qui n'en montre qu'UNE, et cette bascule pour choisir
+ * laquelle.
+ */
+function BasculeAnneau({ mode, onChange }) {
+  return (
+    <ButtonGroup>
+      {MODES_ANNEAU.map(({ cle, libelle }) => (
+        <Button
+          key={cle}
+          type="button"
+          variant={mode === cle ? 'default' : 'outline'}
+          size="sm"
+          aria-pressed={mode === cle}
+          className="h-6 px-2 text-[0.65rem]"
+          onClick={() => onChange(cle)}
+        >
+          {libelle}
+        </Button>
+      ))}
+    </ButtonGroup>
+  );
+}
+
+/**
+ * @param {'large'|'colonne'} [disposition]
  *   `large`   — le bloc de tête : anneau à gauche, mesures en deux colonnes.
- *   `carte`   — la carte au survol de la légende : anneau à gauche, mesures
- *               empilées, tout sur une ligne chacune.
- *   `colonne` — le panneau à droite du graphe : anneau AGRANDI et CENTRÉ, les
- *               mesures DESSOUS. C'est la seule des trois qui ait de la hauteur
- *               à revendre (456 px), et l'anneau y est le premier chiffre qu'on
- *               vient lire.
+ *   `colonne` — le panneau à droite d'un graphe (celui-ci ou le graphe à
+ *               bâtons) : anneau AGRANDI et CENTRÉ, les mesures DESSOUS. C'est
+ *               la seule des deux qui ait de la hauteur à revendre (456 px), et
+ *               l'anneau y est le premier chiffre qu'on vient lire.
  */
 export function Chiffres({ total, face, filtre, disposition = 'large' }) {
-  const compact = disposition === 'carte';
+  /*
+   * ⚠️ UN ÉTAT PAR INSTANCE DE `Chiffres` — pas partagé (demande implicite : la
+   * bascule du panneau de l'établissement n'a pas à changer ce que montre celle
+   * du bloc de tête, qui décrit une sélection différente).
+   */
+  const [modeAnneau, setModeAnneau] = useState('total');
+  const { couleur: couleurAnneau } = MODES_ANNEAU.find((m) => m.cle === modeAnneau);
+
+  const tauxAnneau =
+    modeAnneau === 'total'
+      ? total.taux
+      : modeAnneau === 'presentiel'
+        ? taux(total.realisePresentiel, total.prevuPresentiel)
+        : taux(total.realiseSynchrone, total.prevuSynchrone);
+
   const mesures = (
     <>
       <Mesure
@@ -358,9 +484,10 @@ export function Chiffres({ total, face, filtre, disposition = 'large' }) {
    */
   if (disposition === 'colonne') {
     return (
-      <div className="space-y-4">
-        <div className="flex flex-col items-center gap-4">
-          <AnneauTaux taux={total.taux} taille="grand" />
+      <div className="space-y-3">
+        <div className="flex flex-col items-center gap-2">
+          <BasculeAnneau mode={modeAnneau} onChange={setModeAnneau} />
+          <AnneauTaux taux={tauxAnneau} couleur={couleurAnneau} taille="grand" />
           {/* ⚠️ `whitespace-nowrap` ici aussi : c'est la coupure des libellés qui
               rend la colonne illisible, pas leur longueur. */}
           <div className="space-y-1.5 whitespace-nowrap text-sm">{mesures}</div>
@@ -376,29 +503,12 @@ export function Chiffres({ total, face, filtre, disposition = 'large' }) {
     );
   }
 
-  if (compact) {
-    return (
-      <div className="space-y-3">
-        <div className="flex items-center gap-4">
-          <AnneauTaux taux={total.taux} />
-          {/* ⚠️ `whitespace-nowrap` : c'est la coupure des libellés qui rendait
-              la carte illisible, pas leur longueur. */}
-          <div className="space-y-1.5 whitespace-nowrap text-sm">{mesures}</div>
-        </div>
-        <p className="text-xs leading-snug text-muted-foreground">
-          {filtre && <span className="font-medium text-foreground">Sélection : </span>}
-          {total.modules} module(s) —{' '}
-          <span className="font-medium text-foreground">{nombre(total.realise)} h</span> réalisées
-          sur {nombre(total.prevu)} h prévues,{' '}
-          {face === 'enote' ? 'd’après les heures déclarées' : 'd’après les séances posées'}.
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-      <AnneauTaux taux={total.taux} />
+      <div className="flex flex-col items-center gap-2">
+        <BasculeAnneau mode={modeAnneau} onChange={setModeAnneau} />
+        <AnneauTaux taux={tauxAnneau} couleur={couleurAnneau} />
+      </div>
 
       <div className="grid gap-x-8 gap-y-1.5 text-sm sm:grid-cols-2">
         {mesures}

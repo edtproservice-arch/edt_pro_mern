@@ -22,3 +22,15 @@ npm-debug.log*
 # Reprise ponctuelle du référentiel DRIF (7 Mo) — regénérable par
 # outils/exporter-repartitions.php, aucune raison de le versionner.
 outils/repartitions.json
+
+# Sauvegardes écrites par les migrations AVANT une suppression (2026-09-26).
+# ⚠️ Elles portent les données réelles d'un établissement : jamais dans le dépôt.
+sauvegarde-*.json
+
+# Installeurs desktop préparés par `npm run desktop:release`
+/release/
+
+# Python (ai/generateur)
+__pycache__/
+*.pyc
+.venv/

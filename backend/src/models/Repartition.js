@@ -74,6 +74,21 @@ repartitionSchema.index(
   { unique: true }
 );
 
+/**
+ * ═══ ⚠️ L'INDEX DU CODE *CARTE* ═══ (2026-09-26)
+ * Depuis que les routes servant la carte cherchent sur `codeFiliereCarte`
+ * (voir l'en-tête de `repartitions.routes.js`), chaque requête balaierait les
+ * **13 359 lignes** sans lui — et `/modules-multiples` en fait une par ensemble,
+ * jusqu'à dix pour une carte ordinaire.
+ *
+ * ⚠️ **PAS `unique`, contrairement à son jumeau DRIF.** L'unicité est garantie
+ *    par le couple DRIF, qui est la clé du document source ; l'imposer aussi ici
+ *    ferait échouer l'import du jour où deux filières DRIF partageraient un code
+ *    carte. Vérifié aujourd'hui : **zéro collision** — mais c'est un constat sur
+ *    les données, pas une garantie du référentiel.
+ */
+repartitionSchema.index({ codeFiliereCarte: 1, anneeFormation: 1, codeModule: 1 });
+
 /** Cascade de l'écran : on descend secteur → niveau → créneau → année. */
 repartitionSchema.index({ secteur: 1, niveauFormation: 1, creneau: 1, anneeFormation: 1 });
 

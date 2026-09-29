@@ -10,6 +10,7 @@ import * as rattrapage from './rattrapage.service.js';
 import { JOURS, SEANCES } from 'shared/constants';
 import { exigerDroitPage } from '../partages/exigerDroitPage.js';
 import { annoncerModification } from '../tempsReel/annonces.js';
+import { construireExportAbsences } from './exportAbsences.service.js';
 
 /**
  * Absences de formateurs et rattrapages (F8).
@@ -55,6 +56,39 @@ router.get(
       res.json({
         absences: await service.lister(req.etablissementId, req.anneeScolaire, filtre),
       });
+    } catch (erreur) {
+      next(erreur);
+    }
+  }
+);
+
+/**
+ * Export Word / PDF / Excel du registre — MÊME filtre que l'écran (2026-09-29,
+ * demande du porteur). Voir `exportAbsences.service.js`.
+ */
+router.post(
+  '/export',
+  exigerDroitPage('absences', 'consulter'),
+  validate({
+    body: z.object({
+      format: z.enum(['docx', 'pdf', 'xlsx']),
+      rattrapees: z.boolean().optional(),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const { tampon, nomFichier, contentType } = await construireExportAbsences(
+        req.etablissementId,
+        req.anneeScolaire,
+        req.body
+      );
+      res.setHeader('Content-Type', contentType);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="export"; filename*=UTF-8''${encodeURIComponent(nomFichier)}`
+      );
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+      res.send(tampon);
     } catch (erreur) {
       next(erreur);
     }

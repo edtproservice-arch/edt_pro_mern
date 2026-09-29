@@ -9,6 +9,7 @@ import {
   libelleSemaine,
   lundiDeLaSemaine,
   normaliserValeurSemaine,
+  semaineAffichable,
   semaineDansAnnee,
   semaineDe,
   valeurSemaine,
@@ -211,3 +212,42 @@ describe('semaineDansAnnee — la semaine dans une année IMPOSÉE', () => {
 function anneeScolaireDe(date) {
   return semaineDe(date).anneeScolaire;
 }
+
+/*
+ * ═══ ⚠️ POURQUOI CETTE FONCTION EXISTE (2026-09-27, demande du porteur :
+ * « il faut qu'il y ait un seul S1 ») ═══
+ * Un calendrier qui numérote chaque LIGNE visible avec `semaineDansAnnee` se
+ * mettait à répéter « 1 » sur plusieurs semaines dès que S1 s'ouvrait sur une
+ * rentrée tardive : toutes les semaines d'août, antérieures à l'ancre,
+ * s'y rangeaient — comportement voulu pour CLASSER une donnée, pas pour
+ * AFFICHER un calendrier.
+ */
+describe('semaineAffichable — le numéro à AFFICHER dans un calendrier', () => {
+  const RENTREES = [{ anneeFormation: 2, date: '2026-09-07' }];
+
+  it('sans rentrée déclarée, se comporte comme semaineDansAnnee', () => {
+    expect(semaineAffichable(2026, dateLocale('2026-08-31'))).toBe(1);
+    expect(semaineAffichable(2026, dateLocale('2026-09-07'))).toBe(2);
+  });
+
+  /*
+   * ⚠️ LE CAS QUI JUSTIFIE LA FONCTION : avec une rentrée le 7 septembre (un
+   * lundi), S1 s'ouvre sur cette semaine — le 31 août n'a donc plus SA PROPRE
+   * semaine dans l'année affichée, et ne doit plus se confondre avec elle sous
+   * le même numéro « 1 ».
+   */
+  it('rend null pour une semaine antérieure à l’ancre, plutôt que de répéter S1', () => {
+    expect(semaineAffichable(2026, dateLocale('2026-08-31'), RENTREES)).toBeNull();
+    expect(semaineAffichable(2026, dateLocale('2026-08-03'), RENTREES)).toBeNull();
+  });
+
+  it('numérote normalement à partir de l’ancre', () => {
+    expect(semaineAffichable(2026, dateLocale('2026-09-07'), RENTREES)).toBe(1);
+    expect(semaineAffichable(2026, dateLocale('2026-09-14'), RENTREES)).toBe(2);
+  });
+
+  it('refuse une année ou une date invalide plutôt que de deviner', () => {
+    expect(() => semaineAffichable('2026', dateLocale('2026-09-07'))).toThrow(TypeError);
+    expect(() => semaineAffichable(2026, '2026-09-07')).toThrow(TypeError);
+  });
+});

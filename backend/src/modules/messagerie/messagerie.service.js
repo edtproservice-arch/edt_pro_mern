@@ -50,6 +50,27 @@ function presenter(message, correspondant, recu) {
           statut: message.invitation.statut,
         }
       : null,
+    /*
+     * L'instantané du chronogramme d'un formateur, quand le message en porte un — c'est lui qui
+     * fait afficher la grille dans le fil, en lecture seule. Rendu tel quel : sa forme est celle,
+     * déjà présentée au client ailleurs, de `GET /chronogrammes/par-formateur/:formateur`.
+     */
+    chronogrammeFormateur: message.chronogrammeFormateur ?? null,
+    /*
+     * La proposition d'emploi du temps (Phase 9 b). ⚠️ Ni l'établissement ni les
+     * séances sauvegardées ne repartent : le serveur les relit au moment d'agir.
+     */
+    proposition: message.proposition
+      ? {
+          semaine: message.proposition.semaine,
+          formateurMatricule: message.proposition.formateurMatricule,
+          seances: message.proposition.seances ?? [],
+          motif: message.proposition.motif ?? '',
+          statut: message.proposition.statut,
+          jours: message.proposition.jours ?? {},
+          traiteeLe: message.proposition.traiteeLe ?? null,
+        }
+      : null,
     correspondant: correspondant
       ? {
           id: String(correspondant._id),
@@ -296,10 +317,22 @@ export async function marquerNonLu(utilisateurId, id) {
  * à cinq personnes, trois l'avaient reçu. Ici, ce qui n'est pas parti est NOMMÉ.
  */
 /**
- * ⚠️ `invitation` N'EST PAS ACCESSIBLE PAR LA ROUTE : son schéma ne la déclare
- * pas, Zod la retire. Seul le service des partages la passe.
+ * ⚠️ `invitation`, `chronogrammeFormateur` ET `proposition` NE SONT PAS ACCESSIBLES PAR LA ROUTE : leur schéma
+ * d'envoi ne les déclare pas, Zod les retire. Seuls les services des partages et du
+ * chronogramme les passent.
  */
-export async function envoyer(expediteurId, { destinataires, sujet, corps, reponseA, invitation = null }) {
+export async function envoyer(
+  expediteurId,
+  {
+    destinataires,
+    sujet,
+    corps,
+    reponseA,
+    invitation = null,
+    chronogrammeFormateur = null,
+    proposition = null,
+  }
+) {
   const expediteur = await User.findById(expediteurId).select('role etablissementIds').lean();
   if (!expediteur) throw notFound('Compte introuvable', { code: 'COMPTE_INTROUVABLE' });
 
@@ -350,6 +383,8 @@ export async function envoyer(expediteurId, { destinataires, sujet, corps, repon
       corps,
       reponseA: original?._id ?? null,
       invitation,
+      chronogrammeFormateur,
+      proposition,
     });
   }
 
@@ -357,9 +392,10 @@ export async function envoyer(expediteurId, { destinataires, sujet, corps, repon
     throw badRequest('Aucun destinataire autorisé', { code: 'DESTINATAIRES_REFUSES', details: refuses });
   }
 
-  await Message.insertMany(envoyes);
+  const crees = await Message.insertMany(envoyes);
 
-  return { envoyes: envoyes.length, refuses };
+  // `ids` : le service des propositions retrouve ainsi le message qu'il vient de poser.
+  return { envoyes: envoyes.length, refuses, ids: crees.map((message) => String(message._id)) };
 }
 
 /**

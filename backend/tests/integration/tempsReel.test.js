@@ -507,7 +507,7 @@ describe('révocation', () => {
 });
 
 describe('invités, curseurs et case ouverte (étapes b et c)', () => {
-  /** Invite, puis ACCEPTE avec la session de l'invité — sans quoi il n'a aucun accès. */
+  /** Invite — l'accès est accordé d'office depuis le 2026-09-23, rien à accepter. */
   const inviter = async (cookiesDirecteur, email, droit) => {
     const compte = await User.findOne({ email });
     const reponse = await request(app)
@@ -516,12 +516,6 @@ describe('invités, curseurs et case ouverte (étapes b et c)', () => {
       .set('X-Annee-Scolaire', String(ANNEE))
       .send({ utilisateurIds: [compte.id], droit });
     expect(reponse.status).toBe(200);
-
-    const message = await Message.findOne({ destinataireId: compte.id, 'invitation.statut': 'en_attente' });
-    const acceptation = await request(app)
-      .post(`/api/v2/partages/invitations/${message.id}/accepter`)
-      .set('Cookie', await seConnecter(email));
-    expect(acceptation.status).toBe(200);
     return compte;
   };
 

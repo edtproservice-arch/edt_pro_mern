@@ -160,7 +160,17 @@ export default function TableauTriable({
   collant = null,
   /** `'md' | 'lg' | 'xl'` — en dessous, une carte par ligne. `pleinePage` vaut `'xl'`. */
   cartesSous,
+  /**
+   * `(ligne) => void` — la ligne ENTIÈRE devient cliquable (2026-09-28), en
+   * table comme en carte. ⚠️ Un clic parti d'un bouton, d'un lien ou d'un champ
+   * DANS la ligne est ignoré : ces éléments ont leur propre action.
+   */
+  surClicLigne = null,
 }) {
+  const cliquer = (ligne) => (evenement) => {
+    if (evenement.target.closest('button, a, input, select, textarea, [role="checkbox"]')) return;
+    surClicLigne(ligne);
+  };
   const [tri, setTri] = useState(null);
   const rupture = RUPTURES[cartesSous ?? (pleinePage ? 'xl' : '')] ?? null;
 
@@ -220,7 +230,29 @@ export default function TableauTriable({
         ferait juste perdre le confort de l'inspecter dans les deux tailles à
         la fois pendant le développement, pour aucun gain réel.
       */}
-      <div className={rupture?.table}>
+      {/*
+        ⚠️⚠️ `flex min-h-0 flex-1` ICI AUSSI, EN MODE PAR DÉFAUT — ET C'EST LE
+        `flex` (pas seulement `min-h-0 flex-1`) QUI COMPTE (2026-09-25, signalé
+        par le porteur, deux fois de suite : un tableau de 245 lignes restait
+        coupé net, sans la moindre barre de défilement).
+        Cette `<div>` est un enfant direct du conteneur `flex-col` juste
+        au-dessus, donc un ITEM flex — `min-h-0 flex-1` la borne bien à l'espace
+        alloué. Mais elle est elle-même un `<div>` ORDINAIRE (`display: block`)
+        pour SON PROPRE enfant, l'enveloppe `overflow-auto` de `Table` — et
+        `min-h-0 flex-1`, posés SUR cet enfant, ne signifient RIEN pour un
+        enfant de bloc : `flex-grow`/`flex-basis` ne s'appliquent qu'à un ITEM
+        d'un conteneur flex. Sans `flex` ICI, l'enveloppe de `Table` retombait
+        donc sur sa hauteur de CONTENU (au-delà de 9 000 px pour 245 lignes),
+        strictement indifférente à la borne de cette `<div>`-ci — d'où un
+        `overflow-auto` qui ne trouvait jamais rien de trop grand pour LUI,
+        puisqu'il grandissait toujours à sa propre mesure.
+        Réservé au mode PAR DÉFAUT : en `pleinePage`/`collant`, c'est la PAGE
+        qui défile, et cette div ne doit pas se mettre à vouloir grandir dans un
+        sens qui n'est pas le sien.
+      */}
+      <div
+        className={cn(!pleinePage && !collant && 'flex min-h-0 flex-1 flex-col', rupture?.table)}
+      >
       <Table
         wrapperClassName={pleinePage || collant ? 'overflow-visible' : 'min-h-0 flex-1'}
         className={pleinePage ? 'table-fixed' : undefined}
@@ -303,7 +335,11 @@ export default function TableauTriable({
             </TableRow>
           ) : (
             triees.map((ligne) => (
-              <TableRow key={cleLigne(ligne)}>
+              <TableRow
+                key={cleLigne(ligne)}
+                onClick={surClicLigne ? cliquer(ligne) : undefined}
+                className={surClicLigne ? 'cursor-pointer' : undefined}
+              >
                 {colonnes.map((colonne) => (
                   <TableCell
                     key={colonne.id}
@@ -359,7 +395,12 @@ export default function TableauTriable({
             <p className="py-8 text-center text-sm text-muted-foreground">{vide}</p>
           ) : (
             triees.map((ligne) => (
-              <CarteLigne key={cleLigne(ligne)} colonnes={colonnes} ligne={ligne} />
+              <CarteLigne
+                key={cleLigne(ligne)}
+                colonnes={colonnes}
+                ligne={ligne}
+                onClick={surClicLigne ? cliquer(ligne) : undefined}
+              />
             ))
           )}
         </div>
@@ -380,12 +421,15 @@ export default function TableauTriable({
  * « spéciale » par son nom, qui diffère d'un tableau à l'autre (`actions`
  * partout ici, mais rien ne le garantit pour un futur tableau).
  */
-function CarteLigne({ colonnes, ligne }) {
+function CarteLigne({ colonnes, ligne, onClick }) {
   const champs = colonnes.filter((colonne) => colonne.entete !== '');
   const actions = colonnes.filter((colonne) => colonne.entete === '');
 
   return (
-    <div className="space-y-3 rounded-lg border p-4">
+    <div
+      className={cn('space-y-3 rounded-lg border p-4', onClick && 'cursor-pointer hover:bg-muted/50')}
+      onClick={onClick}
+    >
       {champs.map((colonne) => (
         <div key={colonne.id}>
           <div className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">

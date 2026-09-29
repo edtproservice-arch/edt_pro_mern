@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Eye, LogIn, Search } from 'lucide-react';
 import { ROLES } from 'shared/constants';
 import { Badge } from '@/components/ui/badge';
@@ -137,6 +137,7 @@ export default function TableauActivite() {
     refetchInterval: 30_000,
   });
 
+  const queryClient = useQueryClient();
   const mutationConnexion = useMutation({
     mutationFn: connecterEnTantQue,
     // Les cookies d'administrateur viennent d'être remplacés : on quitte
@@ -145,7 +146,17 @@ export default function TableauActivite() {
     // ⚠️ `routeApresUsurpation`, PAS `routeApresConnexion` (2026-09-06) :
     // l'administrateur arrive sur l'ACCUEIL, jamais sur l'assistant de
     // configuration — voir la raison dans `routage.js`.
-    onSuccess: (reponse) => navigate(routeApresUsurpation(reponse.utilisateur)),
+    //
+    // ⚠️ ON VIDE LE CACHE AVANT DE NAVIGUER (2026-09-20, signalé par le porteur : « accès
+    // refusé — cet écran est réservé aux administrateurs » en se connectant à un
+    // directeur). Le cache gardait la session de l'ADMINISTRATEUR : la coquille de
+    // `/app` la lisait, renvoyait vers `/admin`, et l'écran d'administration interrogeait
+    // le serveur avec les cookies du DIRECTEUR — refusé. Vidé, la coquille relit la
+    // session, qui est maintenant la bonne (comme au retour, dans `BandeauUsurpation`).
+    onSuccess: (reponse) => {
+      queryClient.clear();
+      navigate(routeApresUsurpation(reponse.utilisateur));
+    },
   });
 
   const changer = (cle, valeur) =>

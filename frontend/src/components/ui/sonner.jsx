@@ -1,4 +1,5 @@
 import { Toaster as Sonner } from 'sonner';
+import { useTheme } from '@/lib/theme';
 
 /**
  * Notifications éphémères.
@@ -15,9 +16,11 @@ import { Toaster as Sonner } from 'sonner';
  *     sur l'angle du toast, sans rapport avec la palette.
  */
 function Toaster(props) {
+  // ⚠️ Le thème EFFECTIVEMENT appliqué (2026-09-28) : plus « light » en dur.
+  const { sombre } = useTheme();
   return (
     <Sonner
-      theme="light"
+      theme={sombre ? 'dark' : 'light'}
       className="toaster group"
       toastOptions={{
         classNames: {

@@ -153,10 +153,11 @@ describe('Approbation des directeurs', () => {
     expect(JSON.stringify(reponse.body)).not.toContain('$2');
   });
 
-  it('réinitialise un mot de passe sans le renvoyer dans la réponse', async () => {
+  it('réinitialise avec le mot de passe saisi par l\'administrateur, sans le renvoyer dans la réponse', async () => {
     const reponse = await request(app)
       .post(`/api/v2/admin/utilisateurs/${directeur.id}/mot-de-passe`)
-      .set('Cookie', cookiesAdmin);
+      .set('Cookie', cookiesAdmin)
+      .send({ motDePasse: 'Nouveau2026' });
 
     expect(reponse.status).toBe(200);
     expect(reponse.body.motDePasse).toBeUndefined();
@@ -169,11 +170,16 @@ describe('Approbation des directeurs', () => {
      * dans le gabarit HTML et qui le rend sélectionnable d'un geste en texte
      * brut. Collé à sa phrase, il se recopiait avec la ponctuation.
      */
-    expect(envois.at(-1).texte).toMatch(/\n\nAa1[A-Za-z0-9_-]+\n\n/);
+    expect(envois.at(-1).texte).toMatch(/\n\nNouveau2026\n\n/);
     const ancien = await request(app)
       .post('/api/v2/auth/connexion')
       .send({ identifiant: 'nouveau@edtpro.ma', motDePasse: MOT_DE_PASSE });
     expect(ancien.status).toBe(401);
+
+    const nouveau = await request(app)
+      .post('/api/v2/auth/connexion')
+      .send({ identifiant: 'nouveau@edtpro.ma', motDePasse: 'Nouveau2026' });
+    expect(nouveau.body.action).toBe('connecte');
   });
 
   /*

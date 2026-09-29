@@ -54,15 +54,10 @@ describe('pages partagées dans le menu (Phase 5bis, étape d)', () => {
     const parRole = navigationPourRole(ROLES.GESTIONNAIRE, { partages: [partage('emploi', 'consulter', false)] });
     expect(urls(parRole)).toEqual(['/app/edition', '/app/absences', '/app/documents']);
 
-    // Une seule page : l'entrée du directeur telle quelle, alignée sur les siennes.
+    // Une seule page : elle va elle aussi dans le groupe « Partagé » (2026-09-23).
     const unePage = navigationPourRole(ROLES.GESTIONNAIRE, { partages: [partage('emploi', 'modifier')] });
-    expect(unePage.map((e) => [e.titre, e.url])).toEqual([
-      ['Emploi', '/app/emploi'],
-      ['Édition', '/app/edition'],
-      ['Absences', '/app/absences'],
-      ['Documents', '/app/documents'],
-    ]);
-    expect(unePage[0].partage).toBeUndefined();
+    expect(unePage[0]).toMatchObject({ titre: 'Partagé', partage: true, url: '/app/emploi' });
+    expect(urls(unePage[0].sousMenu)).toEqual(['/app/emploi']);
   });
 
   // ⚠️ La même carte que le formateur, à partir du même seuil.
@@ -81,7 +76,8 @@ describe('pages partagées dans le menu (Phase 5bis, étape d)', () => {
     const menu = navigationPourRole(ROLES.GESTIONNAIRE, {
       partages: [partage('emploi', 'consulter'), partage('chronogramme', 'modifier')],
     });
-    expect(menu.map((e) => e.titre)).toEqual(['Chronogramme', 'Édition', 'Absences', 'Documents']);
+    expect(menu.map((e) => e.titre)).toEqual(['Partagé', 'Édition', 'Absences', 'Documents']);
+    expect(urls(menu[0].sousMenu)).toEqual(['/app/parametres/chronogramme']);
   });
 });
 

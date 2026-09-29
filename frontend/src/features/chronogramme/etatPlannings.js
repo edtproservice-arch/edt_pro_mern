@@ -35,6 +35,27 @@
  * automatique la réécrira, et la dernière écriture l'emporte (le verrou
  * optimiste des pages « tout ou rien » est l'étape d3).
  *
+ * ⚠️⚠️ « GARDE SA SAISIE » SE JOUE CELLULE PAR CELLULE, PAS GROUPE PAR GROUPE
+ * (2026-09-23, défaut trouvé après un signalement du porteur : « l'enregistrement
+ * entre dans une boucle », chez un formateur, quand quelqu'un d'autre modifiait
+ * le même groupe au même moment).
+ *
+ * L'ancienne règle gardait TOUT le groupe local dès qu'UNE seule case y avait
+ * changé — y compris les cases qu'on n'avait pas touchées. Deux personnes qui
+ * modifient le MÊME groupe en même temps, chacune sur ses propres cases,
+ * finissaient donc par s'effacer l'une l'autre : l'enregistrement de l'une
+ * réussissait (la version qu'elle envoyait était la bonne), mais écrivait par-
+ * dessus l'ajout de l'autre puisque sa copie locale ne le portait jamais — sans
+ * le moindre conflit 409 pour le signaler, puisque chaque écriture était, prise
+ * isolément, parfaitement valide. L'autre personne voyait alors sa case
+ * disparaître, la rétablissait, et le cycle recommençait : chaque tour
+ * s'affichait comme un succès (« chronogramme enregistré »), en boucle.
+ *
+ * La fusion compare donc maintenant CHAQUE CASE à ce qu'elle valait au dernier
+ * tour : une case inchangée depuis suit le serveur (elle n'est « à personne »),
+ * une case qui a changé ICI garde la saisie en cours — exactement la même règle
+ * qu'avant, simplement appliquée à la bonne échelle.
+ *
  * @param {object} courants    état local, saisie en cours comprise
  * @param {object} charges     plannings REÇUS du serveur — un groupe absent de
  *                             cet objet n'a pas encore répondu
@@ -48,16 +69,18 @@ export function amorcerPlannings(courants, charges, precedents = {}) {
 
   for (const groupe of Object.keys(charges)) {
     if (groupe in courants) {
+      const enBaseline = groupe in precedents;
       // Une saisie en cours l'emporte TOUJOURS sur ce que le serveur renvoie :
       // un rafraîchissement de cache ne doit pas effacer ce qu'on est en train
       // d'écrire.
-      const sansSaisie =
-        groupe in precedents && empreinte(courants[groupe]) === empreinte(precedents[groupe]);
-      const nouvelleVersion =
-        groupe in precedents && empreinte(charges[groupe]) !== empreinte(precedents[groupe]);
+      const sansSaisie = enBaseline && empreinte(courants[groupe]) === empreinte(precedents[groupe]);
+      const nouvelleVersion = enBaseline && empreinte(charges[groupe]) !== empreinte(precedents[groupe]);
 
       if (sansSaisie && nouvelleVersion) {
         suivants[groupe] = charges[groupe];
+        change = true;
+      } else if (enBaseline && !sansSaisie && nouvelleVersion) {
+        suivants[groupe] = fusionnerCellules(courants[groupe], precedents[groupe], charges[groupe]);
         change = true;
       } else {
         suivants[groupe] = courants[groupe];
@@ -73,6 +96,51 @@ export function amorcerPlannings(courants, charges, precedents = {}) {
   if (Object.keys(suivants).length !== Object.keys(courants).length) change = true;
 
   return change ? suivants : courants;
+}
+
+/**
+ * Le planning d'UN groupe, case par case : ce qu'on a touché ici reste tel
+ * quel, ce qu'on n'a pas touché suit le serveur — voir le commentaire de
+ * `amorcerPlannings`, ci-dessus, pour le défaut que cette fonction corrige.
+ */
+function fusionnerCellules(courant, precedent, charge) {
+  const modules = new Set([
+    ...Object.keys(precedent ?? {}),
+    ...Object.keys(charge ?? {}),
+    ...Object.keys(courant ?? {}),
+  ]);
+
+  const resultat = {};
+
+  for (const module of modules) {
+    const cellulesCourant = courant?.[module] ?? {};
+    const cellulesPrecedent = precedent?.[module] ?? {};
+    const cellulesCharge = charge?.[module] ?? {};
+
+    const semaines = new Set([
+      ...Object.keys(cellulesPrecedent),
+      ...Object.keys(cellulesCharge),
+      ...Object.keys(cellulesCourant),
+    ]);
+
+    const cellulesResultat = {};
+    for (const semaine of semaines) {
+      const toucheeIci = empreinteCellule(cellulesCourant[semaine]) !== empreinteCellule(cellulesPrecedent[semaine]);
+      const valeur = toucheeIci ? cellulesCourant[semaine] : cellulesCharge[semaine];
+      if (valeur !== undefined) cellulesResultat[semaine] = valeur;
+    }
+
+    if (Object.keys(cellulesResultat).length > 0) resultat[module] = cellulesResultat;
+  }
+
+  return resultat;
+}
+
+/** Même filtre qu'`empreinte`, mais pour UNE case : sert à savoir si elle a été touchée. */
+function empreinteCellule(cellule) {
+  return Number(cellule?.heures) > 0
+    ? JSON.stringify({ heures: Number(cellule.heures), type: cellule.type })
+    : '';
 }
 
 /**
@@ -128,6 +196,46 @@ export function omettreGroupes(plannings, groupes) {
   const reste = { ...plannings };
   for (const groupe of groupes) delete reste[groupe];
   return reste;
+}
+
+/**
+ * Fusionne les grilles de plusieurs formateurs affichés ensemble (mode
+ * formateur, sélection multiple) en un seul jeu de plannings par groupe.
+ *
+ * ⚠️⚠️ LA VERSION LA PLUS HAUTE GAGNE, JAMAIS « LE DERNIER ARRIVÉ » (2026-09-22,
+ * défaut trouvé après un signalement du porteur : « l'enregistrement entre
+ * dans une boucle » en modifiant, chez un formateur, un groupe que le
+ * directeur regardait au même moment avec un autre formateur du même groupe
+ * ouvert à côté).
+ *
+ * Deux formateurs qui partagent un groupe interrogent chacun leur PROPRE
+ * requête pour ce même groupe — rien ne garantit qu'elles se rafraîchissent au
+ * même instant : l'une peut encore porter la version d'avant l'enregistrement
+ * de l'autre. Retenir « la dernière de la liste » (l'ancien `Object.assign`),
+ * c'était parfois retenir cette copie PÉRIMÉE : elle écrasait la copie fraîche
+ * dans `initiaux`, la comparaison avec la saisie en cours ne convergeait plus
+ * jamais — la cible de comparaison changeait de sens à chaque relecture — et
+ * l'enregistrement automatique la réécrivait SANS FIN, effaçant à chaque tour
+ * la saisie fraîche du collègue.
+ *
+ * @param {Array<{plannings?: object, versions?: object}>} grilles
+ * @returns {{ plannings: object, versions: object }}
+ */
+export function fusionnerGrillesFormateurs(grilles) {
+  const plannings = {};
+  const versions = {};
+
+  for (const grille of grilles) {
+    for (const [groupe, planning] of Object.entries(grille?.plannings ?? {})) {
+      const version = grille?.versions?.[groupe] ?? 0;
+      if (!(groupe in versions) || version > versions[groupe]) {
+        plannings[groupe] = planning;
+        versions[groupe] = version;
+      }
+    }
+  }
+
+  return { plannings, versions };
 }
 
 export function groupesModifies(plannings, charges) {

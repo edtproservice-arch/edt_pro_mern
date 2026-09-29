@@ -1,4 +1,4 @@
-import { CalendarClock, CalendarOff, GraduationCap, Briefcase, Lock } from 'lucide-react';
+import { Building2, CalendarClock, CalendarOff, GraduationCap, Briefcase, Lock } from 'lucide-react';
 import CarteAuSurvol from '@/components/common/CarteAuSurvol';
 import {
   FOND_AVANT_RENTREE,
@@ -82,6 +82,27 @@ const MOTIFS = {
 };
 
 function Contenu({ absence, occupation, sujet }) {
+  // Un formateur mutualisé, déjà pris dans un AUTRE établissement (2026-09-21).
+  if (occupation?.ailleurs) {
+    return (
+      <div className="flex gap-2.5">
+        <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded bg-muted">
+          <Building2 className="size-3.5 text-muted-foreground" />
+        </span>
+
+        <div className="min-w-0 space-y-1">
+          <p className="font-semibold">Formateur occupé ailleurs</p>
+          <p className="leading-snug text-muted-foreground">
+            Ce formateur a cours à{' '}
+            <span className="font-medium text-foreground">{occupation.par}</span>
+            {occupation.groupe ? <> ({occupation.groupe})</> : null} sur ce créneau. Un formateur
+            mutualisé ne peut pas être dans deux établissements en même temps.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (occupation) {
     return (
       <div className="flex gap-2.5">

@@ -300,7 +300,7 @@ export function detecterConflits(candidate, existantes = [], { groupesFq = [] } 
     ) {
       conflits.push({
         type: 'salle',
-        message: `La salle ${salleCandidate} est occupée par ${autre.groupe}`,
+        message: `L’espace ${salleCandidate} est occupé par ${autre.groupe}`,
         seance: autre,
       });
     }

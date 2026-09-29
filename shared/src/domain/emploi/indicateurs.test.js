@@ -2,11 +2,13 @@ import { TYPES_COURS } from '../../constants/index.js';
 import { describe, it, expect } from 'vitest';
 import {
   HEURES_BADGE_BAS,
+  avancementDepuisCumul,
   avancementModule,
-  avancementParSemaine,
+  avancementParSeance,
   cleModule,
   fichesModules,
   heuresPosees,
+  heuresPoseesParSeance,
   niveauHeures,
 } from './indicateurs.js';
 
@@ -202,45 +204,54 @@ describe('heuresPosees — séances fusionnées', () => {
   });
 });
 
-describe('avancementParSemaine', () => {
+describe('avancementParSeance', () => {
   const seance = (semaine, creneau = 'S1', surcharges = {}) => ({
     semaine,
     seance: creneau,
+    jour: 'Lundi',
     groupe: 'GM101',
     module: 'M101',
     ...surcharges,
   });
 
-  it('rend les semaines DANS L’ORDRE DES NUMÉROS, pas alphabétique', () => {
+  it('rend les séances DANS L’ORDRE DES NUMÉROS DE SEMAINE, pas alphabétique', () => {
     // « 2026-W10 » précède « 2026-W2 » en tri de chaînes : l'histoire du module
     // se lirait à l'envers.
-    const { semaines } = avancementParSemaine(
+    const { seances } = avancementParSeance(
       [seance('2026-W10'), seance('2026-W2'), seance('2026-W1')],
       'GM101',
       'M101',
       20
     );
 
-    expect(semaines.map((s) => s.numero)).toEqual([1, 2, 10]);
+    expect(seances.map((s) => s.numero)).toEqual([1, 2, 10]);
   });
 
-  it('cumule les heures et le taux de semaine en semaine', () => {
-    const { semaines, pose, taux } = avancementParSemaine(
-      [seance('2026-W1'), seance('2026-W1', 'S2'), seance('2026-W3')],
+  // ⚠️ Deux séances DISTINCTES la même semaine : deux LIGNES, pas une seule
+  // cumulée (2026-09-24, demande du porteur : « selon la séance, pas la
+  // semaine »).
+  it('une ligne par séance, dans l’ordre du jour puis du créneau', () => {
+    const { seances, pose, taux } = avancementParSeance(
+      [
+        seance('2026-W1', 'S2', { jour: 'Lundi' }),
+        seance('2026-W1', 'S1', { jour: 'Lundi' }),
+        seance('2026-W3'),
+      ],
       'GM101',
       'M101',
       10
     );
 
-    expect(semaines).toEqual([
-      { semaine: '2026-W1', numero: 1, heures: 5, cumul: 5, taux: 50 },
-      { semaine: '2026-W3', numero: 3, heures: 2.5, cumul: 7.5, taux: 75 },
+    expect(seances).toEqual([
+      { semaine: '2026-W1', numero: 1, jour: 'Lundi', creneau: 'S1', heures: 2.5, cumul: 2.5, taux: 25 },
+      { semaine: '2026-W1', numero: 1, jour: 'Lundi', creneau: 'S2', heures: 2.5, cumul: 5, taux: 50 },
+      { semaine: '2026-W3', numero: 3, jour: 'Lundi', creneau: 'S1', heures: 2.5, cumul: 7.5, taux: 75 },
     ]);
     expect({ pose, taux }).toEqual({ pose: 7.5, taux: 75 });
   });
 
   it('une séance ABSENTE ne compte pas — le cours n’a pas eu lieu', () => {
-    const { pose, semaines } = avancementParSemaine(
+    const { pose, seances } = avancementParSeance(
       [seance('2026-W1'), seance('2026-W2', 'S1', { statut: 'absent' })],
       'GM101',
       'M101',
@@ -248,16 +259,16 @@ describe('avancementParSemaine', () => {
     );
 
     expect(pose).toBe(2.5);
-    expect(semaines).toHaveLength(1);
+    expect(seances).toHaveLength(1);
   });
 
   it('une séance FUSIONNÉE avance le module de CHACUN de ses groupes', () => {
     const fusionnee = [seance('2026-W1', 'S1', { groupe: 'GM101 GM102' })];
 
-    expect(avancementParSemaine(fusionnee, 'GM101', 'M101', 10).pose).toBe(2.5);
-    expect(avancementParSemaine(fusionnee, 'GM102', 'M101', 10).pose).toBe(2.5);
+    expect(avancementParSeance(fusionnee, 'GM101', 'M101', 10).pose).toBe(2.5);
+    expect(avancementParSeance(fusionnee, 'GM102', 'M101', 10).pose).toBe(2.5);
     // Et pour le libellé fusionné lui-même, que porte l'affectation synchrone.
-    expect(avancementParSemaine(fusionnee, 'GM101 GM102', 'M101', 10).pose).toBe(2.5);
+    expect(avancementParSeance(fusionnee, 'GM101 GM102', 'M101', 10).pose).toBe(2.5);
   });
 
   it('le suffixe d’un groupe ne le découpe PAS en deux', () => {
@@ -265,25 +276,82 @@ describe('avancementParSemaine', () => {
     // les espaces en ferait deux groupes fantômes.
     const seances = [seance('2026-W1', 'S1', { groupe: 'ACADA101 (FQ)' })];
 
-    expect(avancementParSemaine(seances, 'ACADA101 (FQ)', 'M101', 10).pose).toBe(2.5);
-    expect(avancementParSemaine(seances, 'ACADA101', 'M101', 10).pose).toBe(0);
+    expect(avancementParSeance(seances, 'ACADA101 (FQ)', 'M101', 10).pose).toBe(2.5);
+    expect(avancementParSeance(seances, 'ACADA101', 'M101', 10).pose).toBe(0);
   });
 
   it('le créneau du SOIR dure 2 h, pas 2,5', () => {
-    expect(avancementParSemaine([seance('2026-W1', 'S5')], 'GM101', 'M101', 10).pose).toBe(2);
+    expect(avancementParSeance([seance('2026-W1', 'S5')], 'GM101', 'M101', 10).pose).toBe(2);
   });
 
   it('accepte le zéro de remplissage laissé en base', () => {
-    const { semaines } = avancementParSemaine([seance('2026-W039')], 'GM101', 'M101', 10);
+    const { seances } = avancementParSeance([seance('2026-W039')], 'GM101', 'M101', 10);
 
-    expect(semaines[0]).toMatchObject({ semaine: '2026-W39', numero: 39 });
+    expect(seances[0]).toMatchObject({ semaine: '2026-W39', numero: 39 });
   });
 
   it('sans masse prévue, AUCUN taux — jamais « 0 % »', () => {
-    const { taux, semaines } = avancementParSemaine([seance('2026-W1')], 'GM101', 'M101', 0);
+    const { taux, seances } = avancementParSeance([seance('2026-W1')], 'GM101', 'M101', 0);
 
     expect(taux).toBeNull();
-    expect(semaines[0].taux).toBeNull();
+    expect(seances[0].taux).toBeNull();
+  });
+});
+
+/*
+ * ═══ ⚠️ LE BADGE D'UNE CASE LIT LE CUMUL À SA PROPRE SÉANCE (2026-09-24) ═══
+ * (signalé par le porteur : « en S3 le taux est 14 mais en cellule s'affiche
+ * 20 » — le cumul de FIN DE SEMAINE, retenu dans une version intermédiaire du
+ * badge, restait faux pour une séance qui n'était pas la dernière de sa
+ * semaine.) `heuresPoseesParSeance` est la version « toutes les clés » de
+ * `avancementParSeance` : c'est elle que la grille interroge pour chaque case.
+ */
+describe('heuresPoseesParSeance', () => {
+  const seance = (semaine, creneau, jour, surcharges = {}) => ({
+    semaine,
+    seance: creneau,
+    jour,
+    groupe: 'GM103',
+    module: 'M102',
+    ...surcharges,
+  });
+
+  it('donne à CHAQUE séance le cumul atteint À CE POINT, pas celui de fin de semaine', () => {
+    const seances = [
+      seance('2026-W3', 'S1', 'Lundi'),
+      seance('2026-W3', 'S2', 'Lundi'),
+      seance('2026-W4', 'S3', 'Mardi'),
+      seance('2026-W4', 'S4', 'Mardi'),
+    ];
+
+    const { presentiel } = heuresPoseesParSeance(seances).get(cleModule('GM103', 'M102'));
+
+    // ⚠️ La case du MARDI S3 (semaine 4) ne doit PAS déjà compter le mardi S4,
+    // posé après elle dans la même semaine — c'est exactement le défaut
+    // signalé : une case affichait le cumul de la semaine ENTIÈRE.
+    expect(presentiel.map((l) => l.cumul)).toEqual([2.5, 5, 7.5, 10]);
+  });
+
+  it('sépare présentiel et synchrone, chacun avec son propre cumul', () => {
+    const seances = [
+      seance('2026-W1', 'S1', 'Lundi', { salle: 'Salle 1' }),
+      seance('2026-W1', 'S2', 'Lundi', { salle: 'TEAMS' }),
+    ];
+
+    const { presentiel, synchrone } = heuresPoseesParSeance(seances).get(cleModule('GM103', 'M102'));
+
+    expect(presentiel.map((l) => l.cumul)).toEqual([2.5]);
+    expect(synchrone.map((l) => l.cumul)).toEqual([2.5]);
+  });
+});
+
+describe('avancementDepuisCumul', () => {
+  it('rend le même triplet qu’avancementModule, à partir d’un cumul déjà connu', () => {
+    expect(avancementDepuisCumul(20, 140)).toEqual({ taux: 14, prevu: 140, pose: 20, niveau: 'bas' });
+  });
+
+  it('sans masse prévue, AUCUN taux — jamais « 0 % »', () => {
+    expect(avancementDepuisCumul(20, 0)).toBeNull();
   });
 });
 
@@ -358,17 +426,17 @@ describe('⚠️ présentiel et synchrone se mesurent SÉPARÉMENT', () => {
     expect(posees.get(cle)).toEqual({ presentiel: 0, synchrone: 2.5 });
   });
 
-  it('`avancementParSemaine` ne retient que les semaines de SON type', () => {
+  it('`avancementParSeance` ne retient que les séances de SON type', () => {
     const seances = [
       { semaine: '2026-W1', seance: 'S1', groupe: 'GM101', module: 'EGTSI106', salle: 'Salle 1' },
       { semaine: '2026-W2', seance: 'S1', groupe: 'GM101', module: 'EGTSI106', salle: 'TEAMS' },
     ];
 
-    const salle = avancementParSemaine(seances, 'GM101', 'EGTSI106', 25, TYPES_COURS.PRESENTIEL);
-    const distance = avancementParSemaine(seances, 'GM101', 'EGTSI106', 15, TYPES_COURS.SYNCHRONE);
+    const salle = avancementParSeance(seances, 'GM101', 'EGTSI106', 25, TYPES_COURS.PRESENTIEL);
+    const distance = avancementParSeance(seances, 'GM101', 'EGTSI106', 15, TYPES_COURS.SYNCHRONE);
 
-    expect(salle.semaines.map((s) => s.semaine)).toEqual(['2026-W1']);
-    expect(distance.semaines.map((s) => s.semaine)).toEqual(['2026-W2']);
+    expect(salle.seances.map((s) => s.semaine)).toEqual(['2026-W1']);
+    expect(distance.seances.map((s) => s.semaine)).toEqual(['2026-W2']);
   });
 
   it('⚠️ sans `type`, une affectation compte en PRÉSENTIEL', () => {
@@ -395,8 +463,8 @@ describe('EFM — une surveillance n’est pas un cours', () => {
     expect(heuresPosees(seances).get(cleModule('GM101', 'M101'))).toMatchObject({ presentiel: 2.5 });
   });
 
-  it('⚠️ et `avancementParSemaine` aussi — les deux décomptes doivent concorder', () => {
+  it('⚠️ et `avancementParSeance` aussi — les deux décomptes doivent concorder', () => {
     const avec = seances.map((s) => ({ ...s, semaine: '2026-W1' }));
-    expect(avancementParSemaine(avec, 'GM101', 'M101', 40).pose).toBe(2.5);
+    expect(avancementParSeance(avec, 'GM101', 'M101', 40).pose).toBe(2.5);
   });
 });

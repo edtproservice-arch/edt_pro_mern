@@ -21,3 +21,23 @@ export const usePanneauTaux = PANNEAU.utiliser;
 export function basculerPanneauTaux() {
   PANNEAU.definir((courant) => !courant);
 }
+
+/**
+ * Le panneau de l'établissement, à droite du graphe « Semaine par semaine,
+ * face au rythme régional » — une préférence SÉPARÉE de celle ci-dessus.
+ *
+ * ⚠️⚠️ INDÉPENDANTE DU PANNEAU DU GRAPHE À BÂTONS (correction du porteur,
+ * 2026-09-25 : « si je masque un card, l'autre card en bas ne doit pas se
+ * masquer — être indépendant l'un de l'autre »). Les deux panneaux
+ * partageaient la MÊME clé de stockage — replier l'un repliait donc aussi
+ * l'autre, silencieusement, sur un écran qu'on n'était même pas en train de
+ * regarder. Ce sont deux réglages de POSTE distincts, sur deux graphes
+ * distincts, qui n'ont pas à voyager ensemble.
+ */
+const PANNEAU_ETABLISSEMENT = creerStockage('edtpro.avancement.panneau-etablissement', true);
+
+export const usePanneauEtablissement = PANNEAU_ETABLISSEMENT.utiliser;
+
+export function basculerPanneauEtablissement() {
+  PANNEAU_ETABLISSEMENT.definir((courant) => !courant);
+}

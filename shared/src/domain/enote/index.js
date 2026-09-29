@@ -17,9 +17,10 @@ export {
   prefixeFiliere,
   renommerGroupe,
   construireGroupes,
+  indexerFilieresParGroupe,
 } from './suffixesGroupes.js';
 
 export { massesHoraires, arrondir, COLONNES_MASSES } from './massesHoraires.js';
 
-export { construireBase, cleGroupeLigne, emailDeduit } from './parseBase.js';
+export { construireBase, cleGroupeLigne, emailDeduit, estVacataire } from './parseBase.js';
 export { COLONNES, ENTETES_ENOTE, indexColonne, resoudreColonnes } from './colonnes.js';

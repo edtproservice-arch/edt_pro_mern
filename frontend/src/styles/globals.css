@@ -126,9 +126,15 @@
     --popover: 0 0% 12%;
     --popover-foreground: 0 0% 95%;
 
-    --primary: 209 100% 55%;
+    /* ═══ EN SOMBRE, DES TEINTES DÉSATURÉES (2026-09-28, demande du porteur) ═══
+       Les couleurs d'origine (saturation 70–100 %) « brillaient » sur fond quasi
+       noir : un simple bouton « Se déconnecter partout » ressortait comme un néon.
+       On s'aligne sur le mode sombre de Notion — saturation ~50–65 %, clarté
+       moyenne : la couleur se lit, elle n'éblouit pas. Le mode clair n'est PAS
+       touché. */
+    --primary: 210 76% 52%;         /* ≈ #2383e2, bleu Notion sombre */
     --primary-foreground: 0 0% 100%;
-    --primary-active: 208 100% 45%;
+    --primary-active: 210 70% 44%;
 
     /* Même rôle discret en sombre : le gris des surfaces neutres. */
     --secondary: 0 0% 16%;
@@ -147,27 +153,59 @@
 
     --border: 0 0% 20%;
     --input: 0 0% 22%;
-    --ring: 209 100% 55%;
+    --ring: 210 76% 52%;
 
-    --destructive: 0 70% 50%;
+    --destructive: 4 64% 60%;       /* ≈ #df5f53, rouge Notion sombre */
     --destructive-foreground: 0 0% 100%;
-    --success: 125 60% 45%;
+    --success: 150 38% 48%;         /* ≈ #4ca87a */
     --success-foreground: 0 0% 100%;
-    --warning: 38 85% 55%;
+    --warning: 36 58% 55%;          /* ≈ #cb9a4d */
     --warning-foreground: 0 0% 0%;
 
-    /* En sombre, le fond s'assombrit pour ne pas éblouir sur fond noir.
-       Le texte ambre (#F0B13D) est conservé tel quel. */
-    --efm: 55 45% 18%;
-    --efm-foreground: 39 86% 59%;
+    /* En sombre, le fond s'assombrit pour ne pas éblouir sur fond noir, et
+       l'ambre perd de sa saturation comme les autres teintes. */
+    --efm: 45 30% 17%;
+    --efm-foreground: 39 58% 60%;
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary: 210 76% 52%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 240 3.7% 15.9%;
     --sidebar-accent-foreground: 240 4.8% 95.9%;
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+
+    /* ═══ LES TEINTES « -deep » EN SOMBRE (2026-09-28) ═══
+       En clair elles sont FONCÉES : du texte sur pastille pâle, ou un fond qui porte
+       du blanc. Telles quelles sur un fond quasi noir elles disparaissent — on les
+       éclaircit jusqu'à un ton moyen, qui reste lisible dans les DEUX emplois
+       (texte sur fond sombre, fond sous texte blanc). */
+    --accent-green-deep: 150 36% 50%;
+    --accent-sky-deep: 207 50% 58%;
+    --accent-purple-deep: 270 34% 64%;
+    --accent-orange-deep: 25 62% 58%;
+    --accent-teal: 176 34% 50%;
+    --accent-brown: 26 35% 58%;
+
+    /* Les teintes pleines, désaturées elles aussi : l'orange (badges, bandeau
+       d'usurpation) et le rose (curseurs temps réel) étaient les plus criards. */
+    --accent-sky: 207 50% 60%;
+    --accent-green: 150 38% 45%;
+    --accent-orange: 25 62% 52%;
+    --accent-pink: 330 45% 60%;
+    --accent-purple-mid: 270 36% 62%;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  /* Les logos ont des lettres NOIRES : sur fond sombre elles disparaissent. On
+     inverse la clarté et on ramène la teinte (2026-09-28, demande du porteur :
+     « pas de fond blanc derrière le logo ») — noir → blanc, le vert reste vert. */
+  html.dark img[src$='logo_edtpro.svg'],
+  html.dark img[src$='logo_ofppt.svg'] {
+    filter: invert(1) hue-rotate(180deg);
   }
 }
 
@@ -425,5 +463,98 @@
   }
   .onde-trait {
     animation: onde-trait 4s linear infinite;
+  }
+}
+
+/*
+ * ═══ LE TRAIT DE LIAISON DES ESPACES MUTUALISÉS (2026-09-21) ═══
+ * Un trait GRIS pointillé qui défile comme une route : l'espace envoie vers les établissements.
+ * Le défilement est un déplacement du MOTIF (`background-position`), d'exactement une période
+ * par cycle — la boucle est donc sans à-coup. Horizontal : de gauche à droite. Vertical : du
+ * centre vers les extrémités (`-haut` monte, `-bas` descend), comme un flux qui se divise.
+ * Coupé pour qui a demandé moins d'animations.
+ */
+@layer utilities {
+  @keyframes trait-defile-x { to { background-position-x: 12px; } }
+  @keyframes trait-defile-haut { to { background-position-y: -12px; } }
+  @keyframes trait-defile-bas { to { background-position-y: 12px; } }
+
+  .trait-route {
+    height: 2px;
+    background-image: repeating-linear-gradient(to right, hsl(var(--muted-foreground) / 0.55) 0 6px, transparent 6px 12px);
+    background-size: 12px 100%;
+    animation: trait-defile-x 0.9s linear infinite;
+  }
+  .trait-route-v {
+    width: 2px;
+    background-image: repeating-linear-gradient(to bottom, hsl(var(--muted-foreground) / 0.55) 0 6px, transparent 6px 12px);
+    background-size: 100% 12px;
+  }
+  .trait-route-haut { animation: trait-defile-haut 0.9s linear infinite; }
+  .trait-route-bas { animation: trait-defile-bas 0.9s linear infinite; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .trait-route,
+    .trait-route-haut,
+    .trait-route-bas {
+      animation: none;
+    }
+  }
+}
+
+/*
+ * ═══ TEXTE SCINTILLANT — « ça travaille, sans savoir combien de temps » ═══
+ * (2026-09-22) Une bande claire balaie le texte de gauche à droite, en boucle.
+ *
+ * ⚠️ `background-clip: text` PLUTÔT QU'UNE OPACITÉ QUI PULSE : faire clignoter
+ *    tout le mot le rend illisible une fois sur deux et fatigue à regarder. Ici
+ *    le texte reste lisible en permanence, seule la LUMIÈRE se déplace.
+ *
+ * ⚠️ IL NE DIT PAS L'AVANCEMENT, ET C'EST ASSUMÉ : il signale une activité dont
+ *    la durée est inconnue. Le chiffre « 3 sur 45 » reste ailleurs à l'écran —
+ *    ce scintillement ne le remplace pas.
+ *
+ * ⚠️ COUPÉ POUR QUI A DEMANDÉ MOINS D'ANIMATIONS : le texte retombe alors sur
+ *    sa couleur pleine, jamais sur le dégradé figé — un dégradé immobile
+ *    laisserait une moitié de mot délavée.
+ */
+@layer utilities {
+  @keyframes texte-scintille {
+    to { background-position: -200% 0; }
+  }
+
+  /*
+   * ⚠️ DEUX VARIABLES PLUTÔT QU'UNE SECONDE CLASSE : la teinte de repos et
+   *    celle de l'éclat se surchargent au point d'usage
+   *    (`[--scintille-base:...]`), si bien qu'un scintillement bleu et un
+   *    scintillement gris restent LA MÊME animation. Dupliquer l'utilitaire
+   *    aurait dupliqué aussi le garde de mouvement réduit, qu'on oublierait
+   *    un jour sur l'une des deux copies.
+   */
+  .texte-scintillant {
+    --scintille-base: var(--muted-foreground);
+    --scintille-eclat: var(--foreground);
+    background-image: linear-gradient(
+      100deg,
+      hsl(var(--scintille-base)) 40%,
+      hsl(var(--scintille-eclat)) 50%,
+      hsl(var(--scintille-base)) 60%
+    );
+    background-size: 200% 100%;
+    background-position: 0 0;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: texte-scintille 2.2s linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .texte-scintillant {
+      animation: none;
+      background-image: none;
+      /* La teinte de repos, pas un gris en dur : un scintillement bleu doit
+         retomber en bleu, sinon la couleur saute pour qui coupe les animations. */
+      color: hsl(var(--scintille-base));
+    }
   }
 }

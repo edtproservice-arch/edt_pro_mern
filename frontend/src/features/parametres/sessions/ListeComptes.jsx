@@ -3,9 +3,20 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { KeyRound, Search, Trash2, UserX } from 'lucide-react';
 import { ROLES } from 'shared/constants';
+import { motDePasseValide } from 'shared/schemas';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import {
   Table,
@@ -16,6 +27,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import Alerte from '@/components/common/Alerte';
+import ReglesMotDePasse from '@/components/common/ReglesMotDePasse';
+import { initiales } from '@/lib/initiales';
+import { teinteRole } from '@/features/admin/components/roles';
 import {
   chargerComptes,
   definirActivationCompte,
@@ -48,6 +62,9 @@ export default function ListeComptes({ role, lectureSeule = false }) {
   const cache = useQueryClient();
   const [recherche, setRecherche] = useState('');
   const [page, setPage] = useState(1);
+  // Le compte pour lequel la boîte « Réinitialiser le mot de passe » est ouverte.
+  const [compteAReinitialiser, setCompteAReinitialiser] = useState(null);
+  const [nouveauMotDePasse, setNouveauMotDePasse] = useState('');
 
   const comptes = useQuery({
     // Le rôle et la recherche font partie de la CLÉ : sans eux, changer de
@@ -70,18 +87,27 @@ export default function ListeComptes({ role, lectureSeule = false }) {
     onError: (erreur) => toast.error('Action impossible', { description: erreur.message }),
   });
 
+  /*
+   * ⚠️ LE DIRECTEUR SAISIT LUI-MÊME LE MOT DE PASSE (2026-09-27, demande du
+   * porteur) : plus de mot de passe provisoire tiré au hasard — la boîte de
+   * dialogue ci-dessous le demande, avec la même règle que toute création de
+   * compte (`ReglesMotDePasse`).
+   */
   const reinitialisation = useMutation({
-    mutationFn: (id) => reinitialiserMotDePasse(id),
+    mutationFn: ({ id, motDePasse }) => reinitialiserMotDePasse(id, motDePasse),
     onSuccess: (resultat) => {
+      setCompteAReinitialiser(null);
+      setNouveauMotDePasse('');
       /*
-       * Le mot de passe n'est rendu que pour les adresses fictives
-       * « @placeholder.ofppt.ma » — seul cas où aucun autre canal n'existe.
-       * Ailleurs il part par e-mail et ne transite jamais par l'écran.
+       * Le mot de passe n'est renvoyé que pour les adresses fictives
+       * « @placeholder.ofppt.ma » — seul cas où aucun autre canal n'existe ; le
+       * directeur vient de le taper, ce message confirme juste la saisie.
+       * Ailleurs il part EN PLUS par e-mail.
        */
       toast.success('Mot de passe réinitialisé', {
         description: resultat.motDePasse
           ? `Nouveau mot de passe : ${resultat.motDePasse}`
-          : 'Il a été envoyé par e-mail.',
+          : 'Il a aussi été envoyé par e-mail.',
         duration: resultat.motDePasse ? 20000 : 5000,
       });
     },
@@ -162,7 +188,20 @@ export default function ListeComptes({ role, lectureSeule = false }) {
             <TableBody>
               {liste.map((compte) => (
                 <TableRow key={compte.id} className={compte.estActif ? undefined : 'opacity-60'}>
-                  <TableCell className="font-medium">{compte.nomComplet}</TableCell>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-2.5">
+                      {/* ⚠️ `aria-hidden` : les initiales ne portent rien que le
+                          nom, écrit juste à côté, ne dise déjà (demande du
+                          porteur, 2026-09-27 — même convention que
+                          `CelluleUtilisateur`). */}
+                      <Avatar aria-hidden="true" className="h-8 w-8 shrink-0">
+                        <AvatarFallback className={`text-xs font-semibold ${teinteRole(role)}`}>
+                          {initiales(compte.nomComplet)}
+                        </AvatarFallback>
+                      </Avatar>
+                      {compte.nomComplet}
+                    </div>
+                  </TableCell>
 
                   <TableCell className="tabular-nums text-muted-foreground">
                     {compte.identifiant}
@@ -206,8 +245,10 @@ export default function ListeComptes({ role, lectureSeule = false }) {
                         variant="ghost"
                         size="icon"
                         title="Réinitialiser le mot de passe"
-                        disabled={reinitialisation.isPending}
-                        onClick={() => reinitialisation.mutate(compte.id)}
+                        onClick={() => {
+                          setNouveauMotDePasse('');
+                          setCompteAReinitialiser(compte);
+                        }}
                       >
                         <KeyRound className="h-4 w-4" />
                         <span className="sr-only">Réinitialiser le mot de passe</span>
@@ -265,6 +306,53 @@ export default function ListeComptes({ role, lectureSeule = false }) {
           </Button>
         </div>
       )}
+
+      {/*
+        ⚠️ LE DIRECTEUR TAPE LE MOT DE PASSE (2026-09-27, demande du porteur) :
+        cette boîte remplace l'ancien clic unique qui tirait un mot de passe
+        provisoire au hasard. Fermée automatiquement par `onSuccess` ci-dessus.
+      */}
+      <Dialog
+        open={Boolean(compteAReinitialiser)}
+        onOpenChange={(ouvert) => !ouvert && setCompteAReinitialiser(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Réinitialiser le mot de passe</DialogTitle>
+            <DialogDescription>
+              {compteAReinitialiser?.nomComplet} ({compteAReinitialiser?.identifiant})
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <Label htmlFor="nouveau-mot-de-passe">Nouveau mot de passe</Label>
+            <Input
+              id="nouveau-mot-de-passe"
+              type="text"
+              value={nouveauMotDePasse}
+              onChange={(evenement) => setNouveauMotDePasse(evenement.target.value)}
+              placeholder="8 caractères minimum"
+              autoComplete="off"
+              autoFocus
+            />
+            <ReglesMotDePasse valeur={nouveauMotDePasse} />
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCompteAReinitialiser(null)}>
+              Annuler
+            </Button>
+            <Button
+              disabled={reinitialisation.isPending || !motDePasseValide(nouveauMotDePasse)}
+              onClick={() =>
+                reinitialisation.mutate({ id: compteAReinitialiser.id, motDePasse: nouveauMotDePasse })
+              }
+            >
+              {reinitialisation.isPending ? 'Réinitialisation…' : 'Réinitialiser'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

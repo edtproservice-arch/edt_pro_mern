@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { inscriptionSchema } from 'shared/schemas';
 
 import AuthLayout from './components/AuthLayout';
+import ReglesMotDePasse from '@/components/common/ReglesMotDePasse';
 import ChampMotDePasse from './components/ChampMotDePasse';
 import PanneauAide from './components/PanneauAide';
 import SelecteurEtablissement from './components/SelecteurEtablissement';
@@ -136,9 +137,6 @@ export default function RegisterPage() {
                     <FormControl>
                       <ChampMotDePasse autoComplete="new-password" {...field} />
                     </FormControl>
-                    <FormDescription>
-                      8 caractères, une majuscule, une minuscule, un chiffre
-                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -157,6 +155,16 @@ export default function RegisterPage() {
                   </FormItem>
                 )}
               />
+
+              {/*
+                ⚠️ LES CONDITIONS SE COCHENT À LA FRAPPE (2026-09-20, demande du porteur : « comme
+                le mot de passe initial de la création de comptes »). Une phrase d'aide se lit une
+                fois et ne dit jamais laquelle manque ; ici chaque règle s'allume quand elle est
+                remplie. Le MÊME composant que la page Sessions — la liste vient du schéma qui
+                valide l'envoi, elle ne peut annoncer que ce que le serveur applique. Sur les
+                deux colonnes : dans une seule, les quatre règles se seraient empilées.
+              */}
+              <ReglesMotDePasse valeur={form.watch('motDePasse')} className="sm:col-span-2" />
             </div>
 
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>

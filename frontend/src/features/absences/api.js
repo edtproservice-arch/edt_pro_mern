@@ -37,3 +37,14 @@ export function placerRattrapage(id, { semaine, jour, seance, salle }) {
 export function annulerRattrapage(id) {
   return api.delete(`/api/v2/absences/${id}/rattrapage`);
 }
+
+/**
+ * Télécharge le registre — Word, PDF ou Excel, MÊME filtre que l'écran
+ * (« Toutes », « Sans rattrapage » ou « Rattrapées »). ← demande du porteur,
+ * canevas Word « Rapport_Absences » transmis.
+ */
+export function exporterAbsences(options) {
+  return api.telecharger('/api/v2/absences/export', options, {
+    nomParDefaut: `rapport-absences.${options.format}`,
+  });
+}

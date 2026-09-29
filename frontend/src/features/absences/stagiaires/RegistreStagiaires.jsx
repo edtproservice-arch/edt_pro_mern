@@ -1,8 +1,14 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Trash2 } from 'lucide-react';
+import { ChevronDown, Download, File, FileSpreadsheet, FileText, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import Alerte from '@/components/common/Alerte';
@@ -10,7 +16,7 @@ import TableauTriable from '@/components/common/TableauTriable';
 import { MARGE_PAGE } from '@/components/common/apparenceGrille';
 import { cn } from '@/lib/utils';
 import ListeRepliable from '../ListeRepliable';
-import { chargerRegistre, justifierAbsence, supprimerAbsence } from './api';
+import { chargerRegistre, justifierAbsence, supprimerAbsence, telechargerBillets } from './api';
 import ListeGroupes from './ListeGroupes';
 import { grouperParGroupe } from './regroupementStagiaires';
 
@@ -28,10 +34,15 @@ import { grouperParGroupe } from './regroupementStagiaires';
  * justification relève de l'encadrement, comme les sanctions qu'elle évite. Le
  * serveur fait la même coupe — l'écran n'en est que le reflet.
  */
-export default function RegistreStagiaires({ encadrement, matricule = null, compact = false }) {
+export default function RegistreStagiaires({ encadrement, matricule = null, compact = false, groupeInitial = null }) {
   if (compact) return <TableauRegistre filtre={{ matricule }} encadrement={encadrement} compact />;
   if (encadrement) {
-    return <ListeGroupes detail={(groupe) => <TableauRegistre filtre={{ groupe }} encadrement />} />;
+    return (
+      <ListeGroupes
+        detail={(groupe) => <TableauRegistre filtre={{ groupe }} encadrement />}
+        groupeInitial={groupeInitial}
+      />
+    );
   }
   return <RegistreDuFormateur />;
 }
@@ -54,6 +65,14 @@ function TableauRegistre({ filtre, encadrement, compact = false }) {
 
   return (
     <div className="space-y-2">
+      {/*
+        ⚠️ AUTANT DE BILLETS QUE D'ABSENCES JUSTIFIÉES DANS CETTE LISTE
+        (2026-09-29, demande du porteur : « si un seul stagiaire justifié il
+        s'affiche une seule billet… si deux stagiaires justifient en même
+        temps il s'affiche deux billets ») — un seul geste, jamais une icône
+        par ligne à recliquer une à une.
+      */}
+      {encadrement && !compact && <TelechargerBillets absences={absences} />}
       {!compact && total > absences.length && (
         <p className="text-xs text-muted-foreground">
           {absences.length} marquages les plus récents sur {total}.
@@ -61,6 +80,43 @@ function TableauRegistre({ filtre, encadrement, compact = false }) {
       )}
       <TableauAbsences absences={absences} encadrement={encadrement} compact={compact} chargement={registre.isLoading} />
     </div>
+  );
+}
+
+/** Le bouton « Télécharger les billets » — un billet par absence JUSTIFIÉE actuellement listée. */
+function TelechargerBillets({ absences }) {
+  const justifiees = absences.filter((a) => a.justifiee);
+  const telechargement = useMutation({
+    mutationFn: (format) => telechargerBillets({ format, ids: justifiees.map((a) => a.id) }),
+    onError: (erreur) => toast.error('Téléchargement impossible', { description: erreur.message }),
+  });
+
+  if (justifiees.length === 0) return null;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" disabled={telechargement.isPending}>
+          <Download className="size-3.5" />
+          {justifiees.length === 1 ? 'Télécharger le billet' : `Télécharger les ${justifiees.length} billets`}
+          <ChevronDown className="size-3.5 opacity-60" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-56">
+        <DropdownMenuItem onSelect={() => telechargement.mutate('docx')}>
+          <FileText className="size-3.5 text-blue-600" />
+          Télécharger en Word
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => telechargement.mutate('pdf')}>
+          <File className="size-3.5 text-red-600" />
+          Télécharger en PDF
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => telechargement.mutate('xlsx')}>
+          <FileSpreadsheet className="size-3.5 text-green-600" />
+          Télécharger en Excel
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

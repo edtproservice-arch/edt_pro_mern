@@ -1,5 +1,7 @@
 import { lireAnneeActive } from './anneeActive';
+import { lireEtablissementActif } from './etablissementActif';
 import { lireConnexionId } from './identiteConnexion';
+import { estPagePublique } from './pagesPubliques';
 import { queryClient } from './queryClient';
 
 let redirectionEnCours = false;
@@ -13,6 +15,16 @@ function urlApi(path) {
 /** Redirige vers la page de connexion dès qu'une session est expirée ou invalide. */
 export function gererExpirationsession(raison = 'expiration') {
   if (redirectionEnCours) return;
+
+  /*
+   * ⚠️ SUR UNE PAGE PUBLIQUE, RIEN À EXPIRER (2026-09-19). Le battement de cœur, monté
+   * à la racine, part cinq secondes après l'arrivée sur N'IMPORTE QUELLE page ; sans
+   * session il reçoit un 401, et cette fonction renvoyait alors le visiteur vers
+   * « /connexion?raison=expiration » — d'où l'inscription qui se rechargeait et
+   * ramenait à la connexion. Un visiteur n'a pas de session à perdre : on le laisse là.
+   */
+  if (estPagePublique(window.location.pathname)) return;
+
   redirectionEnCours = true;
 
   try {
@@ -50,9 +62,16 @@ export function gererExpirationsession(raison = 'expiration') {
  */
 function enTetesContexte() {
   const annee = lireAnneeActive();
+  const etablissement = lireEtablissementActif();
   const connexion = lireConnexionId();
   return {
     ...(annee === null ? {} : { 'X-Annee-Scolaire': String(annee) }),
+    /*
+     * L'établissement actif, pour un compte mutualisé sur plusieurs
+     * établissements (2026-09-24) — même mécanique que l'année ci-dessus.
+     * Absent, `resolveTenant` retombe sur le premier établissement du compte.
+     */
+    ...(etablissement === null ? {} : { 'X-Etablissement-Id': etablissement }),
     /*
      * L'onglet se désigne : le serveur l'écarte quand il annonce l'écriture aux
      * autres membres de la salle temps réel (il relit déjà sa propre grille).
@@ -358,6 +377,83 @@ async function telecharger(path, body, { nomParDefaut = 'export.xlsx' } = {}) {
   return resume ? JSON.parse(resume) : null;
 }
 
+/**
+ * Une réponse en FLUX (Server-Sent Events), pour une opération longue qui rend
+ * compte de son avancement.
+ *
+ * ═══ ⚠️ PAS `EventSource`, ET LA RAISON EST DÉCISIVE ═══
+ * `EventSource` ne sait faire que des GET. Or la liste des semaines à générer
+ * est un CORPS : quarante-cinq valeurs en chaîne de requête se heurteraient aux
+ * limites de longueur des proxys, et l'échec serait intermittent — le pire des
+ * symptômes. On lit donc le flux à la main.
+ *
+ * ⚠️ CE QU'ON PERD, ET QU'IL FAUT SAVOIR : `EventSource` se reconnecte seul,
+ *    `fetch` non. Une coupure réseau interrompt la RESTITUTION de l'avancement
+ *    — mais pas l'opération, qui continue côté serveur et va à son terme. C'est
+ *    le bon compromis ici : une génération à moitié écrite serait bien pire
+ *    qu'une barre de progression perdue.
+ *
+ * @param {(type: string, charge: object) => void} onEvenement
+ */
+async function flux(path, body, { onEvenement, signal } = {}) {
+  const response = await avecRafraichissement(
+    () =>
+      fetch(urlApi(path), {
+        method: 'POST',
+        signal,
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...enTetesContexte() },
+        body: JSON.stringify(body),
+      }),
+    path
+  );
+
+  if (!response.ok) {
+    if (response.status === 401) gererExpirationsession('expiration');
+    const payload = await response.json().catch(() => null);
+    throw new ApiError(payload?.message ?? 'L’opération a échoué', {
+      status: response.status,
+      code: payload?.code,
+      details: payload?.details,
+    });
+  }
+
+  const lecteur = response.body.getReader();
+  const decodeur = new TextDecoder();
+  let tampon = '';
+
+  for (;;) {
+    const { done, value } = await lecteur.read();
+    if (done) break;
+    tampon += decodeur.decode(value, { stream: true });
+
+    /*
+     * ⚠️ UN ÉVÉNEMENT SE TERMINE PAR UNE LIGNE VIDE, et un morceau reçu peut
+     *    s'arrêter au milieu. Analyser ce qui arrive sans attendre le
+     *    séparateur donnerait du JSON tronqué — de façon intermittente, donc
+     *    difficile à reproduire.
+     */
+    const morceaux = tampon.split('\n\n');
+    tampon = morceaux.pop() ?? '';
+
+    for (const morceau of morceaux) {
+      let type = 'message';
+      const donnees = [];
+      for (const ligne of morceau.split('\n')) {
+        if (ligne.startsWith('event:')) type = ligne.slice(6).trim();
+        else if (ligne.startsWith('data:')) donnees.push(ligne.slice(5).trim());
+      }
+      if (donnees.length === 0) continue;
+      try {
+        onEvenement?.(type, JSON.parse(donnees.join('\n')));
+      } catch {
+        // Une trame illisible ne doit pas interrompre le flux : l'opération,
+        // elle, se poursuit côté serveur.
+      }
+    }
+  }
+}
+
 /** `filename*=UTF-8''...` d'abord : c'est lui qui porte les accents. */
 function nomDepuisEntete(entete) {
   if (!entete) return null;
@@ -376,4 +472,5 @@ export const api = {
   delete: (path, options) => request('DELETE', path, options),
   televerser: envoyerFichier,
   telecharger,
+  flux,
 };

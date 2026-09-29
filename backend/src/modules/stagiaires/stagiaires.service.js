@@ -337,6 +337,12 @@ function presenter(stagiaire) {
     email: stagiaire.email,
     cin: stagiaire.cin,
     dateNaissance: stagiaire.dateNaissance,
+    // ⚠️ EXPOSÉS (2026-09-27, demande du porteur : « exposer ces champs dans la
+    // fiche stagiaire ») — contrairement à `motifAdmission`/`telephone`, lus la
+    // même semaine mais laissés hors de cette liste tant qu'aucun écran n'en
+    // avait besoin.
+    lieuNaissance: stagiaire.lieuNaissance,
+    dateInscription: stagiaire.dateInscription,
     groupes: stagiaire.groupes,
     groupePrincipal: stagiaire.groupePrincipal,
     niveau: stagiaire.niveau,

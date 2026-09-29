@@ -1,12 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Building2, Check, Sparkles } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Building2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import Alerte from '@/components/common/Alerte';
-import { cn } from '@/lib/utils';
-import { propositionsNomAbrege } from 'shared/domain';
 import { chargerEtablissementCourant } from '../api';
 
 /** Ce que le serveur accepte — même bornes que `nomAbregeSchema`. */
@@ -15,6 +12,11 @@ const MAXIMUM = 30;
 
 /**
  * Étape 5 — nom abrégé de l'établissement.
+ *
+ * ═══ SANS PROPOSITIONS (2026-09-19, demande du porteur) ═══
+ * L'étape suggérait des formes courtes déduites du nom officiel (« CFP MGD HASSANIA »…).
+ * Elle ne le fait plus : le directeur saisit lui-même le nom qu'il veut voir sur ses
+ * documents. Le calcul (`propositionsNomAbrege`) reste dans le domaine partagé.
  *
  * ═══ POURQUOI CETTE ÉTAPE EXISTE ═══
  * Le nom officiel — « Institut Spécialisé de Technologie Appliquée NTIC Sidi
@@ -44,12 +46,6 @@ export default function EtapeNomAbrege({ valeur, onChange }) {
     if (courant.nomAbrege) onChange(courant.nomAbrege);
   }, [courant, initialise, onChange]);
 
-  /*
-   * Plusieurs formes proposées, pas une seule : un établissement se désigne
-   * tantôt par son sigle, tantôt par son quartier. La règle vit dans le
-   * domaine, testée sur des intitulés réels.
-   */
-  const propositions = courant ? propositionsNomAbrege(courant.nom) : [];
   const trop = valeur.trim().length > MAXIMUM;
   const court = valeur.trim().length > 0 && valeur.trim().length < MINIMUM;
 
@@ -101,46 +97,6 @@ export default function EtapeNomAbrege({ valeur, onChange }) {
             </p>
           )}
         </div>
-
-        {/*
-          Aucune proposition n'est appliquée d'office : un nom abrégé est un
-          choix d'établissement, souvent porté par un usage local que le nom
-          officiel ne laisse pas deviner.
-        */}
-        {propositions.length > 0 && (
-          <div className="space-y-1.5 pt-2">
-            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Sparkles className="h-3.5 w-3.5" />
-              Propositions — les mots administratifs sont réduits à leur initiale
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {propositions.map((proposition) => {
-                const retenue = proposition === valeur.trim();
-
-                return (
-                  <Button
-                    key={proposition}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => onChange(proposition)}
-                    aria-pressed={retenue}
-                    /*
-                      La proposition retenue se signale par sa BORDURE et une
-                      coche, pas par un aplat indigo : le design system réserve
-                      cette couleur à un seul moment fort par page, et ici c'est
-                      le bouton « Terminer » qui le porte.
-                    */
-                    className={cn('gap-2', retenue && 'border-primary bg-primary/5 text-primary')}
-                  >
-                    {retenue && <Check className="h-3.5 w-3.5" />}
-                    {proposition}
-                  </Button>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </div>
 
       {court && (

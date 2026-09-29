@@ -80,7 +80,7 @@ export function tauxObjectifPedagogique({
   const rentree = dateRentree(annee, rentrees);
   const debut = rentree
     ? new Date(`${rentree}T12:00:00`)
-    : lundiPremiereSemaine(anneeScolaire);
+    : lundiPremiereSemaine(anneeScolaire, rentrees);
   const finition = FINS[annee] ?? FIN_PAR_DEFAUT;
   const fin = new Date(anneeScolaire + 1, finition.mois, finition.jour);
 

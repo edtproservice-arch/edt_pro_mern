@@ -6,13 +6,14 @@ import { anneeScolaireAPreparer, libelleAnneeScolaire } from 'shared/domain';
 import BarreNavigation from '@/components/layout/BarreNavigation';
 import SectionsAdmin from '@/features/admin/components/SectionsAdmin';
 import { BandeCartes, CarteStat } from '@/components/common/CartesStat';
+import SectionHoraires from './SectionHoraires';
+import SelecteurDate from '@/components/common/SelecteurDate';
 import EtapeCalendrier from '@/features/configuration/etapes/EtapeCalendrier';
 import Alerte from '@/components/common/Alerte';
 import {
   IndicateurEnregistrement,
   useEnregistrementAuto,
 } from '@/components/common/enregistrementAuto';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import IndicateurChargement from '@/components/ui/indicateur-chargement';
 import {
@@ -60,6 +61,13 @@ export default function PageCalendrierNational() {
   const cache = useQueryClient();
   const [annee, setAnnee] = useState(() => anneeScolaireAPreparer(new Date()));
   const [brouillon, setBrouillon] = useState(null);
+  // L'état d'enregistrement de la section des horaires, pour l'indicateur unique de la page.
+  const [horaires, setHoraires] = useState({
+    modifie: false,
+    enCours: false,
+    echec: false,
+    enregistreUneFois: false,
+  });
 
   const enregistre = useQuery({
     queryKey: ['calendrier-national', annee],
@@ -96,6 +104,9 @@ export default function PageCalendrierNational() {
        * cette frappe. Le brouillon fait foi tant qu'on est sur la page.
        */
       cache.invalidateQueries({ queryKey: ['calendrier-national'] });
+      // ⚠️ Une rentrée modifiée DÉPLACE S1 : l'ancre retenue doit suivre.
+      cache.invalidateQueries({ queryKey: ['ancre-rentrees'] });
+      cache.invalidateQueries({ queryKey: ['calendrier'] });
     },
     /*
      * ⚠️ L'ÉCHEC RESTE ANNONCÉ. Sans bouton, un refus silencieux laisserait
@@ -213,17 +224,27 @@ export default function PageCalendrierNational() {
           </BandeCartes>
 
           {/*
-            L'état de l'écriture, TOUJOURS à la même place. Il remplace le bouton
-            disparu : sans lui, rien ne dirait si la saisie est partie.
+            ═══ UN SEUL INDICATEUR D'ENREGISTREMENT POUR TOUTE LA PAGE (2026-09-20, demande du
+            porteur) ═══ Il combine le calendrier (rentrées, vacances) et les horaires des
+            séances, qui s'enregistrent chacun seuls : « en attente » ou « en cours » dès que
+            l'un des deux l'est, « non enregistré » dès que l'un des deux échoue. Toujours à la
+            même place — il remplace le bouton disparu.
           */}
           <div className="flex justify-end">
             <IndicateurEnregistrement
-              modifie={modifie}
-              enCours={enregistrement.isPending}
-              echec={enregistrement.isError}
-              enregistreUneFois={enregistreUneFois}
+              modifie={modifie || horaires.modifie}
+              enCours={enregistrement.isPending || horaires.enCours}
+              echec={enregistrement.isError || horaires.echec}
+              enregistreUneFois={enregistreUneFois || horaires.enregistreUneFois}
             />
           </div>
+
+          {/*
+            ═══ LES HORAIRES DES SÉANCES (2026-09-20) ═══ Ils ne dépendent pas de l'année
+            choisie plus bas : ils valent pour tout le réseau, tout de suite. La section
+            s'enregistre seule et rapporte son état à l'indicateur ci-dessus.
+          */}
+          <SectionHoraires surEtat={setHoraires} />
 
           {enregistre.isError && (
             <Alerte type="erreur" titre="Accès refusé">
@@ -253,18 +274,20 @@ export default function PageCalendrierNational() {
                   une rentrée » demanderait de choisir l'année dans une liste,
                   pour cinq valeurs connues d'avance.
                 */}
-                <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-3 lg:grid-cols-5">
+                <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-3">
                   {ANNEES_FORMATION.map((anneeFormation) => (
                     <div key={anneeFormation} className="space-y-1.5 bg-card p-4">
                       <Label htmlFor={`rentree-${anneeFormation}`}>
                         {anneeFormation}
                         <sup>{anneeFormation === 1 ? 're' : 'e'}</sup> année
                       </Label>
-                      <Input
+                      {/* Le calendrier de l'application (2026-09-20), pas le sélecteur natif. */}
+                      <SelecteurDate
                         id={`rentree-${anneeFormation}`}
-                        type="date"
-                        value={dateDe(anneeFormation)}
-                        onChange={(e) => poserRentree(anneeFormation, e.target.value)}
+                        valeur={dateDe(anneeFormation)}
+                        // Sans date choisie, on ouvre sur septembre de l'année scolaire affichée.
+                        moisParDefaut={new Date(annee, 8, 1)}
+                        onChange={(date) => poserRentree(anneeFormation, date)}
                       />
                     </div>
                   ))}
@@ -290,6 +313,13 @@ export default function PageCalendrierNational() {
                     panne de l'API.
                   */
                   chargerFeries={chargerJoursFeriesNationaux}
+                  /*
+                    ⚠️ LES RENTRÉES DU BROUILLON, PAS UNE REQUÊTE (2026-09-27) :
+                    c'est CET écran qui les saisit, `/api/v2/calendrier` répond
+                    403 ici (pas d'établissement), et resservir la dernière
+                    version enregistrée ignorerait la frappe en cours.
+                  */
+                  rentrees={brouillon.rentrees}
                   valeur={{ vacances: brouillon.vacances }}
                   onChange={(valeur) =>
                     setBrouillon((actuel) => ({ ...actuel, vacances: valeur.vacances }))

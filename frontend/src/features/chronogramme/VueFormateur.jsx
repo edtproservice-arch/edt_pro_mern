@@ -29,6 +29,8 @@ export default function VueFormateur({
   // Repères d'absence et de rattrapage : ceux du serveur, sauf si l'appelant en
   // fournit d'autres (la modale de rattrapage y ajoute son brouillon).
   marques,
+  // Clic direct sur une case, sans liste d'heures — voir `GrilleChronogramme`.
+  onClicDirect,
 }) {
   const donnees = requete?.data;
 
@@ -232,6 +234,7 @@ export default function VueFormateur({
         lectureSeule={lectureSeule}
         onOuverture={onOuverture}
         marques={marques ?? donnees.marques}
+        onClicDirect={onClicDirect}
         /*
          * ⚠️ PAS DE SEUIL PROPRE AU FORMATEUR. J'avais pris la masse statutaire
          * pour un repère hebdomadaire : elle vaut ~1 000 h, donc annuelle, et le

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -33,6 +33,10 @@ const SEUIL_RECHERCHE = 12;
  * @param {(el) => {titre, sousTitre?, droite?, marque?}} props.entete
  * @param {(el) => import('react').ReactNode} props.detail
  * @param {(el) => string} [props.texteRecherche] — sans elle, pas de recherche.
+ * @param {string} [props.ouvertInitial] — la fiche à ouvrir dès le montage
+ *   (2026-09-29, demande du porteur : « si je clique envoie directement en
+ *   groupe en page absence » — un lien depuis l'accueil doit déplier le bon
+ *   groupe, pas seulement atterrir sur la liste repliée).
  */
 export default function ListeRepliable({
   elements,
@@ -42,9 +46,18 @@ export default function ListeRepliable({
   texteRecherche,
   placeholder = 'Filtrer par nom…',
   vide,
+  ouvertInitial = null,
 }) {
   const [recherche, setRecherche] = useState('');
-  const [ouvert, setOuvert] = useState(null);
+  const [ouvert, setOuvert] = useState(ouvertInitial);
+  const fichePreOuverte = useRef(null);
+
+  useEffect(() => {
+    if (ouvertInitial) fichePreOuverte.current?.scrollIntoView({ block: 'center' });
+    // ⚠️ AU MONTAGE SEULEMENT : la fiche déjà ouverte ne doit pas re-sauter à
+    // l'écran si `elements` se recharge derrière elle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const visibles = useMemo(() => {
     const terme = recherche.trim().toUpperCase();
@@ -86,7 +99,11 @@ export default function ListeRepliable({
             return (
               /* La marque ambre dit, sans ouvrir la fiche, qu'il reste quelque
                  chose à y traiter — c'était le rôle de la carte ambre. */
-              <li key={cle} className={cn('rounded-lg border', marque && 'border-warning/40 bg-warning/5')}>
+              <li
+                key={cle}
+                ref={cle === ouvertInitial ? fichePreOuverte : undefined}
+                className={cn('rounded-lg border', marque && 'border-warning/40 bg-warning/5')}
+              >
                 <button
                   type="button"
                   onClick={() => setOuvert(estOuvert ? null : cle)}

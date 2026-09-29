@@ -9,6 +9,9 @@ import { authenticate } from '../../middleware/authenticate.js';
 import { requireRole } from '../../middleware/requireRole.js';
 import { resolveTenant } from '../../middleware/resolveTenant.js';
 import * as service from './seances.service.js';
+import { construireExport } from './exportGlobal.service.js';
+import { construireExportEmargement } from './exportEmargement.service.js';
+import { construireExportIndividuel } from './exportIndividuel.service.js';
 import { annoncerModification } from '../tempsReel/annonces.js';
 import { exigerDroitPage } from '../partages/exigerDroitPage.js';
 
@@ -222,6 +225,121 @@ router.get(
         req.params.semaine
       );
       res.json({ success: true, ...grille });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * Le téléchargement Word / PDF / Excel de la « vue globale » de la page
+ * Édition — le canevas transmis par l'établissement (2026-09-23, demande du
+ * porteur). Voir `exportGlobal.service.js` : mêmes données, mêmes filtres que
+ * ceux affichés à l'écran au moment du clic.
+ *
+ * ⚠️ EN POST, COMME LES AUTRES EXPORTS DE L'APPLICATION (« carte », « bilan ») :
+ * les filtres actifs (sujets désignés, jours et créneaux retenus, facettes de
+ * groupe) voyagent dans le corps, pas dans une chaîne de requête qui les
+ * tronquerait à la trentaine de formateurs de l'établissement.
+ */
+const filtreExportSchema = z.object({
+  jours: z.array(z.enum(JOURS)).default([]),
+  creneaux: z.array(z.enum(SEANCES)).default([]),
+});
+const filtreGroupesExportSchema = z.object({
+  filieres: z.array(z.string()).default([]),
+  niveaux: z.array(z.string()).default([]),
+  annees: z.array(z.string()).default([]),
+});
+
+/** La réponse d'un export (emploi global, émargement…) : mêmes en-têtes pour tous. */
+function repondreFichier(res, { tampon, nomFichier, contentType }) {
+  res.setHeader('Content-Type', contentType);
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="export"; filename*=UTF-8''${encodeURIComponent(nomFichier)}`
+  );
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+  res.send(tampon);
+}
+
+router.post(
+  '/:semaine/export',
+  lireEmploiOuEfm,
+  validate({
+    params: z.object({ semaine: z.string().trim().regex(/^\d{4}-W\d{1,3}$/i) }),
+    body: z.object({
+      format: z.enum(['docx', 'pdf', 'xlsx']),
+      axe: z.enum(['formateur', 'groupe', 'salle']).default('formateur'),
+      periode: z.nativeEnum(PERIODES).default(PERIODES.JOUR),
+      choisis: z.array(z.string()).default([]),
+      filtre: filtreExportSchema.default({}),
+      filtreGroupes: filtreGroupesExportSchema.default({}),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      repondreFichier(res, await construireExport(req.etablissementId, req.anneeScolaire, req.params.semaine, req.body));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * L'émargement JOURNALIER — la feuille de signature d'un jour donné, un
+ * formateur par bloc de cours continu, son taux d'avancement à jour.
+ * ← demande du porteur, canevas Word « EMARGEMENT_Lundi_2026-W4 » transmis
+ *   (2026-09-24). Voir `exportEmargement.service.js`.
+ */
+router.post(
+  '/:semaine/emargement',
+  lireEmploiOuEfm,
+  validate({
+    params: z.object({ semaine: z.string().trim().regex(/^\d{4}-W\d{1,3}$/i) }),
+    body: z.object({
+      format: z.enum(['docx', 'pdf', 'xlsx']),
+      jour: z.enum(JOURS),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      repondreFichier(
+        res,
+        await construireExportEmargement(req.etablissementId, req.anneeScolaire, req.params.semaine, req.body)
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * La vue DÉTAILLÉE — une page par sujet affiché, sur le canevas individuel.
+ * ← demande du porteur, canevas Word « EDT_TEACHER_… » transmis (2026-09-24),
+ * puis (même jour) : « le même bouton Imprimer, selon la vue affichée ». Les
+ * mêmes filtres que `/export` — c'est la même vue, sous une autre forme.
+ * Voir `exportIndividuel.service.js`.
+ */
+router.post(
+  '/:semaine/individuel',
+  lireEmploiOuEfm,
+  validate({
+    params: z.object({ semaine: z.string().trim().regex(/^\d{4}-W\d{1,3}$/i) }),
+    body: z.object({
+      format: z.enum(['docx', 'pdf', 'xlsx']),
+      axe: z.enum(['formateur', 'groupe', 'salle']).default('formateur'),
+      choisis: z.array(z.string()).default([]),
+      filtre: filtreExportSchema.default({}),
+      filtreGroupes: filtreGroupesExportSchema.default({}),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      repondreFichier(
+        res,
+        await construireExportIndividuel(req.etablissementId, req.anneeScolaire, req.params.semaine, req.body)
+      );
     } catch (error) {
       next(error);
     }

@@ -127,7 +127,7 @@ export default function CalendrierPeriode({ valeur, onChange, anneeScolaire, cou
           selected={valeur}
           onSelect={onChange}
           showWeekNumber
-          {...colonneSemaine(communs.components)}
+          {...colonneSemaine(communs.components, communs.rentrees, anneeScolaire)}
         />
       </div>
 

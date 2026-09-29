@@ -90,10 +90,10 @@ export default function DialogueStatistiques({ ouvert, onFermer, seances, contex
         />
 
         <Graphique
-          titre="Occupation des salles"
+          titre="Occupation des espaces"
           donnees={stats.parSalle}
           couleur="hsl(var(--accent-teal))"
-          vide="Aucune salle occupée cette semaine."
+          vide="Aucun espace occupé cette semaine."
         />
 
         {/*

@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Moon, Sun } from 'lucide-react';
+import { CalendarDays, Eye, EyeOff, Link2, Link2Off, Moon, Sun } from 'lucide-react';
 import {
   SEANCES_JOUR,
   SEANCE_SOIR,
+  analyserSemaine,
   fichesModules,
   indexerContraintes,
   libelleSemaine,
@@ -33,6 +34,8 @@ import MenuGrille from './MenuGrille';
 import BarreFlottante from './BarreFlottante';
 import NavigationSemaine from './NavigationSemaine';
 import DialogueStatistiques from './DialogueStatistiques';
+import { chargerCompletude, chargerLiaison } from '@/features/chronogramme/api';
+import DialogueGeneration from '@/features/generation/DialogueGeneration';
 import BoutonPublier from './BoutonPublier';
 import AvatarsPresence from '@/features/tempsReel/AvatarsPresence';
 import CurseursDistants from '@/features/tempsReel/CurseursDistants';
@@ -54,6 +57,10 @@ import {
   rectangle,
   refaire,
 } from './selection';
+import { useCasesSignalees } from './useCasesSignalees';
+import { PanneauDroit } from '@/components/layout/PanneauDroit';
+import PanneauCompletude from './PanneauCompletude';
+import { useBilanCompletude } from './useBilanCompletude';
 import { ajusterPosees, appliquerOperations, confirmer, resoudreIdentifiants } from './previsionEcriture';
 
 /**
@@ -109,6 +116,15 @@ export default function PageEmploi() {
   const [caseEnEdition, setCaseEnEdition] = useState(null);
   const [depot, setDepot] = useState({ source: null, survol: null });
   const [statistiques, setStatistiques] = useState(false);
+  const [generation, setGeneration] = useState(false);
+  /*
+   * Le rapport de conformité, colonne à droite de la grille (2026-09-28, demande
+   * du porteur : « à droite, décale la grille »). L'état vit ICI parce que c'est
+   * la page qui dispose la grille et le panneau côte à côte.
+   */
+  /* `?rapport=1` (2026-09-28) : « Saisir » depuis « À traiter » de l'accueil
+     ouvre la semaine AVEC ses écarts au chronogramme déjà affichés. */
+  const [rapportOuvert, setRapportOuvert] = useState(() => parametres.get('rapport') === '1');
   /*
    * Le zoom de la grille — préférence de LECTURE, comme celui du chronogramme.
    * Il ne part pas au serveur : deux personnes du même établissement peuvent
@@ -133,6 +149,7 @@ export default function PageEmploi() {
   };
 
   const basculerSelection = useCallback(() => setModeSelection((actif) => !actif), []);
+
 
   /*
    * ⚠️ QUITTER LE MODE EFFACE LA SÉLECTION. Le cadre bleu désigne ce que la
@@ -159,11 +176,39 @@ export default function PageEmploi() {
    * serveur le refusait en 403 : un bouton qui échoue toujours.
    */
   const session = useQuery({ queryKey: ['session'], queryFn: recupererSession, retry: false });
+
+  /*
+   * L'état de la liaison au chronogramme (2026-09-27).
+   * ⚠️ MÊME CLÉ DE CACHE QUE LE BANDEAU ET LE BOUTON DE LA PAGE CHRONOGRAMME :
+   *    une seule requête pour les trois, et jamais deux lectures divergentes du
+   *    même état à l'écran.
+   */
+  const liaison = useQuery({
+    queryKey: ['chronogramme-liaison'],
+    queryFn: chargerLiaison,
+    retry: false,
+  });
+
+  /*
+   * Le taux de conformité de CHAQUE semaine, pour les points du sélecteur de
+   * semaine (2026-09-27, demande du porteur : « S4 à 98 % → point orange, S5
+   * à 100 % → vert, 0 % → rouge »). Sans `semaine`, `chargerCompletude()` rend
+   * déjà « un taux par semaine, pour le calendrier » — bâti pour cet usage
+   * précis (voir son commentaire), jamais branché jusqu'ici.
+   */
+  const completudeAnnee = useQuery({
+    queryKey: ['chronogramme-completude-annee'],
+    queryFn: () => chargerCompletude(),
+    retry: false,
+  });
   const estDirecteur = session.data?.utilisateur?.role === ROLES.DIRECTEUR;
 
   useEffect(() => {
     if (!semaine && semaines.data?.courante) setSemaine(semaines.data.courante);
   }, [semaine, semaines.data]);
+
+  // La même requête que le bouton du taux — un seul appel, un seul cache.
+  const bilanCompletude = useBilanCompletude(semaine);
 
   const grille = useQuery({
     queryKey: ['emploi', 'semaine', semaine],
@@ -189,6 +234,13 @@ export default function PageEmploi() {
          * même écran.
          */
         cache.invalidateQueries({ queryKey: ['emploi', 'module'] }),
+        /*
+         * ⚠️ ET LA CONFORMITÉ AU CHRONOGRAMME (2026-09-27) : on supprime
+         * désormais depuis sa fenêtre une séance hors chronogramme — la
+         * pastille et le calendrier des taux doivent le voir aussitôt.
+         */
+        cache.invalidateQueries({ queryKey: ['chronogramme-completude'] }),
+        cache.invalidateQueries({ queryKey: ['chronogramme-completude-annee'] }),
       ]),
     [cache]
   );
@@ -219,6 +271,39 @@ export default function PageEmploi() {
    * connexion qui dépasse 40 messages par seconde.
    */
   const grilleRef = useRef(null);
+
+  /*
+   * ═══ ALLER À LA CASE D'UNE SÉANCE DEPUIS LA FENÊTRE CONFORMITÉ ═══
+   * (2026-09-27, demande du porteur.) Une séance hors chronogramme se SUPPRIME :
+   * on bascule sur sa grille (jour ou soir), on l'amène à l'écran, et — quand
+   * toutes ses cases sont à retirer — on les SÉLECTIONNE, pour que Suppr suffise.
+   *
+   * ⚠️ VUE PAR FORMATEUR POUR LE JOUR : une séance mutualisée y occupe UNE case,
+   *    celle de son formateur ; en vue par groupe, elle en occupe une par
+   *    membre, et la clé du libellé fusionné ne désignerait aucune ligne. Le
+   *    soir, la grille est toujours par groupe.
+   * ⚠️ « EN TROP » N'EST PAS SÉLECTIONNÉ : une seule des séances est de trop,
+   *    et Suppr les retirerait toutes. On les montre, le directeur choisit.
+   */
+  const signalerCases = useCasesSignalees(grilleRef);
+  const allerAuxCases = (positions, { selectionner = false } = {}) => {
+    if (!positions?.length) return;
+    const cible = positions[0].periode ?? 'jour';
+    if (cible !== periode) changerPeriode(cible);
+    if (cible === 'jour' && parGroupe) setParGroupe(false);
+
+    const cles = positions
+      .filter((p) => (p.periode ?? 'jour') === cible)
+      .map((p) =>
+        cleCase(cible === 'soir' ? p.groupe : p.formateurMatricule, p.jour, p.seance, cible)
+      );
+
+    if (selectionner) {
+      setModeSelection(true);
+      setSelection(new Set(cles));
+    }
+    signalerCases(cles);
+  };
   const axeCourant = periode === 'soir' || parGroupe ? 'groupe' : 'formateur';
 
   // Borné à 20 par seconde — mécanisme partagé avec le chronogramme.
@@ -311,6 +396,38 @@ export default function PageEmploi() {
 
   const fermerCase = useCallback(() => setCaseEnEdition(null), []);
 
+  // ⚠️ LIÉ ET PLANIFIÉ (2026-09-28, demande du porteur : « si liée, il ne faut
+  // pas ajouter ni supprimer des séances, figer et bloquer ») : le serveur
+  // refuse déjà (`verrouChronogramme.js`) ; l'écran le dit AVANT le clic.
+  const verrou = liaison.data?.verrouActif === true;
+
+  // Le bandeau au-dessus de la grille se masque (2026-09-28, demande du porteur :
+  // « un bouton pour masquer le bandeau »). ⚠️ Retenu dans ce navigateur : un
+  // bandeau masqué ne doit pas revenir à chaque semaine ni à chaque rechargement.
+  const [bandeauMasque, setBandeauMasque] = useState(() => {
+    try {
+      return localStorage.getItem('edtpro.emploi.bandeau-masque') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const basculerBandeau = () =>
+    setBandeauMasque((avant) => {
+      try {
+        localStorage.setItem('edtpro.emploi.bandeau-masque', avant ? '0' : '1');
+      } catch {
+        /* sans stockage, le choix ne vaut que pour cette visite */
+      }
+      return !avant;
+    });
+  const avertirVerrou = useCallback(
+    () =>
+      toast.info('Emploi du temps lié au chronogramme : ajout et suppression impossibles', {
+        description: 'Modifiez le chronogramme puis relancez la génération, ou déliez l’emploi du temps.',
+      }),
+    []
+  );
+
   const fiches = useMemo(
     () => fichesModules(contexte.data?.affectations ?? []),
     [contexte.data?.affectations]
@@ -319,6 +436,41 @@ export default function PageEmploi() {
     () => new Map(Object.entries(contexte.data?.posees ?? {})),
     [contexte.data?.posees]
   );
+
+  /*
+   * ═══ ⚠️ LE BADGE D'UNE CASE LIT LE CUMUL À SA PROPRE SÉANCE, PAS LE TOTAL DE
+   * L'ANNÉE ═══ (2026-09-24, demande du porteur : « le taux dans les cellules
+   * pour chaque semaine, pas le dernier taux » — précisé ensuite : « en S3 le
+   * taux est 14 mais en cellule s'affiche 20 ».) `posees` (ci-dessus) reste le
+   * total — c'est lui qui juge un quota, quelle que soit la semaine affichée.
+   *
+   * ⚠️ UN CUMUL DE FIN DE SEMAINE NE SUFFISAIT PAS NON PLUS : une case du mardi
+   * affichait déjà ce qu'un jeudi de la même semaine n'avait pas encore posé.
+   *
+   * ⚠️⚠️ L'INDEX NE PORTE QUE LA SEMAINE AFFICHÉE (2026-09-24, correction : les
+   * badges avaient disparu PARTOUT). La clé devait porter la semaine, mais
+   * `presenter()` (`seances.service.js`) ne la RENVOIE PAS sur une séance de la
+   * grille — un oubli de présentateur de plus. Or la grille n'affiche jamais
+   * qu'UNE semaine à la fois : plutôt que réclamer un champ de plus sur chaque
+   * séance pour la lui redire, on RETIENT ce que le contexte a déjà — les
+   * lignes DE CETTE SEMAINE, dont le cumul est déjà celui de toute l'année à ce
+   * point — et la clé s'en passe.
+   */
+  const numeroSemaineAffichee = useMemo(() => analyserSemaine(semaine)?.numero ?? null, [semaine]);
+  const poseesParSeance = useMemo(() => {
+    const index = new Map();
+    if (numeroSemaineAffichee === null) return index;
+
+    for (const [cle, parType] of Object.entries(contexte.data?.poseesParSeance ?? {})) {
+      for (const type of ['presentiel', 'synchrone']) {
+        for (const ligne of parType[type] ?? []) {
+          if (ligne.numero !== numeroSemaineAffichee) continue;
+          index.set(`${cle}||${type}||${ligne.jour}||${ligne.creneau}`, ligne.cumul);
+        }
+      }
+    }
+    return index;
+  }, [contexte.data?.poseesParSeance, numeroSemaineAffichee]);
 
   /*
    * ═══ ⚠️⚠️ L'AXE EFFECTIF, PAS LA BASCULE ═══
@@ -549,9 +701,9 @@ export default function PageEmploi() {
       if (bilan.salleRetiree.length > 0) {
         toast.warning(
           bilan.salleRetiree.length === 1
-            ? 'Séance déposée sans salle'
-            : `${bilan.salleRetiree.length} séances déposées sans salle`,
-          { description: 'L’ancienne salle était déjà prise sur ce créneau — choisissez-en une dans la case.' }
+            ? 'Séance déposée sans espace'
+            : `${bilan.salleRetiree.length} séances déposées sans espace`,
+          { description: 'L’ancien espace était déjà pris sur ce créneau — choisissez-en un dans la case.' }
         );
       }
 
@@ -697,7 +849,7 @@ export default function PageEmploi() {
       base.module = '';
     }
     if (champ === 'Module') base.module = valeur;
-    if (champ === 'Salle') {
+    if (champ === 'Espace') {
       /*
        * ⚠️ MARQUER ABSENT NE TOUCHE PAS À LA SALLE. L'existant écrivait
        * « ABSENT » DANS le champ salle : on perdait alors l'endroit où le cours
@@ -899,10 +1051,12 @@ export default function PageEmploi() {
       toast.success(`${selection.size} case(s) copiée(s)`);
     },
     onCouper: () => {
+      if (verrou) return avertirVerrou();
       setPressePapiers(copier([...selection], seanceDe));
       actions.onVider();
     },
     onColler: () => {
+      if (verrou) return avertirVerrou();
       const depart = lireCle([...selection][0]);
       const cases = cible(pressePapiers, depart, { sujets: sujetsAffiches, creneaux, periode });
 
@@ -948,6 +1102,7 @@ export default function PageEmploi() {
       );
     },
     onVider: () => {
+      if (verrou) return avertirVerrou();
       appliquer(
         [...selection]
           .map((cle) => {
@@ -1166,6 +1321,7 @@ export default function PageEmploi() {
           courante={semaines.data?.courante}
           anneeScolaire={contexte.data?.anneeScolaire}
           remplies={semaines.data?.semaines ?? []}
+          completudes={completudeAnnee.data?.semaines ?? []}
         />
 
   
@@ -1245,6 +1401,15 @@ export default function PageEmploi() {
           <BoutonPublier semaine={semaine} publication={semaines.data?.publication} />
         )}
 
+        {/*
+          ⚠️ `BoutonCompletude` A REJOINT `MenuGrille` (2026-09-27, demande du
+          porteur : « le bouton rapport à côté du bouton générer, en groupe »).
+          Il y forme désormais un seul `ButtonGroup` avec Générer, et reste
+          visible de TOUS — y compris d'un invité en consultation, pour qui
+          Générer ne s'affiche pas — puisque `MenuGrille` ne le réserve pas au
+          directeur.
+        */}
+
         <MenuGrille
           selection={selection}
           enCours={ecrire.isPending || outils.isPending}
@@ -1255,7 +1420,11 @@ export default function PageEmploi() {
           onImporterSemaine={(depuis) => outils.mutate({ type: 'importer', depuis })}
           onReinitialiser={(portee) => outils.mutate({ type: 'reinitialiser', portee })}
           outilsDirecteur={estDirecteur}
+          rapportOuvert={rapportOuvert}
+          onOuvrirRapport={setRapportOuvert}
           onStatistiques={() => setStatistiques(true)}
+          onGenerer={() => setGeneration(true)}
+          generationCoupee={liaison.data?.planifie === true && liaison.data?.liee === false}
           zoom={zoom}
           onZoom={setZoom}
         />
@@ -1317,6 +1486,17 @@ export default function PageEmploi() {
             semaine={semaine}
           />
 
+          {/* ⚠️ MONTÉE SEULEMENT POUR LE DIRECTEUR : la route est gardée par
+              `requireRole(DIRECTEUR)`, et un invité n'a rien à y ouvrir. */}
+          {estDirecteur && (
+            <DialogueGeneration
+              ouvert={generation}
+              onOuvrir={setGeneration}
+              anneeScolaire={contexte.data?.anneeScolaire}
+              semainesExistantes={semaines.data?.semaines ?? []}
+            />
+          )}
+
           {conflits.size > 0 && (
             <Alerte type="erreur" titre={`${conflits.size} case(s) refusée(s)`}>
               <ul className="space-y-0.5">
@@ -1343,6 +1523,87 @@ export default function PageEmploi() {
             </Alerte>
           )}
 
+          {/*
+            ⚠️ LE BANDEAU DE LIAISON A ÉTÉ RETIRÉ (2026-09-27, demande du
+            porteur : « prend beaucoup d'espace ») : la même information —
+            lié ou dissocié, et combien de groupes le chronogramme planifie —
+            vit désormais dans le bouton `BoutonLiaison` de `MenuGrille`, qui
+            ne coûte pas une rangée entière à l'écran.
+          */}
+          {/*
+            ═══ LE CADRE « À LA NOTION » ═══ (2026-09-28, demande du porteur :
+            « une bordure autour du tableau et un bandeau comme celui en
+            image ; si l'emploi est lié en bleu, sinon en orange »). Un
+            conteneur teinté, un bandeau de titre, et la grille dans une carte
+            blanche. ⚠️ SANS `overflow` : le `sticky` de l'en-tête de la grille
+            s'y accrocherait sinon, comme au cadre arrondi de `GrilleConsultation`.
+            Tant que la liaison n'est pas lue, le cadre reste NEUTRE plutôt que
+            de clignoter d'une couleur à l'autre.
+          */}
+          <div
+            className={cn(
+              // ⚠️ SANS BORDURE (2026-09-28 : « masquer la bordure foncée », la
+              // bordure du tableau, elle, reste) : la teinte du fond suffit.
+              'relative rounded-xl p-2',
+              liaison.data
+                ? liaison.data.liee
+                  ? 'bg-primary/5 dark:bg-accent-sky-deep/[0.06]'
+                  : 'bg-warning/20' // ⚠️ L'ORANGE DE L'ANCIEN BANDEAU « DISSOCIÉ » (`--warning`, ambre) : `accent-orange` virait au rose saumon (2026-09-28)
+                : 'bg-muted/30'
+            )}
+          >
+            {bandeauMasque && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-1 top-0.5 z-10 h-6 w-6 text-muted-foreground"
+                title="Afficher le bandeau"
+                onClick={basculerBandeau}
+              >
+                <Eye className="h-3.5 w-3.5" />
+                <span className="sr-only">Afficher le bandeau</span>
+              </Button>
+            )}
+            {!bandeauMasque && (
+            <div
+              className={cn(
+                'flex items-center gap-2 px-2 pb-2 pt-1 text-sm font-bold',
+                liaison.data?.liee ? 'text-primary dark:text-accent-sky-deep' : liaison.data ? 'text-accent-orange dark:text-accent-orange-deep' : 'text-muted-foreground'
+              )}
+            >
+              {/* ⚠️ L'ÉTAT EST LE TITRE (2026-09-28, demande du porteur : « emploi
+                  du temps lié au chronogramme » en bleu gras, « dissocié » en
+                  orange gras) ; la semaine passe à droite. */}
+              {liaison.data?.liee ? (
+                <Link2 className="h-4 w-4" />
+              ) : liaison.data ? (
+                <Link2Off className="h-4 w-4" />
+              ) : (
+                <CalendarDays className="h-4 w-4" />
+              )}
+              <span>
+                {liaison.data?.liee
+                  ? 'Emploi du temps lié au chronogramme'
+                  : liaison.data
+                    ? 'Emploi du temps délié du chronogramme'
+                    : 'Emploi du temps'}
+              </span>
+              <span className="ml-auto text-xs font-medium">{libelleSemaine(semaine)}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 shrink-0 text-current hover:bg-black/5 hover:text-current"
+                title="Masquer le bandeau"
+                onClick={basculerBandeau}
+              >
+                <EyeOff className="h-3.5 w-3.5" />
+                <span className="sr-only">Masquer le bandeau</span>
+              </Button>
+            </div>
+            )}
+            <div className="rounded-lg bg-background">
           <div
             ref={grilleRef}
             // ⚠️ `relative` : la couche des curseurs se positionne dans CE repère.
@@ -1375,6 +1636,7 @@ export default function PageEmploi() {
               contexte={contexte.data ?? {}}
               fiches={fiches}
               posees={posees}
+              poseesParSeance={poseesParSeance}
               selection={selection}
               conflits={conflitsVus}
               brouillons={brouillons}
@@ -1384,14 +1646,37 @@ export default function PageEmploi() {
               seanceEnDeplacement={seanceEnDeplacement}
               onChanger={changer}
               onOuvrirCase={ouvrirCase}
+              verrouChronogramme={verrou}
+              onVerrou={avertirVerrou}
               onFermerCase={fermerCase}
               onDeplacer={glisserDeposer}
               onDebuterSelection={debuter}
               onEtendreSelection={etendre}
             />
           </div>
+            </div>
+          </div>
 
         </div>
+      )}
+
+      {/*
+        ═══ LE RAPPORT DE CONFORMITÉ, PANNEAU DE DROITE « À LA NOTION » ═══
+        (2026-09-28) Rendu dans l'emplacement de la coquille (`PanneauDroit`) :
+        pleine hauteur, collé au bord droit, et toute la zone de page se
+        resserre à sa gauche. ⚠️ Il reste ouvert pendant qu'on corrige : on
+        supprime une séance et on voit le taux bouger.
+      */}
+      {rapportOuvert && bilanCompletude.data?.planifie && (
+        <PanneauDroit>
+          <PanneauCompletude
+            onFermer={() => setRapportOuvert(false)}
+            bilan={bilanCompletude.data}
+            libelle={libelleSemaine(semaine)}
+            peutPlacer={estDirecteur}
+            onAllerAuxCases={allerAuxCases}
+          />
+        </PanneauDroit>
       )}
     </CadreReglage>
   );

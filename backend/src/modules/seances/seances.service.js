@@ -6,7 +6,7 @@ import {
   anneeDuNomGroupe,
   avantRentree,
   separerFusion,
-  avancementParSemaine,
+  avancementParSeance,
   cleModule,
   dateDuJour,
   datesDeLaSemaine,
@@ -18,6 +18,7 @@ import {
   fusionnerVacances,
   groupesDuSoir,
   heuresPosees,
+  heuresPoseesParSeance,
   modulesRegionaux,
   normaliserValeurSemaine,
   optionsDuFormateur,
@@ -26,12 +27,29 @@ import {
   titulairesDuModule,
   typeDeSeance,
 } from 'shared/domain';
+import {
+  chargerPieces,
+  conflitsDeSalleMutualisee,
+  libellesEmpruntes,
+  occupationsEspacesAilleursDeLaSemaine,
+  salleAVerifier,
+} from '../espaces/espaces.service.js';
+import {
+  autresEtablissementsDuFormateur,
+  conflitsDeFormateurMutualise,
+  occupationsAilleurs,
+} from '../espaces/formateursMutualises.service.js';
 import { Base } from '../../models/Base.js';
 import { Repartition } from '../../models/Repartition.js';
 import { Etablissement } from '../../models/Etablissement.js';
 import { Seance } from '../../models/Seance.js';
 import { lister as listerContraintes } from '../base/contraintes.service.js';
 import { HttpError, badRequest, conflict, notFound } from '../../lib/httpError.js';
+import { exigerCoursInchange, refuser, verrouActif } from './verrouChronogramme.js';
+import {
+  figerParPublication,
+  sansFaireEchouer as sansFaireEchouerTrace,
+} from '../generation/traces.service.js';
 import { logger } from '../../lib/logger.js';
 import { joursFeries as joursFeriesEtablissement } from '../calendrier/calendrier.service.js';
 import { obtenir as calendrierNational } from '../calendrierNational/calendrierNational.service.js';
@@ -119,6 +137,21 @@ export async function publier(etablissementId, anneeScolaire, valeur, parUtilisa
     }
   );
 
+  /*
+   * ═══ PUBLIER FIGE LA TRACE DE GÉNÉRATION (F6 · d) ═══ C'est un geste MÉTIER
+   * qui dit déjà « cette grille fait foi » : il est daté, explicite, et ne
+   * demande aucun réglage. La grille retenue est alors comparée à ce que le
+   * solveur avait proposé — c'est cet écart, et lui seul, qu'un modèle de
+   * préférence peut apprendre.
+   *
+   * ⚠️ APRÈS L'ÉCRITURE ET SANS POUVOIR LA FAIRE ÉCHOUER : une trace perdue ne
+   *    doit jamais empêcher une publication.
+   */
+  await sansFaireEchouerTrace(
+    figerParPublication(etablissementId, anneeScolaire, semaine),
+    { etablissementId, semaine }
+  );
+
   return { semaine, publieeLe: new Date() };
 }
 
@@ -153,6 +186,8 @@ export async function contexte(etablissementId, anneeScolaire) {
     ),
     Etablissement.findById(etablissementId).select('espaces groupesFq publications'),
   ]);
+  // Les espaces qu'un autre établissement me prête : ils se choisissent comme les miens (2026-09-21).
+  const empruntes = await libellesEmpruntes(etablissementId);
 
   if (!base) {
     throw notFound('Aucune base pour cette année scolaire', { code: 'BASE_ABSENTE' });
@@ -203,7 +238,7 @@ export async function contexte(etablissementId, anneeScolaire) {
      * présentateur qui s'est présenté sept fois dans ce projet.
      */
     publication: publicationDeLAnnee(etablissement, anneeScolaire),
-    salles: [...(etablissement?.espaces ?? [])].sort((a, b) =>
+    salles: [...(etablissement?.espaces ?? []), ...empruntes].sort((a, b) =>
       String(a).localeCompare(String(b), 'fr', { numeric: true })
     ),
     /*
@@ -254,13 +289,23 @@ export async function contexte(etablissementId, anneeScolaire) {
     })),
 
     /*
-     * ═══ HEURES DÉJÀ POSÉES SUR TOUTE L'ANNÉE ═══
-     * Le taux d'avancement d'un module se lit sur l'ANNÉE, jamais sur la semaine
-     * affichée : rapporté à la seule semaine, il tomberait à 2 % partout et ne
-     * dirait plus rien. L'existant chargeait ce décompte à part
-     * (`moduleCompletion`) ; ici il vient avec le contexte, en une requête.
+     * ═══ HEURES DÉJÀ POSÉES ═══
+     * `posees` reste le total de l'ANNÉE ENTIÈRE — c'est lui qui juge un quota
+     * (une masse déjà atteinte se refuse pour le reste de l'année, quelle que
+     * soit la semaine affichée) et qui alimente la liste des modules à choisir.
+     *
+     * `poseesParSeance` (2026-09-24, demande du porteur : « le taux dans les
+     * cellules pour chaque semaine, pas le dernier taux » — précisé ensuite :
+     * « en S3 le taux est 14 mais en cellule s'affiche 20 », un cumul de fin de
+     * semaine restant faux pour une séance qui n'en est pas la dernière) sert
+     * UNIQUEMENT le badge d'une case : chaque séance y porte son propre cumul,
+     * pour que le client retrouve exactement celui de SA séance — semaine,
+     * jour et créneau — plutôt que le taux final ou le cumul de fin de semaine,
+     * tous deux identiques sur des cases qui n'en sont pourtant pas au même
+     * point. L'existant chargeait ce décompte à part (`moduleCompletion`) ; les
+     * deux viennent ici avec le contexte, en une seule requête.
      */
-    posees: await heuresAnnee(etablissementId, anneeScolaire),
+    ...(await heuresAnnee(etablissementId, anneeScolaire)),
 
     /*
      * ═══ DISPONIBILITÉ ET SALLES ATTRIBUÉES (2026-09-17) ═══
@@ -280,17 +325,27 @@ export async function contexte(etablissementId, anneeScolaire) {
  * l'éclatement des libellés fusionnés y sont déjà écrites et testées. Les
  * réécrire en agrégation ferait deux définitions de la même chose.
  */
-async function heuresAnnee(etablissementId, anneeScolaire) {
+export async function heuresAnnee(etablissementId, anneeScolaire) {
   /*
    * ⚠️ LA SALLE FAIT PARTIE DU DÉCOMPTE. C'est elle qui dit si la séance est à
    * distance, donc quel quota elle consomme : sans ce champ, `typeDeSeance` les
    * rangeait TOUTES en présentiel et la masse synchrone restait à zéro.
+   *
+   * ⚠️ `jour` EN PLUS (2026-09-24, signalé par le porteur : « en S3 le taux est
+   * 14 mais en cellule s'affiche 20 ») : le badge d'une case ne doit plus lire
+   * le total de l'année — ni même le cumul de fin de semaine, encore faux pour
+   * une séance qui n'est pas la dernière de la sienne — mais le cumul ATTEINT À
+   * SA PROPRE SÉANCE. `poseesParSeance` porte de quoi le reconstituer, séance
+   * par séance ; une seule requête sert les deux décomptes.
    */
   const seances = await Seance.find({ etablissementId, anneeScolaire })
-    .select('groupe module seance statut salle estEfm')
+    .select('groupe module seance jour statut semaine salle estEfm')
     .lean();
 
-  return Object.fromEntries(heuresPosees(seances));
+  return {
+    posees: Object.fromEntries(heuresPosees(seances)),
+    poseesParSeance: Object.fromEntries(heuresPoseesParSeance(seances)),
+  };
 }
 
 /**
@@ -372,7 +427,14 @@ async function filtrerSurQuota(etablissementId, anneeScolaire, lot, semaineEffac
  * déjà posée ne consomme pas d'heures supplémentaires, et la compter deux fois
  * ferait refuser sa propre modification.
  */
-async function verifierQuota(etablissementId, anneeScolaire, donnees, affectations, session = null) {
+async function verifierQuota(
+  etablissementId,
+  anneeScolaire,
+  donnees,
+  affectations,
+  session = null,
+  precharge = null
+) {
   const type = typeDeSeance(donnees);
   const fiche = fichesModules(affectations).get(cleModule(donnees.groupe, donnees.module));
   const prevu = fiche?.[type] ?? 0;
@@ -381,12 +443,24 @@ async function verifierQuota(etablissementId, anneeScolaire, donnees, affectatio
   const criteres = { etablissementId, anneeScolaire, module: donnees.module };
   if (donnees.id) criteres._id = { $ne: donnees.id };
 
-  // ⚠️ DANS LA TRANSACTION de l'appelant : un rattrapage déplacé vient d'y
-  // retirer l'ancienne séance, qui ne doit plus compter.
-  const seances = await Seance.find(criteres)
-    .select('groupe module seance statut salle estEfm')
-    .session(session)
-    .lean();
+  /*
+   * ═══ ⚠️ LE MÊME DÉCOMPTE, LU UNE FOIS AU LIEU DE 181 ═══ (2026-09-22)
+   * Cette requête relit TOUTES les séances de l'année pour ce module, à chaque
+   * pose. Sur une génération de semaine, c'est 181 allers-retours pour un état
+   * que la transaction fige de toute façon — une transaction MongoDB travaille
+   * sur un instantané, deux lectures identiques y rendent la même réponse.
+   *
+   * ⚠️ LE MÉMO N'EST CONSULTÉ QUE POUR UNE SÉANCE NEUVE (`!donnees.id`) :
+   *    corriger une séance existante exclut son propre identifiant du
+   *    décompte, et ce cas-là passe par la requête, comme avant.
+   */
+  const seances =
+    !donnees.id && precharge?.obtenirSeancesDuModule
+      ? precharge.obtenirSeancesDuModule(donnees.module)
+      : await Seance.find(criteres)
+          .select('groupe module seance statut salle estEfm')
+          .session(session)
+          .lean();
 
   const deja = heuresPosees(seances).get(cleModule(donnees.groupe, donnees.module))?.[type] ?? 0;
   const apres = Math.round((deja + dureeSeance(donnees.seance)) * 100) / 100;
@@ -434,8 +508,11 @@ export async function ficheModule(etablissementId, anneeScolaire, { groupe, modu
      * pour le badge de la case : un avancement rapporté à une seule semaine
      * tomberait à quelques pour cent partout et ne dirait plus rien.
      */
+    // ⚠️ `jour` EN PLUS (2026-09-24) : la fiche trie désormais séance par
+    // séance, pas semaine par semaine — il faut savoir dans quel ordre elles
+    // se sont tenues À L'INTÉRIEUR d'une même semaine.
     Seance.find({ etablissementId, anneeScolaire, module })
-      .select('groupe module seance statut semaine salle estEfm')
+      .select('groupe module seance jour statut semaine salle estEfm')
       .lean(),
     Base.findOne({ etablissementId, anneeScolaire })
       .select('affectations groupes groupeFilieres')
@@ -450,7 +527,7 @@ export async function ficheModule(etablissementId, anneeScolaire, { groupe, modu
    * déborde se cachait derrière une masse à distance encore intacte.
    */
   const parType = (type) =>
-    avancementParSemaine(seances, groupe, module, fiche?.[type] ?? 0, type);
+    avancementParSeance(seances, groupe, module, fiche?.[type] ?? 0, type);
 
   return {
     groupe,
@@ -483,9 +560,17 @@ async function intituleModule(base, groupe, module) {
   const filiere = filieresParGroupe(base).get(groupe);
   const annee = anneeDuNomGroupe(groupe);
 
+  /*
+   * ⚠️ `codeFiliereCarte`, PAS `codeFiliereDrif` (2026-09-26) : `filiere` vient
+   *    de la CARTE (`filieresParGroupe`), et une carte stocke le code CARTE —
+   *    celui de la base e-note. Sur 135 des 1 003 couples les deux diffèrent
+   *    (`CM_OPCM_Q` contre `GM_OPCM_Q`), et la recherche tombait alors dans le
+   *    dernier critère : le module trouvé pouvait venir d'une AUTRE filière.
+   *    Voir l'en-tête de `repartitions.routes.js`.
+   */
   const criteres = [
-    filiere && { codeFiliereDrif: filiere, anneeFormation: annee, codeModule: code },
-    filiere && { codeFiliereDrif: filiere, codeModule: code },
+    filiere && { codeFiliereCarte: filiere, anneeFormation: annee, codeModule: code },
+    filiere && { codeFiliereCarte: filiere, codeModule: code },
     { codeModule: code },
   ].filter(Boolean);
 
@@ -593,15 +678,16 @@ async function identitesDesGroupes(base, groupes) {
   const filieres = filieresParGroupe(base);
   const codes = [...new Set([...filieres.values()])].filter(Boolean);
 
+  /* ⚠️ Codes venus de la CARTE : voir `intituleModule` ci-dessus. */
   const lignes = codes.length
-    ? await Repartition.find({ codeFiliereDrif: { $in: codes } })
-        .select('codeFiliereDrif niveauFormation filiere')
+    ? await Repartition.find({ codeFiliereCarte: { $in: codes } })
+        .select('codeFiliereCarte niveauFormation filiere')
         .lean()
     : [];
 
   const parCode = new Map(
     lignes.map((ligne) => [
-      ligne.codeFiliereDrif,
+      ligne.codeFiliereCarte,
       { niveau: ligne.niveauFormation ?? '', libelle: ligne.filiere ?? '' },
     ])
   );
@@ -620,6 +706,30 @@ async function identitesDesGroupes(base, groupes) {
   return identites;
 }
 
+/**
+ * ⚠️ LA GRILLE NE DOIT JAMAIS TOMBER POUR CELA : cette lecture est un plus (fermer des cases). Un
+ * échec — base des autres établissements indisponible — rend « rien d'ailleurs » ; le serveur
+ * refusera de toute façon la pose, avec son message.
+ */
+async function occupationsAilleursDeLaSemaine(etablissementId, anneeScolaire, semaineCanonique) {
+  try {
+    return await occupationsAilleurs(etablissementId, anneeScolaire, semaineCanonique);
+  } catch (erreur) {
+    logger.warn({ err: erreur }, 'Occupations des formateurs mutualisés illisibles');
+    return [];
+  }
+}
+
+/** Même garde-fou que ci-dessus, pour les ESPACES mutualisés (2026-09-25). */
+async function occupationsEspacesAilleursSuresDeLaSemaine(etablissementId, anneeScolaire, semaineCanonique) {
+  try {
+    return await occupationsEspacesAilleursDeLaSemaine(etablissementId, anneeScolaire, semaineCanonique);
+  } catch (erreur) {
+    logger.warn({ err: erreur }, 'Occupations des espaces mutualisés illisibles');
+    return [];
+  }
+}
+
 export async function semaine(etablissementId, anneeScolaire, valeur) {
   const normalisee = normaliserValeurSemaine(valeur);
 
@@ -627,7 +737,7 @@ export async function semaine(etablissementId, anneeScolaire, valeur) {
     throw notFound(`Semaine « ${valeur} » illisible`, { code: 'SEMAINE_INVALIDE' });
   }
 
-  const [seances, etablissement, feries, national] = await Promise.all([
+  const [seances, etablissement, feries, national, ailleurs, espacesAilleurs] = await Promise.all([
     Seance.find({ etablissementId, anneeScolaire, semaine: normalisee }).lean(),
     /*
      * ⚠️ `formations` AUSSI — c'est la QUATRIÈME cause d'indisponibilité, et la
@@ -644,6 +754,20 @@ export async function semaine(etablissementId, anneeScolaire, valeur) {
      * réseau — ou avant que ses stagiaires ne soient rentrés.
      */
     calendrierNational(anneeScolaire),
+    /*
+     * ═══ ⚠️ LES FORMATEURS MUTUALISÉS QUI ENSEIGNENT AILLEURS CETTE SEMAINE (2026-09-21) ═══
+     * Lancé en PARALLÈLE des autres lectures : pour un établissement sans formateur commun, il ne
+     * coûte que deux requêtes légères, sans allonger le chargement. La grille s'en sert pour fermer
+     * les cases où le formateur n'est pas libre.
+     */
+    occupationsAilleursDeLaSemaine(etablissementId, anneeScolaire, normalisee),
+    /*
+     * ═══ ⚠️ LES ESPACES MUTUALISÉS OCCUPÉS AILLEURS CETTE SEMAINE (2026-09-25) ═══
+     * Le pendant, pour une SALLE partagée, de la lecture juste au-dessus pour un
+     * formateur mutualisé : la grille en ferme l'option AVANT le clic, plutôt
+     * que de laisser choisir ce que `poser()` refusera de toute façon.
+     */
+    occupationsEspacesAilleursSuresDeLaSemaine(etablissementId, anneeScolaire, normalisee),
   ]);
 
   /*
@@ -652,7 +776,10 @@ export async function semaine(etablissementId, anneeScolaire, valeur) {
    * jamais un férié — et une `Date` à minuit UTC relue au Maroc rend la veille.
    * On reste donc en chaînes, comme partout ailleurs dans le domaine.
    */
-  const dates = datesDeLaSemaine(normalisee).map(enTexte);
+  // ⚠️ LES RENTRÉES DE L'ANNÉE, EXPLICITEMENT (2026-09-28) : S1 est la semaine
+  //    de la rentrée. Sans elles, l'en-tête datait S1 du 31/08 quand la barre
+  //    l'annonçait au 7 septembre — et fériés, vacances et stages suivaient.
+  const dates = datesDeLaSemaine(normalisee, national.rentrees).map(enTexte);
 
   /*
    * L'état de chaque JOUR, pas de la semaine entière : un férié isolé ferme le
@@ -706,6 +833,14 @@ export async function semaine(etablissementId, anneeScolaire, valeur) {
         rentreesGelees,
         stages,
         formations,
+        // Les créneaux de CE jour où un formateur commun a cours dans un autre établissement.
+        formateursAilleurs: ailleurs
+          .filter((occupation) => occupation.jour === jour)
+          .map(({ jour: _jour, ...reste }) => reste),
+        // Les créneaux de CE jour où un espace mutualisé a déjà cours ailleurs.
+        espacesAilleurs: espacesAilleurs
+          .filter((occupation) => occupation.jour === jour)
+          .map(({ jour: _jour, ...reste }) => reste),
       };
     }),
     seances: seances.map(presenter),
@@ -809,10 +944,24 @@ async function gelDeLaDate(rentrees, date, groupe) {
  * du formateur (`optionsDuFormateur`).
  */
 export async function poser(etablissementId, anneeScolaire, valeur, donnees, reglages = {}) {
-  const { session = null, rattrapageDe = null, precharge = null } = reglages;
+  /*
+   * ═══ ⚠️ `verrou` PAR DÉFAUT À VRAI ═══ (2026-09-27)
+   * La génération est le PRODUCTEUR légitime de la grille à partir du
+   * chronogramme : elle seule passe `verrou: false`. Tout autre appelant —
+   * l'écran, un lot, une proposition — subit le verrou.
+   *
+   * ⚠️ LE DÉFAUT EST « VERROUILLÉ », PAS « LIBRE ». Un appelant futur qui
+   *    oublierait ce réglage sera bloqué, ce qui se voit ; l'inverse laisserait
+   *    passer une écriture qui ne devait pas passer, ce qui ne se voit pas.
+   */
+  const { session = null, rattrapageDe = null, precharge = null, verrou = true } = reglages;
   const normalisee = normaliserValeurSemaine(valeur);
   if (!normalisee) {
     throw badRequest(`Semaine « ${valeur} » illisible`, { code: 'SEMAINE_INVALIDE' });
+  }
+
+  if (verrou && (await verrouActif(etablissementId, anneeScolaire, session))) {
+    await exigerCoursInchange(etablissementId, anneeScolaire, normalisee, donnees, session);
   }
 
   /*
@@ -823,7 +972,10 @@ export async function poser(etablissementId, anneeScolaire, valeur, donnees, reg
   const [base, etablissement, existante] = await Promise.all([
     precharge?.base ?? Base.findOne({ etablissementId, anneeScolaire }).select('affectations').session(session),
     precharge?.etablissement ??
-      Etablissement.findById(etablissementId).select('groupesFq').session(session).lean(),
+      Etablissement.findById(etablissementId)
+        .select('groupesFq espaces espacesMutualises nom complexe')
+        .session(session)
+        .lean(),
     donnees.id
       ? Seance.findOne({ _id: donnees.id, etablissementId, anneeScolaire }).session(session).lean()
       : null,
@@ -855,7 +1007,7 @@ export async function poser(etablissementId, anneeScolaire, valeur, donnees, reg
           details: [
             {
               message:
-                'Seule sa salle se change ici. Pour le déplacer ou l’annuler, ouvrez le ' +
+                'Seul son espace se change ici. Pour le déplacer ou l’annuler, ouvrez le ' +
                 'rattrapage depuis la page Absences.',
             },
           ],
@@ -916,7 +1068,15 @@ export async function poser(etablissementId, anneeScolaire, valeur, donnees, reg
    * Les séances DU MÊME CRÉNEAU, et d'elles seules. Passer la semaine entière
    * ferait refuser tout ce qui se répète d'un jour à l'autre.
    */
-  const surLeCreneau = await Seance.find({
+  /*
+   * ⚠️ MÊME RAISON QUE LE QUOTA : une semaine compte 24 créneaux, pas 181.
+   *    Le mémo se tient à jour de NOS poses (`noter`), donc il voit les
+   *    séances que la génération vient d'écrire — c'est tout ce qui peut
+   *    changer à l'intérieur d'une transaction.
+   */
+  const surLeCreneau = precharge?.obtenirSurLeCreneau
+    ? precharge.obtenirSurLeCreneau(normalisee, donnees.jour, donnees.seance, donnees.periode)
+    : await Seance.find({
     etablissementId,
     anneeScolaire,
     semaine: normalisee,
@@ -946,6 +1106,61 @@ export async function poser(etablissementId, anneeScolaire, valeur, donnees, reg
     { groupesFq: etablissement?.groupesFq ?? [] }
   );
 
+  /*
+   * ═══ ⚠️ LES ESPACES MUTUALISÉS SE VÉRIFIENT CHEZ LES AUTRES ÉTABLISSEMENTS (2026-09-21) ═══
+   * Une salle partagée est UNE pièce pour plusieurs établissements : le chevauchement ne se voit
+   * pas dans les séances du seul établissement. On regarde donc, sur le même créneau, celles des
+   * autres qui l'utilisent — sous leur propre nom de la pièce. Les espaces ordinaires (la quasi-
+   * totalité) ne coûtent aucune requête de plus : `salleAVerifier` les écarte d'avance.
+   */
+  if (salleAVerifier(etablissement, donnees.salle)) {
+    const pieces = precharge?.obtenirPieces
+      ? await precharge.obtenirPieces()
+      : await chargerPieces(etablissementId);
+    conflits.push(
+      ...(await conflitsDeSalleMutualisee({
+        etablissementId,
+        creneau: {
+          anneeScolaire,
+          semaine: normalisee,
+          jour: donnees.jour,
+          seance: donnees.seance,
+          periode: donnees.periode,
+        },
+        salle: donnees.salle,
+        pieces,
+      }))
+    );
+  }
+
+  /*
+   * ═══ ⚠️ UN FORMATEUR MUTUALISÉ N'EST PAS À DEUX ENDROITS (2026-09-21) ═══
+   * Affecté dans plusieurs établissements, il ne peut pas avoir cours dans deux d'entre eux au
+   * même créneau. Rien n'est déclaré : `autresEtablissementsDuFormateur` lit les bases — et rend
+   * une liste vide, sans autre requête, pour un formateur qui n'enseigne qu'ici.
+   */
+  const autresEtablissements = precharge?.obtenirAutresEtablissements
+    ? await precharge.obtenirAutresEtablissements(donnees.formateurMatricule)
+    : await autresEtablissementsDuFormateur(
+        etablissementId,
+        anneeScolaire,
+        donnees.formateurMatricule,
+        etablissement
+      );
+  conflits.push(
+    ...(await conflitsDeFormateurMutualise({
+      creneau: {
+        anneeScolaire,
+        semaine: normalisee,
+        jour: donnees.jour,
+        seance: donnees.seance,
+        periode: donnees.periode,
+      },
+      matricule: donnees.formateurMatricule,
+      autres: autresEtablissements,
+    }))
+  );
+
   if (conflits.length > 0) {
     throw conflict('Ce créneau est déjà occupé', {
       code: 'CRENEAU_OCCUPE',
@@ -962,7 +1177,14 @@ export async function poser(etablissementId, anneeScolaire, valeur, donnees, reg
    * — ni à la main, ni au collage, ni à l'import — et l'écart ne se découvrait
    * qu'en fin d'année, quand il n'y a plus de semaine pour le corriger.
    */
-  await verifierQuota(etablissementId, anneeScolaire, donnees, base.affectations, session);
+  await verifierQuota(
+    etablissementId,
+    anneeScolaire,
+    donnees,
+    base.affectations,
+    session,
+    precharge
+  );
 
   /*
    * On modifie la séance DÉSIGNÉE quand il y en a une — son formateur peut
@@ -1009,7 +1231,15 @@ export async function poser(etablissementId, anneeScolaire, valeur, donnees, reg
    * représentations du même fait — `salle = 'ABSENT'` dans le blob et une ligne
    * dans `absences` — devaient être tenues cohérentes à la main.
    */
-  await synchroniser(seance.toObject(), { session });
+  await synchroniser(seance.toObject(), { session, precharge });
+
+  /*
+   * ⚠️ C'EST `poser()` QUI PRÉVIENT LE MÉMO, PAS SON APPELANT. Laissé à
+   *    l'appelant, ce rappel serait oublié un jour — et le quota
+   *    sous-compterait en silence, laissant poser plus d'heures que la carte
+   *    n'en accorde. Le genre de défaut qu'on ne découvre qu'en mai.
+   */
+  precharge?.noter?.(seance.toObject());
 
   return presenter(seance.toObject());
 }
@@ -1021,9 +1251,28 @@ export async function poser(etablissementId, anneeScolaire, valeur, donnees, reg
  * plus de sens et resterait pourtant à occuper son créneau dans l'index unique,
  * empêchant d'en poser une autre — le trou serait invisible et indéblocable.
  */
-export async function vider(etablissementId, anneeScolaire, valeur, creneau) {
+/*
+ * ⚠️ `reglages.session` (2026-09-23) : l'application d'une proposition vide et
+ * pose dans UNE transaction — tout ou rien. Sans session, comportement inchangé.
+ */
+export async function vider(
+  etablissementId,
+  anneeScolaire,
+  valeur,
+  creneau,
+  { session = null, verrou = true } = {}
+) {
+  /*
+   * ⚠️ RETIRER UNE SÉANCE RETIRE DES HEURES — c'est exactement ce que le
+   *    chronogramme fixe. Refusé sous verrou, sans exception : même vider une
+   *    case déjà vide, qui ne changerait rien, est refusé, pour que l'écran
+   *    n'ait pas à apprendre au coup par coup ce qui passe.
+   */
+  const verrouille = verrou && (await verrouActif(etablissementId, anneeScolaire, session));
+
   const normalisee = normaliserValeurSemaine(valeur);
   if (!normalisee) {
+    if (verrouille) throw refuser('supprimer une séance');
     throw badRequest(`Semaine « ${valeur} » illisible`, { code: 'SEMAINE_INVALIDE' });
   }
 
@@ -1037,22 +1286,36 @@ export async function vider(etablissementId, anneeScolaire, valeur, creneau) {
     formateurMatricule: creneau.formateurMatricule,
   };
 
+  const occupante = await Seance.findOne(cible).select('rattrapageDe').session(session).lean();
+
+  /*
+   * ═══ ⚠️ SOUS VERROU, SEUL UN RATTRAPAGE SE VIDE (2026-09-28) ═══
+   * Défaut trouvé par la suite de tests : vider la case d'un rattrapage dans la
+   * grille était refusé, alors qu'« Annuler » le même rattrapage depuis la page
+   * Absences est permis. Les deux font la même chose — `detacherRattrapage`
+   * reprend ses 2,5 h au chronogramme juste en dessous —, donc les volumes ne
+   * bougent pas : c'est le pendant exact de l'exemption du PLACEMENT d'un
+   * rattrapage. Toute autre séance, et une case vide, restent refusées.
+   */
+  if (verrouille && !occupante?.rattrapageDe) {
+    throw refuser('supprimer une séance');
+  }
+
   /*
    * ⚠️ L'ABSENCE PART AVANT LA SÉANCE. Supprimée après, elle serait orpheline —
    * et son rattrapage resterait inscrit au chronogramme pour un cours qui
    * n'existe plus. `synchroniser` reprend ces heures au passage.
    */
-  await synchroniser({ ...cible, statut: 'planifie' });
+  await synchroniser({ ...cible, statut: 'planifie' }, { session });
 
   /*
    * ⚠️ UN RATTRAPAGE QU'ON VIDE REND SON ABSENCE « À RATTRAPER » (2026-09-14) :
    * sa date et ses heures au chronogramme sont reprises. Sans cela l'absence
    * paraîtrait rattrapée par un cours qui n'existe plus.
    */
-  const occupante = await Seance.findOne(cible).select('rattrapageDe').lean();
-  await detacherRattrapage(occupante);
+  await detacherRattrapage(occupante, { session });
 
-  const { deletedCount } = await Seance.deleteOne(cible);
+  const { deletedCount } = await Seance.deleteOne(cible, { session });
 
   // Vider une case déjà vide n'est pas une erreur : c'est l'état voulu.
   return { supprimee: deletedCount > 0 };
@@ -1082,6 +1345,14 @@ export async function ecrireLot(etablissementId, anneeScolaire, valeur, operatio
   const resultats = [];
 
   /*
+   * ═══ ⚠️ LE VERROU SE LIT UNE FOIS POUR TOUT LE LOT ═══ (2026-09-27)
+   * Il ne change pas pendant un collage de trente cases, et le relire par
+   * opération ajouterait soixante allers-terours vers Atlas — la lenteur même
+   * que ce lot existe pour éviter.
+   */
+  const verrouille = await verrouActif(etablissementId, anneeScolaire);
+
+  /*
    * ⚠️ CE QUI NE CHANGE PAS PENDANT UN LOT SE LIT UNE FOIS. `poser` relisait, pour
    * CHAQUE case, la base entière avec ses affectations, l'établissement et le
    * calendrier national : trois allers-retours vers MongoDB par case, qui
@@ -1094,26 +1365,88 @@ export async function ecrireLot(etablissementId, anneeScolaire, valeur, operatio
   const [base, etablissement, calendrier] = normalisee
     ? await Promise.all([
         Base.findOne({ etablissementId, anneeScolaire }).select('affectations'),
-        Etablissement.findById(etablissementId).select('groupesFq').lean(),
+        Etablissement.findById(etablissementId).select('groupesFq espaces espacesMutualises nom complexe').lean(),
         calendrierNational(anneeScolaire),
       ])
     : [null, null, { rentrees: [] }];
-  const precharge = base ? { base, etablissement, rentrees: calendrier.rentrees } : null;
+  // Les pièces partagées ne se lisent qu'à la PREMIÈRE case qui en a besoin, une fois pour le lot.
+  let pieces;
+  const autres = new Map();
+  const precharge = base
+    ? {
+        base,
+        etablissement,
+        rentrees: calendrier.rentrees,
+        obtenirPieces: () => (pieces ??= chargerPieces(etablissementId)),
+        // Un formateur revient souvent dans un lot : ses autres établissements se lisent une fois.
+        obtenirAutresEtablissements: (matricule) => {
+          if (!autres.has(matricule)) {
+            autres.set(
+              matricule,
+              autresEtablissementsDuFormateur(etablissementId, anneeScolaire, matricule, etablissement)
+            );
+          }
+          return autres.get(matricule);
+        },
+      }
+    : null;
 
   for (const operation of operations) {
     const { cle, type } = operation;
 
     try {
       if (type === 'vider') {
-        const { supprimee } = await vider(etablissementId, anneeScolaire, valeur, operation.creneau);
+        // ⚠️ La règle du verrou vit dans `vider()` — qui laisse passer un rattrapage.
+        const { supprimee } = await vider(etablissementId, anneeScolaire, valeur, operation.creneau, {
+          verrou: verrouille,
+        });
         resultats.push({ cle, ok: true, inchangee: !supprimee });
         continue;
       }
 
+      /*
+       * ═══ ⚠️ UN DÉPLACEMENT EST **UN** GESTE, EXÉCUTÉ EN DEUX ÉCRITURES ═══
+       * `poser` à la destination puis `vider` à la source. Laisser chacune
+       * subir le verrou séparément le refuserait toujours : la destination est
+       * vide (donc « ajouter »), et la source doit être vidée (donc
+       * « supprimer »). Or déplacer ne change AUCUN volume, et c'est
+       * explicitement permis.
+       *
+       * ⚠️ MAIS ON VÉRIFIE QUAND MÊME LE COURS. Le type d'opération vient du
+       *    CLIENT : sans ce contrôle, il suffirait d'étiqueter « deplacer »
+       *    une écriture qui change le module pour traverser le verrou.
+       */
+      if (verrouille && type === 'deplacer') {
+        const source = await Seance.findOne({
+          etablissementId,
+          anneeScolaire,
+          semaine: valeur,
+          jour: operation.source?.jour,
+          seance: operation.source?.seance,
+          periode: operation.source?.periode,
+          formateurMatricule: operation.source?.formateurMatricule,
+        })
+          .select('groupe module')
+          .lean();
+
+        if (!source) throw refuser('déplacer une séance qui n’existe pas');
+        const memeCours =
+          String(source.groupe ?? '').trim() === String(operation.seance?.groupe ?? '').trim() &&
+          String(source.module ?? '').trim() === String(operation.seance?.module ?? '').trim();
+        if (!memeCours) throw refuser('changer le cours d’une séance');
+      }
+
+      /*
+       * ⚠️ `verrou: false` SEULEMENT POUR UN DÉPLACEMENT DÉJÀ VÉRIFIÉ. Un
+       *    « poser » ordinaire garde le sien : c'est lui qui refuse d'ajouter
+       *    une séance ou d'en changer le module.
+       */
+      const reglagesEcriture = { precharge, ...(type === 'deplacer' && { verrou: false }) };
+
       let salleRetiree = false;
       let posee;
       try {
-        posee = await poser(etablissementId, anneeScolaire, valeur, operation.seance, { precharge });
+        posee = await poser(etablissementId, anneeScolaire, valeur, operation.seance, reglagesEcriture);
       } catch (erreur) {
         const seulementLaSalle =
           type === 'deplacer' &&
@@ -1129,13 +1462,13 @@ export async function ecrireLot(etablissementId, anneeScolaire, valeur, operatio
           anneeScolaire,
           valeur,
           { ...operation.seance, salle: '' },
-          { precharge }
+          reglagesEcriture
         );
         salleRetiree = true;
       }
 
       if (type === 'deplacer') {
-        await vider(etablissementId, anneeScolaire, valeur, operation.source);
+        await vider(etablissementId, anneeScolaire, valeur, operation.source, { verrou: false });
       }
 
       // La séance TELLE QUE LE SERVEUR L'A ÉCRITE : le client s'en sert pour
@@ -1253,6 +1586,15 @@ const enTexte = (date) => enJour(date);
  * remplacer.
  */
 export async function importerSemaine(etablissementId, anneeScolaire, valeur, { depuis }) {
+  /*
+   * ⚠️ UN IMPORT REMPLACE TOUS LES VOLUMES DE LA SEMAINE d'un coup — c'est le
+   *    geste qui s'écarte le plus du chronogramme, et le seul dont l'ampleur
+   *    ne se voit pas avant de l'avoir fait.
+   */
+  if (await verrouActif(etablissementId, anneeScolaire)) {
+    throw refuser('importer une autre semaine');
+  }
+
   const cible = normaliserValeurSemaine(valeur);
   const source = normaliserValeurSemaine(depuis);
 
@@ -1301,6 +1643,28 @@ export async function importerSemaine(etablissementId, anneeScolaire, valeur, { 
    * autres à la main.
    */
   const { rentrees } = await calendrierNational(anneeScolaire);
+  /*
+   * ═══ ⚠️⚠️ LES ESPACES MUTUALISÉS AUSSI (2026-09-25, signalé par le porteur :
+   * « il ne vérifie pas le chevauchement des salles mutualisées… il laisse
+   * sélectionner ») ═══
+   *
+   * Copier une semaine sur une autre est le chemin qui a déjà valu au quota et
+   * au gel de rentrée leur propre garde-fou ci-dessus, pour la même raison :
+   * vingt séances d'un coup, aucune ne passe par `poser()`, qui est le SEUL
+   * endroit qui interroge les autres établissements sur une salle partagée.
+   * Copier dessus la salle d'une semaine où elle était libre — la source — ne
+   * dit rien de la semaine VISÉE : si un autre établissement l'occupe déjà à ce
+   * créneau-là, rien ne s'y opposait avant ce correctif.
+   *
+   * ⚠️ `etablissement` ne se charge QU'ICI, pas plus haut : c'est la seule
+   * information de plus qu'exige ce contrôle, et la quasi-totalité des imports
+   * ne portent aucune salle mutualisée — `salleAVerifier` les écarte sans
+   * requête supplémentaire.
+   */
+  const etablissement = await Etablissement.findById(etablissementId)
+    .select('espaces espacesMutualises')
+    .lean();
+  let pieces;
   const retenues = [];
 
   for (const seance of passeesLeQuota) {
@@ -1312,6 +1676,27 @@ export async function importerSemaine(etablissementId, anneeScolaire, valeur, { 
       });
       continue;
     }
+
+    if (salleAVerifier(etablissement, seance.salle)) {
+      pieces ??= await chargerPieces(etablissementId);
+      const conflits = await conflitsDeSalleMutualisee({
+        etablissementId,
+        creneau: {
+          anneeScolaire,
+          semaine: cible,
+          jour: seance.jour,
+          seance: seance.seance,
+          periode: seance.periode,
+        },
+        salle: seance.salle,
+        pieces,
+      });
+      if (conflits.length > 0) {
+        refusees.push({ seance, motif: conflits[0].message });
+        continue;
+      }
+    }
+
     retenues.push(seance);
   }
 
@@ -1371,6 +1756,15 @@ export async function importerSemaine(etablissementId, anneeScolaire, valeur, { 
  * emporter le travail de l'autre.
  */
 export async function reinitialiser(etablissementId, anneeScolaire, { portee, semaine }) {
+  /*
+   * ⚠️ RÉINITIALISER EFFACE TOUT — les volumes avec. Sous verrou, la voie est
+   *    de dissocier d'abord : un geste qui détruit une année de grille ne doit
+   *    pas être le raccourci pour contourner la règle.
+   */
+  if (await verrouActif(etablissementId, anneeScolaire)) {
+    throw refuser('réinitialiser l’emploi du temps');
+  }
+
   const filtre = { etablissementId, anneeScolaire };
 
   if (portee === 'semaine') {
@@ -1400,7 +1794,7 @@ export async function reinitialiser(etablissementId, anneeScolaire, { portee, se
  * des rattrapages inscrits pour des cours qui n'existent plus — des heures que
  * personne ne viendrait donner ni chercher.
  */
-async function effacer(filtre, session) {
+export async function effacer(filtre, session) {
   const absentes = await Seance.find({ ...filtre, statut: 'absent' })
     .select('semaine jour seance formateurMatricule etablissementId')
     .session(session)

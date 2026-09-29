@@ -250,6 +250,64 @@ describe('renommagesDesambiguisation', () => {
   });
 });
 
+describe('genererNomsGroupes — le suffixe des groupes existants se garde', () => {
+  const existants = [
+    { nom: 'PIE201 (FQ)', codeFiliere: 'GC_PIE_FQ' },
+    { nom: 'PIE202 (FQ)', codeFiliere: 'GC_PIE_FQ' },
+  ];
+
+  it('⚠️ un groupe ajouté à une filière dont les groupes portent « (FQ) » le porte aussi', () => {
+    const { noms } = genererNomsGroupes({
+      codeFiliere: 'GC_PIE_FQ',
+      anneeFormation: 2,
+      nombre: 1,
+      groupesExistants: existants,
+    });
+    expect(noms).toEqual(['PIE203 (FQ)']);
+  });
+
+  it('vaut pour plusieurs groupes à la fois', () => {
+    const { noms } = genererNomsGroupes({
+      codeFiliere: 'GC_PIE_FQ',
+      anneeFormation: 2,
+      nombre: 2,
+      groupesExistants: existants,
+    });
+    expect(noms).toEqual(['PIE203 (FQ)', 'PIE204 (FQ)']);
+  });
+
+  it('garde un suffixe de désambiguïsation, et les deux d’un groupe du soir', () => {
+    const desambiguise = [{ nom: 'GE101 (GC)', codeFiliere: 'GC_GE_TS' }];
+    expect(
+      genererNomsGroupes({ codeFiliere: 'GC_GE_TS', anneeFormation: 1, groupesExistants: desambiguise }).noms
+    ).toEqual(['GE102 (GC)']);
+
+    const soir = [{ nom: 'DEV301 (CDS) (GE)', codeFiliere: 'GE_DEV_TS_RCDS' }];
+    expect(
+      genererNomsGroupes({ codeFiliere: 'GE_DEV_TS_RCDS', anneeFormation: 3, groupesExistants: soir }).noms
+    ).toEqual(['DEV302 (CDS) (GE)']);
+  });
+
+  it('ne prend pas le suffixe d’une AUTRE filière du même préfixe', () => {
+    const { noms } = genererNomsGroupes({
+      codeFiliere: 'GE_GE_TS',
+      anneeFormation: 1,
+      groupesExistants: [{ nom: 'GE101 (GC)', codeFiliere: 'GC_GE_TS' }],
+    });
+    // Conflit de préfixe : c'est la règle de désambiguïsation, pas l'héritage, qui parle.
+    expect(noms).toEqual(['GE101 (GE)']);
+  });
+
+  it('sans suffixe chez les groupes existants, le suffixe déduit du code s’applique', () => {
+    const { noms } = genererNomsGroupes({
+      codeFiliere: 'GE_DEV_TS_RCDS',
+      anneeFormation: 3,
+      groupesExistants: [{ nom: 'DEV301', codeFiliere: 'GE_DEV_TS_RCDS' }],
+    });
+    expect(noms).toEqual(['DEV302 (CDS)']);
+  });
+});
+
 describe('nomGroupeBrut', () => {
   it('retire le suffixe que l\'import saura recalculer', () => {
     expect(nomGroupeBrut('BECM101 (CDS)', 'GM_BECM_TS_RCDS')).toBe('BECM101');

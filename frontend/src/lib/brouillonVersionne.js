@@ -95,5 +95,15 @@ export function adopter(etat, { valeur, version }) {
   return { charge: true, brouillon: valeur, reference: valeur, version };
 }
 
+/**
+ * Le directeur REFUSE ce qu'un enregistrement supprimerait (2026-09-23, cascade
+ * des périodes) : la saisie est abandonnée, la page revient à ce qui est en
+ * base. La garder « modifiée » relancerait l'enregistrement automatique — et la
+ * même question — à la pause suivante.
+ */
+export function renoncer(etat) {
+  return { ...etat, brouillon: etat.reference };
+}
+
 export const estModifie = (etat, egal = egaliteJson) =>
   etat.charge && !egal(etat.brouillon, etat.reference);

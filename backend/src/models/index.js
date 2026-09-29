@@ -12,6 +12,7 @@
  *   Chronogramme     ← chronogrammes
  *   AbsenceFormateur ← absences
  *   AbsenceStagiaire ← absences_stagiaires
+ *   AppelValidation  ← (nouveau, l'appel attesté par le formateur)
  *   Stagiaire        ← stagiaires
  *   Message          ← messages            (+ sous-doc proposition)
  *   RefreshToken     ← sessions
@@ -39,6 +40,8 @@ export { AbsenceFormateur } from './AbsenceFormateur.js';
 export { AbsenceStagiaire } from './AbsenceStagiaire.js';
 /* Le comportement de la note de discipline (2026-09-14, sans équivalent MySQL). */
 export { IndisciplineStagiaire } from './IndisciplineStagiaire.js';
+/* L'appel attesté par le formateur (2026-09-27, sans équivalent MySQL). */
+export { AppelValidation } from './AppelValidation.js';
 export { Stagiaire } from './Stagiaire.js';
 export { Message } from './Message.js';
 export { RefreshToken } from './RefreshToken.js';
@@ -53,7 +56,10 @@ export { EtablissementOfppt } from './EtablissementOfppt.js';
 /* ⚠️ NATIONAL : vacances et dates de rentrée du réseau, à ne pas confondre avec
    `Etablissement.calendrier`, qui porte ce que le directeur saisit chez lui. */
 export { CalendrierNational } from './CalendrierNational.js';
+export { HorairesSeances } from './HorairesSeances.js';
 /* Qui a accès à une page collaborative (Phase 5bis) — la boîte « Partager ». */
 export { Partage } from './Partage.js';
 /* La dernière écriture de chaque page — « Modifié il y a… » (2026-09-13). */
 export { ModificationPage } from './ModificationPage.js';
+/* Les traces de génération automatique — le corpus d'entraînement (F6 · d). */
+export { TraceGeneration, STATUTS_TRACE, CAUSES_FIGEAGE } from './TraceGeneration.js';

@@ -34,7 +34,7 @@ import { analyserFormateurs } from '../api';
  * sélectionne. C'était déjà l'organisation d'origine, et elle évite l'aller-
  * retour « fichier refusé → où était le format déjà ? ».
  */
-export default function ImportFormateurs({ formateurs, groupes, onFusion }) {
+export default function ImportFormateurs({ formateurs, groupes, onFusion, proteges, surFusion }) {
   const [ouvert, setOuvert] = useState(false);
   const [fichier, setFichier] = useState(null);
   const [mode, setMode] = useState('completer');
@@ -46,7 +46,7 @@ export default function ImportFormateurs({ formateurs, groupes, onFusion }) {
     mutationFn: analyserFormateurs,
     onSuccess: (reponse) => {
       const lus = reponse.formateurs;
-      const affectes = formateursAffectes(groupes);
+      const affectes = proteges ?? formateursAffectes(groupes);
 
       const conserver = fusionnerFormateurs(formateurs, lus, {
         remplacer: mode === 'remplacer',
@@ -66,14 +66,28 @@ export default function ImportFormateurs({ formateurs, groupes, onFusion }) {
         return;
       }
 
-      appliquer(conserver, lus.length, reponse.colonnesReconnues);
+      appliquer(conserver, lus.length, reponse.colonnesReconnues, lus);
     },
     onError: (erreur) => toast.error('Fichier illisible', { description: erreur.message }),
   });
 
   /** Applique la fusion, referme la boîte, et résume dans un toast. */
-  function appliquer(resultat, lues, colonnes) {
-    onFusion(resultat.formateurs);
+  async function appliquer(resultat, lues, colonnes, lus) {
+    if (surFusion) {
+      /*
+       * ⚠️ ATTENDU, ET LA BOÎTE RESTE OUVERTE SI L'ÉCRITURE ÉCHOUE : annoncer
+       * « 12 ajoutés » avant que le serveur ait répondu, puis découvrir le refus,
+       * laisserait croire à une liste importée qui ne l'est pas. L'appelant dit
+       * l'erreur lui-même.
+       */
+      try {
+        await surFusion({ resultat, lus });
+      } catch {
+        return;
+      }
+    } else {
+      onFusion(resultat.formateurs);
+    }
 
     toast.success(`${lues} formateur(s) lu(s)`, {
       description:
@@ -224,14 +238,14 @@ export default function ImportFormateurs({ formateurs, groupes, onFusion }) {
                 <Button
                   variant="outline"
                   onClick={() =>
-                    appliquer(arbitrage.retirer, arbitrage.lus.length, arbitrage.colonnes)
+                    appliquer(arbitrage.retirer, arbitrage.lus.length, arbitrage.colonnes, arbitrage.lus)
                   }
                 >
                   Les retirer quand même
                 </Button>
                 <Button
                   onClick={() =>
-                    appliquer(arbitrage.conserver, arbitrage.lus.length, arbitrage.colonnes)
+                    appliquer(arbitrage.conserver, arbitrage.lus.length, arbitrage.colonnes, arbitrage.lus)
                   }
                 >
                   Les conserver

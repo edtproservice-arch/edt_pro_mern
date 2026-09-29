@@ -40,10 +40,12 @@ export {
   HEURES_BADGE_BAS,
   HEURES_BADGE_HAUT,
   avancementModule,
-  avancementParSemaine,
+  avancementParSeance,
   cleModule,
   fichesModules,
   heuresPosees,
+  heuresPoseesParSeance,
+  avancementDepuisCumul,
   niveauAvancement,
   niveauHeures,
 } from './indicateurs.js';
@@ -56,6 +58,28 @@ export {
   surveillantsPossibles,
   titulairesDuModule,
 } from './efm.js';
+
+export {
+  espacesEmpruntes,
+  estEspacePropre,
+  estPartage,
+  libelleEspaceEmprunte,
+  mesPieces,
+  occupantsDeLaPiece,
+  piecesPartagees,
+} from './espacesMutualises.js';
+
+export {
+  HORAIRES_COURANTS_PAR_DEFAUT,
+  HORAIRES_PAR_DEFAUT,
+  LIBELLES_HORAIRES,
+  NOMS_HORAIRES,
+  configurationHoraires,
+  enMinutes,
+  erreursHoraire,
+  horaireParDefaut,
+  horairesCourants,
+} from './horaires.js';
 
 export {
   AXES_CONSULTATION,

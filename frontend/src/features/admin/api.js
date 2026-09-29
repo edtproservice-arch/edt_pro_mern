@@ -23,8 +23,12 @@ export function changerStatut(id, corps) {
   return api.patch(`/api/v2/admin/utilisateurs/${id}/statut`, corps);
 }
 
-export function reinitialiserMotDePasseCompte(id) {
-  return api.post(`/api/v2/admin/utilisateurs/${id}/mot-de-passe`);
+/**
+ * Réinitialise le mot de passe — SAISI PAR L'ADMINISTRATEUR (2026-09-27,
+ * demande du porteur), avec la même règle que toute création de compte.
+ */
+export function reinitialiserMotDePasseCompte(id, motDePasse) {
+  return api.post(`/api/v2/admin/utilisateurs/${id}/mot-de-passe`, { motDePasse });
 }
 
 /**

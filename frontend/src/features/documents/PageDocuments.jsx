@@ -8,6 +8,8 @@ import CartesDocuments from './CartesDocuments';
 import CartesEffectifs from './CartesEffectifs';
 import DetailEffectifs from './DetailEffectifs';
 import ImportKonosys from './ImportKonosys';
+import { usePartagesAvecMoi } from '@/features/partages/usePartagesAvecMoi';
+import { ROLES } from 'shared/constants';
 import EnTetePartage from '@/features/partages/EnTetePartage';
 import { useDroitPage } from '@/features/partages/useDroitPage';
 
@@ -47,12 +49,14 @@ export default function PageDocuments() {
 
   /*
    * ═══ PARTAGEABLE EN LECTURE (Phase 5bis, étape d4) ═══ Le gestionnaire la
-   * consulte par son rôle, un formateur s'il est invité. L'import Konosys reste
-   * au DIRECTEUR — il remplace tous les stagiaires et supprime les comptes des
-   * absents du fichier. Le bouton était jusqu'ici montré au gestionnaire, pour
-   * un envoi que le serveur refusait en 403.
+   * consulte par son rôle, un formateur s'il est invité. L'import Konosys est
+   * au DIRECTEUR et au GESTIONNAIRE (2026-09-23) — il remplace tous les
+   * stagiaires et supprime les comptes des absents du fichier : jamais au
+   * formateur invité, que la page laisse en lecture.
    */
   const { lectureSeule } = useDroitPage('documents');
+  const { role } = usePartagesAvecMoi();
+  const peutImporter = !lectureSeule || role === ROLES.GESTIONNAIRE;
 
   const statistiques = useQuery({
     queryKey: ['stagiaires', 'statistiques'],
@@ -65,28 +69,21 @@ export default function PageDocuments() {
     <EnTetePartage page="documents" clesARelire={[['stagiaires']]} />
     <CadreReglage titre="Documents">
       {/*
-        En ALERTE plutôt qu'en sous-titre : posée sous le titre de page, cette
-        phrase se lisait comme une légende décorative. Elle dit pourtant d'où
-        vient la donnée et ce qu'elle alimente — c'est ce qu'il faut avoir en
-        tête avant de cliquer « Importer », puisque l'import remplace tout.
+        L'ÉTAT DE LA BASE ET SON IMPORT SUR UNE MÊME LIGNE (2026-09-23, demande
+        du porteur) : l'alerte dit QUELLE base on regarde et de quand elle date,
+        le bouton la remplace. La phrase d'explication générale est retirée.
+        Le bilan d'un import passe à la ligne, en dernier (`basis-full order-last`).
       */}
-      <Alerte type="info">
-        La base des stagiaires, importée depuis Konosys. Elle alimente les documents imprimés et la
-        création des comptes. Chaque année scolaire a sa propre base : un nouvel import remplace
-        celle de l&apos;année affichée.
-        {/*
-          Dire QUELLE base on regarde, et de quand elle date : depuis qu'il y en
-          a une par année, « 672 stagiaires » ne dit plus à quelle rentrée ils
-          appartiennent.
-        */}
-        {statistiques.data && (
-          <span className="mt-1 block font-medium">
-            {etatBase(statistiques.data)}
-          </span>
-        )}
-      </Alerte>
+      <div className="flex flex-wrap items-center gap-3">
+        {/* Le bouton D'ABORD (demande du porteur), l'état de la base à sa suite. */}
+        {peutImporter && <ImportKonosys statistiques={statistiques.data} />}
 
-      {!lectureSeule && <ImportKonosys statistiques={statistiques.data} />}
+        {statistiques.data && (
+          <Alerte type="info" className="min-w-64 flex-1 px-3 py-1.5">
+            <span className="font-medium">{etatBase(statistiques.data)}</span>
+          </Alerte>
+        )}
+      </div>
 
       {statistiques.isError ? (
         <Alerte type="erreur" titre="Effectifs non chargés">
@@ -104,7 +101,7 @@ export default function PageDocuments() {
         </>
       )}
 
-      <div className="border-t pt-6">
+      <div className="pt-6">
         <CartesDocuments nombreStagiaires={statistiques.data?.total ?? 0} />
       </div>
     </CadreReglage>

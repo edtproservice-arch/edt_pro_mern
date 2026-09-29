@@ -38,7 +38,13 @@ const CRENEAUX = [
 
 const MODES = ['Résidentiel', 'Alterné', 'Par apprentissage'];
 
-export default function SelecteurFiliere({ onGenerer, enCours, groupes = [] }) {
+/**
+ * @param {boolean} [props.numerote]  le rond « 1 » de l'en-tête. ⚠️ Il numérote UNE ÉTAPE
+ *   de l'assistant, dont le bloc suivant porte le « 2 » (la liste des formateurs). Sur la
+ *   page Carte (2026-09-19, demande du porteur) le bloc est seul : un « 1 » sans « 2 »
+ *   n'annonce rien.
+ */
+export default function SelecteurFiliere({ onGenerer, enCours, groupes = [], numerote = true }) {
   const [secteur, setSecteur] = useState('');
   const [niveau, setNiveau] = useState('');
   const [creneau, setCreneau] = useState('CDJ');
@@ -128,9 +134,11 @@ export default function SelecteurFiliere({ onGenerer, enCours, groupes = [] }) {
   return (
     <div className="space-y-4 rounded-lg border p-4">
       <div className="flex items-start gap-3">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground">
-          1
-        </span>
+        {numerote && (
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground">
+            1
+          </span>
+        )}
         <div>
           <h3 className="text-sm font-medium">Configuration de la filière</h3>
           <p className="text-sm text-muted-foreground">

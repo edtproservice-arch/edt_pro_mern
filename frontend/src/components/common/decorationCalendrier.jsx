@@ -5,7 +5,7 @@ import { CalendarDayButton } from '@/components/ui/calendar';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { chargerCalendrier, chargerJoursFeries } from '@/features/configuration/api';
 import { bornesCalendrier } from '@/lib/bornesCalendrier';
-import { semaineDe } from 'shared/domain';
+import { semaineAffichable } from 'shared/domain';
 import { cn } from '@/lib/utils';
 
 /**
@@ -74,7 +74,7 @@ export function useDecorationCalendrier(anneeScolaire, { classesCouleur } = {}) 
     locale: fr,
     // Le calendrier ne sort pas de l'année scolaire active — une date posée en
     // dehors serait enregistrée puis jamais retrouvée.
-    ...bornesCalendrier(anneeScolaire),
+    ...bornesCalendrier(anneeScolaire, calendrier.data?.rentrees),
     modifiers: { ferie: datesFeriees, vacances: datesVacances },
     modifiersClassNames: {
       ferie: 'bg-warning/20 font-medium rounded-md',
@@ -82,6 +82,14 @@ export function useDecorationCalendrier(anneeScolaire, { classesCouleur } = {}) 
       vacances: 'bg-primary/10 rounded-md',
     },
     components: composants,
+    /*
+     * ⚠️ EXPOSÉES POUR `colonneSemaine` (2026-09-25, demande du porteur : « je
+     * veux que ça change dans TOUS les calendriers de la plateforme ») : sans
+     * elles, la colonne « Sem » de ces calendriers resterait ancrée au 1er
+     * septembre pendant que le chronogramme et l'avancement numérotent déjà
+     * depuis la rentrée la plus précoce.
+     */
+    rentrees: calendrier.data?.rentrees ?? [],
   };
 }
 
@@ -177,9 +185,19 @@ export function Pastille({ classe, libelle }) {
  * précisément ce numéro qui sert à recouper avec le chronogramme et l'emploi du
  * temps, qui n'affichent QUE des numéros de semaine.
  *
- * Usage : `<Calendar showWeekNumber {...colonneSemaine(communs.components)} />`
+ * Usage :
+ * `<Calendar showWeekNumber {...colonneSemaine(communs.components, communs.rentrees, anneeScolaire)} />`
+ *
+ * @param {Array<{anneeFormation: number, date: string}>} [rentrees] — celles
+ *   de `useDecorationCalendrier`, pour ancrer S1 sur la rentrée la plus
+ *   précoce plutôt que sur le 1er septembre (voir `lundiPremiereSemaine`).
+ * @param {number} [anneeScolaire] — DONNÉE, jamais déduite d'un jour du
+ *   calendrier : un jour d'août antérieur à l'ancre appartiendrait sinon à
+ *   l'année scolaire PRÉCÉDENTE (`anneeScolaire()` classe par le 1er
+ *   septembre), et `semaineAffichable` chercherait la rentrée de la mauvaise
+ *   année.
  */
-export function colonneSemaine(composants = {}) {
+export function colonneSemaine(composants = {}, rentrees = [], anneeScolaire) {
   return {
     /*
      * ⚠️ `formatWeekNumber(numero, dateLib)` NE REÇOIT PAS DE DATE — son premier
@@ -188,7 +206,12 @@ export function colonneSemaine(composants = {}) {
      * 1er septembre : on remplace donc le COMPOSANT, qui reçoit `week` et donc
      * ses jours.
      */
-    components: { ...composants, WeekNumber: NumeroSemaine },
+    components: {
+      ...composants,
+      WeekNumber: (proprietes) => (
+        <NumeroSemaine {...proprietes} rentrees={rentrees} anneeScolaire={anneeScolaire} />
+      ),
+    },
     /*
      * En-tête de la colonne : sans lui, une colonne de nombres à gauche du lundi
      * ne dit pas qu'il s'agit de semaines — on la lit comme une date ou un
@@ -219,14 +242,33 @@ export function colonneSemaine(composants = {}) {
  * calendrier qui ne soit pas une date. Le bleu `primary` la détache des jours
  * sans rejouer aucune des teintes qui portent déjà un sens ici.
  */
-function NumeroSemaine({ week, ...proprietes }) {
+function NumeroSemaine({
+  week,
+  rentrees = [],
+  anneeScolaire,
+  /*
+   * ⚠️⚠️ EXCLU DU SPREAD, PAS SEULEMENT IGNORÉ (2026-09-27, corrigé par le
+   * porteur : « il faut qu'il y ait un seul S1 », persistant après la
+   * première correction). `WeekNumber` de shadcn reçoit `children` — le
+   * numéro ISO PRÉ-RENDU par react-day-picker — et un `<th {...proprietes} />`
+   * qui ne l'exclut pas explicitement le RESSERT tel quel : c'est ce numéro
+   * ISO (« 36 », par exemple) qui s'affichait à la place d'une cellule vide.
+   */
+  children,
+  ...proprietes
+}) {
   const premierJour = week?.days?.[0]?.date;
-  if (!premierJour) return <th {...proprietes} />;
+  if (!premierJour || !Number.isInteger(anneeScolaire)) return <th {...proprietes} />;
+
+  const numero = semaineAffichable(anneeScolaire, premierJour, rentrees);
+  // ⚠️ ANTÉRIEURE À L'ANCRE : PAS DE NUMÉRO, plutôt que de répéter S1 sur
+  // plusieurs lignes (voir `semaineAffichable`).
+  if (numero === null) return <th {...proprietes} />;
 
   return (
     <th {...proprietes} className={cn(proprietes.className, 'p-0 align-middle')}>
       <span className="mx-auto flex h-7 w-7 items-center justify-center text-xs font-medium tabular-nums text-primary">
-        {semaineDe(premierJour).numero}
+        {numero}
       </span>
     </th>
   );

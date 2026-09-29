@@ -1,10 +1,21 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ban, CircleCheck, Clock, Eye, KeyRound, LogIn, MoreVertical, Trash2 } from 'lucide-react';
 import { ROLES, STATUTS_COMPTE } from 'shared/constants';
+import { motDePasseValide } from 'shared/schemas';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import IndicateurChargement from '@/components/ui/indicateur-chargement';
 import {
   DropdownMenu,
@@ -16,6 +27,7 @@ import {
 import TableauTriable from '@/components/common/TableauTriable';
 import { HAUTEUR_BARRE } from '@/components/layout/BarreNavigation';
 import ConfirmationAction from '@/components/common/ConfirmationAction';
+import ReglesMotDePasse from '@/components/common/ReglesMotDePasse';
 import {
   changerStatut,
   connecterEnTantQue,
@@ -34,13 +46,29 @@ export default function TableauComptes({ comptes, enChargement, onChangement }) 
   const [consulte, setConsulte] = useState(null);
   /** Action en attente de confirmation : { type: 'bloquer'|'supprimer', compte }. */
   const [aConfirmer, setAConfirmer] = useState(null);
+  // Le compte pour lequel la boîte « Réinitialiser le mot de passe » est ouverte.
+  const [compteAReinitialiser, setCompteAReinitialiser] = useState(null);
+  const [nouveauMotDePasse, setNouveauMotDePasse] = useState('');
 
+  const queryClient = useQueryClient();
   const mutationStatut = useMutation({
     mutationFn: ({ id, corps }) => changerStatut(id, corps),
     onSuccess: onChangement,
   });
 
-  const mutationMotDePasse = useMutation({ mutationFn: reinitialiserMotDePasseCompte });
+  /*
+   * ⚠️ L'ADMINISTRATEUR SAISIT LUI-MÊME LE MOT DE PASSE (2026-09-27, demande
+   * du porteur : « le même chez l'admin, il peut réinitialiser tous les
+   * comptes ») — même geste que sur « Sessions » (`ListeComptes`), ouvert ici à
+   * TOUS les rôles (directeur compris).
+   */
+  const mutationMotDePasse = useMutation({
+    mutationFn: ({ id, motDePasse }) => reinitialiserMotDePasseCompte(id, motDePasse),
+    onSuccess: () => {
+      setCompteAReinitialiser(null);
+      setNouveauMotDePasse('');
+    },
+  });
 
   const mutationSuppression = useMutation({
     mutationFn: supprimerCompte,
@@ -62,7 +90,17 @@ export default function TableauComptes({ comptes, enChargement, onChangement }) 
     // et envoyait vers `/configuration` MÊME UN DIRECTEUR AYANT TOUT
     // TERMINÉ — le symptôme signalé. La redirection ne dépend plus d'un champ
     // que ce présentateur ne garantit pas.
-    onSuccess: (reponse) => navigate(routeApresUsurpation(reponse.utilisateur)),
+    //
+    // ⚠️ ON VIDE LE CACHE AVANT DE NAVIGUER (2026-09-20, signalé par le porteur : « accès
+    // refusé — cet écran est réservé aux administrateurs » en se connectant à un
+    // directeur). Le cache gardait la session de l'ADMINISTRATEUR : la coquille de
+    // `/app` la lisait, renvoyait vers `/admin`, et l'écran d'administration interrogeait
+    // le serveur avec les cookies du DIRECTEUR — refusé. Vidé, la coquille relit la
+    // session, qui est maintenant la bonne (comme au retour, dans `BandeauUsurpation`).
+    onSuccess: (reponse) => {
+      queryClient.clear();
+      navigate(routeApresUsurpation(reponse.utilisateur));
+    },
   });
 
   if (enChargement) return <EtatVide><IndicateurChargement className="mx-auto" /></EtatVide>;
@@ -241,7 +279,10 @@ export default function TableauComptes({ comptes, enChargement, onChangement }) 
 
                       <DropdownMenuItem
                         disabled={enCours}
-                        onClick={() => mutationMotDePasse.mutate(compte.id)}
+                        onClick={() => {
+                          setNouveauMotDePasse('');
+                          setCompteAReinitialiser(compte);
+                        }}
                       >
                         <KeyRound />
                         Réinitialiser le mot de passe
@@ -297,10 +338,60 @@ export default function TableauComptes({ comptes, enChargement, onChangement }) 
 
       <Messages
         mutations={[mutationStatut, mutationMotDePasse, mutationSuppression, mutationConnexion]}
-        succesMotDePasse={mutationMotDePasse.isSuccess}
+        succesMotDePasse={mutationMotDePasse.isSuccess ? mutationMotDePasse.data : null}
       />
 
       <FicheCompte compte={consulte} onOpenChange={(ouvert) => !ouvert && setConsulte(null)} />
+
+      {/*
+        ⚠️ LE MOT DE PASSE SE TAPE ICI (2026-09-27, demande du porteur) : cette
+        boîte remplace l'ancien clic unique qui tirait un mot de passe
+        provisoire au hasard. Même geste que sur « Sessions ».
+      */}
+      <Dialog
+        open={Boolean(compteAReinitialiser)}
+        onOpenChange={(ouvert) => !ouvert && setCompteAReinitialiser(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Réinitialiser le mot de passe</DialogTitle>
+            <DialogDescription>
+              {compteAReinitialiser?.nomComplet} ({compteAReinitialiser?.email})
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <Label htmlFor="admin-nouveau-mot-de-passe">Nouveau mot de passe</Label>
+            <Input
+              id="admin-nouveau-mot-de-passe"
+              type="text"
+              value={nouveauMotDePasse}
+              onChange={(evenement) => setNouveauMotDePasse(evenement.target.value)}
+              placeholder="8 caractères minimum"
+              autoComplete="off"
+              autoFocus
+            />
+            <ReglesMotDePasse valeur={nouveauMotDePasse} />
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCompteAReinitialiser(null)}>
+              Annuler
+            </Button>
+            <Button
+              disabled={mutationMotDePasse.isPending || !motDePasseValide(nouveauMotDePasse)}
+              onClick={() =>
+                mutationMotDePasse.mutate({
+                  id: compteAReinitialiser.id,
+                  motDePasse: nouveauMotDePasse,
+                })
+              }
+            >
+              {mutationMotDePasse.isPending ? 'Réinitialisation…' : 'Réinitialiser'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ConfirmationAction
         ouvert={Boolean(aConfirmer)}
@@ -335,7 +426,17 @@ function Messages({ mutations, succesMotDePasse }) {
   }
   if (succesMotDePasse) {
     return (
-      <p className="mt-2 text-sm text-muted-foreground">Nouveau mot de passe envoyé par e-mail.</p>
+      <p className="mt-2 text-sm text-muted-foreground">
+        {/*
+          ⚠️ Le mot de passe n'est renvoyé que pour les adresses fictives
+          « @placeholder.ofppt.ma » — le directeur/administrateur vient de le
+          taper, ce message confirme juste la saisie. Ailleurs il part EN PLUS
+          par e-mail.
+        */}
+        {succesMotDePasse.motDePasse
+          ? `Nouveau mot de passe : ${succesMotDePasse.motDePasse}`
+          : 'Nouveau mot de passe aussi envoyé par e-mail.'}
+      </p>
     );
   }
   return null;

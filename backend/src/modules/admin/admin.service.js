@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import { ROLES, STATUTS_COMPTE } from 'shared/constants';
 import { User } from '../../models/User.js';
 import { Etablissement } from '../../models/Etablissement.js';
@@ -435,24 +434,34 @@ async function notifier(utilisateur, statut, essaiJours) {
   });
 }
 
+/** Adresse de repli des comptes sans adresse réelle — voir `comptes.service.js`. */
+function estPlaceholder(email) {
+  return String(email ?? '').endsWith('@placeholder.ofppt.ma');
+}
+
 /**
- * Réinitialise un mot de passe et renvoie le provisoire à l'utilisateur.
+ * Réinitialise le mot de passe d'un compte — DIRECTEUR, GESTIONNAIRE, FORMATEUR
+ * ou STAGIAIRE — SAISI PAR L'ADMINISTRATEUR (2026-09-27, demande du porteur :
+ * « le même chez l'admin, il peut réinitialiser tous les comptes »). Même
+ * comportement que `comptes.reinitialiserMotDePasse`, ouvert ici à TOUS les
+ * rôles plutôt qu'aux seuls comptes gérés par un directeur.
  *
- * Le mot de passe généré n'est PAS renvoyé dans la réponse HTTP : il part par
- * e-mail. `reset_user_password.php` l'affichait à l'écran de l'administrateur,
- * ce qui le faisait transiter par les journaux et l'historique du navigateur.
+ * ⚠️ La réponse ne porte `motDePasse` que pour les adresses de remplissage
+ * (`@placeholder.ofppt.ma`) : ailleurs il part par e-mail EN PLUS, mais
+ * n'apparaît jamais dans une réponse HTTP, ni dans les journaux ou
+ * l'historique du navigateur.
  */
-export async function reinitialiserMotDePasse(utilisateurId) {
+export async function reinitialiserMotDePasse(utilisateurId, motDePasse) {
   const utilisateur = await User.findById(utilisateurId).select('+motDePasse');
   if (!utilisateur) throw notFound('Compte introuvable', { code: 'COMPTE_INCONNU' });
 
-  // 12 caractères base64url : assez pour ne pas être devinable, sans caractère
-  // ambigu à recopier.
-  const provisoire = crypto.randomBytes(9).toString('base64url');
-
-  utilisateur.motDePasse = `Aa1${provisoire}`; // respecte la politique de complexité
+  utilisateur.motDePasse = motDePasse;
   await utilisateur.save();
   await RefreshToken.deleteMany({ utilisateurId: utilisateur.id });
+
+  if (estPlaceholder(utilisateur.email)) {
+    return { aTransmettre: true, motDePasse };
+  }
 
   await envoyerEmail({
     destinataire: utilisateur.email,
@@ -460,13 +469,15 @@ export async function reinitialiserMotDePasse(utilisateurId) {
     texte:
       `Bonjour ${utilisateur.nomComplet},\n\n` +
       `Votre mot de passe a été réinitialisé par un administrateur. ` +
-      `Voici votre mot de passe provisoire :\n\n` +
+      `Voici votre nouveau mot de passe :\n\n` +
       // ⚠️ SEUL SUR SON PARAGRAPHE : c'est ce qui le fait ressortir dans le
       // gabarit HTML, et ce qui le rend sélectionnable d'un geste en texte brut.
       // Collé à la phrase, il se recopiait avec la ponctuation qui le suit.
-      `Aa1${provisoire}\n\n` +
+      `${motDePasse}\n\n` +
       `Changez-le dès votre prochaine connexion.\n\nL'équipe EDT Pro`,
   });
+
+  return { aTransmettre: false };
 }
 
 /**

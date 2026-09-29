@@ -109,7 +109,7 @@ export function evaluerCase({
   );
 
   const salle = candidates.find(libre);
-  if (!salle) return refus('Aucune salle libre sur ce créneau');
+  if (!salle) return refus('Aucun espace libre sur ce créneau');
 
   return { ok: true, salle, salleDOrigine: meme(salle, absence.salle) };
 }

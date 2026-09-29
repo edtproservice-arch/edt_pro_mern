@@ -52,7 +52,7 @@ export default function FicheStagiaire({ matricule, onFermer }) {
   );
 }
 
-function Synthese({ note }) {
+export function Synthese({ note }) {
   const tuiles = [
     { titre: 'Assiduité', valeur: `${nombre(note.assiduite.note)} / 10`, detail: `−${nombre(note.assiduite.pointsRetires)} point(s)`, sanction: note.assiduite.sanction },
     { titre: 'Comportement', valeur: `${note.comportement.note} / 5`, detail: `${note.comportement.indisciplines} indiscipline(s)`, sanction: note.comportement.sanction },

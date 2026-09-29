@@ -12,7 +12,8 @@ import { useBrouillonVersionne } from '@/lib/useBrouillonVersionne';
  * oublier une moitié.
  *
  * @param {'espaces' | 'stages' | 'formations' | 'groupesFq'} champ
- * @param {(liste: unknown[], version: number) => Promise<object>} ecrire  la fonction d'API
+ * @param {(liste: unknown[], version: number, options?: object) => Promise<object>} ecrire
+ *   la fonction d'API ; `options.confirmerSuppressions` pour les périodes (2026-09-23)
  */
 export function useListeEtablissement(champ, ecrire, { onSucces } = {}) {
   const contexte = useQuery({
@@ -30,9 +31,10 @@ export function useListeEtablissement(champ, ecrire, { onSucces } = {}) {
             version: donnees.etablissement.versions?.[champ] ?? 0,
           }
         : null,
-    enregistrer: async (liste, version) => {
-      const reponse = await ecrire(liste, version);
-      return { valeur: reponse[champ], version: reponse.version };
+    enregistrer: async (liste, version, options) => {
+      const reponse = await ecrire(liste, version, options);
+      // `cascade` : ce qu'une nouvelle période a supprimé (stages, formations).
+      return { valeur: reponse[champ], version: reponse.version, cascade: reponse.cascade ?? null };
     },
     relire: async () => (await contexte.refetch()).data,
     onSucces,

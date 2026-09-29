@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { FileSpreadsheet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { useImportEnote, DialogueRemplacementEnote } from './importEnote';
 
 /**
@@ -22,7 +23,7 @@ import { useImportEnote, DialogueRemplacementEnote } from './importEnote';
  * la règle qu'il emploie — et non dans `features/avancement/`, qui n'est que son
  * premier appelant.
  */
-export default function BoutonImportEnote({ libelle = 'Importer une base e-note' }) {
+export default function BoutonImportEnote({ libelle = 'Importer une base e-note', className }) {
   const champFichier = useRef(null);
   const cache = useQueryClient();
 
@@ -57,7 +58,7 @@ export default function BoutonImportEnote({ libelle = 'Importer une base e-note'
       <Button
         variant="outline"
         size="sm"
-        className="h-7 gap-1.5 text-xs"
+        className={cn('h-7 gap-1.5 text-xs', className)}
         disabled={importation.enCours}
         onClick={() => champFichier.current?.click()}
       >

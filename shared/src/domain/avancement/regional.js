@@ -1,6 +1,5 @@
 import { lundiPremiereSemaine } from '../planning/anneeScolaire.js';
 import { enJour, vacances } from '../planning/calendrier.js';
-import { premiereRentree } from '../planning/rentree.js';
 
 /**
  * Le TAUX D'AVANCEMENT RÉGIONAL.
@@ -32,21 +31,24 @@ import { premiereRentree } from '../planning/rentree.js';
  *    chiffre plausible. Ici, aucune semaine active rend `null` — un taux qu'on
  *    ne sait pas calculer ne doit pas s'afficher comme un taux nul.
  *
- * ═══ ⚠️⚠️ LES SEMAINES AVANT LA RENTRÉE NE COMPTENT PAS (2026-09-03, demande
- * du porteur) ═══ Cette année, les 2ᵉ et 3ᵉ années reprennent le 7 septembre et
- * les 1ʳᵉ le 11 : la S1 (du 31 août) ne porte donc AUCUN cours nulle part, et
- * annoncer malgré cela un rythme régional de 2,8 % à la S1 prétendait un
- * retard là où rien n'avait encore pu commencer.
- * `premiereRentree()` rend la plus PRÉCOCE des rentrées déclarées, tous
- * niveaux confondus — dès qu'UN SEUL niveau a sa date, l'établissement n'est
- * plus totalement fermé, et c'est cette date qui ouvre l'année régionale.
- * Une semaine dont le lundi tombe AVANT cette ouverture est traitée EXACTEMENT
- * comme une semaine de vacances : retirée du TOTAL, pas seulement des semaines
- * « passées » — c'est la même logique que `tauxObjectifPedagogique`, qui fait
- * commencer le décompte d'un groupe à SA rentrée plutôt qu'à la S1.
- * ⚠️ SANS RENTRÉE DÉCLARÉE, RIEN NE CHANGE : `premiereRentree` rend `null`, et
- * le calcul retombe sur la S1 — la même règle que partout ailleurs dans ce
- * projet (« tant que l'admin n'a rien saisi, rien ne change »).
+ * ═══ ⚠️⚠️⚠️ S1 EST DÉSORMAIS LA SEMAINE DE LA RENTRÉE LA PLUS PRÉCOCE (demande
+ * du porteur, 2026-09-25 — REVIENT SUR LA DÉCISION DU 2026-09-03 CI-DESSOUS)
+ * ═══
+ * Cette année, les 2ᵉ et 3ᵉ années reprennent le 7 septembre et les 1ʳᵉ le
+ * 11. La première version (2026-09-03) gardait S1 au 31 août — le 1er
+ * septembre — et EXCLUAIT cette semaine du total, comme une semaine de
+ * vacances, pour ne pas annoncer de retard avant que quiconque ait repris.
+ * Le porteur est revenu dessus : il veut que S1 SOIT la semaine du 7
+ * septembre, pas une semaine « avant S1 » qu'on écarte. `lundiPremiereSemaine`
+ * porte maintenant cette règle (voir son en-tête) : passé `rentrees`, elle
+ * ancre S1 sur la rentrée la plus précoce, tous niveaux confondus, au lieu du
+ * 1er septembre. Cette fonction n'a donc plus besoin d'écarter une semaine
+ * « avant l'ouverture » — l'ancre elle-même ne la compte plus jamais parmi les
+ * S1..S39, exactement comme si l'établissement n'avait pas encore vécu de
+ * S0.
+ * ⚠️ SANS RENTRÉE DÉCLARÉE, RIEN NE CHANGE : `lundiPremiereSemaine` retombe
+ * sur le 1er septembre — la même règle que partout ailleurs dans ce projet
+ * (« tant que l'admin n'a rien saisi, rien ne change »).
  */
 
 /** L'année régionale court de S1 à S39, soit 38 semaines après la première. */
@@ -60,12 +62,17 @@ export const SEMAINES_ANNEE_REGIONALE = 39;
  * SIGNALE doit désigner exactement celles que le taux ÉCARTE. Deux parcours
  * séparés auraient fini par montrer une semaine que le calcul n'a pas retirée.
  *
+ * ⚠️ `rentrees` DOIT ÊTRE LA MÊME QUE CELLE DONNÉE À `tauxRegional` : les deux
+ * itèrent sur la même ancre de S1, sans quoi le numéro « 3 » désignerait deux
+ * semaines calendaires différentes selon la fonction.
+ *
+ * @param {Array<{anneeFormation: number, date: string}>} [rentrees]
  * @returns {number[]} numéros de semaine, dans l'ordre
  */
-export function semainesDeVacances({ anneeScolaire, vacances: periodes = [] }) {
+export function semainesDeVacances({ anneeScolaire, vacances: periodes = [], rentrees = [] }) {
   if (!Number.isInteger(anneeScolaire)) return [];
 
-  const lundi = lundiPremiereSemaine(anneeScolaire);
+  const lundi = lundiPremiereSemaine(anneeScolaire, rentrees);
   const numeros = [];
 
   for (let semaine = 1; semaine <= SEMAINES_ANNEE_REGIONALE; semaine += 1) {
@@ -88,8 +95,9 @@ export function semainesDeVacances({ anneeScolaire, vacances: periodes = [] }) {
  * @param {number} options.anneeScolaire — année de septembre (2026 pour 2026-2027)
  * @param {Date|string} [options.aujourdhui]
  * @param {Array} [options.vacances] — périodes `{debut, fin}`
- * @param {Array<{anneeFormation, date}>} [options.rentrees] — sans elles, on
- *   repart de la S1 comme avant cette révision.
+ * @param {Array<{anneeFormation, date}>} [options.rentrees] — la rentrée la
+ *   plus précoce y ancre S1 (voir `lundiPremiereSemaine`) ; sans elles, on
+ *   repart du 1er septembre comme avant cette révision.
  * @returns {{taux: number, passees: number, total: number}|null}
  */
 export function tauxRegional({
@@ -100,21 +108,18 @@ export function tauxRegional({
 }) {
   if (!Number.isInteger(anneeScolaire)) return null;
 
-  const debut = lundiPremiereSemaine(anneeScolaire);
+  const debut = lundiPremiereSemaine(anneeScolaire, rentrees);
   const observation = aujourdhui instanceof Date ? aujourdhui : new Date(aujourdhui);
   if (!enJour(observation)) return null;
 
-  const chomees = new Set(semainesDeVacances({ anneeScolaire, vacances: periodes }));
-  const ouverture = premiereRentree(rentrees);
+  const chomees = new Set(semainesDeVacances({ anneeScolaire, vacances: periodes, rentrees }));
 
   let total = 0;
   let passees = 0;
 
   const lundi = new Date(debut);
   for (let semaine = 1; semaine <= SEMAINES_ANNEE_REGIONALE; semaine += 1) {
-    // ⚠️ AVANT L'OUVERTURE = MÊME TRAITEMENT QU'UNE VACANCE : hors du total.
-    const avantOuverture = ouverture !== null && enJour(lundi) < ouverture;
-    if (!chomees.has(semaine) && !avantOuverture) {
+    if (!chomees.has(semaine)) {
       total += 1;
       if (lundi <= observation) passees += 1;
     }

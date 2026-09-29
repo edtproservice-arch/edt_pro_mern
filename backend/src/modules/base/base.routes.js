@@ -261,6 +261,24 @@ const moduleSchema = z
       .strict()
       .optional(),
     masseAjustee: z.boolean().optional(),
+
+    /*
+     * ═══ SALLES OÙ CE COURS DOIT SE DONNER (2026-09-23) ═══
+     * Une LISTE, pas une salle : un module accepte « Atelier FM ou Atelier CM »
+     * (décision du porteur). Imposer une salle unique rendrait impossible de
+     * placer deux groupes du même module au même créneau.
+     *
+     * ⚠️ DÉCLARÉ ICI SOUS PEINE D'ÊTRE SUPPRIMÉ EN SILENCE : Zod retire les
+     *    clés non déclarées, même sans `.strict()` — c'est exactement ce qui
+     *    était arrivé à `metier` juste au-dessus, et le bilan groupait alors
+     *    tout sous « Non renseigné ».
+     *
+     * ⚠️ LE CONTENU N'EST PAS VÉRIFIÉ CONTRE LES ESPACES DÉCLARÉS : la carte
+     *    s'enregistre aussi pendant que le directeur ajoute ses salles, et
+     *    refuser une salle pas encore créée bloquerait la saisie. Le générateur,
+     *    lui, ne retient que celles qui existent vraiment.
+     */
+    salles: z.array(z.string().trim().max(100)).max(50).default([]),
   })
   // Un module sans code NI nom ne peut être ni affecté ni suivi : il
   // produirait une ligne fantôme dans la base.
@@ -275,6 +293,19 @@ const carteSchema = z.object({
    * la carte remplace la base sans condition — voir `lib/versionOptimiste.js`.
    */
   version: z.number().int().min(0).optional(),
+
+  /*
+   * ═══ ⚠️ LE OUI EXPLICITE AVANT TOUTE CASCADE ═══ (2026-09-22)
+   * Retirer un groupe de la carte n'est pas un geste isolé : c'est un ÉCART
+   * entre deux versions, et la carte est remplacée à chaque enregistrement
+   * comme à chaque import e-note. Sans ce drapeau, le serveur REFUSE en 409 et
+   * rend le détail chiffré de ce qui serait détruit — 955 h de chronogramme,
+   * 62 séances, 9 stagiaires à détacher. L'écran le montre, puis renvoie la
+   * même carte avec `confirmerSuppressions: true`.
+   *
+   * ⚠️ FAUX PAR DÉFAUT : un appelant qui l'ignore ne peut rien détruire.
+   */
+  confirmerSuppressions: z.boolean().default(false),
 
   formateurs: z
     .array(
@@ -333,12 +364,24 @@ router.post(
   validate({ body: carteSchema }),
   async (req, res, next) => {
     try {
-      const { version, ...carte } = req.body;
+      // ⚠️ Les deux sont EXTRAITS de la carte : laissés dedans, ils arriveraient
+      //    jusqu'au parseur de lignes e-note comme des champs de carte inconnus.
+      const { version, confirmerSuppressions, ...carte } = req.body;
       const resultat = await carteService.enregistrerCarte({
         etablissementId: req.etablissementId,
         anneeScolaire: req.anneeScolaire,
         carte,
         version,
+        confirmerSuppressions,
+        /*
+         * ⚠️ FORMATEUR SEULEMENT (2026-09-27, demande du porteur) : cette page
+         * n'a pas de droit par rôle (`PAGES_PARTAGEABLES.affectations` sans
+         * `parRole`) — un formateur qui l'atteint y est forcément invité en
+         * partage. Un gestionnaire, lui, garde le plein accès qu'un partage
+         * lui accorde : la restriction ne vaut que pour un formateur.
+         */
+        identifiantFormateurRestreint:
+          req.utilisateur.role === ROLES.FORMATEUR ? req.utilisateur.identifiant : null,
       });
       res.status(201).json({ success: true, ...resultat });
       annoncerBase(req, 'enregistrer-carte');
@@ -365,6 +408,55 @@ const correctionsSchema = z.object({
     .min(1)
     .max(500),
 });
+
+/**
+ * Ajout et retrait de formateurs, depuis la page Formateurs.
+ *
+ * ⚠️ Le format des entrées est celui de la CARTE (`nom`, pas `nomComplet`) : c'est
+ * ce que produit l'import Excel, et ce que `fusionnerFormateurs` manipule. Un
+ * courriel mal formé n'est pas refusé — comme pour la carte : un classeur d'une
+ * centaine de lignes ne doit pas échouer entier sur une cellule.
+ */
+const listeFormateursSchema = z
+  .object({
+    ajouter: z
+      .array(
+        z
+          .object({
+            nom: z.string().trim().min(1).max(150),
+            matricule: z.string().trim().max(20).default(''),
+            email: z.string().trim().max(150).default(''),
+            masseHoraire: z.coerce.number().min(0).max(2000).optional(),
+          })
+          .strict()
+      )
+      .max(500)
+      .default([]),
+    retirer: z.array(z.string().trim().min(1).max(150)).max(500).default([]),
+  })
+  .strict()
+  .refine((corps) => corps.ajouter.length + corps.retirer.length > 0, {
+    message: 'Rien à ajouter ni à retirer',
+  });
+
+router.post(
+  '/formateurs/liste',
+  exigerDroitPage('formateurs', 'modifier'),
+  validate({ body: listeFormateursSchema }),
+  async (req, res, next) => {
+    try {
+      const resultat = await service.modifierListeFormateurs(
+        req.etablissementId,
+        req.anneeScolaire,
+        req.body
+      );
+      res.json({ success: true, ...resultat });
+      annoncerBase(req, 'liste-formateurs');
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 /** Corrections des fiches formateurs (adresse, matricule, masse horaire), en lot. */
 /**

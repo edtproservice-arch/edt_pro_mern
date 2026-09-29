@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
+import ExcelJS from 'exceljs';
 import { createApp } from '../../src/app.js';
 import { User } from '../../src/models/User.js';
 import { Etablissement } from '../../src/models/Etablissement.js';
@@ -8,6 +9,7 @@ import { Seance } from '../../src/models/Seance.js';
 import { Stagiaire } from '../../src/models/Stagiaire.js';
 import { AbsenceStagiaire } from '../../src/models/AbsenceStagiaire.js';
 import { IndisciplineStagiaire } from '../../src/models/IndisciplineStagiaire.js';
+import { AppelValidation } from '../../src/models/AppelValidation.js';
 import { ROLES, STATUTS_COMPTE, TYPES_COURS } from 'shared/constants';
 
 vi.mock('../../src/config/mailer.js', () => ({
@@ -115,6 +117,14 @@ afterEach(() => {
 
 const appel = (qui, corps) =>
   request(app).put('/api/v2/absences-stagiaires/appel').set('Cookie', cookies[qui]).send(corps);
+
+const validerAppel = (qui, corps) =>
+  request(app).put('/api/v2/absences-stagiaires/appel/valider').set('Cookie', cookies[qui]).send(corps);
+
+const lireAppel = (qui, { date, seance, groupe }) =>
+  request(app)
+    .get(`/api/v2/absences-stagiaires/appel?date=${date}&seance=${seance}&groupe=${encodeURIComponent(groupe)}`)
+    .set('Cookie', cookies[qui]);
 
 describe('les cours ouverts à l’appel', () => {
   it('un formateur ne voit que SES séances de la journée', async () => {
@@ -285,6 +295,111 @@ describe('PUT /absences-stagiaires/appel', () => {
   });
 });
 
+describe('PUT /absences-stagiaires/appel/valider — le signe demandé par le porteur', () => {
+  /*
+   * ⚠️ TIMEOUT ÉLARGI : le replica-set à un seul nœud de
+   * `mongodb-memory-server` met plusieurs secondes à valider chaque
+   * transaction — deux appels dans un même test dépassent le délai par
+   * défaut de vitest (20 s) sans qu'aucun bogue ne soit en cause.
+   */
+  it(
+    'écrit les marques ET atteste l’appel en une seule fois',
+    async () => {
+      const reponse = await validerAppel('formateur', {
+        date: LUNDI,
+        seance: 'S1',
+        groupe: 'GM101',
+        marques: [{ matricule: 'CEF001', type: 'absence' }],
+      });
+      expect(reponse.status).toBe(200);
+      expect(reponse.body).toMatchObject({ absences: 1 });
+      expect(await AbsenceStagiaire.countDocuments()).toBe(1);
+
+      const validation = await AppelValidation.findOne().lean();
+      expect(validation).toMatchObject({ groupe: 'GM101', validateurNom: 'FORMATEUR' });
+
+      const liste = await lireAppel('gestionnaire', { date: LUNDI, seance: 'S1', groupe: 'GM101' });
+      expect(liste.body.validation).toMatchObject({ validateurNom: 'FORMATEUR' });
+    },
+    30000
+  );
+
+  /*
+   * ⚠️ CELUI QUI A CLIQUÉ, PAS LE FORMATEUR DE LA SÉANCE (2026-09-29, bogue
+   * signalé par le porteur : « validé par doit être le propriétaire de la
+   * session qui a validé l'absence ») — le gestionnaire valide le cours d'un
+   * AUTRE formateur (S2, cf. `beforeEach`) : le nom attesté doit être le
+   * sien, jamais celui du formateur de la séance.
+   */
+  it(
+    'nomme celui qui a cliqué « Valider », pas le formateur de la séance',
+    async () => {
+      const reponse = await validerAppel('gestionnaire', {
+        date: LUNDI,
+        seance: 'S2',
+        groupe: 'GM101',
+        marques: [{ matricule: 'CEF001', type: 'absence' }],
+      });
+      expect(reponse.status).toBe(200);
+
+      const validation = await AppelValidation.findOne().lean();
+      expect(validation).toMatchObject({ validateurNom: 'GESTIONNAIRE' });
+    },
+    30000
+  );
+
+  it(
+    'toute réécriture par le simple PUT /appel retire la validation',
+    async () => {
+      await validerAppel('formateur', {
+        date: LUNDI,
+        seance: 'S1',
+        groupe: 'GM101',
+        marques: [{ matricule: 'CEF001', type: 'absence' }],
+      });
+      expect(await AppelValidation.countDocuments()).toBe(1);
+
+      await appel('gestionnaire', {
+        date: LUNDI,
+        seance: 'S1',
+        groupe: 'GM101',
+        marques: [{ matricule: 'CEF001', type: 'retard' }],
+      });
+      expect(await AppelValidation.countDocuments()).toBe(0);
+
+      const liste = await lireAppel('gestionnaire', { date: LUNDI, seance: 'S1', groupe: 'GM101' });
+      expect(liste.body.validation).toBeNull();
+    },
+    30000
+  );
+
+  it(
+    'revalider remplace l’attestation précédente, sans dupliquer le document',
+    async () => {
+      await validerAppel('formateur', { date: LUNDI, seance: 'S1', groupe: 'GM101', marques: [] });
+      await validerAppel('formateur', {
+        date: LUNDI,
+        seance: 'S1',
+        groupe: 'GM101',
+        marques: [{ matricule: 'CEF001', type: 'absence' }],
+      });
+      expect(await AppelValidation.countDocuments()).toBe(1);
+    },
+    30000
+  );
+
+  it('refuse au formateur le cours d’un collègue, sans rien valider', async () => {
+    const reponse = await validerAppel('formateur', {
+      date: LUNDI,
+      seance: 'S2',
+      groupe: 'GM101',
+      marques: [{ matricule: 'CEF001', type: 'absence' }],
+    });
+    expect(reponse.status).toBe(404);
+    expect(await AppelValidation.countDocuments()).toBe(0);
+  });
+});
+
 describe('le registre', () => {
   it('un formateur ne voit que ce qui a été marqué sur SES séances', async () => {
     await appel('formateur', { date: LUNDI, seance: 'S1', groupe: 'GM101', marques: [{ matricule: 'CEF001', type: 'absence' }] });
@@ -415,6 +530,66 @@ describe('GET /absences-stagiaires/notes', () => {
   });
 });
 
+describe('GET /absences-stagiaires/tableau-bord — l’accueil du gestionnaire', () => {
+  it('agrège absences, retards et indisciplines pour tout l’établissement', async () => {
+    await faits('CEF001', [
+      { typeAbsence: 'absence' },
+      { typeAbsence: 'absence', justifiee: true },
+      { typeAbsence: 'retard' },
+    ]);
+    await faits('CEF003', [{ typeAbsence: 'absence', groupe: 'GM102' }]);
+    await IndisciplineStagiaire.create([
+      {
+        etablissementId: etablissement.id,
+        anneeScolaire: ANNEE,
+        matricule: 'CEF001',
+        nomComplet: 'ALAOUI Yassine',
+        groupe: 'GM101',
+        date: '2026-09-10',
+        motif: 'Téléphone en cours',
+      },
+      {
+        etablissementId: etablissement.id,
+        anneeScolaire: ANNEE,
+        matricule: 'CEF003',
+        nomComplet: 'CHAFIK Omar',
+        groupe: 'GM102',
+        date: '2026-09-12',
+        motif: 'Insolence',
+      },
+    ]);
+
+    const reponse = await request(app)
+      .get('/api/v2/absences-stagiaires/tableau-bord')
+      .set('Cookie', cookies.gestionnaire);
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.absences).toMatchObject({ total: 3, justifiees: 1, nonJustifiees: 2 });
+    expect(reponse.body.retards).toMatchObject({ total: 1, justifies: 0, nonJustifies: 1 });
+    expect(reponse.body.indisciplines.total).toBe(2);
+    expect(reponse.body.indisciplines.recentes.map((i) => i.motif)).toEqual(
+      expect.arrayContaining(['Téléphone en cours', 'Insolence'])
+    );
+    // « groupesAbsences » et « groupesRetards » comptent chacun LEUR fait, pas les deux mélangés.
+    expect(reponse.body.groupesAbsences).toEqual(
+      expect.arrayContaining([{ groupe: 'GM101', n: 2 }, { groupe: 'GM102', n: 1 }])
+    );
+    expect(reponse.body.groupesRetards).toEqual(
+      expect.arrayContaining([{ groupe: 'GM101', n: 1 }])
+    );
+    expect(reponse.body.groupesIndisciplines).toEqual(
+      expect.arrayContaining([{ groupe: 'GM101', n: 1 }, { groupe: 'GM102', n: 1 }])
+    );
+  });
+
+  it('refuse le formateur (403)', async () => {
+    const reponse = await request(app)
+      .get('/api/v2/absences-stagiaires/tableau-bord')
+      .set('Cookie', cookies.formateur);
+    expect(reponse.status).toBe(403);
+  });
+});
+
 describe('la date « Modifié il y a… » de la page Absences', () => {
   it('le gestionnaire la lit sur Absences, où il travaille — et sur aucune autre page', async () => {
     const absences = await request(app).get('/api/v2/modifications/absences').set('Cookie', cookies.gestionnaire);
@@ -456,5 +631,373 @@ describe('les indisciplines', () => {
     expect((await declarer({ matricule: 'CEF999', date: '2026-09-10', motif: 'x' })).status).toBe(404);
     expect((await declarer({ matricule: 'CEF001', date: '2026-09-10', motif: 'x' }, 'formateur')).status).toBe(403);
     expect(await IndisciplineStagiaire.countDocuments()).toBe(0);
+  });
+});
+
+/*
+ * ⚠️ `superagent` NE BUFFÉRISE EN `Buffer` QUE LES TYPES MIME QU'IL CONNAÎT —
+ * ni le Word ni l'Excel n'en font partie (voir `absences.test.js`, même piège).
+ */
+const bufferiserExport = (res, callback) => {
+  const morceaux = [];
+  res.on('data', (chunk) => morceaux.push(chunk));
+  res.on('end', () => callback(null, Buffer.concat(morceaux)));
+};
+
+describe('POST /absences-stagiaires/export — la feuille d’absence hebdomadaire (2026-09-29)', () => {
+  const exporter = (corps, qui = 'directeur') =>
+    request(app)
+      .post('/api/v2/absences-stagiaires/export')
+      .set('Cookie', cookies[qui])
+      .buffer(true)
+      .parse(bufferiserExport)
+      .send(corps);
+
+  it('rend un .docx exploitable, avec son en-tête de téléchargement', async () => {
+    const reponse = await exporter({ format: 'docx', groupes: ['GM101'], semaine: SEMAINE });
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-type']).toContain('wordprocessingml.document');
+    expect(reponse.headers['content-disposition']).toContain('.docx');
+    expect(reponse.body.subarray(0, 2).toString()).toBe('PK');
+  });
+
+  it('⚠️ N°, marque et « T. A » EN HEURES (2026-09-29, demande du porteur : « met total absence par heure ») : l’ordre alphabétique, la case du bon créneau, le total de LA SEMAINE affichée', async () => {
+    await AbsenceStagiaire.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      matricule: 'CEF001',
+      nomComplet: 'ALAOUI Yassine',
+      groupe: 'GM101',
+      date: LUNDI,
+      semaine: SEMAINE,
+      jour: 'Lundi',
+      seance: 'S1',
+      typeAbsence: 'absence',
+    });
+
+    const reponse = await exporter({ format: 'xlsx', groupes: ['GM101'], semaine: SEMAINE });
+    expect(reponse.status).toBe(200);
+
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(reponse.body);
+    const feuille = classeur.worksheets[0];
+
+    // Ligne 7 : premier étudiant du groupe dans l'ordre alphabétique (ALAOUI avant BENANI).
+    expect(feuille.getRow(7).getCell(1).value).toBe(1);
+    expect(feuille.getRow(7).getCell(2).value).toBe('ALAOUI Yassine');
+    // Une séance d'absence, 2,5 h (`dureeSeance`) — pas « 1 » séance.
+    expect(feuille.getRow(7).getCell(3).value).toBe(2.5);
+    expect(feuille.getRow(7).getCell(4).value).toBe('A');
+    // BENANI, jamais marquée : N° 2, T. A à 0, aucune case remplie.
+    expect(feuille.getRow(8).getCell(1).value).toBe(2);
+    expect(feuille.getRow(8).getCell(3).value).toBe(0);
+    expect(feuille.getRow(8).getCell(4).value).toBeNull();
+  });
+
+  it('un retard marque « R », mais n’entre pas dans « T. A »', async () => {
+    await AbsenceStagiaire.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      matricule: 'CEF002',
+      nomComplet: 'BENANI Sara',
+      groupe: 'GM101',
+      date: LUNDI,
+      semaine: SEMAINE,
+      jour: 'Lundi',
+      seance: 'S2',
+      typeAbsence: 'retard',
+    });
+
+    const reponse = await exporter({ format: 'xlsx', groupes: ['GM101'], semaine: SEMAINE });
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(reponse.body);
+    const feuille = classeur.worksheets[0];
+
+    expect(feuille.getRow(8).getCell(5).value).toBe('R');
+    expect(feuille.getRow(8).getCell(3).value).toBe(0);
+  });
+
+  it('⚠️ « T. A » CUMULE DEPUIS S1 (2026-09-29, demande du porteur : « il faut qu’il accule le T.A pour chaque semaine »)', async () => {
+    // CEF001 absent la semaine PRÉCÉDENTE (2026-W2) ET la semaine affichée (2026-W3, SEMAINE).
+    await AbsenceStagiaire.create([
+      {
+        etablissementId: etablissement.id,
+        anneeScolaire: ANNEE,
+        matricule: 'CEF001',
+        nomComplet: 'ALAOUI Yassine',
+        groupe: 'GM101',
+        // ⚠️ UNE DATE DIFFÉRENTE DE CELLE DE LA SEMAINE AFFICHÉE, ci-dessous :
+        // l'index unique porte sur (matricule, date, séance, période), pas sur
+        // `semaine` — la même date sur les deux ferait échouer l'insertion.
+        date: '2026-09-07',
+        semaine: '2026-W2',
+        jour: 'Lundi',
+        seance: 'S1',
+        typeAbsence: 'absence',
+        justifiee: true,
+      },
+      {
+        etablissementId: etablissement.id,
+        anneeScolaire: ANNEE,
+        matricule: 'CEF001',
+        nomComplet: 'ALAOUI Yassine',
+        groupe: 'GM101',
+        date: LUNDI,
+        semaine: SEMAINE,
+        jour: 'Lundi',
+        seance: 'S1',
+        typeAbsence: 'absence',
+      },
+    ]);
+
+    const reponse = await exporter({ format: 'xlsx', groupes: ['GM101'], semaine: SEMAINE });
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(reponse.body);
+    const feuille = classeur.worksheets[0];
+
+    // Deux séances d'absence cumulées (2026-W2 puis 2026-W3), 2,5 h chacune —
+    // le cumul ne distingue pas justifiée ou non, contrairement à la ligne rouge.
+    expect(feuille.getRow(7).getCell(3).value).toBe(5);
+  });
+
+  it('⚠️ LA LIGNE ROUGE (2026-09-29, demande du porteur : « si un stagiaire était absent en S4, si n’a pas justifié son absence, alors en S5 sa ligne être en rouge ») : la semaine PRÉCÉDENTE, TOUJOURS PAS JUSTIFIÉE — pas besoin d’être absent cette semaine-ci', async () => {
+    // CEF001 : absence de la semaine précédente JAMAIS justifiée → rouge, même présent cette semaine.
+    await AbsenceStagiaire.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      matricule: 'CEF001',
+      nomComplet: 'ALAOUI Yassine',
+      groupe: 'GM101',
+      date: '2026-09-07',
+      semaine: '2026-W2',
+      jour: 'Lundi',
+      seance: 'S1',
+      typeAbsence: 'absence',
+      justifiee: false,
+    });
+    // CEF002 : absence de la semaine précédente, mais JUSTIFIÉE depuis → pas rouge.
+    await AbsenceStagiaire.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      matricule: 'CEF002',
+      nomComplet: 'BENANI Sara',
+      groupe: 'GM101',
+      date: '2026-09-08',
+      semaine: '2026-W2',
+      jour: 'Mardi',
+      seance: 'S1',
+      typeAbsence: 'absence',
+      justifiee: true,
+    });
+
+    const reponse = await exporter({ format: 'xlsx', groupes: ['GM101'], semaine: SEMAINE });
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(reponse.body);
+    const feuille = classeur.worksheets[0];
+
+    expect(feuille.getRow(7).getCell(1).fill?.fgColor?.argb).toBe('FFFEE2E2');
+    expect(feuille.getRow(7).getCell(1).font?.color?.argb).toBe('FFB91C1C');
+    expect(feuille.getRow(8).getCell(1).fill?.fgColor).toBeUndefined();
+  });
+
+  it('rend un .pdf', async () => {
+    const reponse = await request(app)
+      .post('/api/v2/absences-stagiaires/export')
+      .set('Cookie', cookies.directeur)
+      .send({ format: 'pdf', groupes: ['GM101'], semaine: SEMAINE });
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-type']).toBe('application/pdf');
+  }, 30_000);
+
+  it('⚠️ PLUSIEURS GROUPES = UN SEUL FICHIER, un onglet Excel par groupe (2026-09-29, demande du porteur : « si tous les groupes s’affiche il télécharge tous les groupes, d’après le filtre »)', async () => {
+    const reponse = await exporter({ format: 'xlsx', groupes: ['GM101', 'GM102'], semaine: SEMAINE });
+
+    expect(reponse.status).toBe(200);
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(reponse.body);
+    expect(classeur.worksheets.map((f) => f.name)).toEqual(['GM101', 'GM102']);
+    // GM102 n'a que CHAFIK Omar.
+    expect(classeur.worksheets[1].getRow(7).getCell(2).value).toBe('CHAFIK Omar');
+  });
+
+  it('⚠️ REFUSE plutôt que de rendre une feuille sans personne dessus', async () => {
+    // ⚠️ SANS `bufferiserExport` ICI (2026-09-29, constaté ici même) : cette
+    // route répond une ERREUR JSON normale, que `superagent` sait déjà
+    // parser — le parseur binaire, lui, laisserait `reponse.body` en `Buffer`
+    // et `reponse.body.code` resterait `undefined`.
+    const reponse = await request(app)
+      .post('/api/v2/absences-stagiaires/export')
+      .set('Cookie', cookies.directeur)
+      .send({ format: 'docx', groupes: ['GROUPE_INEXISTANT'], semaine: SEMAINE });
+
+    expect(reponse.status).toBe(400);
+    expect(reponse.body.code).toBe('GROUPE_VIDE');
+  });
+
+  it('un groupe SANS stagiaire n’empêche pas les autres de sortir', async () => {
+    const reponse = await exporter({ format: 'xlsx', groupes: ['GM101', 'GROUPE_INEXISTANT'], semaine: SEMAINE });
+
+    expect(reponse.status).toBe(200);
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(reponse.body);
+    expect(classeur.worksheets.map((f) => f.name)).toEqual(['GM101']);
+  });
+
+  it('⚠️ LA LIGNE « FORMATEURS » VIENT DE L’EMPLOI DU TEMPS (2026-09-29, demande du porteur : « en ligne formateur en bas afficher le nom du formateur verticalement »)', async () => {
+    const reponse = await exporter({ format: 'xlsx', groupes: ['GM101'], semaine: SEMAINE });
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(reponse.body);
+    const feuille = classeur.worksheets[0];
+
+    // 2 stagiaires (ALAOUI, BENANI) : la ligne « Formateurs » est la 9ᵉ.
+    // Lundi S1 est à BRAHIM LOURID (matricule 9863), Lundi S2 à AHMED CHERKAOUI (4211).
+    expect(feuille.getRow(9).getCell(4).value).toBe('BRAHIM LOURID');
+    expect(feuille.getRow(9).getCell(5).value).toBe('AHMED CHERKAOUI');
+    // Mercredi : aucune séance posée pour GM101 dans la fixture, la case reste vide.
+    expect(feuille.getRow(9).getCell(12).value).toBeNull();
+  });
+
+  it('refuse une semaine mal formée, une liste vide et un format inconnu', async () => {
+    expect((await exporter({ format: 'docx', groupes: ['GM101'], semaine: '2026-3' })).status).toBe(400);
+    expect((await exporter({ format: 'docx', groupes: [], semaine: SEMAINE })).status).toBe(400);
+    expect((await exporter({ format: 'jpeg', groupes: ['GM101'], semaine: SEMAINE })).status).toBe(400);
+  });
+
+  it('réservée à l’encadrement : un formateur ne peut pas la télécharger', async () => {
+    const reponse = await exporter({ format: 'docx', groupes: ['GM101'], semaine: SEMAINE }, 'formateur');
+    expect(reponse.status).toBe(403);
+  });
+});
+
+describe('POST /absences-stagiaires/billets — le(s) billet(s) d’excuse (2026-09-29, demande du porteur : « si un seul stagiaire justifié il s’affiche une seule billet… si deux stagiaires justifient en même temps il s’affiche deux billets »)', () => {
+  const creerAbsence = (champs) =>
+    AbsenceStagiaire.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      groupe: 'GM101',
+      semaine: SEMAINE,
+      jour: 'Lundi',
+      seance: 'S1',
+      typeAbsence: 'absence',
+      ...champs,
+    });
+
+  // ⚠️ `superagent` NE BUFFÉRISE EN `Buffer` QUE LES TYPES MIME QU'IL CONNAÎT —
+  // ni le Word ni l'Excel n'en font partie (voir `absences.test.js`, même piège).
+  const bufferiserBillets = (res, callback) => {
+    const morceaux = [];
+    res.on('data', (chunk) => morceaux.push(chunk));
+    res.on('end', () => callback(null, Buffer.concat(morceaux)));
+  };
+
+  /** Pour les réponses BINAIRES (docx, pdf, xlsx) — jamais pour lire `reponse.body.code`. */
+  const demanderBillets = (ids, format = 'pdf', qui = 'directeur') =>
+    request(app)
+      .post('/api/v2/absences-stagiaires/billets')
+      .set('Cookie', cookies[qui])
+      .buffer(true)
+      .parse(bufferiserBillets)
+      .send({ format, ids });
+
+  /** Pour les réponses D'ERREUR, en JSON normal. */
+  const demanderBilletsErreur = (ids, format = 'pdf', qui = 'directeur') =>
+    request(app)
+      .post('/api/v2/absences-stagiaires/billets')
+      .set('Cookie', cookies[qui])
+      .send({ format, ids });
+
+  it('⚠️ UN SEUL IDENTIFIANT → UN SEUL BILLET, en PDF', async () => {
+    const absence = await creerAbsence({
+      matricule: 'CEF001',
+      nomComplet: 'ALAOUI Yassine',
+      filiere: 'Développement Digital',
+      date: LUNDI,
+      justifiee: true,
+    });
+
+    const reponse = await demanderBillets([absence.id], 'pdf');
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-type']).toBe('application/pdf');
+    expect(reponse.body.subarray(0, 5).toString()).toBe('%PDF-');
+  }, 15_000);
+
+  it('⚠️ DEUX IDENTIFIANTS JUSTIFIÉS → DEUX BILLETS, en Excel (2026-09-29, demande du porteur : « je veux avec trois word, pdf, excel »)', async () => {
+    const a1 = await creerAbsence({
+      matricule: 'CEF001',
+      nomComplet: 'ALAOUI Yassine',
+      filiere: 'Développement Digital',
+      date: LUNDI,
+      seance: 'S1',
+      justifiee: true,
+    });
+    const a2 = await creerAbsence({
+      matricule: 'CEF002',
+      nomComplet: 'BENANI Sara',
+      filiere: 'Génie Mécanique',
+      date: MARDI,
+      seance: 'S2',
+      typeAbsence: 'retard',
+      justifiee: true,
+    });
+
+    const reponse = await demanderBillets([a1.id, a2.id], 'xlsx');
+    expect(reponse.status).toBe(200);
+
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(reponse.body);
+    const feuille = classeur.worksheets[0];
+
+    expect(feuille.getRow(2).getCell(1).value).toBe('ALAOUI');
+    expect(feuille.getRow(2).getCell(5).value).toBe('Absence');
+    expect(feuille.getRow(3).getCell(1).value).toBe('BENANI');
+    expect(feuille.getRow(3).getCell(5).value).toBe('Retard');
+  });
+
+  it('rend un .docx exploitable pour plusieurs billets', async () => {
+    const a1 = await creerAbsence({ matricule: 'CEF001', nomComplet: 'ALAOUI Yassine', date: LUNDI, justifiee: true });
+    const a2 = await creerAbsence({
+      matricule: 'CEF002',
+      nomComplet: 'BENANI Sara',
+      date: MARDI,
+      seance: 'S2',
+      justifiee: true,
+    });
+
+    const reponse = await demanderBillets([a1.id, a2.id], 'docx');
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-type']).toContain('wordprocessingml.document');
+    expect(reponse.body.subarray(0, 2).toString()).toBe('PK');
+  });
+
+  it('⚠️ REFUSE dès qu’UNE SEULE des absences demandées n’est pas justifiée', async () => {
+    const justifiee = await creerAbsence({ matricule: 'CEF001', nomComplet: 'ALAOUI Yassine', date: LUNDI, justifiee: true });
+    const nonJustifiee = await creerAbsence({
+      matricule: 'CEF002',
+      nomComplet: 'BENANI Sara',
+      date: MARDI,
+      seance: 'S2',
+    });
+
+    const reponse = await demanderBilletsErreur([justifiee.id, nonJustifiee.id]);
+
+    expect(reponse.status).toBe(400);
+    expect(reponse.body.code).toBe('ABSENCE_NON_JUSTIFIEE');
+  });
+
+  it('réservée à l’encadrement : un formateur ne peut pas les télécharger', async () => {
+    const absence = await creerAbsence({ matricule: 'CEF001', nomComplet: 'ALAOUI Yassine', date: LUNDI, justifiee: true });
+
+    const reponse = await demanderBillets([absence.id], 'pdf', 'formateur');
+
+    expect(reponse.status).toBe(403);
+  });
+
+  it('refuse une liste vide et un identifiant introuvable', async () => {
+    expect((await demanderBillets([])).status).toBe(400);
+    expect((await demanderBillets(['000000000000000000000000'])).status).toBe(404);
   });
 });

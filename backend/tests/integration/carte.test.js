@@ -8,6 +8,9 @@ import { Base } from '../../src/models/Base.js';
 import { EnoteImport } from '../../src/models/EnoteImport.js';
 import { Repartition } from '../../src/models/Repartition.js';
 import { Stagiaire } from '../../src/models/Stagiaire.js';
+import { Chronogramme } from '../../src/models/Chronogramme.js';
+import { Seance } from '../../src/models/Seance.js';
+import { AbsenceStagiaire } from '../../src/models/AbsenceStagiaire.js';
 import { ROLES, STATUTS_COMPTE } from 'shared/constants';
 
 vi.mock('../../src/config/mailer.js', () => ({
@@ -75,10 +78,37 @@ beforeEach(async () => {
     ligneDrif({
       secteur: 'Génie électrique',
       codeFiliereDrif: 'GE_GE_TS',
+      /*
+       * ⚠️ SON PROPRE CODE CARTE (2026-09-26). Sans cette ligne, la surcharge
+       *    laissait le défaut `DEVOWFS_S` : une ligne dont le code DRIF était
+       *    `GE_GE_TS` mais le code CARTE `DEVOWFS_S`. La fixture était
+       *    incohérente, et personne ne l'avait vu tant que rien ne lisait le
+       *    code carte.
+       */
+      codeFiliereCarte: 'GE_GE_TS',
       intituleFiliere: 'Génie électrique',
       creneau: 'CDS',
       codeModule: 'M210',
       module: 'Électrotechnique',
+    }),
+    /*
+     * ═══ ⚠️ LA FILIÈRE DONT LES DEUX CODES DIFFÈRENT ═══ (2026-09-26)
+     * C'est le SEUL cas qui distingue les deux colonnes — et il manquait. Sans
+     * lui, toutes les fixtures portaient le même code des deux côtés, et les
+     * tests restaient verts quelle que soit la colonne interrogée : aucun
+     * pouvoir de détection. Modelé sur le cas réel qui a révélé le défaut,
+     * `GM_OPCM_Q` (DRIF) / `CM_OPCM_Q` (carte).
+     */
+    ligneDrif({
+      secteur: 'Génie Mécanique',
+      niveauFormation: 'Q',
+      codeFiliereDrif: 'GM_OPCM_Q',
+      codeFiliereCarte: 'CM_OPCM_Q',
+      intituleFiliere: 'Ouvrier Polyvalent en Construction Métallique',
+      filiere: 'Ouvrier Polyvalent en Construction Métallique',
+      anneeFormation: 1,
+      codeModule: 'M104',
+      module: 'Soudage',
     }),
   ]);
 
@@ -91,7 +121,9 @@ beforeEach(async () => {
 describe('Cascade de la répartition DRIF', () => {
   it('descend secteur → niveau → année → filière → modules', async () => {
     const secteurs = await request(app).get('/api/v2/repartitions/secteurs').set('Cookie', cookies);
-    expect(secteurs.body.secteurs).toEqual(['Digital', 'Génie électrique']);
+    // ⚠️ L'ordre est celui de MongoDB (octets), pas celui d'un dictionnaire
+    //    français : « Génie électrique » précède « Génie Mécanique ».
+    expect(secteurs.body.secteurs).toEqual(['Digital', 'Génie électrique', 'Génie Mécanique']);
 
     const annees = await request(app)
       .get('/api/v2/repartitions/annees?secteur=Digital&niveau=TS')
@@ -113,6 +145,45 @@ describe('Cascade de la répartition DRIF', () => {
     expect(modules.body.filiere).toMatchObject({ secteur: 'Digital', niveau: 'TS' });
   });
 
+  it('sert le code CARTE à la carte, jamais le code DRIF', async () => {
+    /*
+     * ═══ ⚠️ LE TEST QUI PORTE LA BASCULE ═══ (2026-09-26)
+     * Une carte stocke le code CARTE — c'est celui de la base e-note. Ces
+     * routes cherchaient sur le code DRIF : mesuré sur ISTA BEN M'SIK,
+     * `codeFiliereDrif = 'CM_OPCM_Q'` rendait **0 ligne**, et les modules
+     * affichés venaient alors des seules affectations — le module non encore
+     * affecté restait INVISIBLE pendant que l'écran annonçait « tout affecté ».
+     *
+     * ⚠️ Ce test n'a de valeur que parce que la fixture `GM_OPCM_Q` /
+     *    `CM_OPCM_Q` porte DEUX codes différents. Avec des codes identiques —
+     *    le cas de toutes les autres fixtures — il serait vert quelle que soit
+     *    la colonne interrogée.
+     */
+    const filieres = await request(app)
+      .get('/api/v2/repartitions/filieres?secteur=Génie Mécanique&niveau=Q&annee=1')
+      .set('Cookie', cookies);
+
+    expect(filieres.body.filieres.map((f) => f.code)).toEqual(['CM_OPCM_Q']);
+
+    const parCarte = await request(app)
+      .get('/api/v2/repartitions/modules?filiere=CM_OPCM_Q&annee=1')
+      .set('Cookie', cookies);
+    expect(parCarte.body.modules.map((m) => m.code)).toEqual(['M104']);
+    expect(parCarte.body.filiere).toMatchObject({ code: 'CM_OPCM_Q', codeDrif: 'GM_OPCM_Q' });
+
+    // ⚠️ Et le code DRIF ne doit PLUS rien rendre à la carte : deux clés
+    //    vivantes finiraient par désigner deux ensembles différents.
+    const parDrif = await request(app)
+      .get('/api/v2/repartitions/modules?filiere=GM_OPCM_Q&annee=1')
+      .set('Cookie', cookies);
+    expect(parDrif.body.modules).toEqual([]);
+
+    const multiples = await request(app)
+      .get('/api/v2/repartitions/modules-multiples?ensembles=CM_OPCM_Q:1')
+      .set('Cookie', cookies);
+    expect(multiples.body.ensembles['CM_OPCM_Q||1'].modules.map((m) => m.code)).toEqual(['M104']);
+  });
+
   it('filtre par créneau, et « ALL » ne filtre pas', async () => {
     const cds = await request(app)
       .get('/api/v2/repartitions/secteurs')
@@ -127,7 +198,7 @@ describe('Cascade de la répartition DRIF', () => {
     const tous = await request(app)
       .get('/api/v2/repartitions/filieres?creneau=ALL')
       .set('Cookie', cookies);
-    expect(tous.body.filieres).toHaveLength(2);
+    expect(tous.body.filieres).toHaveLength(3);
   });
 
   /*
@@ -505,6 +576,323 @@ describe('Enregistrement de la carte', () => {
     expect(base.affectations).toHaveLength(1);
   });
 
+describe('Retrait d’un groupe — la cascade (2026-09-22)', () => {
+  /*
+   * ═══ ⚠️ POURQUOI CE PARCOURS EST GARDÉ DE BOUT EN BOUT ═══
+   * MongoDB n'a pas de `ON DELETE CASCADE`. Retirer un groupe de la carte le
+   * faisait disparaître de `Base` en laissant neuf collections pointer sur un
+   * nom mort — sept chronogrammes orphelins constatés sur un établissement
+   * réel, dont un de 957,5 h.
+   *
+   * Et la contrepartie est aussi dangereuse : la carte est remplacée à CHAQUE
+   * enregistrement et à chaque import e-note. Une cascade automatique voudrait
+   * dire qu'une feuille Excel manquante efface une année de travail. D'où le
+   * refus chiffré, puis le oui explicite.
+   */
+  const aDeuxGroupes = () => ({
+    ...carte,
+    groupes: [
+      carte.groupes[0],
+      { ...carte.groupes[0], nom: 'DEVOWFS202' },
+    ],
+  });
+
+  async function poserLesReferences() {
+    await Chronogramme.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      groupe: 'DEVOWFS202',
+      planning: { M201: [{ semaine: 'S3', heures: 30, type: 'P' }] },
+    });
+    await Seance.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      semaine: '2026-W3',
+      jour: 'Lundi',
+      seance: 'S1',
+      date: new Date('2026-09-14'),
+      formateurMatricule: '9863',
+      groupe: 'DEVOWFS202',
+      module: 'M201',
+    });
+    await Stagiaire.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      matricule: 'CEF1',
+      groupes: ['DEVOWFS202', 'DEVOWFS201'],
+    });
+    await AbsenceStagiaire.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      matricule: 'CEF1',
+      nomComplet: 'STAGIAIRE TEST',
+      groupe: 'DEVOWFS202',
+      date: '2026-09-14',
+      semaine: '2026-W3',
+      jour: 'Lundi',
+      seance: 'S1',
+    });
+  }
+
+  it('REFUSE en 409 et chiffre ce qui serait détruit', async () => {
+    await request(app).post('/api/v2/base/carte').set('Cookie', cookies).send(aDeuxGroupes());
+    await poserLesReferences();
+
+    const reponse = await request(app)
+      .post('/api/v2/base/carte')
+      .set('Cookie', cookies)
+      .send(carte);
+
+    expect(reponse.status).toBe(409);
+    expect(reponse.body.code).toBe('GROUPES_ENCORE_UTILISES');
+
+    const detail = reponse.body.details.find((d) => d.groupe === 'DEVOWFS202');
+    /*
+     * ⚠️ LES CHIFFRES, PAS SEULEMENT LE REFUS. « Des références existent »
+     *    ferait confirmer à l'aveugle ; c'est sur « 30 h de chronogramme, une
+     *    séance, un stagiaire » que le directeur décide réellement.
+     */
+    expect(detail).toMatchObject({
+      chronogramme: 1,
+      heuresPlanifiees: 30,
+      seances: 1,
+      stagiairesADetacher: 1,
+    });
+  });
+
+  it('N’A RIEN DÉTRUIT quand il refuse — la transaction est annulée', async () => {
+    /*
+     * ═══ ⚠️ LE TEST QUI COMPTE LE PLUS ═══ Un refus qui aurait déjà supprimé
+     *    la carte laisserait l'établissement SANS BASE, et la cascade à
+     *    moitié faite. Le refus est levé DANS la transaction, précisément pour
+     *    que tout soit rendu.
+     */
+    await request(app).post('/api/v2/base/carte').set('Cookie', cookies).send(aDeuxGroupes());
+    await poserLesReferences();
+
+    await request(app).post('/api/v2/base/carte').set('Cookie', cookies).send(carte);
+
+    const base = await Base.findOne({ etablissementId: etablissement.id, anneeScolaire: ANNEE });
+    expect(base.groupes).toContain('DEVOWFS202');
+    expect(await Chronogramme.countDocuments({ groupe: 'DEVOWFS202' })).toBe(1);
+    expect(await Seance.countDocuments({ groupe: 'DEVOWFS202' })).toBe(1);
+  });
+
+  it('CASCADE sur confirmation explicite, et rend le détail de ce qu’elle a fait', async () => {
+    await request(app).post('/api/v2/base/carte').set('Cookie', cookies).send(aDeuxGroupes());
+    await poserLesReferences();
+
+    const reponse = await request(app)
+      .post('/api/v2/base/carte')
+      .set('Cookie', cookies)
+      .send({ ...carte, confirmerSuppressions: true });
+
+    expect(reponse.status).toBe(201);
+    expect(reponse.body.cascade).toMatchObject({
+      groupes: ['DEVOWFS202'],
+      chronogrammes: 1,
+      seances: 1,
+      stagiaires: 1,
+    });
+
+    expect(await Chronogramme.countDocuments({ groupe: 'DEVOWFS202' })).toBe(0);
+    expect(await Seance.countDocuments({ groupe: 'DEVOWFS202' })).toBe(0);
+  });
+
+  it('DÉTACHE le stagiaire au lieu de le supprimer, et garde son autre groupe', async () => {
+    /*
+     * ═══ ⚠️ UN STAGIAIRE EST UNE PERSONNE ═══ (décision du porteur, 2026-09-22)
+     * Le supprimer parce qu'un groupe ferme effacerait un compte et, ici, son
+     * appartenance à DEVOWFS201 — un groupe qui n'a rien demandé.
+     */
+    await request(app).post('/api/v2/base/carte').set('Cookie', cookies).send(aDeuxGroupes());
+    await poserLesReferences();
+
+    await request(app)
+      .post('/api/v2/base/carte')
+      .set('Cookie', cookies)
+      .send({ ...carte, confirmerSuppressions: true });
+
+    const stagiaire = await Stagiaire.findOne({ matricule: 'CEF1' });
+    expect(stagiaire).not.toBeNull();
+    expect(stagiaire.groupes).toEqual(['DEVOWFS201']);
+  });
+
+  it('CONSERVE l’historique disciplinaire, qui n’appartient pas au groupe', async () => {
+    /*
+     * ⚠️ `AbsenceStagiaire` dénormalise `nomComplet` « pour que la note reste
+     *    lisible si le stagiaire quitte le groupe » — son propre commentaire de
+     *    schéma. L'effacer contredirait l'intention du modèle, et ferait
+     *    disparaître une pièce opposable.
+     */
+    await request(app).post('/api/v2/base/carte').set('Cookie', cookies).send(aDeuxGroupes());
+    await poserLesReferences();
+
+    await request(app)
+      .post('/api/v2/base/carte')
+      .set('Cookie', cookies)
+      .send({ ...carte, confirmerSuppressions: true });
+
+    expect(await AbsenceStagiaire.countDocuments({ groupe: 'DEVOWFS202' })).toBe(1);
+  });
+
+  it('n’exige AUCUNE confirmation pour un groupe que rien ne référence', async () => {
+    // Retirer un groupe vide doit rester un geste sans friction.
+    await request(app).post('/api/v2/base/carte').set('Cookie', cookies).send(aDeuxGroupes());
+
+    const reponse = await request(app)
+      .post('/api/v2/base/carte')
+      .set('Cookie', cookies)
+      .send(carte);
+
+    expect(reponse.status).toBe(201);
+  });
+
+  it('ne touche à RIEN quand aucun groupe ne disparaît', async () => {
+    /*
+     * ⚠️ LE CAS ORDINAIRE, et le plus fréquent : on réenregistre après avoir
+     *    corrigé une masse horaire. Une cascade qui se déclencherait ici serait
+     *    la catastrophe que ce garde-fou existe pour empêcher.
+     */
+    await request(app).post('/api/v2/base/carte').set('Cookie', cookies).send(aDeuxGroupes());
+    await poserLesReferences();
+
+    const reponse = await request(app)
+      .post('/api/v2/base/carte')
+      .set('Cookie', cookies)
+      .send(aDeuxGroupes());
+
+    expect(reponse.status).toBe(201);
+    expect(reponse.body.cascade).toBeNull();
+    expect(await Chronogramme.countDocuments({ groupe: 'DEVOWFS202' })).toBe(1);
+  });
+});
+
+  describe('salles par module (2026-09-23)', () => {
+    /*
+     * ═══ ⚠️ LA PROPRIÉTÉ QUI A DÉJÀ COÛTÉ UNE PERTE DE DONNÉES ═══
+     * Le format e-note n'a AUCUNE colonne de salle — vérifié aussi dans
+     * l'ancien EDT Pro, qui n'attribue des salles qu'au formateur. Les salles
+     * par module voyagent donc à côté des lignes, et doivent survivre à
+     * l'aller-retour `carte → base → carte`.
+     *
+     * ⚠️ Le présentateur de `base.service.js` porte l'avertissement en toutes
+     *    lettres : c'est « le même oubli que `espaces`, qui faisait effacer les
+     *    salles au premier enregistrement ». Ce test est là pour que cela
+     *    n'arrive pas une troisième fois.
+     */
+    const avecSalles = () => ({
+      ...carte,
+      groupes: [
+        {
+          ...carte.groupes[0],
+          modules: carte.groupes[0].modules.map((module, rang) =>
+            rang === 0 ? { ...module, salles: ['Atelier FM', 'Salle 2'] } : module
+          ),
+        },
+      ],
+    });
+
+    /*
+     * ⚠️ DEUX GROUPES, DEUX SALLES DIFFÉRENTES POUR LE MÊME MODULE
+     *    (correction du porteur, 2026-09-23). C'est LA propriété qu'il a
+     *    demandée, et elle se joue entièrement sur la clé : `GROUPE||MODULE`.
+     *    Une clé réduite au module ferait que le second groupe écrase le
+     *    premier — silencieusement, et seulement en base.
+     */
+    const deuxGroupes = () => ({
+      ...carte,
+      groupes: [
+        {
+          ...carte.groupes[0],
+          modules: carte.groupes[0].modules.map((module, rang) =>
+            rang === 0 ? { ...module, salles: ['Atelier FM'] } : module
+          ),
+        },
+        {
+          ...carte.groupes[0],
+          nom: 'DEVOWFS202',
+          modules: carte.groupes[0].modules.map((module, rang) =>
+            rang === 0 ? { ...module, salles: ['Salle 2'] } : module
+          ),
+        },
+      ],
+    });
+
+    const cleDe = (groupe) =>
+      `${groupe}||${carte.groupes[0].modules[0].code}`.toUpperCase();
+
+    it('garde des salles DIFFÉRENTES pour le même module dans deux groupes', async () => {
+      const reponse = await request(app)
+        .post('/api/v2/base/carte')
+        .set('Cookie', cookies)
+        .send(deuxGroupes());
+
+      expect(reponse.status).toBe(201);
+
+      const base = await Base.findOne({ etablissementId: etablissement.id, anneeScolaire: ANNEE });
+      expect(base.sallesAffectations.get(cleDe('DEVOWFS201'))).toEqual(['Atelier FM']);
+      expect(base.sallesAffectations.get(cleDe('DEVOWFS202'))).toEqual(['Salle 2']);
+    });
+
+    it('les rend SÉPARÉMENT à la relecture, sans qu’un groupe prenne la salle de l’autre', async () => {
+      await request(app).post('/api/v2/base/carte').set('Cookie', cookies).send(deuxGroupes());
+
+      const lecture = await request(app).get('/api/v2/base').set('Cookie', cookies);
+      const table =
+        lecture.body.base?.sallesAffectations ?? lecture.body.sallesAffectations ?? {};
+
+      expect(table[cleDe('DEVOWFS201')]).toEqual(['Atelier FM']);
+      expect(table[cleDe('DEVOWFS202')]).toEqual(['Salle 2']);
+    });
+
+    it('ENREGISTRE les salles déclarées, rangées hors des lignes', async () => {
+      const reponse = await request(app)
+        .post('/api/v2/base/carte')
+        .set('Cookie', cookies)
+        .send(avecSalles());
+
+      expect(reponse.status).toBe(201);
+
+      const base = await Base.findOne({ etablissementId: etablissement.id, anneeScolaire: ANNEE });
+      const cle = `DEVOWFS201||${carte.groupes[0].modules[0].code}`.toUpperCase();
+      expect(base.sallesAffectations.get(cle)).toEqual(['Atelier FM', 'Salle 2']);
+    });
+
+    it('LES REND à l’écran, sans quoi le prochain enregistrement les effacerait', async () => {
+      await request(app).post('/api/v2/base/carte').set('Cookie', cookies).send(avecSalles());
+
+      const lecture = await request(app).get('/api/v2/base').set('Cookie', cookies);
+
+      const cle = `DEVOWFS201||${carte.groupes[0].modules[0].code}`.toUpperCase();
+      expect(lecture.body.base?.sallesAffectations?.[cle] ?? lecture.body.sallesAffectations?.[cle])
+        .toEqual(['Atelier FM', 'Salle 2']);
+    });
+
+    it('SURVIT à un second enregistrement de la même carte', async () => {
+      /*
+       * ⚠️ LE VRAI ALLER-RETOUR : l'écran renvoie la carte qu'il a reçue. Si le
+       *    champ ne circulait pas, ce second enregistrement — parfaitement
+       *    anodin du point de vue du directeur — effacerait toute la saisie.
+       */
+      await request(app).post('/api/v2/base/carte').set('Cookie', cookies).send(avecSalles());
+      await request(app).post('/api/v2/base/carte').set('Cookie', cookies).send(avecSalles());
+
+      const base = await Base.findOne({ etablissementId: etablissement.id, anneeScolaire: ANNEE });
+      const cle = `DEVOWFS201||${carte.groupes[0].modules[0].code}`.toUpperCase();
+      expect(base.sallesAffectations.get(cle)).toEqual(['Atelier FM', 'Salle 2']);
+    });
+
+    it('n’écrit RIEN pour un module sans salle déclarée', async () => {
+      // Une entrée vide par module gonflerait le document et rendrait
+      // indiscernable « aucune salle imposée » de « salles effacées ».
+      await request(app).post('/api/v2/base/carte').set('Cookie', cookies).send(carte);
+
+      const base = await Base.findOne({ etablissementId: etablissement.id, anneeScolaire: ANNEE });
+      expect(base.sallesAffectations.size).toBe(0);
+    });
+  });
+
   it('refuse une carte sans groupe', async () => {
     const reponse = await request(app)
       .post('/api/v2/base/carte')
@@ -696,6 +1084,38 @@ describe('Enregistrement de la carte', () => {
     expect(parNom.get('AHMED CHERKAOUI')).toBe('a.cherkaoui@ofppt.ma');
     // Colonne « Email » laissée vide : l'adresse déduite s'applique toujours.
     expect(parNom.get('FATIMA BENALI')).toBe('fatima.benali@ofppt.ma');
+  });
+
+  it('⚠️ GARDE un formateur qu’aucun module ne nomme', async () => {
+    /*
+     * `construireBase` ne connaît un formateur que par les lignes qui le nomment.
+     * Un formateur ajouté depuis la page Formateurs — pas encore affecté — n'en a
+     * aucune : le premier enregistrement de la carte le faisait disparaître.
+     */
+    const reponse = await request(app)
+      .post('/api/v2/base/carte')
+      .set('Cookie', cookies)
+      .send({
+        ...carte,
+        formateurs: [
+          ...carte.formateurs,
+          { nom: 'KARIM ALAMI', matricule: '7777', masseHoraire: 600 },
+          { nom: 'SANS MATRICULE', matricule: '' },
+        ],
+      });
+    expect(reponse.status).toBe(201);
+
+    const base = await Base.findOne({ etablissementId: etablissement.id });
+    const parNom = new Map(base.formateurs.map((f) => [f.nomComplet, f]));
+
+    expect(parNom.get('KARIM ALAMI')).toMatchObject({
+      matricule: '7777',
+      masseHoraire: 600,
+      email: 'karim.alami@ofppt.ma',
+    });
+    expect(parNom.has('SANS MATRICULE')).toBe(true);
+    // Aucune affectation inventée pour eux.
+    expect(base.affectations).toHaveLength(2);
   });
 
   it("un réenregistrement sans email ne perd pas l'adresse déjà connue", async () => {

@@ -12,7 +12,7 @@ import { Chronogramme } from '../../models/Chronogramme.js';
 import { Base } from '../../models/Base.js';
 import { Seance } from '../../models/Seance.js';
 import { depuisMongo, versMongo } from '../chronogramme/chronogramme.service.js';
-import { intitulesModules } from '../../lib/intitulesModules.js';
+import { cleGroupeModule, intitulesParGroupe } from '../../lib/intitulesModules.js';
 import { conflict, notFound } from '../../lib/httpError.js';
 
 /**
@@ -36,7 +36,7 @@ import { conflict, notFound } from '../../lib/httpError.js';
  * Appelé à CHAQUE écriture de séance — c'est ce qui remplace la synchro par
  * différence de `save_timetable.php`.
  */
-export async function synchroniser(seance, { session } = {}) {
+export async function synchroniser(seance, { session, precharge = null } = {}) {
   const cle = {
     etablissementId: seance.etablissementId,
     semaine: seance.semaine,
@@ -52,7 +52,16 @@ export async function synchroniser(seance, { session } = {}) {
      * marquée laisserait un rattrapage prévu pour un cours qui a bien eu lieu.
      * Le report d'heures déjà inscrit au chronogramme est repris d'abord.
      */
-    const existante = await AbsenceFormateur.findOne(cle).session(session ?? null);
+    /*
+     * ⚠️ LA MÉMOIRE DE TRANSACTION D'ABORD (`memoPose`, 2026-09-28) : elle rend
+     *    exactement ce que cette requête aurait rendu ; `undefined` = pas de
+     *    mémoire, on interroge la base comme avant.
+     */
+    const memorisee = precharge?.obtenirAbsence?.(cle);
+    const existante =
+      memorisee !== undefined
+        ? memorisee
+        : await AbsenceFormateur.findOne(cle).session(session ?? null);
     if (!existante) return null;
 
     if (existante.dateRattrapage) {
@@ -68,6 +77,7 @@ export async function synchroniser(seance, { session } = {}) {
       await Seance.deleteOne({ _id: existante.seanceRattrapageId }, { session });
     }
     await AbsenceFormateur.deleteOne({ _id: existante._id }, { session });
+    precharge?.noterAbsence?.(cle, null);
     return null;
   }
 
@@ -87,19 +97,23 @@ export async function synchroniser(seance, { session } = {}) {
     },
     { upsert: true, new: true, setDefaultsOnInsert: true, session }
   );
+  // La mémoire de transaction suit : une pose suivante sur ce créneau la verra.
+  precharge?.noterAbsence?.(cle, document);
 
   return document;
 }
 
 /** Le registre, du plus récent au plus ancien — ← `get_absences.php`. */
-export async function lister(etablissementId, anneeScolaire, { rattrapees } = {}) {
+export async function lister(etablissementId, anneeScolaire, { rattrapees, formateurMatricule } = {}) {
   const filtre = { etablissementId, anneeScolaire };
+  // Les seules absences d'un formateur — sa page « Compte » (2026-09-23).
+  if (formateurMatricule) filtre.formateurMatricule = formateurMatricule;
   if (rattrapees === true) filtre.dateRattrapage = { $ne: null };
   if (rattrapees === false) filtre.dateRattrapage = null;
 
   const [absences, base] = await Promise.all([
     AbsenceFormateur.find(filtre).sort({ dateAbsence: -1, _id: -1 }).lean(),
-    Base.findOne({ etablissementId, anneeScolaire }).select('formateurs').lean(),
+    Base.findOne({ etablissementId, anneeScolaire }).select('formateurs affectations groupes groupeFilieres').lean(),
   ]);
 
   /*
@@ -134,7 +148,10 @@ export async function lister(etablissementId, anneeScolaire, { rattrapees } = {}
 
   // Le nom complet du module, pour la carte du créneau (2026-09-17) — la même
   // carte que l'agenda de « Mon emploi du temps », qui l'affiche sous le code.
-  const intitules = await intitulesModules([...new Set(absences.map((a) => a.module).filter(Boolean))]);
+  // ⚠️ DANS LA FILIÈRE DU GROUPE de l'absence, pas par code seul (2026-09-28).
+  const intitules = absences.length
+    ? await intitulesParGroupe(base, absences)
+    : new Map();
 
   return absences.map((absence) => {
     const manquee = seanceParId.get(String(absence.seanceId));
@@ -146,7 +163,7 @@ export async function lister(etablissementId, anneeScolaire, { rattrapees } = {}
       ...presenterAbsence(absence, noms),
       salle: manquee?.salle ?? '',
       periode: manquee?.periode ?? 'jour',
-      moduleIntitule: intitules[absence.module] ?? '',
+      moduleIntitule: intitules.get(cleGroupeModule(absence.groupe, absence.module)) ?? '',
       rattrapage: rattrapage ? presenterRattrapage(rattrapage) : null,
     };
   });

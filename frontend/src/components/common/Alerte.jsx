@@ -43,8 +43,14 @@ const TYPES = {
    * signale un problème et banalise l'alerte quand tout va bien.
    */
   avertissement: { Icone: TriangleAlert, variant: 'default', couleurIcone: 'text-warning' },
-  // La variante `destructive` colore déjà son icône, inutile de la surcharger.
-  erreur: { Icone: CircleAlert, variant: 'destructive', couleurIcone: null },
+  /*
+   * ⚠️ FOND AJOUTÉ (2026-09-27, demande du porteur) : la variante `destructive`
+   * de shadcn ne pose qu'une bordure et un texte rouges, sans fond — sur un
+   * fond de page blanc, l'encart d'erreur se distinguait à peine d'un texte
+   * rouge ordinaire. 5 % d'opacité, comme `info` : assez pour se détacher, pas
+   * un aplat saturé (le design system les proscrit).
+   */
+  erreur: { Icone: CircleAlert, variant: 'destructive', couleurIcone: null, classe: 'bg-destructive/5' },
 };
 
 /**

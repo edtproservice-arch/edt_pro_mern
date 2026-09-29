@@ -3,10 +3,18 @@ import { env } from './config/env.js';
 import { connectDatabase } from './config/db.js';
 import { logger } from './lib/logger.js';
 import { attacherTempsReel } from './modules/tempsReel/serveur.js';
+import { retenirToutesLesRentrees } from './modules/calendrierNational/calendrierNational.service.js';
 
 /** Point d'entrée : connexion base + écoute. Rien d'autre. */
 async function demarrer() {
   await connectDatabase();
+  /*
+   * ⚠️ L'ANCRE DE S1 AVANT D'ÉCOUTER (2026-09-28) : S1 est la semaine de la
+   *    rentrée, et une requête servie avant ce chargement daterait ses
+   *    semaines sur le 1er septembre.
+   */
+  const annees = await retenirToutesLesRentrees();
+  logger.info(`Rentrées retenues pour ${annees} année(s) scolaire(s)`);
 
   const app = createApp();
   const server = app.listen(env.PORT, () => {

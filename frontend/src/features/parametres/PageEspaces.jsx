@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import EtapeEspaces from '@/features/configuration/etapes/EtapeEspaces';
 import { enregistrerEspaces } from '@/features/configuration/api';
@@ -5,6 +6,7 @@ import EnTetePartage from '@/features/partages/EnTetePartage';
 import { useDroitPage } from '@/features/partages/useDroitPage';
 import { proprietesEnregistrement } from '@/lib/useBrouillonVersionne';
 import CadreReglage from './CadreReglage';
+import { useEspacesMutualises } from './EspacesMutualises';
 import { useListeEtablissement } from './useListeEtablissement';
 
 /**
@@ -27,6 +29,23 @@ export default function PageEspaces() {
       toast.success('Espaces enregistrés', { description: `${resultat.valeur.length} espace(s).` }),
   });
 
+  // Les boutons vont sur la ligne « Vos espaces », l'explication et les fenêtres en dessous.
+  const mutualisation = useEspacesMutualises({ lectureSeule });
+
+  /*
+   * ⚠️ « TEAMS » POSÉ D'OFFICE SUR UNE LISTE VIDE (2026-09-19, demande du porteur), UNE SEULE
+   * FOIS, au chargement : l'établissement neuf a sa classe à distance sans la saisir. Une
+   * liste qui se vide ENSUITE — quelqu'un retire tout — n'est pas retouchée : la garde
+   * ne joue qu'à l'arrivée de la donnée.
+   */
+  const teamsPose = useRef(false);
+  useEffect(() => {
+    if (teamsPose.current || !liste.charge || lectureSeule) return;
+    teamsPose.current = true;
+    if ((liste.brouillon ?? []).length === 0) liste.setBrouillon(['TEAMS']);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liste.charge, lectureSeule]);
+
   return (
     <>
       <EnTetePartage page="espaces" clesARelire={[['etablissement-courant']]} />
@@ -36,11 +55,18 @@ export default function PageEspaces() {
         erreur={liste.contexte.isError ? liste.contexte.error.message : null}
         {...proprietesEnregistrement(liste, lectureSeule)}
       >
-        <EtapeEspaces
-          valeur={liste.brouillon ?? []}
-          onChange={liste.setBrouillon}
-          lectureSeule={lectureSeule}
-        />
+        <div className="space-y-8">
+          <EtapeEspaces
+            valeur={liste.brouillon ?? []}
+            onChange={liste.setBrouillon}
+            lectureSeule={lectureSeule}
+            actionsListe={mutualisation.boutons}
+            mutualises={mutualisation.liste}
+          />
+
+          {/* Partager un espace avec un autre établissement (2026-09-21). */}
+          {mutualisation.section}
+        </div>
       </CadreReglage>
     </>
   );

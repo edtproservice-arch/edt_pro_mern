@@ -19,6 +19,8 @@ export {
   lundiPremiereSemaine,
 } from './anneeScolaire.js';
 
+export { oublierRentrees, rentreesRetenues, retenirRentrees } from './ancres.js';
+
 export {
   analyserSemaine,
   libelleSemaine,
@@ -26,6 +28,7 @@ export {
   datesDeLaSemaine,
   lundiDeLaSemaine,
   normaliserValeurSemaine,
+  semaineAffichable,
   semaineDansAnnee,
   semaineDe,
   valeurSemaine,
@@ -55,3 +58,17 @@ export {
   fusionnerVacances,
   joursAvantRentree,
 } from './rentree.js';
+
+/*
+ * Ce qu'une nouvelle période (stage, vacances, formation) supprime — 2026-09-23.
+ */
+export {
+  cellulesNouvellementFermees,
+  joursDesPeriodes,
+  motifDeSuppression,
+  nonPlaceesDesSeances,
+  nouvellesFermetures,
+  resumeVide,
+  resumerSuppressions,
+  semainesFermees,
+} from './fermetures.js';

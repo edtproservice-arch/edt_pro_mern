@@ -59,6 +59,15 @@ function canoniser(valeur) {
  * caractérisation compare le CONTENU, pas la convention de nommage.
  */
 function versFormatPhp(structure) {
+  /*
+   * ⚠️ ÉCART VOLONTAIRE AVEC PHP (décision du 2026-09-28) : la masse d'un
+   * formateur nouveau est désormais 910 h (0 h pour un vacataire), là où
+   * `parse_base_rows.php` prenait la somme des heures affectées. Cette somme
+   * reste calculée dans `heuresAffectees` : c'est elle qu'on compare à PHP, de
+   * sorte que la caractérisation vérifie encore tout le reste octet à octet.
+   */
+  const masseCommePhp = (f) => (f.estNouveau === false ? f.masseHoraire : f.heuresAffectees);
+
   return {
     formateurs: structure.formateurs.map((f) => ({
       matricule: f.matricule,
@@ -69,13 +78,13 @@ function versFormatPhp(structure) {
       nom_complet: f.nomComplet,
       email: f.email,
       matricule: f.matricule,
-      masse_horaire: f.masseHoraire,
+      masse_horaire: masseCommePhp(f),
       est_nouveau: f.estNouveau,
     })),
     nouveaux_formateurs: structure.nouveauxFormateurs.map((f) => ({
       matricule: String(f.matricule),
       nom_complet: f.nomComplet,
-      masse_horaire: f.masseHoraire,
+      masse_horaire: f.heuresAffectees,
     })),
     formateurs_sans_matricule: structure.formateursSansMatricule,
     groupes: structure.groupes,
@@ -234,9 +243,20 @@ describe('construireBase — règles', () => {
     expect(base.formateursDetails[0].email).toBe('rachid.benoit@ofppt.ma');
   });
 
-  it('déduit la masse horaire d\'un formateur inconnu de ses affectations', () => {
+  it('donne 910 h statutaires à un formateur inconnu, pas la somme de ses affectations', () => {
     const base = construireBase([construire({ partS1: '30', partS2: '30', mhp: '60' })]);
-    expect(base.nouveauxFormateurs[0].masseHoraire).toBe(60);
+    expect(base.nouveauxFormateurs[0]).toMatchObject({ masseHoraire: 910, heuresAffectees: 60 });
+    expect(base.formateursDetails[0].masseHoraire).toBe(910);
+  });
+
+  it('donne 0 h à un vacataire (matricule non numérique)', () => {
+    const base = construireBase([construire({ matriculeP: 'PB134876' })]);
+    expect(base.nouveauxFormateurs[0]).toMatchObject({ masseHoraire: 0, heuresAffectees: 60 });
+  });
+
+  it('donne 0 h à un formateur sans matricule', () => {
+    const base = construireBase([construire({ matriculeP: '' })]);
+    expect(base.nouveauxFormateurs[0].masseHoraire).toBe(0);
   });
 
   it('conserve la masse horaire déjà saisie par l\'établissement', () => {

@@ -6,7 +6,9 @@ import { recupererSession } from '@/features/auth/api';
 import { chargerEtablissementCourant } from '@/features/configuration/api';
 import DialogueMotDePasse from './DialogueMotDePasse';
 import DialogueEditerProfil from './DialogueEditerProfil';
+import DialogueNomAbrege from './DialogueNomAbrege';
 import TableauAppareils from './TableauAppareils';
+import SectionFiche from './SectionFiche';
 import { Ligne, Section } from './Reglages';
 
 /*
@@ -121,6 +123,12 @@ export default function ProfilPage() {
               description={
                 etablissement.nomAbrege ? `Nom abrégé : ${etablissement.nomAbrege}` : undefined
               }
+              // Le nom abrégé se règle par le directeur : le serveur refuse tout autre rôle.
+              action={
+                utilisateur.role === ROLES_APPLICATIFS.DIRECTEUR ? (
+                  <DialogueNomAbrege nomActuel={etablissement.nomAbrege} />
+                ) : undefined
+              }
             />
             <Ligne titre="Complexe" valeur={etablissement.complexe} description={etablissement.region} />
             <Ligne
@@ -134,6 +142,9 @@ export default function ProfilPage() {
           </>
         )}
       </Section>
+
+      {/* Matricule, CEF, filière, groupes… — les rôles importés seulement. */}
+      {!peutModifierProfil && <SectionFiche role={utilisateur.role} />}
 
       <Section titre="Sécurité du compte">
         <Ligne

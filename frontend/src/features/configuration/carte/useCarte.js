@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import {
   activerModule as activerModuleSurEnsemble,
+  definirSallesGroupe as definirSallesSurGroupe,
   projeterSynchrones,
   synchronesEffectifs,
   calculerBilan,
@@ -180,6 +181,20 @@ export function useCarte({ groupesInitiaux = [], formateursInitiaux = [] } = {})
   /** Active ou désactive un module dans tous les groupes de son ensemble. */
   const activerModule = useCallback((cle, module, actif) => {
     setGroupes((precedents) => activerModuleSurEnsemble(precedents, cle, module, actif));
+  }, []);
+
+  /**
+   * Déclare les salles où un module se donne, POUR UN GROUPE.
+   *
+   * ⚠️ PAR GROUPE, comme `affecter` et `definirMasseHoraire` (correction du
+   *    porteur, 2026-09-23) : deux groupes de la même filière suivent le même
+   *    module dans des salles différentes, et ne peuvent de toute façon pas
+   *    occuper le même atelier au même moment. Pour garnir une filière d'un
+   *    geste, c'est le bouton « copier » d'une colonne qui sert — il emporte
+   *    désormais les salles avec les formateurs.
+   */
+  const definirSallesGroupe = useCallback((nomGroupe, module, salles) => {
+    setGroupes((precedents) => definirSallesSurGroupe(precedents, nomGroupe, module, salles));
   }, []);
 
   /** Ajuste la masse horaire d'un module pour un groupe alterné / apprentissage. */
@@ -363,6 +378,7 @@ export function useCarte({ groupesInitiaux = [], formateursInitiaux = [] } = {})
     definirLignesSynchrone,
     lignesSynchronesDe,
     activerModule,
+    definirSallesGroupe,
     definirMasseHoraire,
     copierAffectations,
     ajouterFormateur,

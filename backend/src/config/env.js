@@ -43,6 +43,34 @@ const schema = z.object({
   // le message au service qu'il connaît.
   APP_URL: z.string().default('https://edtpro.ma'),
 
+  // ═══ SOLVEUR PYTHON (Phase 6) ═══
+  // Interpréteur qui exécute `ai/generateur`. « python » sur Windows,
+  // « python3 » sur la plupart des distributions Linux : la valeur par défaut
+  // ne peut donc pas convenir partout, et une variable vaut mieux qu'un essai
+  // en cascade qui masquerait un interpréteur mal installé.
+  PYTHON_BIN: z.string().default('python'),
+
+  // Borne le temps d'une résolution AU GLOUTON. Mesuré : ~27 ms par semaine,
+  // plus ~200 ms de démarrage de l'interpréteur. Un dépassement n'est donc
+  // jamais une lenteur normale — c'est un blocage, et il doit rendre la main.
+  //
+  // ⚠️ CE N'EST PLUS UN PLAFOND, C'EST UN PLANCHER (2026-09-22). Avec CP-SAT,
+  //    le délai effectif est calculé par `solveur.client.js` à partir du budget
+  //    demandé : un budget de 20 s sous un délai de 30 s tenait, mais passer le
+  //    budget à 30 s aurait fait TUER le solveur en pleine recherche, et le
+  //    symptôme aurait été « le solveur n'a pas répondu » — jamais « le budget
+  //    dépasse le délai ». Le délai suit désormais le budget de lui-même.
+  GENERATEUR_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+
+  // Temps laissé à CP-SAT pour chercher, par semaine, quand le directeur le
+  // demande. ⚠️ MESURÉ, PAS CHOISI : sur l'année réelle (38 semaines, 35 544
+  // variables booléennes par semaine), à 5 s CP-SAT ne rend RIEN — aucune
+  // séance, `UNKNOWN` sur les 37 semaines. À 20 s il rend 99,19 % contre
+  // 98,70 % au glouton. Baisser cette valeur ne rend pas la génération plus
+  // rapide : elle la rend inutile, et le repli reprendra la grille du glouton
+  // après avoir attendu pour rien.
+  GENERATEUR_BUDGET_CPSAT_MS: z.coerce.number().int().positive().default(20_000),
+
   // Origines admises à ouvrir une socket temps réel, séparées par des virgules,
   // EN PLUS de celle d'APP_URL (et de Vite en développement). Voir
   // `originesAutorisees()` : sans contrôle d'origine, n'importe quel site

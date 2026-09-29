@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BookOpen, Check, ChevronRight, ClipboardCheck, Clock, DoorOpen, Presentation, Star, User, Users } from 'lucide-react';
+import { BookOpen, Check, CheckCheck, ChevronRight, ClipboardCheck, Clock, DoorOpen, Presentation, Star, User, Users } from 'lucide-react';
 import { agendaDuSujet } from 'shared/domain';
 import Teams from '@/components/icons/Teams';
 import PanneauAppel from '@/features/absences/stagiaires/PanneauAppel';
 import Alerte from '@/components/common/Alerte';
+import { Button } from '@/components/ui/button';
 import {
   CADRE_RATTRAPAGE,
   FOND_REDUIT,
@@ -13,6 +14,7 @@ import {
 } from '@/components/common/apparenceGrille';
 import { cn } from '@/lib/utils';
 import { etatDuBloc, instantPresent } from './etatAgenda';
+import { useHorairesCourants } from '@/features/horaires/useHorairesCourants';
 
 /** L'état « en cours » change à la minute : on relit l'horloge au même pas,
  *  sans quoi une page laissée ouverte garderait la séance du matin en cours
@@ -49,12 +51,22 @@ export default function VueAgenda({
   jours,
   filtreJour,
   intitules,
+  /**
+   * `« groupe||code »` → intitulé, dans la filière du groupe (2026-09-28). Il
+   * départage un formateur qui enseigne le même code dans deux filières ;
+   * `intitules`, indexé par code seul, reste le repli.
+   */
+  intitulesParGroupe,
   /** Le formateur fait l'appel de ses séances depuis la carte (F9, 2026-09-14). */
   avecAppel = false,
+  /** `Set` des cours déjà validés — voir `AppelParGrille` pour la même clé (2026-09-29). */
+  validees,
 }) {
+  // L'horaire en vigueur — hiver, été ou ramadan, réglé par l'administrateur (2026-09-20).
+  const horaires = useHorairesCourants();
   const { heures, jours: agendaJours } = useMemo(
-    () => agendaDuSujet({ sujet, seances, axe, nomsFormateurs }),
-    [sujet, seances, axe, nomsFormateurs]
+    () => agendaDuSujet({ sujet, seances, axe, nomsFormateurs, horaires }),
+    [sujet, seances, axe, nomsFormateurs, horaires]
   );
 
   const etatDuJour = useMemo(() => new Map((jours ?? []).map((j) => [j.jour, j])), [jours]);
@@ -128,8 +140,12 @@ export default function VueAgenda({
                       bloc={bloc}
                       axe={axe}
                       temps={etatDuBloc(bloc, etat?.date, maintenant)}
-                      intitule={intitules?.[bloc.module]}
+                      intitule={
+                        intitulesParGroupe?.[`${String(bloc.groupeSeance ?? '').trim()}||${bloc.module}`] ??
+                        intitules?.[bloc.module]
+                      }
                       appel={avecAppel ? etat?.date : null}
+                      validees={validees}
                     />
                   ))}
                 </div>
@@ -250,6 +266,13 @@ export const STYLES = {
     cercle: 'border-accent-green/40 bg-accent-green/20 text-accent-green-deep',
     badge: 'border-accent-green/30 bg-accent-green/15 text-accent-green-deep',
     texte: 'text-accent-green-deep',
+    // Encre du bouton « Appel Absence » ; répétée au survol, sans quoi `outline` la passerait au noir.
+    texteBouton: 'text-accent-green-deep hover:text-accent-green-deep',
+    // ⚠️ LE BOUTON VALIDÉ RESPECTE LA COULEUR DE LA CARTE (2026-09-29, demande
+    // du porteur : « si violet le bouton met en violet, le bouton doit
+    // respecter la couleur de la carte ») — jamais un vert fixe pour toutes
+    // les natures de cours.
+    boutonValide: 'border-accent-green bg-accent-green/20 text-accent-green-deep hover:bg-accent-green/25',
     texteDoux: 'text-accent-green-deep/70',
     anneauCercle: 'ring-2 ring-accent-green/60 ring-offset-2 ring-offset-background',
     point: 'bg-accent-green',
@@ -269,6 +292,8 @@ export const STYLES = {
     // délavés. Comme en vert, ils doivent être un ton plus FONCÉ que la carte.
     badge: 'border-accent-purple-mid/60 bg-accent-purple-mid/25 text-accent-purple-deep',
     texte: 'text-accent-purple-deep',
+    texteBouton: 'text-accent-purple-deep hover:text-accent-purple-deep',
+    boutonValide: 'border-accent-purple-mid bg-accent-purple-mid/20 text-accent-purple-deep hover:bg-accent-purple-mid/25',
     texteDoux: 'text-accent-purple-deep/70',
     anneauCercle: 'ring-2 ring-accent-purple-mid/60 ring-offset-2 ring-offset-background',
     point: 'bg-accent-purple-mid',
@@ -291,6 +316,8 @@ export const STYLES = {
     // reste le fond et la bordure, il ne se lisait pas en lettres.
     badge: 'border-warning/40 bg-warning/15 text-accent-orange-deep',
     texte: 'text-accent-orange-deep',
+    texteBouton: 'text-accent-orange-deep hover:text-accent-orange-deep',
+    boutonValide: 'border-warning bg-warning/25 text-accent-orange-deep hover:bg-warning/30',
     texteDoux: 'text-accent-orange-deep/70',
     anneauCercle: 'ring-2 ring-warning/70 ring-offset-2 ring-offset-background',
     point: 'bg-warning',
@@ -305,6 +332,8 @@ export const STYLES = {
     cercle: 'border-destructive/30 bg-destructive/10 text-destructive',
     badge: 'border-destructive/30 bg-destructive/10 text-destructive',
     texte: 'text-destructive',
+    texteBouton: 'text-destructive hover:text-destructive',
+    boutonValide: 'border-destructive bg-destructive/15 text-destructive hover:bg-destructive/20',
     texteDoux: 'text-destructive/70',
     icone: Clock,
   },
@@ -329,7 +358,7 @@ function typeDuBloc(bloc) {
  */
 const ETATS_SANS_APPEL = new Set(['avenir', 'inconnu']);
 
-function CarteBloc({ bloc, axe, temps, intitule, appel }) {
+function CarteBloc({ bloc, axe, temps, intitule, appel, validees }) {
   const [appelOuvert, setAppelOuvert] = useState(null);
   const appelPossible = Boolean(appel) && !bloc.absente && !ETATS_SANS_APPEL.has(temps.etat);
 
@@ -462,6 +491,17 @@ function CarteBloc({ bloc, axe, temps, intitule, appel }) {
             temps.etat === 'encours' &&
             temps.creneauCourant === index &&
             bloc.creneaux.length > 1;
+          /*
+           * ⚠️ LE SIGNE « VALIDÉ », SUR LE BOUTON (2026-09-29, demande du
+           * porteur : « le style du bouton change si validé, changer l'icône
+           * par exemple »). Même clé que `AppelValidation` côté serveur — un
+           * bloc FUSIONNÉ (S1+S2) porte une attestation PAR CRÉNEAU, jamais
+           * une seule pour tout le bloc.
+           */
+          const valide =
+            Boolean(validees) &&
+            Boolean(appel) &&
+            validees.has(`${appel}|${creneau}|${bloc.periode ?? 'jour'}|${bloc.groupeSeance}`);
           return (
             <div key={creneau}>
               {index > 0 && <DiviseurPause texte={bloc.pauses[index - 1]} style={style} />}
@@ -480,28 +520,32 @@ function CarteBloc({ bloc, axe, temps, intitule, appel }) {
               <div className="min-w-0 basis-full sm:basis-auto sm:flex-1">
                 <ContenuSeance bloc={bloc} axe={axe} intitule={intitule} style={style} />
               </div>
-              {/* ⚠️ UNE PASTILLE AUX COULEURS DE LA CARTE (demande du porteur :
-                  « améliorer le style du bouton ») — le vert d'un cours en salle,
-                  le violet d'un cours à distance. Un bouton gris sur une carte
-                  teintée se lisait comme un corps étranger. */}
+              {/* ⚠️ UN BOUTON NEUTRE, PLUS UNE PASTILLE TEINTÉE (2026-09-23, demande du
+                  porteur) : il reprenait le vert ou le violet de la carte depuis le
+                  2026-09-14 ; il suit désormais le modèle « Install kit » fourni. */}
               {appelPossible && (
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   aria-haspopup="dialog"
                   onClick={() => setAppelOuvert(creneau)}
+                  // Le `Button` shadcn en `outline` (demande du porteur, 2026-09-23) :
+                  // fond blanc, bordure hairline, marges serrées ; texte et icônes à
+                  // l'ENCRE DE LA CARTE — vert en salle, violet à distance, ambre en EFM.
+                  // ⚠️ SAUF VALIDÉ (2026-09-29) : il passe au plein vert, comme le
+                  // bouton « Valider l'appel » déjà attesté dans le panneau.
                   className={cn(
-                    // Marges serrées (demande du porteur : « diminuer un peu sa largeur »).
-                    'inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-xs font-semibold shadow-sm transition',
-                    'hover:shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                    style.badge
+                    'h-7 shrink-0 gap-1 rounded-lg border-border bg-background px-2 font-semibold',
+                    valide ? style.boutonValide : style.texteBouton
                   )}
                 >
-                  <ClipboardCheck className="size-3.5" />
-                  {/* « Appel · S1 » partout (demande du porteur) : le créneau se lit
+                  {valide ? <CheckCheck /> : <ClipboardCheck />}
+                  {/* « Appel Absence · S1 » (demande du porteur) : le créneau se lit
                       même sur une carte d'un seul créneau. */}
-                  Appel · {creneau}
-                  <ChevronRight className="size-3.5 opacity-60" />
-                </button>
+                  Appel Absence · {creneau}
+                  {!valide && <ChevronRight className="opacity-60" />}
+                </Button>
               )}
               </div>
             </div>

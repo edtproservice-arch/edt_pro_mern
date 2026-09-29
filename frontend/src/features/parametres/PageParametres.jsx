@@ -1,6 +1,9 @@
 import { Link } from 'react-router-dom';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Monitor, Moon, Sun } from 'lucide-react';
 import { NAVIGATION } from '@/components/layout/navigation';
+import { Button } from '@/components/ui/button';
+import { ButtonGroup } from '@/components/ui/button-group';
+import { useTheme } from '@/lib/theme';
 import CadreReglage from './CadreReglage';
 
 /**
@@ -27,6 +30,8 @@ export default function PageParametres() {
 
   return (
     <CadreReglage titre="Paramètres">
+      <BasculeTheme />
+
       {/*
         Toutes les entrées sont présentées à égalité, sans distinguer celles
         dont l'écran est encore en attente : c'est l'écran lui-même qui annonce
@@ -60,5 +65,49 @@ function Carte({ titre, url, icone: Icone, resume }) {
 
       <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
     </Link>
+  );
+}
+
+const CHOIX = [
+  { cle: 'clair', libelle: 'Clair', Icone: Sun },
+  { cle: 'sombre', libelle: 'Sombre', Icone: Moon },
+  { cle: 'systeme', libelle: 'Système', Icone: Monitor },
+];
+
+/**
+ * Le bouton de bascule clair / sombre (2026-09-28, demande du porteur : « le
+ * mode sombre pour toute la plateforme, avec le bouton de bascule en page
+ * Paramètres »). « Système » suit le réglage de l'appareil. Le choix est retenu
+ * dans ce navigateur et vaut pour toutes les pages, connexion comprise.
+ */
+function BasculeTheme() {
+  const { choix, definir } = useTheme();
+
+  return (
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4">
+      <span className="min-w-0">
+        <span className="block text-sm font-medium">Apparence</span>
+        <span className="mt-0.5 block text-xs text-muted-foreground">
+          Thème clair, sombre, ou celui de votre appareil. Retenu sur ce navigateur.
+        </span>
+      </span>
+
+      <ButtonGroup>
+        {CHOIX.map(({ cle, libelle, Icone }) => (
+          <Button
+            key={cle}
+            type="button"
+            variant={choix === cle ? 'default' : 'outline'}
+            size="sm"
+            aria-pressed={choix === cle}
+            className="h-8 gap-1.5 text-xs"
+            onClick={() => definir(cle)}
+          >
+            <Icone className="size-3.5" />
+            {libelle}
+          </Button>
+        ))}
+      </ButtonGroup>
+    </div>
   );
 }

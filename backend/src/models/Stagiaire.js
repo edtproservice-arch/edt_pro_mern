@@ -36,6 +36,26 @@ const stagiaireSchema = new mongoose.Schema(
     /** Conservée en chaîne : l'existant y stocke des formats hétérogènes. */
     dateNaissance: { type: String, trim: true, default: '' },
 
+    /**
+     * ← MotifAdmission de Konosys (« Concours », « Admission sur dossier », « Passerelle »…) et
+     * NTelelephone (2026-09-21, demande du porteur : « je vais les utiliser après »).
+     *
+     * ⚠️ CONSERVÉS SANS ÊTRE ENCORE EXPOSÉS : aucune route ne les renvoie tant qu'un écran n'en a
+     * pas besoin — un numéro de téléphone est une donnée personnelle, qui ne part pas « au cas où ».
+     * ⚠️ Le téléphone est une CHAÎNE : il commence par 0.
+     */
+    motifAdmission: { type: String, trim: true, default: '' },
+    telephone: { type: String, trim: true, default: '' },
+
+    /**
+     * ← LieuNaissance et DateInscription de Konosys (2026-09-27, demande du porteur :
+     * « je vais les utiliser après »). Mêmes réserves que ci-dessus : conservées sans être
+     * encore exposées, et la date en CHAÎNE — comme `dateNaissance`, l'existant y stocke des
+     * formats hétérogènes.
+     */
+    lieuNaissance: { type: String, trim: true, default: '' },
+    dateInscription: { type: String, trim: true, default: '' },
+
     /*
      * ═══ TOUS SES GROUPES, ET NON UN SEUL ═══ (décision du 2026-08-19)
      *

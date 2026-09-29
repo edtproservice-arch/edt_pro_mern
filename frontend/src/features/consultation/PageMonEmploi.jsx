@@ -10,6 +10,7 @@ import NavigationSemaine from '@/features/emploi/NavigationSemaine';
 import { useSemaineSuivie } from '@/features/emploi/useSemaineSuivie';
 import GrilleDetaillee from '@/features/edition/GrilleDetaillee';
 import VueAgenda from './VueAgenda';
+import BoutonProposer from '@/features/propositions/BoutonProposer';
 import { recupererSession } from '@/features/auth/api';
 import { useAnneeActive } from '@/lib/anneeActive';
 import { cn } from '@/lib/utils';
@@ -18,6 +19,7 @@ import {
   chargerSemaineConsultation,
   chargerSemainesConsultation,
 } from './api';
+import { chargerValidationsAppel } from '@/features/absences/stagiaires/api';
 
 /**
  * « Mon emploi du temps » — sessions consultatives formateur & stagiaire (F14).
@@ -89,6 +91,31 @@ export default function PageMonEmploi() {
    * les réunir en un seul ferait porter à une ligne des cours qui, pour l'un
    * des deux groupes, n'ont pas lieu.
    */
+  /*
+   * ⚠️ LE SIGNE « VALIDÉ », SUR LE BOUTON LUI-MÊME (2026-09-29, demande du
+   * porteur : « le style du bouton change si validé, changer l'icône par
+   * exemple ») — une requête par SEMAINE affichée, comme sur la grille de
+   * l'encadrement (`AppelParGrille`) : un aller-retour par carte ouverte
+   * aurait rendu l'agenda lent à charger.
+   */
+  const bornes = useMemo(() => {
+    const dates = (grille.data?.jours ?? []).map((j) => j.date).filter(Boolean);
+    return dates.length > 0 ? { debut: dates.at(0), fin: dates.at(-1) } : null;
+  }, [grille.data]);
+  const validations = useQuery({
+    queryKey: ['absences-stagiaires', 'appel', 'validations', bornes],
+    queryFn: () => chargerValidationsAppel(bornes),
+    enabled: !estStagiaire && Boolean(bornes),
+    retry: false,
+  });
+  const validees = useMemo(
+    () =>
+      new Set(
+        (validations.data ?? []).map((v) => `${v.date}|${v.seance}|${v.periode}|${v.groupe}`)
+      ),
+    [validations.data]
+  );
+
   const groupesStagiaire = useQuery({
     queryKey: ['consultation', 'groupes'],
     queryFn: chargerGroupesConsultation,
@@ -146,6 +173,9 @@ export default function PageMonEmploi() {
           semaine et prenaient une ligne à eux seuls. Le libellé reste dans le
           nom accessible et dans l'infobulle.
         */}
+        {/* Formateur seulement (Phase 9 b) : proposer sa semaine suivante au directeur. */}
+        <BoutonProposer />
+
         <ButtonGroup className="ml-auto">
           <Button
             type="button"
@@ -225,8 +255,10 @@ export default function PageMonEmploi() {
               jours={grille.data.jours}
               // F9 : le formateur fait l'appel de ses séances depuis la carte.
               avecAppel={!estStagiaire}
+              validees={validees}
               filtreJour={filtreJour}
               intitules={grille.data.modules}
+              intitulesParGroupe={grille.data.modulesParGroupe}
             />
           ))}
         </div>
@@ -239,7 +271,7 @@ export default function PageMonEmploi() {
               libelle={libelleDuSujet(sujet)}
               seances={grille.data.seances}
               axe={estStagiaire ? 'groupe' : 'formateur'}
-              lignes={estStagiaire ? ['Formateur', 'Module', 'Salle'] : ['Groupe', 'Module', 'Salle']}
+              lignes={estStagiaire ? ['Formateur', 'Module', 'Espace'] : ['Groupe', 'Module', 'Espace']}
               jours={grille.data.jours}
               nomsFormateurs={nomsFormateurs}
             />

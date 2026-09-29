@@ -1,12 +1,16 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { ROLES } from 'shared/constants';
+import { anneeDuNomGroupe } from 'shared/domain';
 import { validate } from '../../middleware/validate.js';
 import { authenticate } from '../../middleware/authenticate.js';
 import { requireRole } from '../../middleware/requireRole.js';
 import { resolveTenant } from '../../middleware/resolveTenant.js';
 import { forbidden } from '../../lib/httpError.js';
 import * as service from './consultation.service.js';
+import * as ressources from './ressources.service.js';
+import * as absencesFormateurs from '../absences/absences.service.js';
+import * as discipline from '../absencesStagiaires/discipline.service.js';
 
 /**
  * Sessions consultatives — formateur & stagiaire (F14).
@@ -141,6 +145,43 @@ router.get('/programme', requireRole(ROLES.STAGIAIRE), async (req, res, next) =>
 });
 
 /**
+ * Ressources en ligne d'un module du programme — vidéos, cours, exercices,
+ * cherchées sur le web avec les mots-clés « ofppt », « ofppt life », « ofppt info ».
+ * ← `search_ofppt.php` (tiroir de `tableMatieres.html`).
+ */
+router.get(
+  '/programme/ressources',
+  requireRole(ROLES.STAGIAIRE),
+  validate({
+    query: z.object({
+      intitule: z.string().trim().min(2).max(160),
+      code: z.string().trim().max(40).default(''),
+      groupe: z.string().trim().max(80).default(''),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const { intitule, code, groupe } = req.validatedQuery;
+      // ⚠️ LA FILIÈRE VIENT DE LA FICHE DU STAGIAIRE, pas de la requête.
+      const filiere = await service.filiereDuGroupe(
+        req.etablissementId,
+        req.anneeScolaire,
+        monIdentite(req),
+        groupe
+      );
+      const donnees = await ressources.ressourcesDuModule(intitule, {
+        filiere,
+        code,
+        annee: groupe ? anneeDuNomGroupe(groupe) : null,
+      });
+      res.json({ success: true, ...donnees });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
  * ⚠️ FORMATEUR SEUL : un stagiaire n'est affecté à rien, il est INSCRIT à des
  * groupes — c'est `groupesDuStagiaire` qui répond à sa question à lui.
  */
@@ -152,6 +193,52 @@ router.get('/affectations', requireRole(ROLES.FORMATEUR), async (req, res, next)
       monIdentite(req)
     );
     res.json({ success: true, ...donnees });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * « Mes absences » — la section de la page Compte (2026-09-23).
+ *   - formateur : ses absences au registre, avec leur rattrapage ;
+ *   - stagiaire : sa fiche de discipline — absences, retards, indisciplines et note.
+ *
+ * ⚠️ LE MATRICULE VIENT DU JETON, jamais de la requête : c'est ce qui permet
+ * d'ouvrir cette lecture sans le droit de page « absences ».
+ */
+router.get('/absences', async (req, res, next) => {
+  try {
+    const identifiant = monIdentite(req);
+
+    if (req.utilisateur.role === ROLES.FORMATEUR) {
+      const absences = await absencesFormateurs.lister(req.etablissementId, req.anneeScolaire, {
+        formateurMatricule: identifiant,
+      });
+      res.json({ success: true, role: ROLES.FORMATEUR, absences });
+      return;
+    }
+
+    const fiche = await discipline.fiche(req.etablissementId, req.anneeScolaire, identifiant);
+    res.json({ success: true, role: ROLES.STAGIAIRE, ...fiche });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * La fiche du compte connecté — matricule, masse horaire et groupes pour un
+ * formateur ; CEF, filière, niveau et groupes pour un stagiaire. Affichée dans
+ * la page Compte. Le matricule vient du jeton, jamais de la requête.
+ */
+router.get('/fiche', async (req, res, next) => {
+  try {
+    const fiche = await service.ficheCompte(
+      req.etablissementId,
+      req.anneeScolaire,
+      req.utilisateur.role,
+      monIdentite(req)
+    );
+    res.json({ success: true, fiche });
   } catch (error) {
     next(error);
   }

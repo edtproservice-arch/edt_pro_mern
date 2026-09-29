@@ -121,6 +121,140 @@ export async function notes(etablissementId, anneeScolaire, groupe) {
   };
 }
 
+/**
+ * ═══ LE TABLEAU DE BORD DU GESTIONNAIRE (2026-09-29, demande du porteur :
+ * « une page d'accueil pour gestionnaire … avec des statistiques sur
+ * l'absence et la discipline des stagiaires ») ═══
+ *
+ * ⚠️ AGRÉGÉ EN UNE SEULE PASSE, PAS GROUPE PAR GROUPE : `notes()` ci-dessus
+ * lit un groupe à la fois — parcourir les vingt ou trente groupes d'un
+ * établissement pour un simple total aurait fait autant de requêtes qu'il y a
+ * de groupes, à chaque ouverture de l'accueil. Ici, une poignée d'agrégations
+ * MongoDB suffisent, quel que soit le nombre de groupes.
+ *
+ * ⚠️ MÊME RÈGLE QUE `noter()` : seuls les non justifiés comptent contre le
+ * stagiaire — mais ICI on montre AUSSI le justifié, pour la même raison que la
+ * fiche : on doit voir qu'il a manqué, même avec une raison valable.
+ */
+export async function tableauDeBord(etablissementId, anneeScolaire) {
+  const correspondance = {
+    etablissementId: new mongoose.Types.ObjectId(String(etablissementId)),
+    anneeScolaire: Number(anneeScolaire),
+  };
+
+  const [
+    parType,
+    parGroupeAbsences,
+    parGroupeRetards,
+    parGroupeIndisciplines,
+    totalIndisciplines,
+    dernieresIndisciplines,
+    dernieresAbsences,
+    dernieresRetards,
+  ] = await Promise.all([
+      AbsenceStagiaire.aggregate([
+        { $match: correspondance },
+        { $group: { _id: { type: '$typeAbsence', justifiee: '$justifiee' }, n: { $sum: 1 } } },
+      ]),
+      /*
+       * ⚠️ ABSENCES ET RETARDS COMPTÉS À PART (2026-09-29, demande du porteur :
+       * « séparer l'absence et retard, ajouter une autre card pour le
+       * retard ») : sans le filtre `typeAbsence`, « les groupes les plus
+       * absents » mélangeait les deux faits sous un même total, alors que les
+       * tuiles du haut les affichent déjà séparément.
+       */
+      AbsenceStagiaire.aggregate([
+        { $match: { ...correspondance, typeAbsence: { $ne: TYPES_ABSENCE.RETARD } } },
+        { $group: { _id: '$groupe', n: { $sum: 1 } } },
+        { $sort: { n: -1 } },
+        { $limit: 5 },
+      ]),
+      AbsenceStagiaire.aggregate([
+        { $match: { ...correspondance, typeAbsence: TYPES_ABSENCE.RETARD } },
+        { $group: { _id: '$groupe', n: { $sum: 1 } } },
+        { $sort: { n: -1 } },
+        { $limit: 5 },
+      ]),
+      IndisciplineStagiaire.aggregate([
+        { $match: correspondance },
+        { $group: { _id: '$groupe', n: { $sum: 1 } } },
+        { $sort: { n: -1 } },
+        { $limit: 5 },
+      ]),
+      IndisciplineStagiaire.countDocuments(correspondance),
+      IndisciplineStagiaire.find(correspondance)
+        .sort({ date: -1, createdAt: -1 })
+        .limit(5)
+        .select('matricule nomComplet groupe date motif')
+        .lean(),
+      /*
+       * ⚠️ « DERNIÈRES ABSENCES / RETARDS », COMME LES INDISCIPLINES
+       * (2026-09-29, demande du porteur : « je veux ajouter les Dernières
+       * absent et retard comme indisciplines ») — même forme, même tri, pour
+       * retrouver vite un fait récent sans ouvrir le registre.
+       */
+      AbsenceStagiaire.find({ ...correspondance, typeAbsence: { $ne: TYPES_ABSENCE.RETARD } })
+        .sort({ date: -1, createdAt: -1 })
+        .limit(5)
+        .select('matricule nomComplet groupe date module justifiee')
+        .lean(),
+      AbsenceStagiaire.find({ ...correspondance, typeAbsence: TYPES_ABSENCE.RETARD })
+        .sort({ date: -1, createdAt: -1 })
+        .limit(5)
+        .select('matricule nomComplet groupe date module justifiee')
+        .lean(),
+    ]);
+
+  let absencesJ = 0;
+  let absencesNJ = 0;
+  let retardsJ = 0;
+  let retardsNJ = 0;
+  for (const { _id, n } of parType) {
+    if (_id.type === TYPES_ABSENCE.RETARD) {
+      if (_id.justifiee) retardsJ += n;
+      else retardsNJ += n;
+    } else if (_id.justifiee) absencesJ += n;
+    else absencesNJ += n;
+  }
+
+  const presenterMarquage = (a) => ({
+    matricule: a.matricule,
+    nom: a.nomComplet,
+    groupe: a.groupe,
+    date: a.date,
+    module: a.module,
+    justifiee: a.justifiee,
+  });
+
+  return {
+    absences: {
+      total: absencesJ + absencesNJ,
+      justifiees: absencesJ,
+      nonJustifiees: absencesNJ,
+      recentes: dernieresAbsences.map(presenterMarquage),
+    },
+    retards: {
+      total: retardsJ + retardsNJ,
+      justifies: retardsJ,
+      nonJustifies: retardsNJ,
+      recents: dernieresRetards.map(presenterMarquage),
+    },
+    indisciplines: {
+      total: totalIndisciplines,
+      recentes: dernieresIndisciplines.map((i) => ({
+        matricule: i.matricule,
+        nom: i.nomComplet,
+        groupe: i.groupe,
+        date: i.date,
+        motif: i.motif,
+      })),
+    },
+    groupesAbsences: parGroupeAbsences.map((g) => ({ groupe: g._id, n: g.n })),
+    groupesRetards: parGroupeRetards.map((g) => ({ groupe: g._id, n: g.n })),
+    groupesIndisciplines: parGroupeIndisciplines.map((g) => ({ groupe: g._id, n: g.n })),
+  };
+}
+
 async function stagiaireDeLAnnee(etablissementId, anneeScolaire, matricule) {
   const stagiaire = await Stagiaire.findOne({ etablissementId, anneeScolaire, matricule })
     .select('matricule nom prenom groupePrincipal groupes')

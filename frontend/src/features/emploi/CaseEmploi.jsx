@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { Star } from 'lucide-react';
 import { TYPES_COURS } from 'shared/constants';
-import { avancementModule, typeDeSeance } from 'shared/domain';
+import { avancementDepuisCumul, cleModule, typeDeSeance } from 'shared/domain';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import BadgeAvancement from '@/components/common/BadgeAvancement';
 import BadgeSemestre from '@/components/common/BadgeSemestre';
@@ -55,7 +55,15 @@ function CaseEmploi({
   etat,
   options,
   fiches,
-  posees,
+  /*
+   * ⚠️ LE CUMUL À SA PROPRE SÉANCE, PAS LE TOTAL DE L'ANNÉE (2026-09-24,
+   * demande du porteur : « le taux dans les cellules pour chaque semaine, pas
+   * le dernier taux » — précisé ensuite : « en S3 le taux est 14 mais en
+   * cellule s'affiche 20 »). Le total sert à juger un quota (`GrilleEmploi`,
+   * liste des modules) ; ici, seul le badge de la case le lit, et il doit
+   * varier d'une séance à l'autre — pas seulement d'une semaine à l'autre.
+   */
+  poseesParSeance,
   seanceDuSujet,
   selectionnee,
   enConflit,
@@ -75,6 +83,8 @@ function CaseEmploi({
   finDuTableau,
   bords,
   placement = false,
+  verrou = false,
+  onVerrou,
   onChanger,
   onOuvrir,
   onFermer,
@@ -116,7 +126,7 @@ function CaseEmploi({
     ? ''
     : champ === 'Module'
       ? seance.module
-      : champ === 'Salle'
+      : champ === 'Espace'
         ? seance.salle
         : axe === 'groupe'
           ? seance.formateurMatricule
@@ -237,7 +247,7 @@ function CaseEmploi({
          * case VIDE : une case déjà prise ressortirait en conflit, donc
          * jamais disponible d'après GrilleEmploi.
          */
-        ((premiereLigne && personnesLibresDeplacement) || (champ === 'Salle' && salleLibreDeplacement)) &&
+        ((premiereLigne && personnesLibresDeplacement) || (champ === 'Espace' && salleLibreDeplacement)) &&
           !seance &&
           'bg-success/10 outline-dashed outline-1 -outline-offset-1 outline-success',
         // La SÉLECTION l'emporte visuellement : c'est elle qu'on manipule.
@@ -310,7 +320,7 @@ function CaseEmploi({
             <SelectContent className="max-h-64">
               {/* Une entrée explicite pour retirer : Radix refuse la valeur vide,
                   et sans elle on ne pourrait plus que remplacer, jamais effacer. */}
-              <SelectItem value={VIDE} className="text-muted-foreground">
+              <SelectItem value={VIDE} disabled={verrou} className="text-muted-foreground">
                 — vider
               </SelectItem>
               {options.map((option) => (
@@ -364,6 +374,10 @@ function CaseEmploi({
               if (modeSelection) return;
               if (placement) {
                 onPlacer?.({ cle, sujet, jour: cellule.jour, creneau: cellule.seance, periode, seance });
+              } else if (verrou && !seance) {
+                // ⚠️ LIÉ ET PLANIFIÉ : une case vide ne s'ouvre pas — poser une
+                // séance changerait l'allocation que fixe le chronogramme.
+                onVerrou?.();
               } else {
                 onOuvrir?.({ cle, champ });
               }
@@ -372,9 +386,11 @@ function CaseEmploi({
               absence
                 ? `${MOTIF[absence.motif]} — ${absence.libelle || 'sans intitulé'}`
                 : occupation
-                  ? `Créneau pris par ${occupation.par}`
+                  ? occupation.ailleurs
+                    ? `Formateur occupé à ${occupation.par}`
+                    : `Créneau pris par ${occupation.par}`
                   : aEviter
-                    ? 'Créneau à éviter — indisponibilité déclarée du formateur'
+                    ? 'Créneau indisponible — indisponibilité déclarée du formateur'
                     : undefined
             }
             className={cn(
@@ -437,8 +453,14 @@ function CaseEmploi({
               )}
               {/* Une fois par case, sur la première ligne. */}
               {aEviter && premiereLigne && !ferme && (
-                <span className="block text-[0.55rem] font-semibold uppercase leading-tight text-destructive">
-                  à éviter
+                /*
+                  ⚠️ « INDISPONIBILITÉ » EN TOUTES LETTRES (2026-09-21, demande du porteur : au lieu de
+                  « indis. formateur »). Le mot est long pour une case de 60 px : il est écrit en bas de
+                  casse, un cran plus petit, et coupé proprement (`hyphens`, la page est en français)
+                  plutôt que tronqué.
+                */
+                <span className="block break-words text-[0.5rem] font-semibold leading-tight tracking-tight text-destructive [hyphens:auto]">
+                  Indisponibilité
                 </span>
               )}
             </span>
@@ -460,7 +482,12 @@ function CaseEmploi({
         */}
         {champ === 'Module' && (
           <SousCarte seance={seance} modeSelection={modeSelection}>
-            <Indicateurs seance={seance} fiches={fiches} posees={posees} absent={absent} />
+            <Indicateurs
+              seance={seance}
+              fiches={fiches}
+              poseesParSeance={poseesParSeance}
+              absent={absent}
+            />
           </SousCarte>
         )}
 
@@ -468,7 +495,7 @@ function CaseEmploi({
           Le badge d'heures ne vit que sur la PREMIÈRE ligne : posé sur les
           trois, il répéterait le même nombre côte à côte trois fois.
         */}
-        {champ !== 'Module' && champ !== 'Salle' && seance && !absent && (
+        {champ !== 'Module' && champ !== 'Espace' && seance && !absent && (
           <BadgeHeures heures={seanceDuSujet} />
         )}
       </div>
@@ -564,7 +591,7 @@ function ReperesOption({ meta }) {
         {/* ⚠️ L'ABSENCE PASSE AVANT « PRIS » : un groupe en stage n'a pas cours
             du tout, ce qui prime sur le fait qu'un créneau soit occupé. */}
         {meta.absence ? <Jeton>{meta.absence}</Jeton> : meta.pris && <Jeton>pris</Jeton>}
-        {!meta.absence && !meta.pris && meta.aEviter && <Jeton>à éviter</Jeton>}
+        {!meta.absence && !meta.pris && meta.aEviter && <Jeton>indisponibilité formateur</Jeton>}
         <span
           className={cn(
             'rounded px-1 text-[0.65rem] font-medium tabular-nums',
@@ -578,11 +605,14 @@ function ReperesOption({ meta }) {
   }
 
   // Une liste de SALLES : rien à dire, sauf qu'elle est déjà occupée.
-  if (meta.pris || meta.attribuee) {
+  if (meta.pris || meta.attribuee || meta.occupeAilleurs) {
     return (
       <span className="flex shrink-0 items-center gap-1">
         {meta.attribuee && <Jeton>attribuée</Jeton>}
         {meta.pris && <Jeton>pris</Jeton>}
+        {/* Un espace mutualisé déjà occupé par un AUTRE établissement (2026-09-25) : on nomme
+            lequel, comme pour un formateur mutualisé occupé ailleurs. */}
+        {meta.occupeAilleurs && <Jeton>{meta.occupeAilleurs}</Jeton>}
       </span>
     );
   }
@@ -632,8 +662,16 @@ const VIDE = '__vider__';
  * ⚠️ PAS DE TAUX SUR UNE SÉANCE ABSENTE : le cours n'a pas eu lieu, et afficher
  * son avancement là ferait croire qu'il compte. C'est ce que fait l'existant,
  * qui masque le badge dans ce cas.
+ *
+ * ⚠️ `poseesParSeance` EST LE CUMUL À LA SÉANCE DE CETTE CASE ELLE-MÊME, PAS LE
+ * TOTAL DE L'ANNÉE (2026-09-24, demande du porteur : « le taux dans les
+ * cellules pour chaque semaine, pas le dernier taux » — précisé ensuite : « en
+ * S3 le taux est 14 mais en cellule s'affiche 20 »). C'est ce qui fait varier
+ * le taux d'une séance à l'autre plutôt que de répéter le même partout, ou
+ * celui de fin de semaine sur toutes les cases de la semaine — voir
+ * `poseesParSeance` dans `PageEmploi` et `GrilleEmploi`.
  */
-function Indicateurs({ seance, fiches, posees, absent }) {
+function Indicateurs({ seance, fiches, poseesParSeance, absent }) {
   if (!seance?.module) return null;
 
   /*
@@ -653,17 +691,26 @@ function Indicateurs({ seance, fiches, posees, absent }) {
     );
   }
 
-  const fiche = fiches?.get(`${String(seance.groupe).trim().toUpperCase()}||${String(seance.module).trim().toUpperCase()}`);
+  const cle = cleModule(seance.groupe, seance.module);
+  const fiche = fiches?.get(cle);
   /*
    * ⚠️ LE TAUX SE RAPPORTE À LA MASSE DE SON TYPE. Une séance en salle se mesure
    * au présentiel prévu, une séance TEAMS au synchrone : rapportées au total,
    * 42,5 h de cours en salle s'affichaient à 106 % d'un quota de 40 h alors
    * qu'elles dépassent de 70 % les 25 h qui leur étaient destinées — la masse à
    * distance, intacte, absorbait l'écart.
+   *
+   * ⚠️ LA CLÉ COMPOSITE RETROUVE LE CUMUL DE CETTE SÉANCE PRÉCISE — jour et
+   * créneau — dans l'index bâti par `PageEmploi` pour la SEULE semaine
+   * affichée (`seance` n'a pas de champ `semaine` : `presenter()`, côté
+   * serveur, ne le renvoie pas — inutile ici, la grille n'affiche jamais
+   * qu'une semaine à la fois). Sans entrée (séance non comptée : absente,
+   * EFM…), pas de badge plutôt qu'un taux inventé.
    */
-  const avancement = absent
-    ? null
-    : avancementModule(fiches, posees, seance.groupe, seance.module, typeDeSeance(seance));
+  const type = typeDeSeance(seance);
+  const cumul = poseesParSeance?.get(`${cle}||${type}||${seance.jour}||${seance.seance}`);
+  const avancement =
+    absent || cumul === undefined ? null : avancementDepuisCumul(cumul, fiche?.[type] ?? 0);
 
   return (
     <span className="flex flex-wrap items-center justify-center gap-0.5">

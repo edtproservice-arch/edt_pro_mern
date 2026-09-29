@@ -1,4 +1,5 @@
 import { COLONNES, resoudreColonnes } from '../enote/colonnes.js';
+import { indexerFilieresParGroupe, renommerGroupe } from '../enote/suffixesGroupes.js';
 import { anneeDuNomGroupe } from '../carte/reconstruction.js';
 import { semestreDe } from './semestre.js';
 import { nombre } from './nombre.js';
@@ -35,10 +36,44 @@ export { nombre };
 export function lireAvancementEnote(importe) {
   const colonnes = resoudreColonnes(importe?.entete ?? []);
   const cellule = (ligne, champ) => ligne[colonnes[champ] ?? COLONNES[champ].index];
+  const lignesBrutes = importe?.lignes ?? [];
 
-  return (importe?.lignes ?? [])
-    .map((ligne) => ({
+  /*
+   * ═══ ⚠️⚠️ LE GROUPE EST RENOMMÉ COMME À L'IMPORT DE LA CARTE (2026-09-25,
+   * signalé par le porteur : « pourquoi 245 modules en eDTpro et 228 en
+   * e-note, et pourquoi ACADA101 sans (FQ) en e-note ») ═══
+   *
+   * Les deux faces lisent le MÊME fichier importé — `upload_base_data.php`
+   * l'écrivait déjà dans deux tables, `Base` (devenue la carte) ET
+   * `donnees_avancement` (devenue `EnoteImport`, lue ici) — mais seule la
+   * carte le faisait passer par `renommerGroupe` (« (FQ) », « (CDS) », ou le
+   * préfixe de filière pour un nom porté par plusieurs). Sans ce même
+   * renommage ICI, un groupe FQ portait deux noms DIFFÉRENTS selon la face
+   * regardée — deux groupes DISTINCTS pour l'application, qui gonflait ou
+   * creusait le compte de modules de l'une par rapport à l'autre, et rendait
+   * les deux faces incomparables sur ce groupe.
+   *
+   * ⚠️ LA TABLE D'AMBIGUÏTÉ SE CONSTRUIT SUR TOUT LE FICHIER D'ABORD, comme à
+   * l'import de la carte : elle a besoin de voir TOUTES les lignes pour savoir
+   * qu'un nom est porté par plusieurs filières, avant de trancher pour CHACUNE.
+   */
+  const filieresParGroupe = indexerFilieresParGroupe(
+    lignesBrutes.map((ligne) => ({
       groupe: texte(cellule(ligne, 'groupe')),
+      codeFiliere: texte(cellule(ligne, 'codeFiliere')),
+    }))
+  );
+
+  return lignesBrutes
+    .map((ligne) => ({
+      groupe: renommerGroupe(
+        texte(cellule(ligne, 'groupe')),
+        texte(cellule(ligne, 'codeFiliere')),
+        filieresParGroupe
+      ),
+      // Le groupe FUSIONNÉ, lui, n'est PAS renommé : il porte déjà son propre
+      // nom dans le fichier, et sert de clé de regroupement pour le synchrone
+      // — même règle que `construireGroupes`.
       fusionGroupe: texte(cellule(ligne, 'fusionGroupe')),
       module: texte(cellule(ligne, 'module')),
       formateurPresentiel: texte(cellule(ligne, 'formateurPresentiel')),

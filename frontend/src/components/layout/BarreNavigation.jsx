@@ -1,7 +1,7 @@
 import { cloneElement, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { LogOut, Mail, PanelLeft, UserRound } from 'lucide-react';
+import { LogOut, Mail, Moon, PanelLeft, Sun, UserRound } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -16,8 +16,10 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/s
 import { recupererSession, seDeconnecter } from '@/features/auth/api';
 import { compterNonLus } from '@/features/messagerie/api';
 import { initiales } from '@/lib/initiales';
+import { useTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import { EmplacementEnTete } from './enTetePage';
+import SousMenuEtablissements from './SousMenuEtablissements';
 
 /**
  * Barre de navigation applicative.
@@ -85,7 +87,9 @@ export default function BarreNavigation({
   messagerie = false,
   messagerieUrl = '/admin/messagerie',
   profilUrl,
+  basculeTheme = false,
 }) {
+  const theme = useTheme();
   const [panneauOuvert, setPanneauOuvert] = useState(false);
 
   /*
@@ -245,6 +249,25 @@ export default function BarreNavigation({
             </Button>
           )}
 
+          {/*
+            ⚠️ POUR LE FORMATEUR ET LE STAGIAIRE (2026-09-28, demande du porteur :
+            « pour les sessions formateur et stagiaire, mets-le en navbar ») : ils
+            n'ont pas la page Paramètres, où vit la bascule des autres rôles. Un
+            clic alterne clair / sombre ; le choix « système » de Paramètres
+            reste valable jusqu'à ce premier clic.
+          */}
+          {basculeTheme && (
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label={theme.sombre ? 'Passer en thème clair' : 'Passer en thème sombre'}
+              title={theme.sombre ? 'Thème clair' : 'Thème sombre'}
+              onClick={() => theme.definir(theme.sombre ? 'clair' : 'sombre')}
+            >
+              {theme.sombre ? <Sun /> : <Moon />}
+            </Button>
+          )}
+
           <MenuCompte profilUrl={profilUrl} />
         </div>
       </div>
@@ -323,6 +346,9 @@ function MenuCompte({ profilUrl }) {
             </Link>
           </DropdownMenuItem>
         )}
+
+        {/* Un formateur mutualisé sur plusieurs établissements peut y basculer sans se déconnecter. */}
+        <SousMenuEtablissements />
 
         <DropdownMenuItem
           onSelect={() => deconnexion.mutate()}

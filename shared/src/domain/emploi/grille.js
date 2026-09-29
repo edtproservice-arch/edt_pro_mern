@@ -29,8 +29,8 @@ export const SEANCE_SOIR = SEANCES[4];
  * En vue par groupe, la première ligne porte le FORMATEUR à la place du groupe :
  * c'est l'axe qu'on a déjà en tête de ligne qui change de place.
  */
-export const LIGNES_FORMATEUR = ['Groupe', 'Module', 'Salle'];
-export const LIGNES_GROUPE = ['Formateur', 'Module', 'Salle'];
+export const LIGNES_FORMATEUR = ['Groupe', 'Module', 'Espace'];
+export const LIGNES_GROUPE = ['Formateur', 'Module', 'Espace'];
 
 /**
  * Seuils d'heures hebdomadaires d'un formateur, repris de l'existant.

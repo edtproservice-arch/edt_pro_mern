@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Lock } from 'lucide-react';
 import { JOURS } from 'shared/constants';
 import { CRENEAUX_CONTRAINTES, normaliserContraintes } from 'shared/domain';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { enregistrerContraintesFormateur } from '../api';
+import { estTeams } from './filtresFormateurs';
 
 /**
  * Disponibilité et salles attribuées d'UN formateur.
@@ -126,8 +128,9 @@ export default function DialogueContraintes({
     poserCreneaux(creneaux, !toutRouge);
   };
 
+  const avecTeams = salles.some(estTeams);
   const sallesReelles = salles
-    .filter((s) => String(s).toUpperCase() !== 'TEAMS')
+    .filter((s) => !estTeams(s))
     .sort((a, b) => String(a).localeCompare(String(b), 'fr', { numeric: true }));
 
   return (
@@ -136,14 +139,14 @@ export default function DialogueContraintes({
         <DialogHeader>
           <DialogTitle>{nom}</DialogTitle>
           <DialogDescription>
-            Salles attribuées et créneaux à éviter. L&apos;emploi du temps pré-remplit la salle et
+            Espaces attribués et créneaux d&apos;indisponibilité. L&apos;emploi du temps pré-remplit l&apos;espace et
             signale ces créneaux, sans les fermer.
           </DialogDescription>
         </DialogHeader>
 
         <section className="space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold">Salles attribuées</h3>
+            <h3 className="text-sm font-semibold">Espaces attribués</h3>
             {!lectureSeule && sallesReelles.length > 0 && (
               <div className="flex gap-1">
                 <Button
@@ -160,12 +163,28 @@ export default function DialogueContraintes({
             )}
           </div>
 
-          {sallesReelles.length === 0 ? (
+          {sallesReelles.length === 0 && !avecTeams ? (
             <p className="text-sm text-muted-foreground">
-              Aucune salle déclarée. Ajoutez-les dans Paramètres → Espaces.
+              Aucun espace déclaré. Ajoutez-les dans Paramètres → Espaces.
             </p>
           ) : (
             <div className="flex flex-wrap gap-1.5">
+              {/*
+                ⚠️ « TEAMS » EST ATTRIBUÉ À TOUS LES FORMATEURS (2026-09-19, demande du
+                porteur) : coché d'office et NON modifiable. Il n'est pas écrit dans la
+                liste de ce formateur — c'est une règle, pas une donnée : un formateur
+                ajouté demain l'a aussi, et personne n'a à le cocher un par un.
+              */}
+              {avecTeams && (
+                <span
+                  aria-label="TEAMS, attribué à tous les formateurs"
+                  title="Attribué à tous les formateurs"
+                  className="inline-flex items-center gap-1 rounded-full border border-primary bg-primary px-3 py-1 text-xs text-primary-foreground opacity-80"
+                >
+                  <Lock className="size-3" />
+                  TEAMS
+                </span>
+              )}
               {sallesReelles.map((salle) => {
                 const retenue = brouillon.espaces.includes(salle);
                 return (
@@ -191,13 +210,13 @@ export default function DialogueContraintes({
           {/* ⚠️ LE VIDE EST DIT : sans cette phrase, « aucune » se lirait « interdit partout ». */}
           <p className="text-xs text-muted-foreground">
             {brouillon.espaces.length === 0
-              ? 'Aucune salle cochée : toutes les salles restent proposées.'
-              : `${brouillon.espaces.length} salle(s) — proposées en premier, dans l'ordre de sélection.`}
+              ? `${avecTeams ? 'Seul TEAMS est attribué' : 'Aucun espace attribué'} : aucun local n’est pré-rempli dans l’emploi du temps, et tous restent au choix.`
+              : `${brouillon.espaces.length} espace(s) — proposés en premier, dans l'ordre de sélection.`}
           </p>
         </section>
 
         <section className="space-y-2">
-          <h3 className="text-sm font-semibold">Créneaux à éviter</h3>
+          <h3 className="text-sm font-semibold">Créneaux d&apos;indisponibilité</h3>
           <table className="w-full border-separate border-spacing-1 text-xs">
             <thead>
               <tr>
@@ -230,7 +249,7 @@ export default function DialogueContraintes({
                           type="button"
                           disabled={lectureSeule}
                           aria-pressed={rouge}
-                          aria-label={`${jour} ${seance} ${rouge ? 'à éviter' : 'disponible'}`}
+                          aria-label={`${jour} ${seance} ${rouge ? 'indisponible' : 'disponible'}`}
                           onClick={() => poserCreneaux([{ jour, seance }], !rouge)}
                           className={cn(
                             'h-8 w-full rounded-md border transition-colors disabled:cursor-default',
@@ -239,7 +258,7 @@ export default function DialogueContraintes({
                               : 'bg-success/10 text-success hover:bg-success/20'
                           )}
                         >
-                          {rouge ? 'À éviter' : 'Libre'}
+                          {rouge ? 'Indisponible' : 'Libre'}
                         </button>
                       </td>
                     );

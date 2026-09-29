@@ -1,5 +1,6 @@
 import { cleGroupeLigne } from '../enote/parseBase.js';
 import { nomGroupeBrut } from './nomsGroupes.js';
+import { cleModule } from '../emploi/indicateurs.js';
 
 /**
  * Conversion d'une carte d'établissement en lignes au format e-note.
@@ -239,4 +240,49 @@ export function modulesInactifs(carte) {
   }
 
   return parGroupe;
+}
+
+/**
+ * Salles déclarées pour chaque couple groupe × module (2026-09-23).
+ *
+ * ═══ POURQUOI CETTE FONCTION EXISTE ═══
+ * Même raison que `modulesInactifs`, en plus radical : le format e-note n'a
+ * **aucune colonne de salle**. Vérifié dans l'ancien EDT Pro — il n'en a pas
+ * non plus, et n'attribue des salles qu'au FORMATEUR. Une salle par module ne
+ * peut donc pas survivre à l'aller-retour par les lignes : elle est extraite
+ * ici pour être rangée à côté, dans `Base.sallesAffectations`.
+ *
+ * ⚠️ LA MÊME CLÉ QUE LE QUOTA (`cleModule`, en MAJUSCULES). Une seconde
+ *    convention pour la même notion finirait par diverger — c'est le constat
+ *    §4.2, la cause n°1 d'instabilité de l'existant.
+ *
+ * ⚠️ ON N'ÉCRIT QUE CE QUI EST DÉCLARÉ : une entrée vide par module gonflerait
+ *    le document sans rien dire, et rendrait impossible de distinguer « aucune
+ *    salle imposée » de « salles effacées ».
+ *
+ * @returns {Object<string, string[]>} `GROUPE||MODULE` → salles
+ */
+export function sallesParAffectation(carte) {
+  const parCle = {};
+
+  for (const groupe of carte?.groupes ?? []) {
+    for (const module of groupe.modules ?? []) {
+      const salles = [
+        ...new Set(
+          (module.salles ?? [])
+            .map((salle) => String(salle ?? '').trim())
+            .filter(Boolean)
+        ),
+      ].sort();
+
+      if (salles.length === 0) continue;
+
+      const code = String(module.code ?? module.nom ?? '').trim();
+      if (!code) continue;
+
+      parCle[cleModule(groupe.nom, code)] = salles;
+    }
+  }
+
+  return parCle;
 }

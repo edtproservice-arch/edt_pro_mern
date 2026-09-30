@@ -602,6 +602,17 @@ export async function supprimerCompte(utilisateurId, administrateur, ip) {
       { 'membres.utilisateurId': cible._id },
       { $pull: { membres: { utilisateurId: cible._id } } }
     ),
+    /*
+     * ⚠️ LES AUTRES COMPTES RATTACHÉS PERDENT CES ÉTABLISSEMENTS (2026-09-30,
+     * formateur mutualisé signalé par le porteur) : sans ce `$pull`, un
+     * formateur partagé gardait l'identifiant d'un établissement disparu — la
+     * session en comptait deux, la liste un seul, et le choix d'établissement
+     * tournait en boucle.
+     */
+    User.updateMany(
+      { etablissementIds: { $in: etablissements.map((e) => e._id) } },
+      { $pull: { etablissementIds: { $in: etablissements.map((e) => e._id) } } }
+    ),
   ]);
   await cible.deleteOne();
 

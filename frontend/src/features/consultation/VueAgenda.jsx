@@ -259,10 +259,17 @@ function EnTeteJour({ jour, date, ferie, vacances }) {
  * à faire garde le ton clair. Une journée se lit ainsi d'un regard : ce qui est
  * fait, ce qui se déroule (l'aire avance d'un ton vers l'autre), ce qui vient.
  * ⚠️ PAS POUR UNE ABSENCE : le cours n'a pas eu lieu, il n'est pas « fait ».
+ *
+ * ═══ ⚠️ FONDS DE CARTE OPAQUES (`color-mix`), PAS `bg-x/30` ═══ (2026-09-30,
+ * capture du porteur sur un vrai téléphone.) En semi-transparence, Chrome
+ * Android peignait la carte terminée PAR BANDES — une moitié claire, une moitié
+ * foncée — alors que l'émulation mobile du navigateur de bureau était juste.
+ * La même teinte, mélangée d'avance au fond de page, ne laisse plus rien à
+ * composer au GPU. Les pourcentages sont ceux des anciennes opacités.
  */
 export const STYLES = {
   presentiel: {
-    carte: 'border-accent-green/30 bg-accent-green/10',
+    carte: 'border-accent-green/30 bg-[color:color-mix(in_srgb,hsl(var(--accent-green))_10%,hsl(var(--background)))]',
     cercle: 'border-accent-green/40 bg-accent-green/20 text-accent-green-deep',
     badge: 'border-accent-green/30 bg-accent-green/15 text-accent-green-deep',
     texte: 'text-accent-green-deep',
@@ -278,11 +285,11 @@ export const STYLES = {
     point: 'bg-accent-green',
     aire: 'bg-accent-green/30',
     trait: 'bg-accent-green/70',
-    carteTerminee: 'border-accent-green/50 bg-accent-green/30',
+    carteTerminee: 'border-accent-green/50 bg-[color:color-mix(in_srgb,hsl(var(--accent-green))_30%,hsl(var(--background)))]',
     icone: Presentation,
   },
   synchrone: {
-    carte: 'border-accent-purple/40 bg-accent-purple/15',
+    carte: 'border-accent-purple/40 bg-[color:color-mix(in_srgb,hsl(var(--accent-purple))_15%,hsl(var(--background)))]',
     cercle: 'border-accent-purple/40 bg-accent-purple/25 text-accent-purple-deep',
     // ⚠️ BORDURE EN `purple-mid` (2026-09-14, demande du porteur) : en `accent-purple`
     // (L 84 %) elle se fondait dans la carte violette, surtout terminée — badge
@@ -299,7 +306,7 @@ export const STYLES = {
     point: 'bg-accent-purple-mid',
     aire: 'bg-accent-purple-mid/30',
     trait: 'bg-accent-purple-mid/70',
-    carteTerminee: 'border-accent-purple-mid/50 bg-accent-purple-mid/30',
+    carteTerminee: 'border-accent-purple-mid/50 bg-[color:color-mix(in_srgb,hsl(var(--accent-purple-mid))_30%,hsl(var(--background)))]',
     icone: Teams,
   },
   efm: {
@@ -310,7 +317,7 @@ export const STYLES = {
     // toute la grille, le chronogramme et les affectations emploient déjà
     // pour l'étoile EFM (`fill-warning text-warning`) — la reprendre ici
     // évite une cinquième palette pour dire la même chose (§4.2 du plan).
-    carte: 'border-warning/50 bg-warning/10',
+    carte: 'border-warning/50 bg-[color:color-mix(in_srgb,hsl(var(--warning))_10%,hsl(var(--background)))]',
     cercle: 'border-warning/50 bg-warning/20 text-warning',
     // ⚠️ Le TEXTE du badge passe à l'orange profond (voir plus haut) : l'ambre
     // reste le fond et la bordure, il ne se lisait pas en lettres.
@@ -323,7 +330,7 @@ export const STYLES = {
     point: 'bg-warning',
     aire: 'bg-warning/40',
     trait: 'bg-warning/80',
-    carteTerminee: 'border-warning/70 bg-warning/40',
+    carteTerminee: 'border-warning/70 bg-[color:color-mix(in_srgb,hsl(var(--warning))_40%,hsl(var(--background)))]',
     icone: Star,
     iconeExtra: 'fill-warning',
   },

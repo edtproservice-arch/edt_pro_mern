@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { recupererSession } from '@/features/auth/api';
-import { Etat, LiensRapides, Recents, Salutation } from './AccueilApp';
+import { Etat, LiensRapides, Salutation } from './AccueilApp';
 import StatistiquesAbsencesDiscipline from './StatistiquesAbsencesDiscipline';
 
 /**
@@ -46,7 +46,6 @@ export default function AccueilGestionnaire() {
       <Salutation nom={session.data.utilisateur.nomComplet} />
       <StatistiquesAbsencesDiscipline />
       <LiensRapides />
-      <Recents />
     </div>
   );
 }

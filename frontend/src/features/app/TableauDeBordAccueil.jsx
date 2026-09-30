@@ -15,7 +15,7 @@ import {
   YAxis,
 } from 'recharts';
 import { ArrowUpRight, ChevronLeft, ChevronRight } from 'lucide-react';
-import { agregerAvancement, dureeSeance } from 'shared/domain';
+import { agregerAvancement, completionModules, dureeSeance } from 'shared/domain';
 import { Button } from '@/components/ui/button';
 import { chargerContexte, chargerSemaines } from '@/features/emploi/api';
 import { chargerAbsences } from '@/features/absences/api';
@@ -345,9 +345,9 @@ export default function TableauDeBordAccueil() {
           geste pour la rouvrir une fois repliée.
         */}
         <Tuile
-          libelle="Service des formateurs"
+          libelle="Charge des formateurs"
           valeur={`${service.length}/${formateurs.data?.formateurs?.length ?? '—'}`}
-          detail="hors de 80 – 100 % du service statutaire"
+          detail="hors de 80 – 100 % de la charge statutaire"
           alerte={service.length > 0}
           chargement={avancement.isLoading || formateurs.isLoading}
           onClick={() => basculerSection('service')}
@@ -368,13 +368,13 @@ export default function TableauDeBordAccueil() {
         */}
         <Tuile
           libelle="Modules"
-          valeur={
-            contexte.data
-              ? new Set((contexte.data.affectations ?? []).map((a) => a.module)).size
-              : null
-          }
-          detail="enseignés cette année, tous groupes confondus"
-          chargement={contexte.isLoading}
+          /* ⚠️ LE MÊME COMPTE QUE « N module(s) achevé(s) sur … » (2026-09-30,
+             demande du porteur : les deux chiffres divergeaient, 53 contre 232).
+             Un module, c'est un couple (groupe, module) doté d'une masse
+             affectée — pas un code distinct. */
+          valeur={lignes ? completionModules(lignes).total : null}
+          detail="couples groupe – module de l’année"
+          chargement={avancement.isLoading}
           vers="/app/parametres/affectations"
         />
         {/*
@@ -383,9 +383,9 @@ export default function TableauDeBordAccueil() {
           nombre salle »).
         */}
         <Tuile
-          libelle="Salles"
+          libelle="Espaces"
           valeur={contexte.data?.salles?.length ?? null}
-          detail="espaces déclarés, prêtés compris"
+          detail="déclarés, prêtés compris"
           chargement={contexte.isLoading}
           vers="/app/parametres/espaces"
         />
@@ -1059,12 +1059,12 @@ function ServiceFormateurs({ service }) {
 
   return (
     <Section
-      titre="Service des formateurs"
+      titre="Charge des formateurs"
       lien="/app/parametres/formateurs"
       libelleLien="Formateurs"
     >
       <p className="mt-0.5 text-xs text-muted-foreground">
-        Écart en heures face au service statutaire de l’année — l’axe 0 est le service dû.
+        Écart en heures face à la charge statutaire de l’année — l’axe 0 est la charge due.
       </p>
 
       <div className="mt-3 h-[220px]">

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarRange, ChevronDown, Plus, Star } from 'lucide-react';
+import { Plus, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -13,8 +13,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ENTREES, RACCOURCIS } from '@/components/layout/navigation';
 import { basculerFavori, useFavoris } from '@/lib/favoris';
-import { depuis } from '@/lib/derniereModification';
-import { useVisites } from '@/lib/visites';
 import { api } from '@/lib/apiClient';
 import { apparenceMeteo } from './meteo';
 import { recupererSession } from '@/features/auth/api';
@@ -24,8 +22,9 @@ import TableauDeBordAccueil from './TableauDeBordAccueil';
  * Accueil de l'espace applicatif.
  * ← la page d'accueil de Plane, dont le porteur a fourni la maquette
  *
- * ═══ TROIS SECTIONS, ET RIEN D'AUTRE ═══
- * Un tableau de bord, les liens rapides, les pages récentes. La maquette portait
+ * ═══ DEUX SECTIONS, ET RIEN D'AUTRE ═══
+ * Un tableau de bord et les liens rapides (« Récents » retiré le 2026-09-30,
+ * demande du porteur). La maquette portait
  * en plus un encart d'assistant conversationnel : écarté à la demande du
  * porteur, remplacé par les chiffres de l'établissement — ce qu'on vient
  * réellement vérifier en ouvrant l'application.
@@ -57,7 +56,6 @@ export default function AccueilApp() {
       <Salutation nom={session.data.utilisateur.nomComplet} />
       <TableauDeBordAccueil />
       <LiensRapides />
-      <Recents />
     </div>
   );
 }
@@ -247,78 +245,9 @@ export function LiensRapides() {
 }
 
 /**
- * Les pages récemment ouvertes.
- *
- * ⚠️ OUVERTES, PAS ENREGISTRÉES — voir `lib/visites.js`. On revient dix fois sur
- * l'emploi du temps pour une saisie : le lier à l'écriture ferait disparaître
- * d'ici les pages qu'on regarde le plus.
+ * Une page, en carte : son icône, son nom et sa section.
  */
-export function Recents() {
-  const visites = useVisites();
-  const [section, setSection] = useState(null);
-
-  const entrees = Object.entries(visites)
-    .map(([chemin, horodatage]) => ({ chemin, horodatage, entree: entreeDe(chemin) }))
-    .filter(({ entree }) => entree)
-    .sort((a, b) => b.horodatage - a.horodatage);
-
-  const sections = [...new Set(entrees.map(({ chemin }) => sectionDe(chemin)))];
-  const visibles = section ? entrees.filter(({ chemin }) => sectionDe(chemin) === section) : entrees;
-
-  return (
-    <section className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium">Récents</h3>
-
-        {/* Le filtre n'apparaît QUE s'il y a plus d'une section à distinguer :
-            un menu à une seule entrée ne fait que prendre la place. */}
-        {sections.length > 1 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
-                {section ?? 'Tous'}
-                <ChevronDown className="size-3.5 opacity-60" />
-              </Button>
-            </DropdownMenuTrigger>
-
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem className="text-xs" onClick={() => setSection(null)}>
-                Tous
-              </DropdownMenuItem>
-              {sections.map((nom) => (
-                <DropdownMenuItem key={nom} className="text-xs" onClick={() => setSection(nom)}>
-                  {nom}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
-
-      {visibles.length === 0 ? (
-        <p className="rounded-lg border bg-muted/40 p-10 text-center text-sm text-muted-foreground">
-          <CalendarRange className="mx-auto mb-2 size-6 opacity-40" />
-          Vous n’avez pas encore ouvert d’écran.
-        </p>
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {visibles.map(({ chemin, horodatage }) => (
-            <CartePage key={chemin} chemin={chemin} horodatage={horodatage} />
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-/**
- * Une page, en carte : son icône, son nom, et quand on y est passé.
- *
- * ⚠️ SANS HORODATAGE, ON NOMME LA SECTION plutôt qu'une date inventée. Un
- * favori posé avant que l'historique n'existe n'a pas de date : « il y a
- * longtemps » serait faux, et une ligne vide laisserait croire à un défaut.
- */
-function CartePage({ chemin, horodatage }) {
+function CartePage({ chemin }) {
   const entree = entreeDe(chemin);
   if (!entree) return null;
 
@@ -336,7 +265,7 @@ function CartePage({ chemin, horodatage }) {
       <span className="min-w-0">
         <span className="block truncate text-sm font-medium">{entree.titre}</span>
         <span className="block truncate text-xs text-muted-foreground">
-          {horodatage ? depuis(horodatage) : sectionDe(chemin)}
+          {sectionDe(chemin)}
         </span>
       </span>
     </Link>

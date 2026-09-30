@@ -913,7 +913,7 @@ export default function PageChronogramme() {
         modifie={!lectureSeule && modifies.length > 0}
         enCours={enregistrement.isPending}
         echec={enregistrement.isError}
-        onEnregistrer={!lectureSeule && modifies.length > 0 ? () => enregistrement.mutate() : undefined}
+        onEnregistrer={lectureSeule ? undefined : () => enregistrement.mutate()}
         valeur={plannings}
         onRestaurer={setPlannings}
         repos={REPOS_CHRONOGRAMME}

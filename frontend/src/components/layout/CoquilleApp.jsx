@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { marquerVisitee } from '@/lib/visites';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ROLES } from 'shared/constants';
@@ -143,18 +142,6 @@ export default function CoquilleApp() {
       gererExpirationsession('expiration');
     }
   }, [session.isError, session.error]);
-
-  /*
-   * ⚠️ LA VISITE EST NOTÉE ICI, PAS DANS CHAQUE PAGE. La coquille est le seul
-   * endroit qui voie TOUS les changements de route — l'inscrire page par page
-   * en oublierait, et les « Récents » de l'accueil seraient incomplets sans
-   * qu'on sache lesquelles manquent.
-   *
-   * L'accueil lui-même est écarté : il ne s'y trouverait rien à retrouver.
-   */
-  useEffect(() => {
-    if (pathname !== '/app') marquerVisitee(pathname);
-  }, [pathname]);
 
   // Le titre suit la route : l'entrée la plus SPÉCIFIQUE gagne, sans quoi
   // « /app/parametres/espaces » afficherait « Paramètres ».

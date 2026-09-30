@@ -70,6 +70,8 @@ const REFUS = {
   rentree: 'Ce groupe n’a pas encore fait sa rentrée.',
   stage: 'Ce groupe est en stage cette semaine.',
   formation: 'Le formateur est en formation cette semaine.',
+  // Module partagé par type : l'autre part du module occupe déjà cette semaine.
+  autreType: 'Cette semaine porte déjà l’autre part de ce module (présentiel ou synchrone).',
 };
 
 function motifDeRefus(semaine) {

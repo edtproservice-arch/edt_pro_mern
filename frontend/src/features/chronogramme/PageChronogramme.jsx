@@ -19,8 +19,12 @@ import {
   groupesJumeaux,
   masseAnnuelle,
   masseHebdomadaire,
+  planningDepuisLignes,
+  planningDesLignes,
   poserAvecJumelles,
+  scinderParType,
   semainesDeLaLigne,
+  verrouillerAutreType,
 } from 'shared/domain';
 import { cn } from '@/lib/utils';
 import { recupererSession } from '@/features/auth/api';
@@ -1171,10 +1175,44 @@ function SectionGroupe({
    * props inégales et la mémoïsation ne retenait rien. Mesuré : ouvrir la liste
    * d'UNE cellule coûtait encore 879 ms.
    */
-  const modulesPrepares = useMemo(
-    () => (requete?.data ? modulesAvecFormations(requete.data) : []),
+  const lignes = useMemo(
+    () => (requete?.data ? scinderParType(modulesAvecFormations(requete.data)) : []),
     [requete?.data]
   );
+
+  /*
+   * ═══ MODULE PARTAGÉ PAR TYPE (2026-10-01, demande du porteur) ═══
+   * M205 de DEEA202 : présentiel pour l'un, synchrone pour l'autre. Il apparaît
+   * sur DEUX lignes, chacune avec sa masse, son formateur et ses seules
+   * cellules ; le planning, lui, reste celui du groupe — une cellule typée par
+   * semaine. `partage.js` fait l'aller et le retour.
+   *
+   * ⚠️ SANS MODULE PARTAGÉ, RIEN N'EST RECONSTRUIT : mêmes modules, même
+   * planning, la mémoïsation des cellules est intacte.
+   */
+  const partage = lignes.some((ligne) => ligne.typeSeul);
+  const modulesPrepares = useMemo(
+    () =>
+      partage
+        ? verrouillerAutreType(lignes, (ligne) => planning?.[ligne.cleSource], requete?.data?.semaines)
+        : lignes,
+    [partage, lignes, planning, requete?.data?.semaines]
+  );
+  const planningAffiche = useMemo(
+    () => (partage ? planningDesLignes(planning, modulesPrepares) : planning),
+    [partage, planning, modulesPrepares]
+  );
+  const surChangement = (nouveau, motif) => {
+    if (!partage || nouveau === null) {
+      onChanger(nouveau, motif);
+      return;
+    }
+    const { planning: reconstruit, refusees } = planningDepuisLignes(nouveau, modulesPrepares, planning);
+    onChanger(reconstruit);
+    if (refusees > 0) {
+      onChanger(null, `${refusees} semaine(s) déjà prise(s) par l’autre part du module (présentiel ou synchrone).`);
+    }
+  };
 
   return (
     <SectionGrille
@@ -1227,8 +1265,8 @@ function SectionGroupe({
         <GrilleChronogramme
           modules={modulesPrepares}
           semaines={requete.data.semaines}
-          planning={planning}
-          onChanger={onChanger}
+          planning={planningAffiche}
+          onChanger={surChangement}
           lectureSeule={lectureSeule}
           groupe={groupe}
           onOuverture={onOuverture}

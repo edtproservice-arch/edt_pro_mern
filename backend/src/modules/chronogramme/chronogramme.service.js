@@ -407,6 +407,21 @@ export async function marquesRattrapage(etablissementId, anneeScolaire, groupes)
   return marques;
 }
 
+/**
+ * Le seul type qu'assure un formateur sur un module partagé, ou `null`.
+ *
+ * ⚠️ IL FAUT QU'UN COLLÈGUE ASSURE L'AUTRE TYPE. Sans lui, des cellules de
+ * l'autre type seraient des heures à PERSONNE : les masquer les ferait
+ * disparaître de toutes les vues formateur à la fois.
+ */
+function typeSeul(ligne, typesDesAutres) {
+  const p = ligne.presentiel > 0;
+  const s = ligne.synchrone > 0;
+  if (p && !s && typesDesAutres?.has('S')) return 'P';
+  if (s && !p && typesDesAutres?.has('P')) return 'S';
+  return null;
+}
+
 /** Grille complète d'un groupe : modules, semaines, planning. */
 export async function obtenir(etablissementId, anneeScolaire, groupe) {
   const [base, etablissement, chrono] = await Promise.all([
@@ -705,12 +720,20 @@ export async function obtenirParFormateur(etablissementId, anneeScolaire, format
    * cas pour que l'écran les signale plutôt que de laisser conclure à un bug.
    */
   const autresFormateurs = new Map();
+  // Et les TYPES qu'ils y assurent : voir `typeSeul` plus bas.
+  const autresTypes = new Map();
   for (const affectation of base.affectations ?? []) {
     if (correspond(affectation.formateur)) continue;
     const code = String(affectation.module ?? '').trim();
     if (code === '') continue;
     for (const groupe of separerFusion(affectation.groupe)) {
       const cle = `${groupe}||${code}`;
+      autresTypes.set(
+        cle,
+        (autresTypes.get(cle) ?? new Set()).add(
+          affectation.type === TYPES_COURS.SYNCHRONE ? 'S' : 'P'
+        )
+      );
       autresFormateurs.set(
         cle,
         (autresFormateurs.get(cle) ?? new Set()).add(
@@ -864,6 +887,13 @@ export async function obtenirParFormateur(etablissementId, anneeScolaire, format
         fusionSynchrone: ligne.fusionSynchrone,
         // Les autres personnes qui interviennent sur ce module pour ce groupe.
         partageAvec: [...(autresFormateurs.get(`${ligne.groupe}||${ligne.code}`) ?? [])].sort(),
+        /*
+         * ⚠️ MODULE PARTAGÉ PAR TYPE (2026-10-01, demande du porteur) : cette
+         * personne n'assure QUE le présentiel (ou que le synchrone), et un
+         * collègue assure l'autre type. Sa ligne ne doit alors montrer ni
+         * compter les cellules de ce collègue — l'écran filtre sur ce type.
+         */
+        typeSeul: typeSeul(ligne, autresTypes.get(`${ligne.groupe}||${ligne.code}`)),
         semestre: ligne.s1 > 0 && ligne.s2 > 0 ? 'annuel' : ligne.s1 > 0 ? 'S1' : 'S2',
       }))
       .sort((a, b) => a.groupe.localeCompare(b.groupe, 'fr') || a.code.localeCompare(b.code, 'fr')),

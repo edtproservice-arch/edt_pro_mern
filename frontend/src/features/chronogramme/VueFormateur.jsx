@@ -1,5 +1,11 @@
 import { useMemo } from 'react';
-import { semainesDeLaLigne } from 'shared/domain';
+import {
+  TYPES,
+  cellulesDuType,
+  fusionnerType,
+  semainesDeLaLigne,
+  verrouillerAutreType,
+} from 'shared/domain';
 import Alerte from '@/components/common/Alerte';
 import GrilleChronogramme from './GrilleChronogramme';
 
@@ -148,10 +154,29 @@ export default function VueFormateur({
   const plat = useMemo(() => {
     const table = {};
     for (const ligne of lignes) {
-      table[ligne.cle] = plannings?.[ligne.groupe]?.[ligne.code] ?? {};
+      const cellules = plannings?.[ligne.groupe]?.[ligne.code] ?? {};
+      /*
+       * ⚠️ MODULE PARTAGÉ PAR TYPE (2026-10-01) : la personne n'assure que le
+       * présentiel — ou que le synchrone — et un collègue l'autre part. Ses
+       * cellules seules entrent dans SA grille, ses totaux et son écart.
+       */
+      table[ligne.cle] = ligne.typeSeul ? cellulesDuType(cellules, ligne.typeSeul) : cellules;
     }
     return table;
   }, [lignes, plannings]);
+
+  /*
+   * Sur ces mêmes lignes, les semaines que la part du collègue occupe déjà sont
+   * fermées : une seule cellule par semaine et par module. Sans ligne partagée,
+   * les lignes sont rendues telles quelles — la mémoïsation des cellules tient.
+   */
+  const lignesAffichees = useMemo(
+    () =>
+      lignes.some((ligne) => ligne.typeSeul)
+        ? verrouillerAutreType(lignes, (ligne) => plannings?.[ligne.groupe]?.[ligne.code], semaines)
+        : lignes,
+    [lignes, plannings, semaines]
+  );
 
   /**
    * Et le chemin inverse, à chaque saisie.
@@ -167,10 +192,19 @@ export default function VueFormateur({
    */
   const repartir = (nouveauPlat) => {
     const suivants = { ...plannings };
+    let refusees = 0;
 
     for (const ligne of lignes) {
-      const cellules = nouveauPlat[ligne.cle];
+      let cellules = nouveauPlat[ligne.cle];
       const courant = { ...(suivants[ligne.groupe] ?? {}) };
+
+      // ⚠️ Même logique pour la part du collègue : elle repart du planning du
+      // groupe, jamais de l'écran qui ne la montre pas.
+      if (ligne.typeSeul) {
+        const fusion = fusionnerType(courant[ligne.code] ?? {}, cellules ?? {}, ligne.typeSeul);
+        cellules = fusion.cellules;
+        refusees += fusion.refusees;
+      }
 
       if (cellules && Object.keys(cellules).length > 0) courant[ligne.code] = cellules;
       else delete courant[ligne.code];
@@ -178,7 +212,7 @@ export default function VueFormateur({
       suivants[ligne.groupe] = courant;
     }
 
-    return suivants;
+    return { suivants, refusees };
   };
 
   if (requete?.isError) {
@@ -202,7 +236,9 @@ export default function VueFormateur({
     );
   }
 
-  const partages = lignes.filter((ligne) => ligne.partageAvec?.length > 0);
+  const partages = lignes.filter((ligne) => ligne.partageAvec?.length > 0 && !ligne.typeSeul);
+  const partagesParType = lignes.filter((ligne) => ligne.typeSeul);
+  const libelleType = (type) => (type === TYPES.SYNCHRONE ? 'synchrone' : 'présentiel');
 
   /*
    * ⚠️ PAS DE LIGNE DE RÉSUMÉ ICI. Elle énumérait les treize groupes et la masse
@@ -226,8 +262,20 @@ export default function VueFormateur({
         </Alerte>
       )}
 
+      {partagesParType.length > 0 && (
+        <Alerte type="info" titre="Modules partagés entre présentiel et synchrone">
+          {partagesParType
+            .map(
+              (ligne) =>
+                `${ligne.code} (${ligne.groupe}) : ${libelleType(ligne.typeSeul)} seulement, avec ${ligne.partageAvec.join(', ')}`
+            )
+            .join(' · ')}
+          . Seules les heures de cette part sont affichées et comptées ici.
+        </Alerte>
+      )}
+
       <GrilleChronogramme
-        modules={lignes}
+        modules={lignesAffichees}
         semaines={semaines}
         planning={plat}
         colonne={{ titre: 'Groupe', valeur: (ligne) => ligne.groupe }}
@@ -249,7 +297,11 @@ export default function VueFormateur({
             onChanger(null, motif);
             return;
           }
-          onChanger(repartir(nouveauPlat));
+          const { suivants, refusees } = repartir(nouveauPlat);
+          onChanger(suivants);
+          if (refusees > 0) {
+            onChanger(null, `${refusees} semaine(s) déjà prise(s) par l’autre part du module (présentiel ou synchrone).`);
+          }
         }}
       />
     </div>

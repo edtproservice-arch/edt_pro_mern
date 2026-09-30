@@ -1,4 +1,4 @@
-import { Briefcase, CalendarClock, GraduationCap, Gauge, Palmtree } from 'lucide-react';
+import { Briefcase, CalendarClock, GraduationCap, Gauge, Palmtree, Users } from 'lucide-react';
 import { PLAFOND_CELLULE, plafondSemaine } from 'shared/domain';
 import CarteAuSurvol from '@/components/common/CarteAuSurvol';
 import {
@@ -94,6 +94,14 @@ const MOTIFS = {
     fond: FOND_FORMATION,
     titre: 'Formateur en formation toute la semaine',
     phrase: 'La personne est absente les six jours.',
+  },
+  // Module partagé par type (2026-10-01) : une cellule par semaine et par module.
+  autreType: {
+    icone: Users,
+    fond: 'bg-muted',
+    titre: 'Semaine déjà prise par l’autre part',
+    phrase:
+      'Ce module est partagé entre présentiel et synchrone : l’autre ligne porte déjà des heures cette semaine.',
   },
   masse: {
     icone: Gauge,

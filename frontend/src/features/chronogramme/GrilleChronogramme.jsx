@@ -959,6 +959,20 @@ function LigneModule({ module, colonne, semaines, identite, marquesLigne, planni
         ) : (
           module.code
         )}
+        {/*
+          Module partagé par type (2026-10-01) : ses deux lignes portent le même
+          code, la mention dit laquelle est laquelle.
+        */}
+        {module.typeSeul && (
+          <span
+            className={cn(
+              'ml-1.5 text-[10px] font-normal',
+              module.typeSeul === TYPES.SYNCHRONE ? 'text-accent-purple-deep' : 'text-accent-green'
+            )}
+          >
+            {module.typeSeul === TYPES.SYNCHRONE ? 'synchrone' : 'présentiel'}
+          </span>
+        )}
       </th>
 
       {/* Chacun sa colonne : alignés, ils se comparent d'une ligne à l'autre. */}
@@ -1339,21 +1353,27 @@ function ListeHeures({ valeur, cellule, module, apparence, plafond, onChoisir, o
       <SelectContent className="min-w-28">
         <SelectItem value={VIDE}>–</SelectItem>
 
-        <SelectGroup>
-          <SelectLabel>Présentiel</SelectLabel>
-          {disponibles.map((heures) => (
-            <SelectItem key={`${heures}P`} value={`${heures}|P`}>
-              {heures}
-            </SelectItem>
-          ))}
-        </SelectGroup>
+        {/*
+          Une ligne `typeSeul` (module partagé par type, 2026-10-01) ne propose
+          QUE son type : l'autre part appartient à un collègue.
+        */}
+        {module.typeSeul !== TYPES.SYNCHRONE && (
+          <SelectGroup>
+            <SelectLabel>Présentiel</SelectLabel>
+            {disponibles.map((heures) => (
+              <SelectItem key={`${heures}P`} value={`${heures}|P`}>
+                {heures}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        )}
 
         {/*
           Le groupe « Synchrone » n'apparaît QUE si le module porte des heures
           synchrones : en proposer sur un module qui n'en a pas invite à poser
           des heures que la masse refusera ensuite.
         */}
-        {module.masses.synchrone > 0 && (
+        {module.masses.synchrone > 0 && module.typeSeul !== TYPES.PRESENTIEL && (
           <SelectGroup>
             <SelectLabel className="text-accent-purple-deep">Synchrone</SelectLabel>
             {disponibles.map((heures) => (

@@ -74,3 +74,13 @@ export {
   placerManquantes,
   seancesManquantes,
 } from './placementManquantes.js';
+
+export {
+  cellulesDuType,
+  estPartageParType,
+  fusionnerType,
+  planningDepuisLignes,
+  planningDesLignes,
+  scinderParType,
+  verrouillerAutreType,
+} from './partage.js';

@@ -85,6 +85,37 @@ describe('lignesClasseur', () => {
     expect(s.heures).toEqual({ 4: 2.5 });
   });
 
+  it('module partagé par type : chaque ligne nomme le formateur de SON type', () => {
+    const partage = {
+      code: 'M205',
+      formateurs: ['NABIL KADANI', 'ZOUHAIR ADNAOUI'],
+      formateursPresentiel: ['ZOUHAIR ADNAOUI'],
+      formateursSynchrone: ['NABIL KADANI'],
+      masses: { presentiel: 65, synchrone: 10 },
+    };
+    const [p, s] = lignesClasseur([partage], {});
+
+    expect(p.formateurs).toBe('ZOUHAIR ADNAOUI');
+    expect(s.formateurs).toBe('NABIL KADANI');
+  });
+
+  it('feuille formateur : la ligne de l’autre type (celle du collègue) est omise', () => {
+    const planning = { 'DEEA202||M205': { 7: { heures: 5, type: 'P' }, 15: { heures: 10, type: 'S' } } };
+    const ligne = {
+      groupe: 'DEEA202',
+      code: 'M205',
+      cle: 'DEEA202||M205',
+      masses: { presentiel: 0, synchrone: 10 },
+      formateursSynchrone: ['NABIL KADANI'],
+      typeSeul: 'S',
+    };
+    const lignes = lignesClasseur([ligne], planning, 'formateur');
+
+    expect(lignes.map((l) => l.type)).toEqual(['S']);
+    expect(lignes[0].heures).toEqual({ 15: 10 });
+    expect(lignesClasseur([{ ...ligne, masses: { presentiel: 65, synchrone: 0 }, typeSeul: 'P' }], planning, 'formateur').map((l) => l.type)).toEqual(['P']);
+  });
+
   it('abrège le semestre comme les badges de la grille', () => {
     const lignes = lignesClasseur(MODULES, {});
     expect(lignes[0].semestre).toBe('1');

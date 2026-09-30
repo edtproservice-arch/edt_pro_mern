@@ -1,5 +1,6 @@
 import { NOMBRE_SEMAINES, PAS, PLAFOND_CELLULE } from './semaines.js';
 import { TYPES } from './planning.js';
+import { estPartageParType } from './partage.js';
 
 /**
  * Le classeur du chronogramme : ce qu'on écrit dedans, et ce qu'on en relit.
@@ -85,23 +86,37 @@ export function lignesClasseur(modules, planning = {}, mode = 'groupe') {
     };
 
     /*
+     * ═══ MODULE PARTAGÉ PAR TYPE (2026-10-01, demande du porteur) ═══
+     * Feuille de GROUPE : chaque ligne nomme le formateur de SON type, comme les
+     * deux lignes de l'écran. Feuille de FORMATEUR (`typeSeul`) : la ligne de
+     * l'autre type est celle du collègue — ni affichée, ni comptée ici.
+     */
+    const partage = estPartageParType(module);
+    const nommer = (titulaires) =>
+      partage ? { formateurs: (titulaires ?? []).join(' · ') } : {};
+
+    /*
      * ⚠️ CHAQUE LIGNE PORTE LES FORMATEURS DE SON TYPE. Un module assuré à deux
      * — l'un le présentiel, l'autre le synchrone — attribuerait sinon à l'un les
      * heures de l'autre dans la feuille de charge.
      */
-    lignes.push({
-      ...commun,
-      type: TYPES.PRESENTIEL,
-      titulaires: module.formateursPresentiel ?? module.formateurs ?? [],
-      // Le présentiel n'est jamais mutualisé : chaque groupe a sa séance.
-      ensemble: '',
-      prevu: arrondir(module.masses?.presentiel ?? 0),
-      heures: heuresParSemaine(cellules, TYPES.PRESENTIEL),
-    });
-
-    if ((module.masses?.synchrone ?? 0) > 0) {
+    if (module.typeSeul !== TYPES.SYNCHRONE) {
       lignes.push({
         ...commun,
+        ...nommer(module.formateursPresentiel),
+        type: TYPES.PRESENTIEL,
+        titulaires: module.formateursPresentiel ?? module.formateurs ?? [],
+        // Le présentiel n'est jamais mutualisé : chaque groupe a sa séance.
+        ensemble: '',
+        prevu: arrondir(module.masses?.presentiel ?? 0),
+        heures: heuresParSemaine(cellules, TYPES.PRESENTIEL),
+      });
+    }
+
+    if ((module.masses?.synchrone ?? 0) > 0 && module.typeSeul !== TYPES.PRESENTIEL) {
+      lignes.push({
+        ...commun,
+        ...nommer(module.formateursSynchrone),
         type: TYPES.SYNCHRONE,
         titulaires: module.formateursSynchrone ?? module.formateurs ?? [],
         /*

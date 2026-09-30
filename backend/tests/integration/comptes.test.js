@@ -154,6 +154,9 @@ describe('Formateurs mutualisés (compte partagé entre établissements)', () =>
     // Rattaché, pas refusé : même identifiant Mongo que le premier compte.
     expect(second.status).toBe(201);
     expect(second.body.compte.id).toBe(premier.body.compte.id);
+    // Signalé comme rattaché : l'écran prévient que le mot de passe saisi n'est pas appliqué.
+    expect(second.body.compte.mutualise).toBe(true);
+    expect(premier.body.compte.mutualise).toBeUndefined();
 
     const compte = await User.findById(premier.body.compte.id);
     expect(compte.etablissementIds.map((id) => id.toString()).sort()).toEqual(

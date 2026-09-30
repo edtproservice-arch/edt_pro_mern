@@ -104,7 +104,12 @@ export async function creer(etablissementId, donnees) {
 
     existant.etablissementIds.push(etablissementId);
     await existant.save();
-    return presenter(existant);
+    /*
+     * ⚠️ `mutualise` : le compte existait, il GARDE SON MOT DE PASSE — celui
+     * saisi par ce directeur-ci est ignoré. L'écran doit le lui dire
+     * (2026-09-30, demande du porteur), sinon il le croirait actif.
+     */
+    return { ...presenter(existant), mutualise: true };
   }
 
   const compte = await User.create({
@@ -379,6 +384,8 @@ export async function creerEnLot(etablissementId, anneeScolaire, { role, matricu
   );
 
   const crees = [];
+  // Formateurs mutualisés : compte existant rattaché, mot de passe inchangé.
+  const rattaches = [];
   const ignores = [];
   const echecs = [];
 
@@ -405,7 +412,8 @@ export async function creerEnLot(etablissementId, anneeScolaire, { role, matricu
         role,
         motDePasse,
       });
-      crees.push(compte);
+      if (compte.mutualise) rattaches.push({ identifiant: compte.identifiant, nomComplet: compte.nomComplet });
+      else crees.push(compte);
     } catch (erreur) {
       /*
        * ⚠️ Message CONTRÔLÉ, jamais `erreur.message` : `create_user_account.php`
@@ -421,5 +429,5 @@ export async function creerEnLot(etablissementId, anneeScolaire, { role, matricu
     }
   }
 
-  return { crees, ignores, echecs };
+  return { crees, rattaches, ignores, echecs };
 }

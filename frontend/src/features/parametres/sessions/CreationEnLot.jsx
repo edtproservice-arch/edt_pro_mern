@@ -41,11 +41,13 @@ export default function CreationEnLot({ role, libelle, aide, aideVide }) {
       cache.invalidateQueries({ queryKey: ['comptes-candidats', role] });
       cache.invalidateQueries({ queryKey: ['comptes'] });
 
+      const details = [
+        (resultat.rattaches?.length ?? 0) > 0 &&
+          `${resultat.rattaches.length} formateur(s) mutualisé(s) rattaché(s), mot de passe inchangé.`,
+        resultat.ignores.length > 0 && `${resultat.ignores.length} déjà existant(s), ignoré(s).`,
+      ].filter(Boolean);
       toast.success(`${resultat.crees.length} compte(s) créé(s)`, {
-        description:
-          resultat.ignores.length > 0
-            ? `${resultat.ignores.length} déjà existant(s), ignoré(s).`
-            : undefined,
+        description: details.length > 0 ? details.join(' ') : undefined,
       });
     },
     onError: (erreur) => toast.error('Création impossible', { description: erreur.message }),
@@ -142,6 +144,15 @@ export default function CreationEnLot({ role, libelle, aide, aideVide }) {
           titre={`${bilan.crees.length} compte(s) créé(s)`}
         >
           <ul className="space-y-0.5">
+            {/* ⚠️ MUTUALISÉS (2026-09-30, demande du porteur) : le compte
+                existait déjà dans un autre établissement. Il y est rattaché,
+                mais le mot de passe saisi ici n'est PAS appliqué. */}
+            {(bilan.rattaches ?? []).map((compte) => (
+              <li key={compte.identifiant}>
+                {compte.nomComplet || compte.identifiant} avait déjà un compte (formateur mutualisé) :
+                il est rattaché à votre établissement et garde son mot de passe actuel.
+              </li>
+            ))}
             {bilan.ignores.length > 0 && (
               <li>{bilan.ignores.length} déjà existant(s), ignoré(s) — rien n&apos;a été écrasé.</li>
             )}

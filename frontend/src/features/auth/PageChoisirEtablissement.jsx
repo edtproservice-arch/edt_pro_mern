@@ -9,6 +9,7 @@ import { recupererSession, seDeconnecter } from './api';
 import { chargerMesEtablissements } from '@/features/configuration/api';
 import { definirEtablissementActif } from '@/lib/etablissementActif';
 import { routeApresConnexion } from './routage';
+import { ROLES } from 'shared/constants';
 
 /**
  * « À quel établissement se connecter ? » — pour un compte mutualisé sur
@@ -51,9 +52,23 @@ export default function PageChoisirEtablissement() {
 
   const etablissements = liste.data?.etablissements ?? [];
 
-  // Filet de sécurité : un seul établissement (ou la liste pas encore chargée)
-  // n'a rien à faire choisir — direction la destination normale.
-  if (!liste.isLoading && !liste.isError && etablissements.length < 2) {
+  /*
+   * ═══ ⚠️⚠️ PAS DE REDIRECTION SANS ÉTABLISSEMENT ACTIF (2026-09-30, signalé
+   * par le porteur : formateur mutualisé, page blanche, « Throttling
+   * navigation ») ═══
+   * `CoquilleApp` envoie ici dès que la SESSION compte plus d'un identifiant ;
+   * la liste, elle, ne rend que les établissements qui EXISTENT encore. Un
+   * identifiant orphelin (établissement supprimé) donnait 2 d'un côté, 1 de
+   * l'autre : renvoyer vers `/app` sans rien choisir, c'était repartir vers la
+   * coquille, qui renvoyait ici — une boucle sans fin.
+   *
+   * Avec un seul établissement réel, on le RETIENT avant de partir : la
+   * coquille le trouve alors parmi les identifiants de la session et laisse
+   * passer. Avec aucun, on reste ici sur un message plutôt que de boucler.
+   */
+  const unique = !liste.isLoading && !liste.isError && etablissements.length === 1;
+  if (unique) definirEtablissementActif(etablissements[0].id);
+  if (unique || utilisateur.role === ROLES.ADMIN) {
     return <Navigate to={routeApresConnexion(utilisateur)} replace />;
   }
 
@@ -96,6 +111,13 @@ export default function PageChoisirEtablissement() {
         {liste.isError && (
           <Alerte type="erreur" titre="Liste indisponible">
             {liste.error.message}
+          </Alerte>
+        )}
+
+        {!liste.isLoading && !liste.isError && etablissements.length === 0 && (
+          <Alerte type="avertissement" titre="Aucun établissement disponible">
+            Les établissements rattachés à votre compte n’existent plus. Contactez votre directeur
+            ou l’administrateur.
           </Alerte>
         )}
 

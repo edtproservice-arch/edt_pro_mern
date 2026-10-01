@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import {
   ArrowRightLeft,
   BadgeCheck,
@@ -7,6 +9,7 @@ import {
   GraduationCap,
   ClipboardCheck,
   ClipboardList,
+  File,
   FileCheck2,
   FileSignature,
   FileText,
@@ -16,11 +19,18 @@ import {
   Mail,
   Table2,
   Ticket,
-  UserCheck,
   Users,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
+import { telechargerBilletsVierges } from '@/features/absences/stagiaires/api';
+import DialogueFeuilleAbsence from './DialogueFeuilleAbsence';
 
 /**
  * Documents imprimables, en cartes.
@@ -58,10 +68,10 @@ const DOCUMENTS = [
     icone: ClipboardList,
   },
   {
-    cle: 'presence',
-    titre: 'Feuille d’émargement',
-    resume: 'Présence ordinaire',
-    icone: ClipboardCheck,
+    cle: 'presence-cc-efm',
+    titre: 'Feuille de présence CC/EFM',
+    resume: 'Contrôle continu et EFM',
+    icone: ClipboardList,
   },
   {
     cle: 'verification',
@@ -104,18 +114,16 @@ const DOCUMENTS = [
     titre: 'Feuille d’absence hebdomadaire',
     resume: 'Par groupe, semaine par semaine',
     icone: ClipboardList,
+    // Le canevas de « Faire l'appel » : groupes et semaine se choisissent d'abord (2026-10-01).
+    Dialogue: DialogueFeuilleAbsence,
   },
   {
     cle: 'billet-absence',
     titre: 'Billet d’absence',
-    resume: 'Justification de l’absence',
+    resume: 'Quinze billets vierges par page',
     icone: FileText,
-  },
-  {
-    cle: 'rapport-absences',
-    titre: 'Rapport d’absences',
-    resume: 'Bilan sur une période',
-    icone: FileText,
+    // Le canevas du registre des absences, sans stagiaire (2026-10-01).
+    telecharger: telechargerBilletsVierges,
   },
   {
     cle: 'attestation-poursuite',
@@ -148,12 +156,6 @@ const DOCUMENTS = [
     icone: ArrowRightLeft,
   },
   {
-    cle: 'affectation',
-    titre: 'Affectation du formateur',
-    resume: 'Groupes et modules attribués',
-    icone: UserCheck,
-  },
-  {
     cle: 'reclamation',
     titre: 'Fiche de réclamation',
     resume: 'Discipline, récupération automatique',
@@ -177,34 +179,29 @@ const APERCU_MAX = 3;
 
 const CATEGORIES = [
   {
-    titre: 'Listes et affichage',
-    cles: ['liste', 'numeros', 'badges-table', 'badges-simples'],
-    icone: Users,
-    teinte: 'bg-accent-purple/25 text-accent-purple-deep',
+    titre: 'Examen',
+    cles: ['convocation', 'presence-eff', 'presence-cc-efm','liste', 'numeros', 'badges-table', 'badges-simples'],
+    icone: ClipboardList,
   },
   {
-    titre: 'Présence et absences',
-    cles: ['presence', 'presence-eff', 'feuille-absence', 'billet-absence', 'rapport-absences'],
+    titre: 'Absences',
+    cles: ['feuille-absence', 'billet-absence'],
     icone: ClipboardCheck,
-    teinte: 'bg-accent-teal/20 text-accent-teal',
   },
   {
-    titre: 'Examen et diplômes',
-    cles: ['convocation', 'checklist', 'attestation-poursuite', 'retrait-definitif', 'retrait-provisoire'],
+    titre: 'Diplômes',
+    cles: ['checklist', 'verification', 'retrait-definitif', 'retrait-provisoire'],
     icone: GraduationCap,
-    teinte: 'bg-accent-orange/20 text-accent-orange-deep',
   },
   {
     titre: 'Administration',
-    cles: ['verification', 'carte', 'convention', 'transfert', 'affectation'],
+    cles: ['carte', 'convention', 'transfert', 'attestation-poursuite'],
     icone: Briefcase,
-    teinte: 'bg-accent-green/20 text-accent-green-deep',
   },
   {
     titre: 'Discipline',
     cles: ['reclamation', 'pv-discipline'],
     icone: Gavel,
-    teinte: 'bg-accent-sky/25 text-accent-sky-deep',
   },
 ].map((categorie) => ({
   ...categorie,
@@ -251,14 +248,7 @@ export default function CartesDocuments({ nombreStagiaires }) {
             onClick={() => setOuverte(null)}
             className="flex w-full items-center gap-3 border-b px-4 py-2.5 text-left hover:bg-muted/40"
           >
-            <span
-              className={cn(
-                'flex size-8 shrink-0 items-center justify-center rounded-lg',
-                categorieOuverte.teinte
-              )}
-            >
-              <categorieOuverte.icone className="size-4" />
-            </span>
+            <categorieOuverte.icone className="size-4 shrink-0 text-muted-foreground" />
             <span className="text-sm font-medium">{categorieOuverte.titre}</span>
             <span className="text-xs text-muted-foreground">
               {categorieOuverte.documents.length} documents
@@ -274,50 +264,15 @@ export default function CartesDocuments({ nombreStagiaires }) {
             ressemblerait à une bannière, pas à une feuille.
           */}
           <div className="flex flex-wrap gap-4 p-4">
-            {categorieOuverte.documents.map(({ cle, titre, resume, icone: Icone }) => (
-              <div
-                key={cle}
-                className={cn(
-                  'relative flex aspect-[210/297] w-36 flex-col gap-1.5 overflow-hidden rounded-md border bg-background p-3 shadow-sm transition-transform duration-200 hover:-translate-y-0.5',
-                  // Sans base, les cartes s'effacent : elles disent ce qui viendra,
-                  // mais rien ne peut encore être produit.
-                  !pret && 'opacity-60'
-                )}
-              >
-                {/* Le coin corné : un triangle de fond qui coupe l'angle, un rabat gris dessus. */}
-                <span
-                  aria-hidden="true"
-                  className="absolute right-0 top-0 size-6 bg-muted/40 [clip-path:polygon(0_0,100%_0,100%_100%)]"
-                />
-                <span
-                  aria-hidden="true"
-                  className="absolute right-0 top-0 size-6 border-b border-l bg-muted [clip-path:polygon(0_0,100%_100%,0_100%)]"
-                />
-
-                <span className="flex size-6 items-center justify-center rounded-md bg-muted text-muted-foreground">
-                  <Icone className="size-4" />
-                </span>
-
-                <span className="min-w-0">
-                  <span className="block text-[0.7rem] font-semibold leading-tight">{titre}</span>
-                  <span className="mt-0.5 block text-[0.65rem] leading-tight text-muted-foreground">
-                    {resume}
-                  </span>
-                </span>
-
-                <span className="mt-1 flex flex-col gap-1.5">
-                  <span className="h-1 w-full rounded-full bg-muted" />
-                  <span className="h-1 w-full rounded-full bg-muted" />
-                  <span className="h-1 w-4/5 rounded-full bg-muted" />
-                  <span className="h-1 w-full rounded-full bg-muted" />
-                  <span className="h-1 w-3/5 rounded-full bg-muted" />
-                </span>
-
-                <Badge variant="outline" className="mt-auto w-fit text-[0.65rem] font-normal text-muted-foreground">
-                  Phase 10
-                </Badge>
-              </div>
-            ))}
+            {categorieOuverte.documents.map((document) =>
+              document.Dialogue ? (
+                <DocumentAvecDialogue key={document.cle} document={document} attenue={!pret} />
+              ) : document.telecharger ? (
+                <DocumentTelechargeable key={document.cle} document={document} />
+              ) : (
+                <FeuilleDocument key={document.cle} document={document} attenue={!pret} />
+              )
+            )}
           </div>
         </div>
       )}
@@ -345,23 +300,24 @@ export default function CartesDocuments({ nombreStagiaires }) {
               type="button"
               aria-expanded="false"
               onClick={() => setOuverte(categorie.titre)}
-              className="flex overflow-hidden rounded-xl border text-left transition-colors duration-200 animate-in fade-in-0 zoom-in-95 hover:border-border-strong motion-reduce:animate-none"
+              className="relative flex overflow-hidden rounded-xl border text-left transition-colors duration-200 animate-in fade-in-0 zoom-in-95 hover:border-border-strong motion-reduce:animate-none"
             >
               <span className="flex min-w-0 flex-1 flex-col justify-center gap-1 px-4 py-3">
                 <categorie.icone className="size-4 text-muted-foreground" />
                 <span className="text-sm font-medium">{categorie.titre}</span>
-                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   {categorie.documents.length} documents
-                  <ChevronDown className="ml-auto size-4 shrink-0" />
                 </span>
               </span>
 
-              <span
-                className={cn(
-                  'relative flex w-[55%] min-w-0 items-center justify-center px-3 py-4',
-                  categorie.teinte
-                )}
-              >
+              {/* Dans le coin (2026-10-01, demande du porteur) : au bout de la
+                  ligne du compte, la flèche tombait entre le titre et les
+                  feuilles. */}
+              <ChevronDown className="absolute right-3 top-3 size-4 text-muted-foreground" />
+
+              {/* Sans teinte de fond (2026-10-01, demande du porteur), ni ici ni
+                  sur l'icône de la carte dépliée. */}
+              <span className="relative flex w-[55%] min-w-0 items-center justify-center px-3 py-4">
                 {/*
                   ⚠️ DES FEUILLES, PAS DES LIGNES DE LISTE (2026-09-28, demande du
                   porteur, avec une illustration de feuilles superposées en
@@ -400,5 +356,124 @@ export default function CartesDocuments({ nombreStagiaires }) {
         })}
       </div>
     </section>
+  );
+}
+
+/**
+ * Une petite feuille A4 : coin corné, icône, titre, traits de texte, et en pied
+ * `pied` — « Phase 10 » tant que le document n'est pas produit.
+ */
+function FeuilleDocument({ document: { titre, resume, icone: Icone }, attenue = false, pied = 'Phase 10', className }) {
+  return (
+    <span
+      className={cn(
+        'relative flex aspect-[210/297] w-36 flex-col gap-1.5 overflow-hidden rounded-md border bg-background p-3 text-left shadow-sm transition-transform duration-200 hover:-translate-y-0.5',
+        // Sans base, les cartes s'effacent : elles disent ce qui viendra,
+        // mais rien ne peut encore être produit.
+        attenue && 'opacity-60',
+        className
+      )}
+    >
+      {/* Le coin corné : un triangle de fond qui coupe l'angle, un rabat gris dessus. */}
+      <span
+        aria-hidden="true"
+        className="absolute right-0 top-0 size-6 bg-muted/40 [clip-path:polygon(0_0,100%_0,100%_100%)]"
+      />
+      <span
+        aria-hidden="true"
+        className="absolute right-0 top-0 size-6 border-b border-l bg-muted [clip-path:polygon(0_0,100%_100%,0_100%)]"
+      />
+
+      <span className="flex size-6 items-center justify-center rounded-md bg-muted text-muted-foreground">
+        <Icone className="size-4" />
+      </span>
+
+      <span className="min-w-0">
+        <span className="block text-[0.7rem] font-semibold leading-tight">{titre}</span>
+        <span className="mt-0.5 block text-[0.65rem] leading-tight text-muted-foreground">{resume}</span>
+      </span>
+
+      <span className="mt-1 flex flex-col gap-1.5">
+        <span className="h-1 w-full rounded-full bg-muted" />
+        <span className="h-1 w-full rounded-full bg-muted" />
+        <span className="h-1 w-4/5 rounded-full bg-muted" />
+        <span className="h-1 w-full rounded-full bg-muted" />
+        <span className="h-1 w-3/5 rounded-full bg-muted" />
+      </span>
+
+      <Badge variant="outline" className="mt-auto w-fit text-[0.65rem] font-normal text-muted-foreground">
+        {pied}
+      </Badge>
+    </span>
+  );
+}
+
+/**
+ * Un document DÉJÀ PRODUIT : la feuille se clique et propose Word ou PDF.
+ * ⚠️ PAS ATTÉNUÉ SANS BASE KONOSYS : un billet vierge ne lit aucun stagiaire.
+ */
+function DocumentTelechargeable({ document }) {
+  const telechargement = useMutation({
+    mutationFn: document.telecharger,
+    onError: (erreur) => toast.error('Téléchargement impossible', { description: erreur.message }),
+  });
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          disabled={telechargement.isPending}
+          aria-label={`Télécharger : ${document.titre}`}
+          className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <FeuilleDocument
+            document={document}
+            pied={telechargement.isPending ? 'Préparation…' : 'Word · PDF'}
+            className="cursor-pointer hover:border-border-strong"
+          />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-52">
+        <DropdownMenuItem onSelect={() => telechargement.mutate('docx')}>
+          <FileText className="size-3.5 text-blue-600" />
+          Télécharger en Word
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => telechargement.mutate('pdf')}>
+          <File className="size-3.5 text-red-600" />
+          Télécharger en PDF
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
+ * Un document qui demande un CHOIX avant d'être produit (groupes, semaine…) :
+ * la feuille ouvre son dialogue, qui télécharge.
+ * ⚠️ ATTÉNUÉ SANS BASE KONOSYS, comme les autres : la feuille porte les noms
+ * des stagiaires importés, et sortirait vide.
+ */
+function DocumentAvecDialogue({ document, attenue }) {
+  const [ouvert, setOuvert] = useState(false);
+  const { Dialogue } = document;
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOuvert(true)}
+        aria-label={`Télécharger : ${document.titre}`}
+        className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <FeuilleDocument
+          document={document}
+          attenue={attenue}
+          pied="Word · PDF · Excel"
+          className="cursor-pointer hover:border-border-strong"
+        />
+      </button>
+      <Dialogue ouvert={ouvert} onFermer={() => setOuvert(false)} />
+    </>
   );
 }

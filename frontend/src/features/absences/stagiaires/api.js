@@ -65,6 +65,10 @@ export const supprimerAbsence = (id) => api.delete(`${RACINE}/${id}`);
 export const telechargerBillets = ({ format, ids }) =>
   api.telecharger(`${RACINE}/billets`, { format, ids }, { nomParDefaut: `billets-excuse.${format}` });
 
+/** Une page de quinze billets vierges, à remplir à la main (Word ou PDF). */
+export const telechargerBilletsVierges = (format) =>
+  api.telecharger(`${RACINE}/billets/vierges`, { format }, { nomParDefaut: `billets-excuse-vierges.${format}` });
+
 export const chargerNotes = (groupe) => api.get(`${RACINE}/notes?${requete({ groupe })}`);
 export const chargerFiche = (matricule) => api.get(`${RACINE}/stagiaires/${encodeURIComponent(matricule)}`);
 

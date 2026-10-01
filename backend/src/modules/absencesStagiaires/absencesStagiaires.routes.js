@@ -10,7 +10,7 @@ import { annoncerModification } from '../tempsReel/annonces.js';
 import * as appelService from './absencesStagiaires.service.js';
 import * as discipline from './discipline.service.js';
 import { construireExportFeuilleAbsence } from './exportFeuilleAbsence.service.js';
-import { construireBilletsAbsence } from './exportBilletAbsence.service.js';
+import { construireBilletsAbsence, construireBilletsVierges } from './exportBilletAbsence.service.js';
 
 /**
  * Absences, retards et indisciplines des stagiaires — la note de discipline (F9).
@@ -273,6 +273,29 @@ router.post(
       req.body.ids,
       req.body.format
     );
+    res.setHeader('Content-Type', contentType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="export"; filename*=UTF-8''${encodeURIComponent(nomFichier)}`
+    );
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+    res.send(tampon);
+  })
+);
+
+/**
+ * Une page de billets VIERGES, à remplir à la main — depuis la page Documents
+ * (2026-10-01). Voir `construireBilletsVierges`.
+ *
+ * ⚠️ PAS RÉSERVÉE À L'ENCADREMENT, contrairement à `/billets` : la page
+ * Documents s'ouvre aussi en consultation, et un billet vierge ne dit rien de
+ * personne.
+ */
+router.post(
+  '/billets/vierges',
+  validate({ body: z.object({ format: z.enum(['docx', 'pdf']) }) }),
+  route(async (req, res) => {
+    const { tampon, nomFichier, contentType } = await construireBilletsVierges(req.anneeScolaire, req.body.format);
     res.setHeader('Content-Type', contentType);
     res.setHeader(
       'Content-Disposition',

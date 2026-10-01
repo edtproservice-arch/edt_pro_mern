@@ -151,8 +151,13 @@ function cellulesDeNiveauSuperieur(xmlLigne) {
   return cellules;
 }
 
-/** Remplit LES 18 `<w:t>` d'une case de billet avec les champs d'UN stagiaire. */
+/**
+ * Remplit LES 18 `<w:t>` d'une case de billet avec les champs d'UN stagiaire.
+ * ⚠️ Un billet VIERGE garde la case du canevas telle quelle — ses pointillés
+ * sont précisément ce qu'on remplit à la main.
+ */
 function remplirCase(xmlCase, billet) {
+  if (billet.vierge) return xmlCase;
   let xml = xmlCase;
   xml = remplacerTexteParIndex(xml, RUN.NOM, billet.nom);
   xml = remplacerTexteParIndex(xml, RUN.PRENOM, billet.prenom);
@@ -280,6 +285,33 @@ function construirePage(gabaritPage, billetsDeCettePage) {
   return gabaritPage.slice(0, tableExterieure.debut) + nouvelleTable + gabaritPage.slice(tableExterieure.fin);
 }
 
+/**
+ * ═══ LA PAGE DE BILLETS VIERGES : PLEINE, PAS QUATRE ═══ (2026-10-01, demande
+ * du porteur : « il met seulement 4 billets même s'il y a la possibilité de
+ * plus ».) La première rangée du canevas — trois billets, déjà à la bonne
+ * largeur — est répétée `RANGEES_VIERGES` fois : la même grille, plus haute.
+ *
+ * ⚠️ CINQ RANGÉES, ET C'EST MESURÉ : une rangée fait ~52 mm, la page en offre
+ * ~279 entre ses marges de 500 twips. Une sixième passerait sur une seconde
+ * page — `cantSplit` la déplace entière plutôt que de la couper.
+ */
+const RANGEES_VIERGES = 5;
+export const BILLETS_VIERGES_PAR_PAGE = RANGEES_VIERGES * 3;
+
+function construirePageVierge(gabaritPage) {
+  const [tableExterieure] = tablesDeNiveauSuperieur(gabaritPage);
+  if (!tableExterieure) throw new Error('Canevas Word illisible : la grille des billets est absente');
+
+  const contenuTable = gabaritPage.slice(tableExterieure.debut, tableExterieure.fin);
+  const [premiereLigne] = lignesDeNiveauSuperieur(contenuTable);
+  if (!premiereLigne) throw new Error('Canevas Word illisible : aucune ligne dans la grille des billets');
+
+  const preambuleTable = contenuTable.slice(0, premiereLigne.debut);
+  const rangee = contenuTable.slice(premiereLigne.debut, premiereLigne.fin);
+  const nouvelleTable = `${preambuleTable}${rangee.repeat(RANGEES_VIERGES)}</w:tbl>`;
+  return gabaritPage.slice(0, tableExterieure.debut) + nouvelleTable + gabaritPage.slice(tableExterieure.fin);
+}
+
 export async function construireDocxBilletsAbsence(donnees) {
   const { anneeScolaire, billets } = donnees;
 
@@ -299,8 +331,12 @@ export async function construireDocxBilletsAbsence(donnees) {
   gabaritPage = gabaritPage.replaceAll('2026-2027', `${anneeScolaire}-${anneeScolaire + 1}`);
 
   const pages = [];
-  for (let debut = 0; debut < billets.length; debut += BILLETS_PAR_PAGE) {
-    pages.push(construirePage(gabaritPage, billets.slice(debut, debut + BILLETS_PAR_PAGE)));
+  if (billets.length > 0 && billets.every((billet) => billet.vierge)) {
+    pages.push(construirePageVierge(gabaritPage));
+  } else {
+    for (let debut = 0; debut < billets.length; debut += BILLETS_PAR_PAGE) {
+      pages.push(construirePage(gabaritPage, billets.slice(debut, debut + BILLETS_PAR_PAGE)));
+    }
   }
   const corpsFinal = pages.join(SAUT_DE_PAGE);
 

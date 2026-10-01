@@ -1,7 +1,7 @@
 import { AbsenceStagiaire } from '../../models/AbsenceStagiaire.js';
 import { Stagiaire } from '../../models/Stagiaire.js';
 import { badRequest, notFound } from '../../lib/httpError.js';
-import { construireDocxBilletsAbsence } from './exportBilletAbsenceDocx.js';
+import { BILLETS_VIERGES_PAR_PAGE, construireDocxBilletsAbsence } from './exportBilletAbsenceDocx.js';
 import { construireXlsxBilletsAbsence } from './exportBilletAbsenceXlsx.js';
 import { construirePdfBilletsAbsence } from './exportBilletAbsencePdf.js';
 
@@ -67,5 +67,23 @@ export async function construireBilletsAbsence(etablissementId, anneeScolaire, a
 
   if (format === 'docx') return construireDocxBilletsAbsence(donnees);
   if (format === 'xlsx') return construireXlsxBilletsAbsence(donnees);
+  return construirePdfBilletsAbsence(donnees);
+}
+
+/**
+ * Une page de billets VIERGES, à remplir à la main (2026-10-01, demande du
+ * porteur : depuis la page Documents, « il télécharge le maximum des billets
+ * dans une page vide »). Le billet du canevas, champs en pointillés, répété
+ * sur toute la page (quinze) ; seule l’année est celle de l’établissement.
+ *
+ * ⚠️ WORD OU PDF SEULEMENT : l'Excel des billets est un TABLEAU de stagiaires,
+ * qui vide ne dirait rien.
+ */
+export async function construireBilletsVierges(anneeScolaire, format) {
+  const donnees = {
+    anneeScolaire,
+    billets: Array.from({ length: BILLETS_VIERGES_PAR_PAGE }, () => ({ vierge: true })),
+  };
+  if (format === 'docx') return construireDocxBilletsAbsence(donnees);
   return construirePdfBilletsAbsence(donnees);
 }

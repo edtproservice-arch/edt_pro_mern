@@ -15,6 +15,7 @@ export function dateCourte(dateIso) {
  * document en porte plusieurs.
  */
 export function nomFichierBillets(billets, extension) {
+  if (billets.every((billet) => billet.vierge)) return `Billets_Excuse_vierges.${extension}`;
   if (billets.length === 1) {
     const { nom, prenom, date } = billets[0];
     const nomFichier = `${nom} ${prenom}`.trim().replace(/\s+/g, '_') || 'stagiaire';

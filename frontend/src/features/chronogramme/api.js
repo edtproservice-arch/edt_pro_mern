@@ -18,6 +18,11 @@ export function chargerFormateursChronogramme() {
   return api.get('/api/v2/chronogrammes/par-formateur');
 }
 
+/** Modules partagés entre présentiel et synchrone, pour « À traiter ». */
+export function chargerPartagesParType() {
+  return api.get('/api/v2/chronogrammes/partages-type');
+}
+
 /**
  * Grille d'un formateur : ses modules dans TOUS les groupes où il intervient.
  *

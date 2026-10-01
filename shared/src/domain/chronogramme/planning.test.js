@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { TYPES, capaciteSemaine, poserCellule, resteAPlanifier, totalSemaine, totauxModule, verifierCellule } from './planning.js';
+import {
+  TYPES,
+  capaciteSemaine,
+  celluleDepuisParts,
+  partsDeCellule,
+  poserCellule,
+  resteAPlanifier,
+  totalSemaine,
+  totauxModule,
+  verifierCellule,
+} from './planning.js';
 
 const pleine = (numero = 3) => ({ numero, disponible: true, joursDisponibles: 6, motif: null });
 const masses = { presentiel: 60, synchrone: 20 };
@@ -209,5 +219,61 @@ describe('verifierCellule — le garde de la SEMAINE, tous modules confondus', (
    */
   it('sans `posesSemaine`, le contrôle hebdomadaire est ignoré', () => {
     expect(verifierCellule({ ...base, heures: 10, semaine: uneJournee }).possible).toBe(true);
+  });
+});
+
+describe('case MIXTE — présentiel et synchrone la même semaine (2026-10-01)', () => {
+  const mixte = { heures: 7.5, type: 'PS', presentiel: 5, synchrone: 2.5 };
+
+  it('lit les parts de chaque forme de case', () => {
+    expect(partsDeCellule(undefined)).toEqual({ P: 0, S: 0 });
+    expect(partsDeCellule({ heures: 5, type: 'P' })).toEqual({ P: 5, S: 0 });
+    expect(partsDeCellule({ heures: 5, type: 'S' })).toEqual({ P: 0, S: 5 });
+    expect(partsDeCellule(mixte)).toEqual({ P: 5, S: 2.5 });
+  });
+
+  it('reconstruit une case simple quand une seule part reste, rien quand aucune', () => {
+    expect(celluleDepuisParts({ P: 5, S: 2.5 })).toEqual(mixte);
+    expect(celluleDepuisParts({ P: 0, S: 2.5 })).toEqual({ heures: 2.5, type: 'S' });
+    expect(celluleDepuisParts({ P: 5 })).toEqual({ heures: 5, type: 'P' });
+    expect(celluleDepuisParts({})).toBeNull();
+  });
+
+  it('`heures` reste le TOTAL : la colonne additionne les deux parts', () => {
+    expect(totalSemaine({ M101: { 3: mixte }, M102: { 3: { heures: 5, type: 'P' } } }, 3)).toBe(12.5);
+  });
+
+  it('les totaux par type séparent les deux parts', () => {
+    expect(totauxModule({ M101: { 3: mixte, 4: { heures: 5, type: 'S' } } }, 'M101')).toEqual({
+      presentiel: 5,
+      synchrone: 7.5,
+    });
+  });
+
+  it('`partSeule` ne remplace que la part de ce type', () => {
+    const avec = poserCellule({ M101: { 3: { heures: 5, type: 'P' } } }, 'M101', 3, 2.5, 'S', { partSeule: true });
+    expect(avec.M101[3]).toEqual(mixte);
+
+    const sans = poserCellule(avec, 'M101', 3, 0, 'P', { partSeule: true });
+    expect(sans.M101[3]).toEqual({ heures: 2.5, type: 'S' });
+  });
+
+  it('sans `partSeule`, la case entière est remplacée — comme avant', () => {
+    const suivant = poserCellule({ M101: { 3: mixte } }, 'M101', 3, 5, 'S');
+    expect(suivant.M101[3]).toEqual({ heures: 5, type: 'S' });
+  });
+
+  it('le plafond d’une case porte sur les DEUX parts', () => {
+    const verdict = verifierCellule({
+      planning: {},
+      module: 'M101',
+      semaine: pleine(),
+      heures: 10,
+      type: 'S',
+      masses,
+      autrePart: 15,
+    });
+    expect(verdict.possible).toBe(false);
+    expect(verdict.motif).toContain('présentiel');
   });
 });

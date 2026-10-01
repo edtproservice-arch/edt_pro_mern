@@ -1,4 +1,4 @@
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Trash2 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,18 @@ import { NATURES, libelleNature } from './completudeApparence';
  *    tiennent pas. Chaque écart garde TOUTES ses informations — groupe, module,
  *    type, formateur, prévu, posé, heures absentes, nature, lien vers la case.
  */
-export default function ListeEcarts({ ecarts, onAllerAuxCases }) {
+const NATURES_RETIRABLES = ['en_trop', 'hors_chronogramme'];
+
+/** Les séances d'un écart qu'on peut retirer sans creuser de manque. */
+const retirables = (ecart) =>
+  NATURES_RETIRABLES.includes(ecart.nature) ? (ecart.positions ?? []).filter((p) => p.retirable) : [];
+
+export default function ListeEcarts({
+  ecarts,
+  onAllerAuxCases,
+  onSupprimerSeance,
+  suppressionEnCours = false,
+}) {
   return (
     <ul className="divide-y rounded-lg border">
       {ecarts.map((e) => (
@@ -67,6 +78,33 @@ export default function ListeEcarts({ ecarts, onAllerAuxCases }) {
               {e.nature === 'hors_chronogramme' ? 'Supprimer dans la grille' : 'Voir dans la grille'}
               <ArrowRight className="h-3 w-3" />
             </Button>
+          )}
+
+          {/*
+            ⚠️ « EN TROP » ET « HORS CHRONOGRAMME » SE SUPPRIMENT D'ICI
+            (2026-10-01, demande du porteur), MÊME SOUS VERROU : une case par
+            séance, le directeur choisit LAQUELLE retirer. Seules les séances
+            `retirable` sont offertes — celles dont le retrait ne crée aucun
+            manque, la règle même du serveur. Ctrl+Z la rétablit.
+          */}
+          {onSupprimerSeance && retirables(e).length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+              <span className="text-xs text-muted-foreground">Supprimer :</span>
+              {retirables(e).map((p) => (
+                <Button
+                  key={`${p.jour}|${p.seance}|${p.periode}|${p.formateurMatricule}`}
+                  variant="outline"
+                  size="sm"
+                  className="h-6 gap-1 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  disabled={suppressionEnCours}
+                  title={`Supprimer la séance du ${p.jour} ${p.seance}`}
+                  onClick={() => onSupprimerSeance(p)}
+                >
+                  <Trash2 className="h-3 w-3" />
+                  {p.jour} {p.seance}
+                </Button>
+              ))}
+            </div>
           )}
         </li>
       ))}

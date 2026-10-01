@@ -11,7 +11,7 @@
  */
 
 import { MOTIFS_IGNOREE, TYPES_COURS } from 'shared/constants';
-import { cleModule } from 'shared/domain';
+import { cleModule, partsDeCellule } from 'shared/domain';
 import { separerFusion, semestreDe } from 'shared/domain';
 
 /** Durée d'une séance de jour, en heures. ← `Math.ceil(heures / 2.5)` de l'ancien. */
@@ -126,11 +126,16 @@ export function tachesDeLaSemaine({
 
   for (const { groupe, planning } of chronogrammes) {
     for (const [module, cellules] of Object.entries(planning ?? {})) {
-      const cellule = cellules?.[numero];
-      const heures = Number(cellule?.heures) || 0;
+      /*
+       * ⚠️ UNE CASE MIXTE (2026-10-01) porte du présentiel ET du synchrone la
+       * même semaine : chaque part devient sa propre tâche, avec SON
+       * affectation — exactement comme deux cases.
+       */
+      const parts = partsDeCellule(cellules?.[numero]);
+      for (const [cleType, heures] of [['P', parts.P], ['S', parts.S]]) {
       if (heures <= 0) continue;
 
-      const type = TYPE_CHRONO[cellule.type] ?? TYPES_COURS.PRESENTIEL;
+      const type = TYPE_CHRONO[cleType] ?? TYPES_COURS.PRESENTIEL;
       const affectation = affectationDe(affectations, groupe, module, type);
 
       /*
@@ -206,6 +211,7 @@ export function tachesDeLaSemaine({
         semestre,
         priorite: prioriteDe(Boolean(affectation.estRegional), semestre),
       });
+      }
     }
   }
 

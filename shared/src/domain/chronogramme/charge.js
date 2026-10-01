@@ -1,5 +1,5 @@
 import { NOMBRE_SEMAINES } from './semaines.js';
-import { TYPES } from './planning.js';
+import { partsDeCellule } from './planning.js';
 
 /**
  * Charge hebdomadaire, par formateur et par groupe.
@@ -56,12 +56,20 @@ export function chargesHebdomadaires(lignes = []) {
     const formateur = String(ligne?.formateur ?? '').trim();
     if (groupe === '' || module === '') continue;
 
+    /*
+     * ⚠️ UNE CASE MIXTE (2026-10-01) porte du présentiel ET du synchrone la même
+     * semaine : chaque part est comptée dans sa nature, comme deux cases.
+     */
+    const parts = [];
     for (const [cle, cellule] of Object.entries(ligne.planning ?? {})) {
       const semaine = numeroSemaine(cle);
-      const heures = Number(cellule?.heures ?? 0);
-      if (semaine === null || !(heures > 0)) continue;
+      if (semaine === null) continue;
+      const { P, S } = partsDeCellule(cellule);
+      if (P > 0) parts.push([semaine, P, false]);
+      if (S > 0) parts.push([semaine, S, true]);
+    }
 
-      const synchrone = cellule?.type === TYPES.SYNCHRONE;
+    for (const [semaine, heures, synchrone] of parts) {
       const nature = synchrone ? 'synchrone' : 'presentiel';
 
       // ─── Groupe : tout compte, sans dédoublonnage ───

@@ -1,4 +1,4 @@
-import { TYPES } from './planning.js';
+import { TYPES, celluleDepuisParts, partsDeCellule } from './planning.js';
 import { cleLigne } from './fusion.js';
 
 /**
@@ -7,19 +7,16 @@ import { cleLigne } from './fusion.js';
  * ADNAOUI, synchrone NABIL KADANI).
  *
  * ═══ LE PLANNING NE CHANGE PAS DE FORME ═══
- * Une cellule par semaine et par module, typée P ou S : c'est ce que stockent le
- * serveur, le classeur et la charge. Le partage est une LECTURE de ce planning —
- * chaque ligne à l'écran ne montre que les cellules de SON type, et l'écriture
- * réinjecte ces cellules sans toucher à celles de l'autre type.
+ * Une cellule par semaine et par module — simple (P ou S) ou MIXTE (les deux,
+ * depuis le 2026-10-01, voir `TYPE_MIXTE`). Le partage est une LECTURE de ce
+ * planning : chaque ligne à l'écran ne montre que la part de SON type, et
+ * l'écriture réinjecte cette part sans toucher à celle de l'autre type.
  *
- * ⚠️ UNE SEULE CELLULE PAR SEMAINE, DONC UNE SEMAINE PORTÉE PAR L'UN EST FERMÉE
- * À L'AUTRE. La réécrire effacerait sans un mot les heures du collègue ; la
- * ligne verrouille donc ces semaines (motif `autreType`).
+ * ⚠️ LES DEUX PARTS COHABITENT (2026-10-01). Avant la case mixte, une semaine
+ * portée par l'un était fermée à l'autre ; elle accueille désormais les deux.
  */
 
 const SUFFIXES = { [TYPES.PRESENTIEL]: '#P', [TYPES.SYNCHRONE]: '#S' };
-
-const autreType = (type) => (type === TYPES.SYNCHRONE ? TYPES.PRESENTIEL : TYPES.SYNCHRONE);
 
 const memes = (a = [], b = []) =>
   a.length === b.length && [...a].sort().every((valeur, rang) => valeur === [...b].sort()[rang]);
@@ -75,35 +72,45 @@ export function scinderParType(modules = []) {
   });
 }
 
-/** Les cellules d'un seul type. */
+/**
+ * Les cellules d'un seul type — la part de ce type de chaque case, en case
+ * SIMPLE. Une case mixte y laisse sa part, l'autre n'apparaît pas.
+ */
 export function cellulesDuType(cellules = {}, type) {
-  return Object.fromEntries(
-    Object.entries(cellules ?? {}).filter(([, cellule]) => (cellule?.type ?? TYPES.PRESENTIEL) === type)
-  );
+  const leType = type === TYPES.SYNCHRONE ? TYPES.SYNCHRONE : TYPES.PRESENTIEL;
+  const resultat = {};
+  for (const [numero, cellule] of Object.entries(cellules ?? {})) {
+    const heures = partsDeCellule(cellule)[leType];
+    if (heures > 0) resultat[numero] = { heures, type: leType };
+  }
+  return resultat;
 }
 
 /**
- * Les cellules d'un module après une saisie restreinte à `type` : celles de
- * l'AUTRE type viennent de `origine`, celles de `type` de `saisies`.
+ * Les cellules d'un module après une saisie restreinte à `type` : la part de
+ * l'AUTRE type vient de `origine`, celle de `type` de `saisies`.
  *
- * ⚠️ UNE SAISIE SUR UNE SEMAINE QUE L'AUTRE TYPE OCCUPE EST ÉCARTÉE, et comptée :
- * l'écraser effacerait la part du collègue.
+ * ⚠️ PLUS RIEN N'EST ÉCARTÉ (2026-10-01) : une semaine où l'autre type a déjà
+ * des heures devient une case MIXTE au lieu de refuser la saisie. `refusees`
+ * reste dans le résultat, toujours à zéro, pour ne pas changer l'appel.
  *
  * @returns {{cellules: object, refusees: number}}
  */
 export function fusionnerType(origine = {}, saisies = {}, type) {
-  const cellules = cellulesDuType(origine, autreType(type));
-  let refusees = 0;
+  const leType = type === TYPES.SYNCHRONE ? TYPES.SYNCHRONE : TYPES.PRESENTIEL;
+  const autre = leType === TYPES.SYNCHRONE ? TYPES.PRESENTIEL : TYPES.SYNCHRONE;
+  const numeros = new Set([...Object.keys(origine ?? {}), ...Object.keys(saisies ?? {})]);
+  const cellules = {};
 
-  for (const [numero, cellule] of Object.entries(saisies ?? {})) {
-    if (cellules[numero]) {
-      refusees += 1;
-      continue;
-    }
-    cellules[numero] = cellule;
+  for (const numero of numeros) {
+    const cellule = celluleDepuisParts({
+      [autre]: partsDeCellule(origine?.[numero])[autre],
+      [leType]: partsDeCellule(saisies?.[numero])[leType],
+    });
+    if (cellule) cellules[numero] = cellule;
   }
 
-  return { cellules, refusees };
+  return { cellules, refusees: 0 };
 }
 
 /**
@@ -157,31 +164,93 @@ export function planningDepuisLignes(plat = {}, lignes = [], planning = {}) {
 }
 
 /**
- * Ferme, sur une ligne `typeSeul`, les semaines que l'autre type occupe déjà.
+ * ═══ DÉPLIER UN MODULE DANS LA GRILLE (2026-10-01, demande du porteur) ═══
+ * « Garder l'affichage à une seule ligne, avec un bouton sur les modules avec du
+ * synchrone pour afficher la deuxième ligne en cas de besoin. » Une ligne
+ * dépliée devient deux — présentiel, synchrone — qui écrivent chacune SA part
+ * de la même case : c'est ainsi qu'on pose les deux types la même semaine.
  *
- * ⚠️ UNE LIGNE SANS `typeSeul` EST RENDUE TELLE QUELLE (même objet) : les
- * cellules sont mémoïsées sur leurs props, et recréer toutes les lignes à chaque
- * frappe les ferait toutes re-rendre.
- *
- * @param {Array} lignes
- * @param {(ligne) => object} cellulesSource — les cellules COMPLÈTES du module
- * @param {Array} semainesParDefaut — celles de la grille, pour une ligne qui
- *   n'a pas les siennes
+ * ⚠️ CE DÉPLIAGE VIT DANS LA GRILLE, PAS DANS LA PAGE : la clé source est la
+ * clé de la ligne DANS LA GRILLE (`cleGrille`), et non celle du planning du
+ * groupe (`cleSource`, réservée au module partagé entre deux formateurs, que
+ * la page scinde avant). Les deux mécanismes se superposent sans se gêner.
  */
-export function verrouillerAutreType(lignes = [], cellulesSource, semainesParDefaut = []) {
-  return lignes.map((ligne) => {
-    if (!ligne.typeSeul) return ligne;
 
-    const occupees = cellulesDuType(cellulesSource(ligne) ?? {}, autreType(ligne.typeSeul));
-    if (Object.keys(occupees).length === 0) return ligne;
+/** Un module peut-il se déplier ? Il faut les deux masses, et une seule ligne. */
+export function estDepliable(module) {
+  return (
+    !module?.typeSeul &&
+    Number(module?.masses?.presentiel ?? 0) > 0 &&
+    Number(module?.masses?.synchrone ?? 0) > 0
+  );
+}
 
-    return {
-      ...ligne,
-      semaines: (ligne.semaines ?? semainesParDefaut).map((semaine) =>
-        occupees[semaine.numero] && semaine.disponible
-          ? { ...semaine, disponible: false, motif: 'autreType' }
-          : semaine
-      ),
-    };
+const SUFFIXES_GRILLE = { [TYPES.PRESENTIEL]: '#gP', [TYPES.SYNCHRONE]: '#gS' };
+
+/**
+ * Les lignes de la grille, les modules de `deplies` (clés de ligne) remplacés
+ * par leurs deux lignes. Les autres sont rendus TELS QUELS (même objet).
+ */
+export function deplierModules(modules = [], deplies = new Set()) {
+  if (!deplies || deplies.size === 0) return modules;
+
+  return modules.flatMap((module) => {
+    const cle = cleLigne(module);
+    if (!deplies.has(cle) || !estDepliable(module)) return [module];
+
+    return [TYPES.PRESENTIEL, TYPES.SYNCHRONE].map((type) => {
+      const estS = type === TYPES.SYNCHRONE;
+      return {
+        ...module,
+        cle: `${cle}${SUFFIXES_GRILLE[type]}`,
+        cleGrille: cle,
+        typeSeul: type,
+        masses: {
+          presentiel: estS ? 0 : module.masses.presentiel,
+          synchrone: estS ? module.masses.synchrone : 0,
+        },
+      };
+    });
   });
+}
+
+/** Le planning de la grille → celui des lignes dépliées (chacune sa part). */
+export function planningDeplie(planning = {}, lignes = []) {
+  if (!lignes.some((ligne) => ligne.cleGrille)) return planning;
+
+  const table = { ...planning };
+  for (const ligne of lignes) {
+    if (ligne.cleGrille) table[ligne.cle] = cellulesDuType(planning?.[ligne.cleGrille], ligne.typeSeul);
+  }
+  return table;
+}
+
+/**
+ * Et le retour : les deux lignes d'un module déplié se réunissent en une
+ * case par semaine — mixte quand les deux ont des heures.
+ */
+export function planningReplie(plat = {}, lignes = []) {
+  if (!lignes.some((ligne) => ligne.cleGrille)) return plat;
+
+  const suivant = { ...plat };
+  const parSource = new Map();
+  for (const ligne of lignes) {
+    if (!ligne.cleGrille) continue;
+    if (!parSource.has(ligne.cleGrille)) parSource.set(ligne.cleGrille, {});
+    parSource.get(ligne.cleGrille)[ligne.typeSeul] = plat?.[ligne.cle] ?? {};
+    delete suivant[ligne.cle];
+  }
+
+  for (const [cle, parts] of parSource) {
+    const p = parts[TYPES.PRESENTIEL] ?? {};
+    const s = parts[TYPES.SYNCHRONE] ?? {};
+    const cellules = {};
+    for (const numero of new Set([...Object.keys(p), ...Object.keys(s)])) {
+      const cellule = celluleDepuisParts({ P: partsDeCellule(p[numero]).P, S: partsDeCellule(s[numero]).S });
+      if (cellule) cellules[numero] = cellule;
+    }
+    suivant[cle] = cellules;
+  }
+
+  return suivant;
 }

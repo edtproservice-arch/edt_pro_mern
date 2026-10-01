@@ -159,6 +159,8 @@ export default function PageEdition() {
   });
 
   const seances = grille.data?.seances ?? [];
+  /* Semaine masquée par le serveur : le directeur ne l'a pas publiée (2026-10-01). */
+  const nonPubliee = Boolean(grille.data?.nonPubliee);
   const formateurs = contexte.data?.formateurs ?? [];
 
   /*
@@ -472,7 +474,7 @@ export default function PageEdition() {
               <BoutonPartager
                 page="emploi"
                 semaine={semaine}
-                publication={semaines.data?.publication}
+                publications={semaines.data?.publications}
                 moi={session.data.utilisateur}
               />
             )}
@@ -493,7 +495,7 @@ export default function PageEdition() {
             contenu (axe, filtres) que l'écran, dans le canevas transmis par
             l'établissement — reste proposé sous ce bouton.
           */}
-          {!grille.isError && sujets.length > 0 && affiches.length > 0 && (
+          {!grille.isError && !nonPubliee && sujets.length > 0 && affiches.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -531,7 +533,7 @@ export default function PageEdition() {
             choisi dans le menu ; il ne se cale pas sur la vue « Par groupe »
             ou « Par salle » affichée au même instant.
           */}
-          {!grille.isError && Boolean(semaine) && (
+          {!grille.isError && !nonPubliee && Boolean(semaine) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -583,6 +585,10 @@ export default function PageEdition() {
       {grille.isError ? (
         <Alerte type="erreur" titre="Semaine indisponible">
           {grille.error.message}
+        </Alerte>
+      ) : nonPubliee ? (
+        <Alerte type="info" titre="Emploi du temps non publié">
+          Le directeur n’a pas encore publié l’emploi du temps de cette semaine.
         </Alerte>
       ) : sujets.length === 0 ? (
         <Alerte type="avertissement" titre={`Aucun ${AXES_CONSULTATION[axe].libelle.toLowerCase()}`}>

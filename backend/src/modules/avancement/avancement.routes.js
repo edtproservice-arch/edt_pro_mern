@@ -4,6 +4,7 @@ import { authenticate } from '../../middleware/authenticate.js';
 import { requireRole } from '../../middleware/requireRole.js';
 import { resolveTenant } from '../../middleware/resolveTenant.js';
 import * as service from './avancement.service.js';
+import { badRequest } from '../../lib/httpError.js';
 import { exigerDroitPage } from '../partages/exigerDroitPage.js';
 
 /**
@@ -111,5 +112,67 @@ router.get(
     }
   }
 );
+
+/*
+ * L'écart de saisie e-note / eDTpro par formateur et par dépôt — le tableau de
+ * l'accueil du directeur. Une route à part : elle relit TOUS les imports de
+ * l'année, ce que la page Avancement n'a pas à payer.
+ */
+router.get('/ecarts-saisie', async (req, res, next) => {
+  try {
+    res.json(await service.ecartsSaisie(req.etablissementId, req.anneeScolaire));
+  } catch (erreur) {
+    next(erreur);
+  }
+});
+
+/* Le détail d'une carte : `?formateur=<clé>&semaine=<n>`. */
+router.get('/ecarts-saisie/detail', async (req, res, next) => {
+  try {
+    const cle = String(req.query.formateur ?? '').trim().toUpperCase();
+    const semaine = Number(req.query.semaine);
+    if (!cle || !Number.isInteger(semaine)) {
+      throw badRequest('Formateur et semaine requis', { code: 'PARAMETRES_INVALIDES' });
+    }
+    res.json(await service.detailEcartSaisie(req.etablissementId, req.anneeScolaire, cle, semaine));
+  } catch (erreur) {
+    next(erreur);
+  }
+});
+
+/*
+ * Envoie l'état d'écart au formateur, par la messagerie EDT Pro.
+ * ⚠️ LE DIRECTEUR SEUL : la page se partage en lecture à des formateurs et des
+ * gestionnaires — le droit de consulter n'est pas celui d'écrire en son nom.
+ */
+router.post('/ecarts-saisie/envoyer', requireRole(ROLES.DIRECTEUR), async (req, res, next) => {
+  try {
+    const cle = String(req.body?.formateur ?? '').trim().toUpperCase();
+    const semaine = Number(req.body?.semaine);
+    if (!cle || !Number.isInteger(semaine)) {
+      throw badRequest('Formateur et semaine requis', { code: 'PARAMETRES_INVALIDES' });
+    }
+    res.json(
+      await service.envoyerEcartSaisie(req.etablissementId, req.anneeScolaire, req.utilisateur, cle, semaine)
+    );
+  } catch (erreur) {
+    next(erreur);
+  }
+});
+
+/* Le même envoi, à tous les formateurs en manque d'une semaine — directeur seul. */
+router.post('/ecarts-saisie/envoyer-tous', requireRole(ROLES.DIRECTEUR), async (req, res, next) => {
+  try {
+    const semaine = Number(req.body?.semaine);
+    if (!Number.isInteger(semaine)) {
+      throw badRequest('Semaine requise', { code: 'PARAMETRES_INVALIDES' });
+    }
+    res.json(
+      await service.envoyerEcartSaisieATous(req.etablissementId, req.anneeScolaire, req.utilisateur, semaine)
+    );
+  } catch (erreur) {
+    next(erreur);
+  }
+});
 
 export default router;

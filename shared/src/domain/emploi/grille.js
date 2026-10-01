@@ -216,13 +216,41 @@ export function prochaineBascule(maintenant = new Date()) {
  * publication), le gestionnaire, le formateur et le stagiaire ouvrent sur ce
  * qui fait foi.
  *
+ * ═══ ⚠️ `semainesPubliees` : LES SEMAINES NON PUBLIÉES SONT MASQUÉES ═══
+ * (2026-10-01, demande du porteur.) Le directeur publie désormais CHAQUE
+ * semaine, et une semaine non publiée n'est pas montrée au gestionnaire, au
+ * formateur ni au stagiaire. Leur ouvrir une semaine masquée par la date ne
+ * leur montrerait rien : on préfère alors la dernière semaine publiée.
+ *
  * @param {object} [options]
  * @param {string|null} [options.semainePubliee] — « 2026-W12 », déjà normalisée
+ * @param {string[]|null} [options.semainesPubliees] — toutes les semaines
+ *   publiées ; fournie, elle restreint l'ouverture à ces seules semaines
  * @param {boolean} [options.regleWeekEnd] — appliquer la bascule du samedi
  */
 export function semaineAOuvrir(annee, maintenant = new Date(), options = {}) {
-  const { semainePubliee = null, regleWeekEnd = false } = options;
+  const { semainePubliee = null, semainesPubliees = null, regleWeekEnd = false } = options;
   const parLaDate = semaineParLaDate(annee, maintenant, regleWeekEnd);
+
+  if (Array.isArray(semainesPubliees)) {
+    const lisibles = semainesPubliees
+      .map((valeur) => analyserSemaine(valeur))
+      .filter(Boolean)
+      .sort((a, b) => a.debut.getTime() - b.debut.getTime());
+    if (lisibles.length === 0) return parLaDate;
+
+    const enValeur = (s) => `${s.anneeScolaire}-W${s.numero}`;
+    const date = analyserSemaine(parLaDate).debut.getTime();
+
+    /* 1. Publier sert à montrer une semaine EN AVANCE : la plus proche après
+          la date l'emporte, comme avec une seule publication. */
+    const enAvance = lisibles.find((s) => s.debut.getTime() > date);
+    if (enAvance) return enValeur(enAvance);
+    /* 2. La semaine du moment, si elle est publiée. */
+    if (lisibles.some((s) => s.debut.getTime() === date)) return parLaDate;
+    /* 3. Sinon la dernière publiée : la semaine du moment est masquée. */
+    return enValeur(lisibles.at(-1));
+  }
 
   /* ⚠️ ON NE VÉRIFIE PAS QU'ELLE EXISTE EN BASE : une semaine publiée sans
      séance reste la semaine qui fait foi, et l'écran doit l'ouvrir — vide, ce

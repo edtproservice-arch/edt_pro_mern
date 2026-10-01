@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { FileSpreadsheet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { useImportEnote, DialogueRemplacementEnote } from './importEnote';
+import { useImportEnote, DialogueRemplacementEnote, DialogueSuppressionsEnote } from './importEnote';
 
 /**
  * Importer une base e-note, depuis n'importe quel écran.
@@ -43,6 +43,9 @@ export default function BoutonImportEnote({ libelle = 'Importer une base e-note'
           /* Une suppression muette laisserait croire que les deux fichiers
              cohabitent dans la chronologie. */
           resultat.remplace ? `Remplace « ${resultat.remplace.nomFichier} ».` : null,
+          resultat.cascade
+            ? `${resultat.cascade.groupes.join(', ')} retiré(s) : ${resultat.cascade.chronogrammes} chronogramme(s) et ${resultat.cascade.seances} séance(s) supprimé(s).`
+            : null,
         ]
           .filter(Boolean)
           .join(' '),
@@ -87,6 +90,7 @@ export default function BoutonImportEnote({ libelle = 'Importer une base e-note'
         onConfirmer={importation.confirmerRemplacement}
         onAnnuler={importation.annulerRemplacement}
       />
+      <DialogueSuppressionsEnote importation={importation} />
     </>
   );
 }

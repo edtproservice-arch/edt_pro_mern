@@ -56,6 +56,8 @@ function presenter(message, correspondant, recu) {
      * déjà présentée au client ailleurs, de `GET /chronogrammes/par-formateur/:formateur`.
      */
     chronogrammeFormateur: message.chronogrammeFormateur ?? null,
+    /* L'état d'écart de saisie e-note, quand le message en porte un (2026-10-01). */
+    ecartSaisie: message.ecartSaisie ?? null,
     /*
      * La proposition d'emploi du temps (Phase 9 b). ⚠️ Ni l'établissement ni les
      * séances sauvegardées ne repartent : le serveur les relit au moment d'agir.
@@ -331,6 +333,7 @@ export async function envoyer(
     invitation = null,
     chronogrammeFormateur = null,
     proposition = null,
+    ecartSaisie = null,
   }
 ) {
   const expediteur = await User.findById(expediteurId).select('role etablissementIds').lean();
@@ -385,6 +388,7 @@ export async function envoyer(
       invitation,
       chronogrammeFormateur,
       proposition,
+      ecartSaisie,
     });
   }
 

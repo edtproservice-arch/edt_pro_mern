@@ -49,15 +49,35 @@ export default function DialogueContraintes({
   const [etat, setEtat] = useState('repos');
   const minuterie = useRef(null);
   const enAttente = useRef(null);
+  // ⚠️ LE GLISSEMENT ENCHAÎNE LES MODIFICATIONS plus vite que React ne rend :
+  // chacune part de ce ref, pas de l'état capturé au dernier rendu.
+  const courant = useRef(brouillon);
+  // { type: 'creneau' | 'salle', valeur } tant que le bouton est enfoncé.
+  const glisse = useRef(null);
 
   // À chaque ouverture, on repart de ce que la base porte.
   useEffect(() => {
     if (ouvert) {
-      setBrouillon(depart());
+      const initial = depart();
+      courant.current = initial;
+      setBrouillon(initial);
       setEtat('repos');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ouvert]);
+
+  // Relâcher n'importe où (même hors de la grille) termine le glissement.
+  useEffect(() => {
+    const finir = () => {
+      glisse.current = null;
+    };
+    window.addEventListener('pointerup', finir);
+    window.addEventListener('pointercancel', finir);
+    return () => {
+      window.removeEventListener('pointerup', finir);
+      window.removeEventListener('pointercancel', finir);
+    };
+  }, []);
 
   const ecriture = useMutation({
     mutationFn: enregistrerContraintesFormateur,
@@ -81,6 +101,7 @@ export default function DialogueContraintes({
    * si la liste des espaces n'était pas encore chargée, elle les aurait effacées.
    */
   const modifier = (suivant, champ) => {
+    courant.current = suivant;
     setBrouillon(suivant);
     enAttente.current = { ...enAttente.current, [champ]: suivant[champ] };
     setEtat('attente');
@@ -98,29 +119,57 @@ export default function DialogueContraintes({
 
   const indisponible = new Set(brouillon.indisponibilites.map((c) => `${c.jour}|${c.seance}`));
 
-  const basculerSalle = (salle) =>
+  const poserSalle = (salle, valeur) => {
+    const actuel = courant.current;
+    if (actuel.espaces.includes(salle) === valeur) return;
     modifier({
-      ...brouillon,
-      espaces: brouillon.espaces.includes(salle)
-        ? brouillon.espaces.filter((s) => s !== salle)
-        : [...brouillon.espaces, salle],
+      ...actuel,
+      espaces: valeur ? [...actuel.espaces, salle] : actuel.espaces.filter((s) => s !== salle),
     }, 'espaces');
+  };
 
   const poserCreneaux = (creneaux, valeur) => {
-    const cles = new Set(indisponible);
+    const actuel = courant.current;
+    const cles = new Set(actuel.indisponibilites.map((c) => `${c.jour}|${c.seance}`));
+    const avant = cles.size;
     for (const { jour, seance } of creneaux) {
       if (valeur) cles.add(`${jour}|${seance}`);
       else cles.delete(`${jour}|${seance}`);
     }
+    if (cles.size === avant) return; // tout allait déjà dans ce sens
     const liste = [...cles].map((cle) => {
       const [jour, seance] = cle.split('|');
       return { jour, seance };
     });
     modifier(
-      { ...brouillon, indisponibilites: normaliserContraintes({ indisponibilites: liste }).indisponibilites },
+      { ...actuel, indisponibilites: normaliserContraintes({ indisponibilites: liste }).indisponibilites },
       'indisponibilites'
     );
   };
+
+  /*
+   * ═══ CLIC OU GLISSEMENT ═══ L'appui fixe la valeur visée (l'inverse de la
+   * case de départ) ; chaque case survolée ensuite, bouton enfoncé, la reçoit.
+   * Un simple clic n'est qu'un glissement d'une case. Le clic clavier
+   * (detail === 0) bascule comme avant.
+   */
+  const glissement = (type, valeurActuelle, poser) => ({
+    onPointerDown: (e) => {
+      if (lectureSeule || e.button !== 0) return;
+      e.preventDefault(); // pas de sélection de texte pendant le glissement
+      // Au doigt, le pointeur reste capturé par la case de départ : on le libère
+      // pour que les cases suivantes reçoivent pointerenter.
+      e.currentTarget.releasePointerCapture?.(e.pointerId);
+      glisse.current = { type, valeur: !valeurActuelle };
+      poser(!valeurActuelle);
+    },
+    onPointerEnter: () => {
+      if (glisse.current?.type === type) poser(glisse.current.valeur);
+    },
+    onClick: (e) => {
+      if (e.detail === 0) poser(!valeurActuelle);
+    },
+  });
 
   const basculerJour = (jour) => {
     const creneaux = CRENEAUX_CONTRAINTES.map((seance) => ({ jour, seance }));
@@ -193,9 +242,9 @@ export default function DialogueContraintes({
                     type="button"
                     disabled={lectureSeule}
                     aria-pressed={retenue}
-                    onClick={() => basculerSalle(salle)}
+                    {...glissement('salle', retenue, (valeur) => poserSalle(salle, valeur))}
                     className={cn(
-                      'rounded-full border px-3 py-1 text-xs transition-colors disabled:cursor-default',
+                      'touch-none select-none rounded-full border px-3 py-1 text-xs transition-colors disabled:cursor-default',
                       retenue
                         ? 'border-primary bg-primary text-primary-foreground'
                         : 'bg-background hover:bg-accent'
@@ -217,6 +266,11 @@ export default function DialogueContraintes({
 
         <section className="space-y-2">
           <h3 className="text-sm font-semibold">Créneaux d&apos;indisponibilité</h3>
+          {!lectureSeule && (
+            <p className="text-xs text-muted-foreground">
+              Cliquez une case, ou glissez sur plusieurs pour les basculer d&apos;un coup.
+            </p>
+          )}
           <table className="w-full border-separate border-spacing-1 text-xs">
             <thead>
               <tr>
@@ -250,9 +304,9 @@ export default function DialogueContraintes({
                           disabled={lectureSeule}
                           aria-pressed={rouge}
                           aria-label={`${jour} ${seance} ${rouge ? 'indisponible' : 'disponible'}`}
-                          onClick={() => poserCreneaux([{ jour, seance }], !rouge)}
+                          {...glissement('creneau', rouge, (valeur) => poserCreneaux([{ jour, seance }], valeur))}
                           className={cn(
-                            'h-8 w-full rounded-md border transition-colors disabled:cursor-default',
+                            'h-8 w-full touch-none select-none rounded-md border transition-colors disabled:cursor-default',
                             rouge
                               ? 'border-destructive/40 bg-destructive/15 font-medium text-destructive'
                               : 'bg-success/10 text-success hover:bg-success/20'

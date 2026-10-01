@@ -33,6 +33,11 @@ describe('massesGlobalesParGroupe', () => {
     expect(massesGlobalesParGroupe([ligne({ groupe: '' })])).toEqual({});
   });
 
+  it('ajoute les modules sans formateur, seulement pour un groupe retenu', () => {
+    const masses = massesGlobalesParGroupe([ligne({ masseDrif: 60 })], { GM101: 95, GM102: 40 });
+    expect(masses).toEqual({ GM101: 155 });
+  });
+
   it('rend un objet vide plutôt que de lever, sans ligne', () => {
     expect(massesGlobalesParGroupe()).toEqual({});
   });

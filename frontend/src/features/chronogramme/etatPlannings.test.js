@@ -325,3 +325,22 @@ describe('fusionnerGrillesFormateurs', () => {
     expect(fusionnerGrillesFormateurs([{}])).toEqual({ plannings: {}, versions: {} });
   });
 });
+
+describe('case MIXTE — présentiel et synchrone la même semaine (2026-10-01)', () => {
+  const mixte = (presentiel, synchrone) => ({
+    GM101: {
+      M101: {
+        3: { heures: presentiel + synchrone, type: 'PS', presentiel, synchrone },
+      },
+    },
+  });
+
+  it('voit une RÉPARTITION changée, même à total égal', () => {
+    // 5 P + 2,5 S → 2,5 P + 5 S : même `heures`, même `type` — mais pas la même case.
+    expect(groupesModifies(mixte(2.5, 5), mixte(5, 2.5))).toEqual(['GM101']);
+  });
+
+  it('ne voit rien quand les deux parts sont identiques', () => {
+    expect(groupesModifies(mixte(5, 2.5), mixte(5, 2.5))).toEqual([]);
+  });
+});

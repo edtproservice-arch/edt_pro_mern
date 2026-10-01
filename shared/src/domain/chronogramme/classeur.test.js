@@ -205,11 +205,8 @@ describe('lireFeuilleChronogramme — contenu', () => {
     expect(resultat.refus).toEqual([]);
   });
 
-  it('REFUSE une semaine remplie sur les DEUX lignes du module', () => {
-    /*
-     * Une case de la grille ne porte qu'un seul type. Sans ce refus, la
-     * dernière ligne lue l'emporterait en silence.
-     */
+  it('ACCEPTE une semaine remplie sur les DEUX lignes du module (2026-10-01)', () => {
+    // La case mixte : présentiel ET synchrone la même semaine.
     const resultat = lireFeuilleChronogramme(
       feuille({
         corps: [
@@ -220,13 +217,31 @@ describe('lireFeuilleChronogramme — contenu', () => {
       referentiel
     );
 
+    expect(resultat.refus).toEqual([]);
+    expect(remplies(resultat.cellules)).toEqual([
+      { groupe: 'GM101', code: 'M101', semaine: 3, heures: 5, type: 'P' },
+      { groupe: 'GM101', code: 'M101', semaine: 3, heures: 2.5, type: 'S' },
+    ]);
+  });
+
+  it('REFUSE une même part remplie deux fois avec deux valeurs', () => {
+    const resultat = lireFeuilleChronogramme(
+      feuille({
+        corps: [
+          ligne(['M101', '', '1', '', '', 'P'], { 3: 5 }),
+          ligne(['M101', '', '1', '', '', 'P'], { 3: 2.5 }),
+        ],
+      }),
+      referentiel
+    );
+
     expect(resultat.refus).toHaveLength(1);
-    expect(resultat.refus[0]).toContain('un seul type');
+    expect(resultat.refus[0]).toContain('deux valeurs');
     // La première valeur lue est conservée, pas écrasée par la fautive.
     expect(resultat.cellules).toContainEqual({ groupe: 'GM101', code: 'M101', semaine: 3, heures: 5, type: 'P' });
   });
 
-  it('une case VIDE efface, mais n’écrase pas l’autre ligne du module', () => {
+  it('une case VIDE n’efface que la part de SA ligne', () => {
     // C'est le cas NORMAL : le type non employé est vide partout.
     const resultat = lireFeuilleChronogramme(
       feuille({
@@ -238,19 +253,33 @@ describe('lireFeuilleChronogramme — contenu', () => {
       referentiel
     );
 
-    expect(resultat.cellules).toContainEqual({ groupe: 'GM101', code: 'M101', semaine: 3, heures: 5, type: 'P' });
-    expect(resultat.cellules.filter((c) => c.semaine === 3)).toHaveLength(1);
-    // Les 44 autres semaines sont bien demandées à l'effacement.
+    expect(resultat.cellules.filter((c) => c.semaine === 3)).toEqual([
+      { groupe: 'GM101', code: 'M101', semaine: 3, heures: 5, type: 'P' },
+      { groupe: 'GM101', code: 'M101', semaine: 3, heures: null, type: 'S' },
+    ]);
     expect(remplies(resultat.cellules)).toHaveLength(1);
   });
 
-  it('une case vidée sur les deux lignes demande l’EFFACEMENT', () => {
+  it('une case vidée demande l’EFFACEMENT de la part de sa ligne', () => {
     const resultat = lireFeuilleChronogramme(
       feuille({ corps: [ligne(['M101', '', '1', '', '', 'P'], {})] }),
       referentiel
     );
-    expect(resultat.cellules[0]).toEqual({ groupe: 'GM101', code: 'M101', semaine: 1, heures: null });
+    expect(resultat.cellules[0]).toEqual({ groupe: 'GM101', code: 'M101', semaine: 1, heures: null, type: 'P' });
     expect(resultat.cellules).toHaveLength(45);
+  });
+
+  it('fusion : une feuille qui ne montre que le présentiel garde le synchrone en place', () => {
+    const avant = { GM101: { M101: { 3: { heures: 2.5, type: 'S' }, 4: { heures: 7.5, type: 'PS', presentiel: 5, synchrone: 2.5 } } } };
+    const { plannings } = fusionnerCellules(avant, [
+      { groupe: 'GM101', code: 'M101', semaine: 3, heures: 5, type: 'P' },
+      { groupe: 'GM101', code: 'M101', semaine: 4, heures: null, type: 'P' },
+    ]);
+
+    expect(plannings.GM101.M101).toEqual({
+      3: { heures: 7.5, type: 'PS', presentiel: 5, synchrone: 2.5 },
+      4: { heures: 2.5, type: 'S' },
+    });
   });
 
   it('accepte la VIRGULE décimale d’un Excel français', () => {

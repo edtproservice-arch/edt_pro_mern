@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueries } from '@tanstack/react-query';
-import { CalendarX2, CircleCheck, Clock, Mail, UserX, Waypoints } from 'lucide-react';
+import { CalendarX2, CircleCheck, Clock, Mail, Split, UserX, Waypoints, X } from 'lucide-react';
 import { SEUIL_HEBDOMADAIRE } from 'shared/domain';
 import { chargerSemaines } from '@/features/emploi/api';
 import { chargerAbsences } from '@/features/absences/api';
@@ -9,6 +10,7 @@ import {
   chargerCompletude,
   chargerFormateursChronogramme,
   chargerGroupesChronogramme,
+  chargerPartagesParType,
 } from '@/features/chronogramme/api';
 import { compterNonLus } from '@/features/messagerie/api';
 import { cn } from '@/lib/utils';
@@ -42,8 +44,37 @@ import { cn } from '@/lib/utils';
 /** Au-delà de quinze jours, un rattrapage en attente devient un retard. */
 const JOURS_RETARD = 15;
 
+/**
+ * Lignes ignorées : clé de ligne → signature de ce qui a été ignoré.
+ *
+ * ⚠️ ON IGNORE UN ÉTAT, PAS UNE CATÉGORIE (2026-10-01) : la signature décrit
+ * les partages vus au moment du clic. Qu'un nouveau partage apparaisse, elle ne
+ * correspond plus et la ligne revient — sinon « Ignorer » tairait pour
+ * toujours des cas que personne n'a jamais lus.
+ *
+ * Préférence de CE navigateur seulement (localStorage), sans route nouvelle.
+ */
+const CLE_IGNORES = 'accueil.aTraiter.ignores';
+
+function lireIgnores() {
+  try {
+    return JSON.parse(window.localStorage.getItem(CLE_IGNORES) ?? '{}') ?? {};
+  } catch {
+    return {};
+  }
+}
+
+function ecrireIgnores(ignores) {
+  try {
+    window.localStorage.setItem(CLE_IGNORES, JSON.stringify(ignores));
+  } catch {
+    /* Stockage indisponible : la ligne disparaît jusqu'au rechargement. */
+  }
+}
+
 export default function ATraiter() {
-  const [semaines, absences, chronogrammes, completude, charge, messages, formateurs] = useQueries({
+  const [ignores, setIgnores] = useState(lireIgnores);
+  const [semaines, absences, chronogrammes, completude, charge, messages, formateurs, partagesType] = useQueries({
     queries: [
       { queryKey: ['emploi', 'semaines'], queryFn: chargerSemaines, retry: false },
       { queryKey: ['absences', 'toutes'], queryFn: () => chargerAbsences({}), retry: false },
@@ -76,10 +107,11 @@ export default function ATraiter() {
         queryFn: chargerFormateursChronogramme,
         retry: false,
       },
+      { queryKey: ['chronogrammes', 'partages-type'], queryFn: chargerPartagesParType, retry: false },
     ],
   });
 
-  const requetes = [semaines, absences, chronogrammes, completude, charge, messages];
+  const requetes = [semaines, absences, chronogrammes, completude, charge, messages, partagesType];
   const numero = numeroDeSemaine(semaines.data?.courante);
   const lignes = [
     ...lignesCompletude(completude.data?.semaines, numero),
@@ -87,7 +119,16 @@ export default function ATraiter() {
     ligneChronogrammes(chronogrammes.data?.groupes),
     ligneCharge(charge.data?.formateurs, numero, formateurs.data?.formateurs),
     ligneMessages(messages.data?.nonLus),
-  ].filter(Boolean);
+    lignePartagesType(partagesType.data?.partages),
+  ]
+    .filter(Boolean)
+    .filter((ligne) => !ligne.signature || ignores[ligne.cle] !== ligne.signature);
+
+  const ignorer = (ligne) => {
+    const suivants = { ...lireIgnores(), [ligne.cle]: ligne.signature };
+    ecrireIgnores(suivants);
+    setIgnores(suivants);
+  };
 
   const enCours = requetes.some((requete) => requete.isLoading);
   const incomplet = requetes.some((requete) => requete.isError);
@@ -113,7 +154,11 @@ export default function ATraiter() {
         {lignes.length > 0 ? (
           <ul className="divide-y">
             {lignes.map((ligne) => (
-              <Ligne key={ligne.cle} {...ligne} />
+              <Ligne
+                key={ligne.cle}
+                {...ligne}
+                onIgnorer={ligne.signature ? () => ignorer(ligne) : undefined}
+              />
             ))}
           </ul>
         ) : (
@@ -132,7 +177,7 @@ export default function ATraiter() {
  * invalide, et le navigateur le « répare » en cassant la ligne. Le lien
  * principal couvre la ligne par un pseudo-élément ; les noms passent au-dessus.
  */
-function Ligne({ Icone, niveau, texte, detail, cibles, reste, action, vers }) {
+function Ligne({ Icone, niveau, texte, detail, cibles, reste, action, vers, onIgnorer }) {
   return (
     <li className="relative -mx-2 flex items-center gap-3 rounded-md px-2 py-2 text-sm transition-colors hover:bg-muted/40">
       <Icone
@@ -167,6 +212,17 @@ function Ligne({ Icone, niveau, texte, detail, cibles, reste, action, vers }) {
         )}
       </span>
       <span className="shrink-0 text-xs text-primary">{action}</span>
+      {onIgnorer && (
+        <button
+          type="button"
+          onClick={onIgnorer}
+          title="Ignorer — la ligne reviendra si un nouveau cas apparaît"
+          className="relative z-10 inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <X className="size-3" />
+          Ignorer
+        </button>
+      )}
     </li>
   );
 }
@@ -316,6 +372,50 @@ function ligneMessages(nonLus) {
     texte: `${nonLus} message(s) non lu(s)`,
     action: 'Ouvrir',
     vers: '/app/messagerie?nonlus=1',
+  };
+}
+
+/**
+ * Modules partagés entre présentiel et synchrone : le message de la vue
+ * formateur du chronogramme, remonté à l'accueil (2026-10-01, demande du
+ * porteur). Rien n'est faux — c'est une information à lire une fois, d'où
+ * « Ignorer ».
+ */
+function lignePartagesType(partages) {
+  if (!partages?.length) return null;
+
+  /* Chaque personne concernée mène à SA grille, où le détail est affiché. */
+  const personnes = new Map();
+  for (const partage of partages) {
+    for (const personne of [...partage.presentiel, ...partage.synchrone]) {
+      personnes.set(personne.identifiant, personne.nom);
+    }
+  }
+  const cibles = [...personnes]
+    .sort(([, a], [, b]) => a.localeCompare(b, 'fr'))
+    .map(([identifiant, nom]) => ({
+      libelle: nom,
+      vers: `/app/parametres/chronogramme?${new URLSearchParams({ formateur: identifiant })}`,
+    }));
+
+  const modules = partages.map((partage) => `${partage.code} (${partage.groupe})`);
+  const signature = partages
+    .map(
+      (partage) =>
+        `${partage.groupe}|${partage.code}|${partage.presentiel.map((p) => p.identifiant).join(',')}|${partage.synchrone.map((p) => p.identifiant).join(',')}`
+    )
+    .join(';');
+
+  return {
+    cle: 'partages-type',
+    Icone: Split,
+    niveau: 'info',
+    texte: `${partages.length} module(s) partagé(s) entre présentiel et synchrone`,
+    detail: modules.slice(0, 3).join(', ') + (modules.length > 3 ? ` +${modules.length - 3}` : ''),
+    ...apercu(cibles),
+    action: 'Voir',
+    vers: cibles[0].vers,
+    signature,
   };
 }
 

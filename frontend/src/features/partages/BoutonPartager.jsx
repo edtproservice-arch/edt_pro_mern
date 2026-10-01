@@ -271,7 +271,7 @@ const droitsDeDepart = (page) => ({ [page]: droitsDe(page)[0] });
  *
  * ⚠️ AU DIRECTEUR SEUL : lui seul partage. Le serveur refuse de toute façon.
  */
-export default function BoutonPartager({ page = 'emploi', semaine, publication, moi }) {
+export default function BoutonPartager({ page = 'emploi', semaine, publications = [], moi }) {
   const cache = useQueryClient();
   const [ouvert, setOuvert] = useState(false);
   const [choisis, setChoisis] = useState([]);
@@ -617,15 +617,17 @@ export default function BoutonPartager({ page = 'emploi', semaine, publication, 
           {avecPublication && (
           <TabsContent value="publier" className="mt-0 space-y-3 p-4">
             <p className="text-sm">
-              La semaine publiée s’ouvre par défaut chez les gestionnaires, les formateurs et les
-              stagiaires. Elle ne cache rien : chacun garde accès à toutes les semaines.
+              Chaque semaine se publie à part. Tant qu’une semaine n’est pas publiée, les
+              gestionnaires, les formateurs et les stagiaires ne la voient pas.
             </p>
             <p className="text-xs text-muted-foreground">
-              {publication?.semaine
-                ? `Semaine publiée actuellement : ${libelleSemaine(publication.semaine)}.`
+              {publications.length > 0
+                ? `Semaines publiées : ${publications
+                    .map((s) => libelleSemaine(s, { court: true }))
+                    .join(', ')}.`
                 : 'Aucune semaine n’est publiée pour cette année.'}
             </p>
-            <BoutonPublier semaine={semaine} publication={publication} />
+            <BoutonPublier semaine={semaine} publications={publications} />
           </TabsContent>
           )}
         </Tabs>

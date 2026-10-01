@@ -104,6 +104,9 @@ export function heuresPoseesParSemaine(seances = []) {
 
 const arrondi = (h) => Math.round(h * 100) / 100;
 
+/** Le type d'une entrée du planning, `'P'` par défaut. */
+const typeDe = (cellule) => (cellule?.type === 'S' ? 'S' : 'P');
+
 /**
  * Le report, calculé sans rien écrire.
  *
@@ -156,31 +159,28 @@ export function reporterVersChronogramme({ seances = [], chronogrammes = [], mas
         if (total <= 0) continue;
 
         /*
-         * ═══ ⚠️ UNE CELLULE NE PORTE QU'UN SEUL TYPE ═══
-         * Un module qui, la même semaine, a du présentiel ET du distanciel ne
-         * peut pas dire les deux. On garde le VOLUME TOTAL — le perdre
-         * fausserait l'avancement, qui se lit sur des heures — avec le type
-         * DOMINANT, et le cas est NOMMÉ dans le bilan pour qu'il soit corrigé
-         * à la main plutôt que découvert plus tard.
+         * ═══ LES DEUX TYPES LA MÊME SEMAINE (2026-10-01) ═══
+         * Un module qui, la même semaine, a du présentiel ET du distanciel
+         * s'écrit sur DEUX entrées — une par type —, comme la case mixte de la
+         * grille. Le « type dominant » d'avant, qui faisait passer le volume
+         * entier sous un seul type, n'a plus lieu d'être : `mixtes` reste dans
+         * le bilan, vide, pour ne pas changer sa forme.
          */
-        const type = heures.S > heures.P ? 'S' : 'P';
-        if (heures.P > 0 && heures.S > 0) {
-          mixtes.push({
-            groupe: cible.groupe,
-            module,
-            semaine,
-            presentiel: arrondi(heures.P),
-            distanciel: arrondi(heures.S),
-            retenu: type,
-          });
-        }
+        const voulues = [
+          ['P', arrondi(heures.P)],
+          ['S', arrondi(heures.S)],
+        ].filter(([, h]) => h > 0);
 
         if (!cible.planning.has(module)) cible.planning.set(module, []);
         const cellules = cible.planning.get(module);
-        const rang = cellules.findIndex((c) => c?.semaine === semaine);
-        const avant = rang >= 0 ? cellules[rang] : null;
+        const avant = cellules.filter((c) => c?.semaine === semaine);
 
-        if (avant && arrondi(Number(avant.heures) || 0) === total && avant.type === type) {
+        if (
+          avant.length === voulues.length &&
+          voulues.every(([type, h]) =>
+            avant.some((c) => typeDe(c) === type && arrondi(Number(c?.heures) || 0) === h)
+          )
+        ) {
           cellulesInchangees += 1;
           continue;
         }
@@ -203,32 +203,37 @@ export function reporterVersChronogramme({ seances = [], chronogrammes = [], mas
          *    groupe sans affectation n'a pas de masse à respecter.
          */
         const fiche = masses?.get(`${cg}||${module}`);
-        const masse = arrondi(
-          type === 'S' ? (fiche?.[TYPES_COURS.SYNCHRONE] ?? 0) : (fiche?.[TYPES_COURS.PRESENTIEL] ?? 0)
-        );
-        if (masse > 0) {
+        let depasse = false;
+        for (const [type, h] of voulues) {
+          const masse = arrondi(
+            type === 'S' ? (fiche?.[TYPES_COURS.SYNCHRONE] ?? 0) : (fiche?.[TYPES_COURS.PRESENTIEL] ?? 0)
+          );
+          if (masse <= 0) continue;
+
           const ailleurs = arrondi(
             cellules
-              .filter((c) => c?.semaine !== semaine && (c?.type === 'S' ? 'S' : 'P') === type)
+              .filter((c) => c?.semaine !== semaine && typeDe(c) === type)
               .reduce((somme, c) => somme + (Number(c?.heures) || 0), 0)
           );
-          if (arrondi(ailleurs + total) > masse) {
+          if (arrondi(ailleurs + h) > masse) {
             depassements.push({
               groupe: cible.groupe,
               module,
               semaine,
               type,
-              heures: total,
+              heures: h,
               dejaPlanifie: ailleurs,
               masse,
             });
-            continue;
+            depasse = true;
           }
         }
+        if (depasse) continue;
 
-        const cellule = { semaine, heures: total, type };
-        if (rang >= 0) cellules[rang] = cellule;
-        else cellules.push(cellule);
+        cible.planning.set(module, [
+          ...cellules.filter((c) => c?.semaine !== semaine),
+          ...voulues.map(([type, h]) => ({ semaine, heures: h, type })),
+        ]);
 
         cellulesEcrites += 1;
         heuresReportees += total;

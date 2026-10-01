@@ -1,5 +1,5 @@
 import { NOMBRE_SEMAINES, PAS, PLAFOND_CELLULE } from './semaines.js';
-import { TYPES } from './planning.js';
+import { TYPES, celluleDepuisParts, partsDeCellule } from './planning.js';
 import { estPartageParType } from './partage.js';
 
 /**
@@ -136,14 +136,17 @@ export function lignesClasseur(modules, planning = {}, mode = 'groupe') {
     : lignes;
 }
 
-/** Heures d'un type, semaine par semaine — les autres cases restent vides. */
+/**
+ * Heures d'un type, semaine par semaine — les autres cases restent vides.
+ * Une case MIXTE (2026-10-01) donne sa part à chacune des deux lignes.
+ */
 function heuresParSemaine(cellules, type) {
   const par = {};
+  const cle = type === TYPES.SYNCHRONE ? 'S' : 'P';
 
   for (const [semaine, cellule] of Object.entries(cellules ?? {})) {
-    if (cellule?.type === type && Number(cellule.heures) > 0) {
-      par[Number(semaine)] = Number(cellule.heures);
-    }
+    const heures = partsDeCellule(cellule)[cle];
+    if (heures > 0) par[Number(semaine)] = heures;
   }
 
   return par;
@@ -250,10 +253,14 @@ export function lireFeuilleChronogramme(feuille, referentiel) {
 
   const refus = [];
   /*
-   * On RASSEMBLE avant d'écrire. Le format courant étale un module sur deux
-   * lignes : une semaine ne peut être remplie que sur l'une des deux, et il faut
-   * les avoir vues toutes les deux pour refuser le conflit — sinon la dernière
-   * ligne lue l'emporterait en silence.
+   * On RASSEMBLE avant d'écrire, PAR TYPE. Le format courant étale un module
+   * sur deux lignes, présentiel et synchrone ; depuis la case mixte
+   * (2026-10-01) les deux peuvent être remplies la même semaine, et chacune
+   * n'écrit que SA part. Le conflit qui reste est une même part remplie deux
+   * fois avec deux valeurs — la dernière ligne l'emporterait en silence.
+   *
+   * `type` absent = ANCIEN format (« 5|P » dans la case, sans colonne Type) :
+   * une case vide y efface la semaine entière, comme avant.
    */
   const parCellule = new Map();
 
@@ -298,17 +305,25 @@ export function lireFeuilleChronogramme(feuille, referentiel) {
 
     for (const [colonne, semaine] of colonnesSemaine) {
       const brut = cellule(rang, colonne);
-      const cle = `${groupe}||${code}||${semaine}`;
-      const existant = parCellule.get(cle);
+      const base = `${groupe}||${code}||${semaine}`;
 
       if (brut === '') {
         /*
-         * Une cellule VIDE EFFACE la semaine — contrepartie naturelle de
-         * l'export, où une semaine sans séance est vide. Mais elle n'écrase
-         * JAMAIS une valeur déjà lue sur l'autre ligne du même module : c'est
-         * précisément le cas normal, le type non employé étant vide partout.
+         * Une cellule VIDE EFFACE la part de SA ligne — contrepartie naturelle
+         * de l'export, où une semaine sans séance de ce type est vide. Elle
+         * n'écrase JAMAIS une valeur déjà lue pour la même part.
          */
-        if (!existant) parCellule.set(cle, { groupe, code, semaine, heures: null, lignes: [numeroLigne] });
+        const cle = colonneType !== null ? `${base}||${typeLigne}` : `${base}||*`;
+        if (!parCellule.has(cle)) {
+          parCellule.set(cle, {
+            groupe,
+            code,
+            semaine,
+            heures: null,
+            ...(colonneType !== null ? { type: typeLigne } : {}),
+            lignes: [numeroLigne],
+          });
+        }
         continue;
       }
 
@@ -319,14 +334,12 @@ export function lireFeuilleChronogramme(feuille, referentiel) {
       }
       if (lue.heures === 0) continue; // un zéro explicite ne pose rien
 
-      if (
-        existant &&
-        existant.heures !== null &&
-        (existant.heures !== lue.heures || existant.type !== lue.type)
-      ) {
+      const cle = `${base}||${lue.type}`;
+      const existant = parCellule.get(cle);
+      if (existant && existant.heures !== null && existant.heures !== lue.heures) {
         refus.push(
-          `S${semaine}, module ${code} : rempli sur les lignes ${[...existant.lignes, numeroLigne].join(' et ')}` +
-            ' — une semaine ne peut porter qu’un seul type'
+          `S${semaine}, module ${code} : ${lue.type === TYPES.SYNCHRONE ? 'synchrone' : 'présentiel'} ` +
+            `rempli sur les lignes ${[...existant.lignes, numeroLigne].join(' et ')} avec deux valeurs`
         );
         continue;
       }
@@ -390,12 +403,35 @@ export function fusionnerCellules(plannings, cellules) {
   let ecrites = 0;
   let effacees = 0;
 
-  for (const { groupe, code, semaine, heures, type } of cellules) {
+  /*
+   * ⚠️ LES EFFACEMENTS SANS TYPE D'ABORD (ancien format : la semaine entière),
+   * puis les parts : une case vide lue sur une ligne ne doit pas effacer la
+   * valeur qu'une autre ligne pose sur la même semaine.
+   */
+  const ordonnees = [...(cellules ?? [])].sort(
+    (a, b) => (a.type === undefined ? 0 : 1) - (b.type === undefined ? 0 : 1)
+  );
+
+  for (const { groupe, code, semaine, heures, type } of ordonnees) {
     const planning = (suivants[groupe] ??= {});
     const module = (planning[code] ??= {});
+    const avant = module[semaine];
 
-    if (heures === null || heures === 0) {
-      if (module[semaine] !== undefined) {
+    /*
+     * Chaque entrée ne porte qu'UNE part (2026-10-01) : l'autre part de la case
+     * reste telle quelle — c'est ainsi qu'une feuille de formateur, qui ne
+     * montre que son type, ne touche pas celui du collègue.
+     */
+    const suivante =
+      type === undefined
+        ? null
+        : celluleDepuisParts({
+            ...partsDeCellule(avant),
+            [type === TYPES.SYNCHRONE ? 'S' : 'P']: heures ?? 0,
+          });
+
+    if (!suivante) {
+      if (avant !== undefined) {
         delete module[semaine];
         effacees += 1;
         touches.add(groupe);
@@ -403,10 +439,9 @@ export function fusionnerCellules(plannings, cellules) {
       continue;
     }
 
-    const avant = module[semaine];
-    if (avant?.heures === heures && avant?.type === type) continue;
+    if (JSON.stringify(avant) === JSON.stringify(suivante)) continue;
 
-    module[semaine] = { heures, type };
+    module[semaine] = suivante;
     ecrites += 1;
     touches.add(groupe);
   }

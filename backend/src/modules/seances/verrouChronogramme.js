@@ -1,3 +1,5 @@
+import { analyserSemaine, cleSemaineChronogramme, retraitRapprocheDuPlan } from 'shared/domain';
+
 import { AutoGenConfig } from '../../models/AutoGenConfig.js';
 import { Chronogramme } from '../../models/Chronogramme.js';
 import { Seance } from '../../models/Seance.js';
@@ -20,8 +22,9 @@ import { conflict } from '../../lib/httpError.js';
  * semaine, réinitialiser.
  *
  * ═══ CE QU'IL LAISSE PASSER, ET POURQUOI ═══
- * Le DÉPLACEMENT — la même séance change de créneau —, le changement de SALLE
- * et le marquage d'ABSENCE. Aucun ne touche au cours attribué ; les interdire
+ * Le DÉPLACEMENT — la même séance change de créneau —, le changement de SALLE,
+ * le marquage d'ABSENCE, et le RETRAIT d'une séance en trop ou hors
+ * chronogramme (`retraitAligne`), qui rapproche la grille du plan. Aucun ne touche au cours attribué ; les interdire
  * empêcherait de rattraper un conflit de salle sans tout dissocier.
  *
  * ═══ ⚠️⚠️ DEUX FUITES CONNUES, ASSUMÉES ═══ (2026-09-27)
@@ -100,6 +103,37 @@ export function refuser(geste) {
           `l’espace et les absences restent libres.`,
       },
     ],
+  });
+}
+
+/**
+ * Sous verrou, cette séance peut-elle être retirée ?
+ *
+ * ═══ ⚠️ OUI SI ELLE EST EN TROP OU HORS CHRONOGRAMME (2026-10-01, demande du
+ * porteur) ═══ Le verrou refuse ce qui ÉLOIGNE la grille du chronogramme. Une
+ * séance au-delà du volume prévu l'en éloigne déjà : la retirer RÉTABLIT
+ * l'allocation. Permis seulement si le retrait ne crée aucun manque — la règle
+ * est `retraitRapprocheDuPlan`, la même que celle qui fait afficher le bouton.
+ *
+ * ⚠️ RECALCULÉ ICI, JAMAIS CRU SUR PAROLE : l'écran peut avoir un rapport
+ *    périmé — un collègue vient de retirer l'autre séance en trop.
+ */
+export async function retraitAligne(etablissementId, anneeScolaire, semaine, seance, session = null) {
+  const analyse = analyserSemaine(semaine);
+  if (!analyse || !seance) return false;
+
+  const [chronogrammes, seances] = await Promise.all([
+    Chronogramme.find({ etablissementId, anneeScolaire }).select('groupe planning').session(session).lean(),
+    Seance.find({ etablissementId, anneeScolaire, semaine })
+      .select('groupe module jour seance salle statut formateurMatricule periode')
+      .session(session)
+      .lean(),
+  ]);
+
+  return retraitRapprocheDuPlan(seance, {
+    chronogrammes,
+    seances,
+    semaineChrono: cleSemaineChronogramme(analyse.numero),
   });
 }
 

@@ -1,3 +1,5 @@
+import { partsDeCellule } from 'shared/domain';
+
 /**
  * L'état local des plannings de la page Chronogramme.
  *
@@ -138,9 +140,18 @@ function fusionnerCellules(courant, precedent, charge) {
 
 /** Même filtre qu'`empreinte`, mais pour UNE case : sert à savoir si elle a été touchée. */
 function empreinteCellule(cellule) {
-  return Number(cellule?.heures) > 0
-    ? JSON.stringify({ heures: Number(cellule.heures), type: cellule.type })
-    : '';
+  return Number(cellule?.heures) > 0 ? JSON.stringify(formeCellule(cellule)) : '';
+}
+
+/**
+ * ⚠️ LES PARTS, PAS SEULEMENT LE TOTAL (2026-10-01) : une case mixte qui passe
+ * de 5 P + 2,5 S à 2,5 P + 5 S garde `heures: 7.5, type: 'PS'`. Comparer ces
+ * deux seuls champs la déclarerait inchangée — et elle ne serait jamais
+ * enregistrée.
+ */
+function formeCellule(cellule) {
+  const { P, S } = partsDeCellule(cellule);
+  return { P, S };
 }
 
 /**
@@ -274,7 +285,7 @@ function empreinte(planning) {
       const cellule = planning[module][semaine];
       // Même filtre que `versMongo` : une cellule à zéro n'est pas enregistrée.
       if (Number(cellule?.heures) > 0) {
-        cellules[semaine] = { heures: Number(cellule.heures), type: cellule.type };
+        cellules[semaine] = formeCellule(cellule);
       }
     }
     // ⚠️ Un module SANS séance disparaît, exactement comme à l'écriture.

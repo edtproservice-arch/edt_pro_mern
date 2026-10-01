@@ -1,9 +1,14 @@
 import {
   analyserSemaine,
+  anneeDuNomGroupe,
   datesDeLaPlage,
+  detailEcartDeSaisie,
+  ecartsDeSaisie,
+  filieresParGroupe,
   fusionnerVacances,
   heuresParJour,
   heuresPosees,
+  instantLocal,
   lignesDepuisAffectations,
   lireAvancementEnote,
   lundiPremiereSemaine,
@@ -18,8 +23,10 @@ import {
   tauxRegional,
   totalAvancement,
 } from 'shared/domain';
-import { JOURS } from 'shared/constants';
+import { JOURS, ROLES } from 'shared/constants';
 import { Base } from '../../models/Base.js';
+import { User } from '../../models/User.js';
+import { envoyer as envoyerMessage } from '../messagerie/messagerie.service.js';
 import { EnoteImport } from '../../models/EnoteImport.js';
 import { Seance } from '../../models/Seance.js';
 import { Etablissement } from '../../models/Etablissement.js';
@@ -29,7 +36,7 @@ import { Repartition } from '../../models/Repartition.js';
 import { joursFeries } from '../calendrier/calendrier.service.js';
 import { obtenir as calendrierNational } from '../calendrierNational/calendrierNational.service.js';
 import { obtenir as horairesSeances } from '../horaires/horaires.service.js';
-import { notFound } from '../../lib/httpError.js';
+import { badRequest, notFound } from '../../lib/httpError.js';
 
 /**
  * Avancement réalisé / prévu, sous ses DEUX faces (F7).
@@ -66,7 +73,7 @@ export async function avancement(etablissementId, anneeScolaire, observation = n
      * jamais rien fait douter du filtre plutôt que des données.
      */
     Base.findOne({ etablissementId, anneeScolaire })
-      .select('affectations formateurs groupeModes groupes groupeFilieres')
+      .select('affectations formateurs groupeModes groupes groupeFilieres modulesInactifs')
       .lean(),
     /*
      * Le plus RÉCENT des imports de l'année : c'est l'état courant du système
@@ -277,9 +284,7 @@ export async function avancement(etablissementId, anneeScolaire, observation = n
    * 1ʳᵉ année, le plafond doit descendre avec les barres. La face e-note, elle,
    * la lit dans ses propres colonnes 31-32.
    */
-  for (const ligne of lignesEdtpro) {
-    ligne.masseDrif = massesDrif[ligne.module] ?? 0;
-  }
+  const nonAffectes = await poserMassesDuProgramme(base, lignesEdtpro, massesDrif);
 
   /*
    * La masse horaire STATUTAIRE de chaque formateur — ce qu'il doit assurer dans
@@ -411,11 +416,102 @@ export async function avancement(etablissementId, anneeScolaire, observation = n
     progression,
     activite,
     statutaires,
+    /*
+     * Groupe → masse DRIF des modules actifs SANS formateur, pour la courbe
+     * « masse horaire globale » de la face eDTpro seulement : la face e-note
+     * porte déjà une ligne pour chacun d'eux.
+     */
+    nonAffectes,
     faces: {
       edtpro: lignesEdtpro,
       enote: lignesEnote,
     },
   };
+}
+
+/**
+ * Pose sur chaque ligne eDTpro la masse DRIF de SON programme, et rend la
+ * masse des modules de la carte encore sans formateur, par groupe.
+ *
+ * ═══ ⚠️ LA FILIÈRE DU GROUPE, PAS LE CODE SEUL ═══ (2026-10-01, écart signalé
+ * par le porteur entre les faces eDTpro et e-note.) « M106 » vaut 95 h en
+ * DEEA et 30 h dans la première filière venue par ordre alphabétique : indexée
+ * par code, la courbe de DEEA101 tombait à 460 h au lieu de 930. La recherche
+ * suit la règle de la carte — `codeFiliereCarte` + année de formation + code —
+ * et ne retombe sur le code seul que pour un groupe sans filière connue.
+ *
+ * ⚠️ LES MODULES DÉSACTIVÉS NE COMPTENT PAS : ils ne produisent aucune ligne
+ * e-note, et la face e-note ne les compte donc pas non plus.
+ *
+ * @returns {Promise<Record<string, number>>} groupe → masse non affectée
+ */
+async function poserMassesDuProgramme(base, lignes, massesParCode) {
+  const filieres = filieresParGroupe(base);
+  const ensembleDe = (groupe) => {
+    const filiere = filieres.get(groupe);
+    return filiere ? `${filiere}||${anneeDuNomGroupe(groupe)}` : null;
+  };
+
+  const demandes = new Map();
+  for (const groupe of base?.groupes ?? []) {
+    const filiere = filieres.get(groupe);
+    if (!filiere) continue;
+    const anneeFormation = anneeDuNomGroupe(groupe);
+    demandes.set(`${filiere}||${anneeFormation}`, { codeFiliereCarte: filiere, anneeFormation });
+  }
+
+  const references = demandes.size
+    ? await Repartition.find({ $or: [...demandes.values()] })
+        .select('codeFiliereCarte anneeFormation codeModule mhpS1 mhpS2 mhsynS1 mhsynS2')
+        .sort({ codeModule: 1 })
+        .lean()
+    : [];
+
+  // ensemble → code (MAJUSCULES) → masse. Présentiel + synchrone, comme `referentielDesModules`.
+  const programmes = new Map();
+  for (const reference of references) {
+    const cle = `${reference.codeFiliereCarte}||${reference.anneeFormation}`;
+    const code = String(reference.codeModule ?? '').trim().toUpperCase();
+    if (code === '') continue;
+    if (!programmes.has(cle)) programmes.set(cle, new Map());
+    const programme = programmes.get(cle);
+    if (!programme.has(code)) {
+      programme.set(
+        code,
+        Number(reference.mhpS1 ?? 0) +
+          Number(reference.mhpS2 ?? 0) +
+          Number(reference.mhsynS1 ?? 0) +
+          Number(reference.mhsynS2 ?? 0)
+      );
+    }
+  }
+
+  const affectes = new Map();
+  for (const ligne of lignes) {
+    const code = String(ligne.module ?? '').trim().toUpperCase();
+    const programme = programmes.get(ensembleDe(ligne.groupe));
+    ligne.masseDrif = programme?.get(code) ?? massesParCode[ligne.module] ?? 0;
+    if (!affectes.has(ligne.groupe)) affectes.set(ligne.groupe, new Set());
+    affectes.get(ligne.groupe).add(code);
+  }
+
+  const inactifs = base?.modulesInactifs ?? {};
+  const nonAffectes = {};
+  for (const groupe of base?.groupes ?? []) {
+    const programme = programmes.get(ensembleDe(groupe));
+    if (!programme) continue;
+    const desactives = new Set(
+      (inactifs[groupe] ?? []).map((code) => String(code).trim().toUpperCase())
+    );
+    let masse = 0;
+    for (const [code, heures] of programme) {
+      if (affectes.get(groupe)?.has(code) || desactives.has(code)) continue;
+      masse += heures;
+    }
+    if (masse > 0) nonAffectes[groupe] = Math.round(masse * 100) / 100;
+  }
+
+  return nonAffectes;
 }
 
 /**
@@ -680,6 +776,222 @@ export async function chronologie(etablissementId, anneeScolaire) {
   };
 
   return points;
+}
+
+/**
+ * L'écart de saisie e-note / eDTpro, formateur par formateur et dépôt par dépôt
+ * (2026-10-01, demande du porteur : le tableau de l'accueil du directeur).
+ *
+ * ⚠️ TOUS LES IMPORTS DE L'ANNÉE, LIGNES COMPRISES : e-note ne livre qu'un
+ * cumul, et la saisie d'une semaine est la différence entre deux dépôts. Une
+ * année en compte une quarantaine au plus — un parcours qu'on ne paie qu'à
+ * l'ouverture de l'accueil.
+ */
+export async function ecartsSaisie(etablissementId, anneeScolaire) {
+  return ecartsDeSaisie(await donneesEcartsSaisie(etablissementId, anneeScolaire));
+}
+
+/**
+ * Le détail d'une carte de l'écart de saisie : par groupe et module, ce que le
+ * formateur a saisi, ce que la grille portait, et les séances qui le composent.
+ */
+export async function detailEcartSaisie(etablissementId, anneeScolaire, cle, semaine) {
+  const donnees = await donneesEcartsSaisie(etablissementId, anneeScolaire, cle);
+  const base = await Base.findOne({ etablissementId, anneeScolaire }).lean();
+  return detailAvecIntitules(donnees, base, cle, semaine);
+}
+
+/** Le détail calculé sur des données DÉJÀ LUES — l'envoi groupé ne relit pas tout par formateur. */
+async function detailAvecIntitules(donnees, base, cle, semaine) {
+  const detail = detailEcartDeSaisie({ ...donnees, cle, semaine });
+  if (!detail) throw notFound('Aucune base e-note déposée cette semaine', { code: 'DEPOT_ABSENT' });
+
+  const { intitules } = await referentielDesModules(detail.lignes, base);
+  for (const ligne of detail.lignes) ligne.intitule = intitules[ligne.module] ?? '';
+  return detail;
+}
+
+/**
+ * « Envoyer à tous les formateurs en manque » d'une semaine (2026-10-01,
+ * demande du porteur) : le même message que l'envoi unitaire, pour chaque
+ * formateur dont l'écart est négatif sur ce dépôt.
+ *
+ * ⚠️ UN ÉCHEC N'ARRÊTE PAS LES AUTRES — le cas courant est un formateur sans
+ * compte actif. Le bilan le nomme, comme « Envoyer à tous » du chronogramme.
+ *
+ * ⚠️ LES DONNÉES SONT LUES UNE FOIS : seize formateurs ne doivent pas coûter
+ * seize lectures de tous les imports de l'année.
+ */
+export async function envoyerEcartSaisieATous(etablissementId, anneeScolaire, directeur, semaine) {
+  const donnees = await donneesEcartsSaisie(etablissementId, anneeScolaire);
+  const base = await Base.findOne({ etablissementId, anneeScolaire }).lean();
+  const { semaines, formateurs } = ecartsDeSaisie(donnees);
+
+  const index = semaines.find((s) => s.numero === semaine)?.periode ?? null;
+  if (index === null) throw notFound('Aucune base e-note déposée cette semaine', { code: 'DEPOT_ABSENT' });
+
+  const enManque = formateurs.filter((formateur) => formateur.cellules[index]?.ecart < 0);
+  const envoyes = [];
+  const echecs = [];
+
+  for (const formateur of enManque) {
+    try {
+      const detail = await detailAvecIntitules(donnees, base, formateur.cle, semaine);
+      await envoyerEcartSaisie(etablissementId, anneeScolaire, directeur, formateur.cle, semaine, {
+        detail,
+        base,
+      });
+      envoyes.push({ cle: formateur.cle, nom: formateur.nom });
+    } catch (erreur) {
+      echecs.push({ cle: formateur.cle, nom: formateur.nom, motif: erreur.message });
+    }
+  }
+
+  return { total: enManque.length, envoyes, echecs };
+}
+
+/**
+ * ═══ ENVOYER L'ÉTAT D'ÉCART AU FORMATEUR ═══ (2026-10-01, demande du porteur :
+ * « un bouton envoyer par messagerie EDT Pro l'état d'écart au formateur
+ * concerné »).
+ *
+ * ⚠️ LE MESSAGE EST RECALCULÉ ICI, pas reçu de l'écran : ce que le formateur lit
+ * doit être ce que le serveur sait, pas un texte que le navigateur aurait pu
+ * composer autrement. Le corps reprend le panneau de détail : l'écart total,
+ * puis chaque module en manque avec ses séances à vérifier.
+ *
+ * ⚠️ LE FORMATEUR DOIT AVOIR UN COMPTE ACTIF dans l'établissement — même règle
+ * que l'envoi du chronogramme : sans lui, le service le dit plutôt que de se taire.
+ */
+export async function envoyerEcartSaisie(
+  etablissementId,
+  anneeScolaire,
+  directeur,
+  cle,
+  semaine,
+  { detail: dejaCalcule = null, base: dejaLue = null } = {}
+) {
+  const detail = dejaCalcule ?? (await detailEcartSaisie(etablissementId, anneeScolaire, cle, semaine));
+  const base =
+    dejaLue ?? (await Base.findOne({ etablissementId, anneeScolaire }).select('formateurs').lean());
+
+  const fiche = (base?.formateurs ?? []).find((f) =>
+    [f.matricule, f.nomComplet].some((v) => String(v ?? '').trim().toUpperCase() === cle)
+  );
+  const nom = fiche?.nomComplet ?? cle;
+  const identifiants = [...new Set([fiche?.matricule, cle].filter(Boolean).map((v) => String(v).trim()))];
+
+  const compte = await User.findOne({
+    identifiant: { $in: identifiants },
+    role: ROLES.FORMATEUR,
+    etablissementIds: etablissementId,
+    estActif: true,
+  }).select('_id');
+  if (!compte) {
+    throw badRequest(`${nom} n’a pas de compte formateur actif : aucun message ne peut lui être remis.`, {
+      code: 'COMPTE_INTROUVABLE',
+    });
+  }
+
+  const enManque = detail.lignes.filter((ligne) => ligne.ecart < 0);
+  if (enManque.length === 0) {
+    throw badRequest(`${nom} n’a aucun manque de saisie en S${semaine}.`, { code: 'AUCUN_ECART' });
+  }
+
+  const total = (champ) => arrondirHeures(detail.lignes.reduce((somme, ligne) => somme + ligne[champ], 0));
+  const periode = `${detail.debut ? jourCourt(detail.debut) : 'la rentrée'} au ${jourCourt(detail.fin)}`;
+
+  /*
+   * ═══ ⚠️ LE DÉTAIL VOYAGE À PART, PAS DANS LE TEXTE (2026-10-01, demande du
+   * porteur : « ne mets pas le détail dans l'objet du message, et en message le
+   * même style d'affichage que le panneau ») ═══
+   * Le corps — c'est lui que la liste de la messagerie prévisualise — ne garde
+   * qu'une phrase ; les modules et leurs séances partent en instantané
+   * (`ecartSaisie`), rendu dans le fil par les mêmes cartes que le panneau du
+   * directeur. Le sujet ne porte plus le chiffre.
+   */
+  const corps =
+    `Bonjour ${nom}, sur la semaine S${semaine} (séances du ${periode}), vos heures saisies dans ` +
+    `e-note ne couvrent pas les séances réalisées dans EDT Pro. Le détail est ci-dessous : merci de ` +
+    `compléter votre saisie dans e-note.\n\n${directeur.nomComplet}`;
+
+  await envoyerMessage(directeur.id, {
+    destinataires: [String(compte._id)],
+    sujet: `Écart de saisie e-note — S${semaine}`,
+    corps,
+    ecartSaisie: {
+      nom,
+      semaine,
+      debut: detail.debut,
+      fin: detail.fin,
+      enote: total('enote'),
+      edt: total('edt'),
+      ecart: total('ecart'),
+      /* Les modules EN MANQUE seulement : c'est ce que le formateur doit reprendre. */
+      lignes: enManque,
+    },
+  });
+
+  return { envoye: true, nom };
+}
+
+const arrondirHeures = (valeur) => Math.round(valeur * 100) / 100;
+/** « 2026-09-28 » → « 28/09 ». */
+const jourCourt = (jour) => {
+  const [, mois, j] = String(jour).split('-');
+  return `${j}/${mois}`;
+};
+
+/**
+ * Ce que les deux calculs lisent. `cle` restreint les séances lues à un
+ * formateur — le détail n'a pas à parcourir toute la grille de l'année.
+ */
+async function donneesEcartsSaisie(etablissementId, anneeScolaire, cle = null) {
+  const [base, imports, national] = await Promise.all([
+    Base.findOne({ etablissementId, anneeScolaire }).select('formateurs').lean(),
+    EnoteImport.find({ etablissementId, anneeScolaire })
+      .sort({ importeLe: 1 })
+      .select('nomFichier importeLe entete lignes')
+      .lean(),
+    calendrierNational(anneeScolaire),
+  ]);
+
+  if (!base) {
+    throw notFound('Aucune base pour cette année scolaire', { code: 'BASE_ABSENTE' });
+  }
+
+  /* ⚠️ TOUS LES IDENTIFIANTS DU FORMATEUR : une séance peut porter son
+     matricule ou, sans matricule, son nom. */
+  const identifiants = cle
+    ? (base.formateurs ?? [])
+        .filter((f) => [f.matricule, f.nomComplet].some((v) => String(v ?? '').trim().toUpperCase() === cle))
+        .flatMap((f) => [f.matricule, f.nomUnique, f.nomComplet].filter(Boolean))
+    : null;
+
+  const seances = await Seance.find({
+    etablissementId,
+    anneeScolaire,
+    ...(identifiants ? { formateurMatricule: { $in: identifiants.length ? identifiants : [cle] } } : {}),
+  })
+    .select('formateurMatricule groupe module jour seance salle date statut estEfm')
+    .lean();
+
+  return {
+    imports: imports.map((importe) => ({
+      importeLe: importe.importeLe,
+      nomFichier: importe.nomFichier,
+      lignes: lireAvancementEnote(importe),
+    })),
+    seances,
+    formateurs: base.formateurs ?? [],
+    anneeScolaire,
+    rentrees: national.rentrees,
+    /* ⚠️ LES SÉANCES RÉALISÉES SEULEMENT (demande du porteur, 2026-10-01) :
+       terminées à cet instant, selon l'horaire en vigueur — la règle du réalisé
+       eDTpro des sessions consultatives. */
+    maintenant: instantLocal(new Date()),
+    horaires: (await horairesSeances()).courant,
+  };
 }
 
 /**

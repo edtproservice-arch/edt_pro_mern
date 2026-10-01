@@ -13,6 +13,7 @@ import { Switch } from '@/components/ui/switch';
 import Alerte from '@/components/common/Alerte';
 import { ROLES } from 'shared/constants';
 import {
+  TYPES,
   comparerMaquettes,
   droitSuffit,
   effacerAvecJumelles,
@@ -21,10 +22,10 @@ import {
   masseHebdomadaire,
   planningDepuisLignes,
   planningDesLignes,
+  partsDeCellule,
   poserAvecJumelles,
   scinderParType,
   semainesDeLaLigne,
-  verrouillerAutreType,
 } from 'shared/domain';
 import { cn } from '@/lib/utils';
 import { recupererSession } from '@/features/auth/api';
@@ -847,13 +848,32 @@ export default function PageChronogramme() {
         const module = modulesGroupe.find((m) => m.code === changement.code);
         if (!module) continue;
 
+        /*
+         * ⚠️ SEULE LA PART SYNCHRONE SE PROPAGE (2026-10-01). Une case mixte porte
+         * aussi du présentiel, propre à ce groupe : le jumeau n'a rien à en
+         * recevoir. Une case dont la part synchrone n'a pas bougé n'a rien à
+         * reporter.
+         */
+        const synchroneAvant = partsDeCellule(changement.avant).S;
+        const synchroneApres = partsDeCellule(changement.apres).S;
+        if (synchroneAvant === synchroneApres) continue;
+
         const jumeauxCharges = groupesJumeaux(module, groupe)
           .map((nom) => ({ nom, rang: selection.indexOf(nom) }))
           .filter(({ rang: r }) => r !== -1 && grilles[r]?.data);
         if (jumeauxCharges.length === 0) continue;
 
         const cle = (unGroupe) => `${unGroupe}||${changement.code}`;
-        const planningPlat = { [cle(groupe)]: suivants[groupe]?.[changement.code] ?? {} };
+        /*
+         * ⚠️ L'ANCIENNE case pour un effacement : `effacerAvecJumelles` ne reporte
+         * que si la case EFFACÉE portait du synchrone, et la nouvelle n'en a plus.
+         */
+        const planningPlat = {
+          [cle(groupe)]:
+            synchroneApres === 0
+              ? (courants[groupe]?.[changement.code] ?? {})
+              : (suivants[groupe]?.[changement.code] ?? {}),
+        };
         const modulesPlat = [
           { ...module, cle: cle(groupe), groupe, semaines: module.semaines ?? donneesGroupe.semaines },
         ];
@@ -880,7 +900,7 @@ export default function PageChronogramme() {
         if (!semaine) continue;
 
         const resultat =
-          changement.apres === null
+          synchroneApres === 0
             ? effacerAvecJumelles({
                 planning: planningPlat,
                 modules: modulesPlat,
@@ -892,8 +912,8 @@ export default function PageChronogramme() {
                 modules: modulesPlat,
                 module: modulesPlat[0],
                 semaine,
-                heures: changement.apres.heures,
-                type: changement.apres.type,
+                heures: synchroneApres,
+                type: TYPES.SYNCHRONE,
               });
 
         for (const { nom } of jumeauxCharges) {
@@ -1191,13 +1211,11 @@ function SectionGroupe({
    * planning, la mémoïsation des cellules est intacte.
    */
   const partage = lignes.some((ligne) => ligne.typeSeul);
-  const modulesPrepares = useMemo(
-    () =>
-      partage
-        ? verrouillerAutreType(lignes, (ligne) => planning?.[ligne.cleSource], requete?.data?.semaines)
-        : lignes,
-    [partage, lignes, planning, requete?.data?.semaines]
-  );
+  /*
+   * ⚠️ PLUS DE VERROU ENTRE LES DEUX PARTS (2026-10-01) : une semaine portée
+   * par l'un accueille aussi l'autre, en case mixte.
+   */
+  const modulesPrepares = lignes;
   const planningAffiche = useMemo(
     () => (partage ? planningDesLignes(planning, modulesPrepares) : planning),
     [partage, planning, modulesPrepares]
@@ -1207,11 +1225,7 @@ function SectionGroupe({
       onChanger(nouveau, motif);
       return;
     }
-    const { planning: reconstruit, refusees } = planningDepuisLignes(nouveau, modulesPrepares, planning);
-    onChanger(reconstruit);
-    if (refusees > 0) {
-      onChanger(null, `${refusees} semaine(s) déjà prise(s) par l’autre part du module (présentiel ou synchrone).`);
-    }
+    onChanger(planningDepuisLignes(nouveau, modulesPrepares, planning).planning);
   };
 
   return (
@@ -1308,7 +1322,7 @@ function modulesAvecFormations({ modules, semaines }) {
  * valeur — sans quoi une case effacée ne serait jamais vue comme un
  * changement.
  *
- * @returns {Array<{code: string, numero: number, apres: {heures, type}|null}>}
+ * @returns {Array<{code: string, numero: number, avant: object|null, apres: object|null}>}
  */
 function changementsCellules(ancien = {}, nouveau = {}) {
   const changements = [];
@@ -1322,7 +1336,7 @@ function changementsCellules(ancien = {}, nouveau = {}) {
       const apres = semainesNouveau[numero] ?? null;
       if (JSON.stringify(avant) === JSON.stringify(apres)) continue;
 
-      changements.push({ code, numero: Number(numero), apres });
+      changements.push({ code, numero: Number(numero), avant, apres });
     }
   }
 

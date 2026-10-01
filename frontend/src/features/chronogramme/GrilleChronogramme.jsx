@@ -1,12 +1,20 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Presentation, Star } from 'lucide-react';
+import { ChevronDown, ChevronRight, Presentation, Star } from 'lucide-react';
 import Teams from '@/components/icons/Teams';
 import {
   FIN_SEMESTRE_1,
   PAS,
   PLAFOND_CELLULE,
   TYPES,
+  TYPE_MIXTE,
+  celluleDepuisParts,
+  deplierModules,
+  estDepliable,
+  estMixte,
+  partsDeCellule,
   plafondSemaine,
+  planningDeplie,
+  planningReplie,
   poserCellule,
   totauxModule,
   verifierCellule,
@@ -64,7 +72,12 @@ import {
  * main dans chaque classe.
  */
 const LARGEURS = {
-  module: 8, // rem
+  /*
+   * 10 et non 8 (2026-10-01) : un module déplié porte sur UNE ligne son code,
+   * la mention « présentiel » et le bouton qui replie — à 8 rem, le bouton
+   * passait à la ligne suivante.
+   */
+  module: 10, // rem
   regional: 2.5,
   semestre: 3,
   formateur: 11,
@@ -168,6 +181,9 @@ function couleurTotal(total, seuil) {
    jeux séparés auraient divergé au premier ajustement (§4.2). */
 const FOND_PRESENTIEL = FOND_PRESENTIEL_COMMUN;
 const FOND_SYNCHRONE = FOND_SYNCHRONE_COMMUN;
+/* Case mixte (2026-10-01) : le vert du présentiel glisse vers le violet du synchrone. */
+const FOND_MIXTE =
+  'bg-gradient-to-r from-accent-green/15 to-accent-purple/25 dark:from-accent-green/[0.08] dark:to-accent-purple-mid/[0.12]';
 
 /*
  * ═══ LES DEUX ABSENCES : APLATS UNIS ═══
@@ -199,6 +215,29 @@ const COLLANTE_ENTETE = 'sticky z-30 bg-tableau-tete border-r';
  * l'autre. Le mode groupe, lui, garde le code comme clé.
  */
 const cleDe = (module) => module.cle ?? module.code;
+
+/**
+ * Les heures de l'AUTRE part du même module cette semaine-là — celles de la
+ * ligne sœur, quand le module s'affiche sur deux lignes (dépliage de la grille
+ * ou module partagé entre deux formateurs). Le plafond d'une case (20 h) porte
+ * sur les deux parts réunies. Sans ligne sœur à l'écran, rien à ajouter.
+ */
+function autrePartDe(modules, planning, module, numero) {
+  const source = module?.cleGrille ?? module?.cleSource;
+  if (!module?.typeSeul || !source) return 0;
+
+  const soeur = (modules ?? []).find(
+    (autre) =>
+      autre !== module &&
+      autre.typeSeul &&
+      autre.typeSeul !== module.typeSeul &&
+      (autre.cleGrille ?? autre.cleSource) === source &&
+      (autre.groupe ?? null) === (module.groupe ?? null)
+  );
+  if (!soeur) return 0;
+
+  return partsDeCellule(planning?.[cleLigne(soeur)]?.[numero])[soeur.typeSeul];
+}
 
 /**
  * Pose une valeur dans une cellule, en lisant le planning LE PLUS RÉCENT.
@@ -255,6 +294,7 @@ function useOnPoser(planning, onChanger, modules, semainesParDefaut) {
       type,
       masses,
       posesSemaine: totalSemaineFusionnee(sansCetteCase, semaine.numero, tous),
+      autrePart: autrePartDe(tous, courant, module, semaine.numero),
     });
 
     if (!controle.possible) {
@@ -277,10 +317,10 @@ function useOnPoser(planning, onChanger, modules, semainesParDefaut) {
 }
 
 export default function GrilleChronogramme({
-  modules,
+  modules: modulesRecus,
   semaines,
-  planning,
-  onChanger,
+  planning: planningRecu,
+  onChanger: onChangerRecu,
   /*
    * Colonne fixe n° 4 : les FORMATEURS d'un module en mode groupe, le GROUPE de
    * la ligne en mode formateur. C'est la seule différence de rendu entre les
@@ -325,6 +365,45 @@ export default function GrilleChronogramme({
    */
   onClicDirect = null,
 }) {
+  /*
+   * ═══ LA DEUXIÈME LIGNE, À LA DEMANDE (2026-10-01, demande du porteur) ═══
+   * « Garder l'affichage à une seule ligne, avec un bouton sur les modules avec
+   * du synchrone pour afficher la deuxième ligne en cas de besoin. » Un module
+   * déplié s'affiche sur deux lignes — présentiel, synchrone — qui écrivent
+   * chacune SA part de la même case : c'est ainsi qu'on pose les deux types la
+   * même semaine (case mixte).
+   *
+   * ⚠️ LE DÉPLIAGE VIT ICI, PAS DANS LES PAGES : la vue par groupe et la vue
+   * par formateur l'ont ainsi toutes les deux, sans rien changer à ce qu'elles
+   * donnent ni à ce qu'elles reçoivent. La grille traduit à l'aller
+   * (`planningDeplie`) et au retour (`planningReplie`).
+   *
+   * ⚠️ Rien n'est déplié par défaut, et tout ce qui ne l'est pas garde le MÊME
+   * objet : la mémoïsation des 765 cellules tient.
+   */
+  const [deplies, setDeplies] = useState(() => new Set());
+  const basculerDepli = useCallback(
+    (cle) =>
+      setDeplies((courants) => {
+        const suivants = new Set(courants);
+        if (suivants.has(cle)) suivants.delete(cle);
+        else suivants.add(cle);
+        return suivants;
+      }),
+    []
+  );
+  const modules = useMemo(() => deplierModules(modulesRecus, deplies), [modulesRecus, deplies]);
+  const planning = useMemo(() => planningDeplie(planningRecu, modules), [planningRecu, modules]);
+  const modulesGrille = useRef(modules);
+  modulesGrille.current = modules;
+  const onChanger = useCallback(
+    (nouveau, motif) =>
+      nouveau === null
+        ? onChangerRecu(null, motif)
+        : onChangerRecu(planningReplie(nouveau, modulesGrille.current)),
+    [onChangerRecu]
+  );
+
   /*
    * UNE seule cellule ouverte à la fois — c'est ce qui permet de n'avoir qu'un
    * `Select` de Radix monté, au lieu de 765.
@@ -438,6 +517,7 @@ export default function GrilleChronogramme({
         // Même garde qu'à la saisie : un glissement ne contourne pas la
         // capacité de la semaine.
         posesSemaine: totalSemaineFusionnee(sansCetteCase, semaine.numero, modules),
+        autrePart: autrePartDe(modules, suivant, cible, semaine.numero),
       });
 
       if (!controle.possible) {
@@ -633,6 +713,7 @@ export default function GrilleChronogramme({
               onDemarrerRemplissage={setRemplissage}
               lectureSeule={lectureSeule}
               onClicDirect={onClicDirect ? surClicDirect : null}
+              onBasculer={basculerDepli}
             />
           ))}
         </tbody>
@@ -908,8 +989,11 @@ function Badges({ semaine }) {
   );
 }
 
-function LigneModule({ module, colonne, semaines, identite, marquesLigne, planning, realise, ouverte, onOuvrir, onPoser, remplissage, onDemarrerRemplissage, lectureSeule, onClicDirect }) {
+function LigneModule({ module, colonne, semaines, identite, marquesLigne, planning, realise, ouverte, onOuvrir, onPoser, remplissage, onDemarrerRemplissage, lectureSeule, onClicDirect, onBasculer }) {
   const cle = cleDe(module);
+  const depliable = estDepliable(module);
+  // Le bouton vit sur la ligne repliée, puis sur la PREMIÈRE des deux lignes.
+  const bouton = depliable || (module.cleGrille && module.typeSeul === TYPES.PRESENTIEL);
   // Les cellules montrent le PRÉVU ; « Posé » et l'écart, le RÉALISÉ.
   const poses = totauxModule(realise ?? planning, cle);
 
@@ -925,7 +1009,7 @@ function LigneModule({ module, colonne, semaines, identite, marquesLigne, planni
       <th
         scope="row"
         style={{ left: rem(GAUCHE.module), width: rem(LARGEURS.module) }}
-        className={cn(COLLANTE_CORPS, 'border-b px-3 py-2 text-left font-medium')}
+        className={cn(COLLANTE_CORPS, 'whitespace-nowrap border-b px-2 py-2 text-left font-medium')}
       >
         {/*
           Le code seul — « EGTS105 » — ne dit pas ce que le module enseigne. La
@@ -972,6 +1056,21 @@ function LigneModule({ module, colonne, semaines, identite, marquesLigne, planni
           >
             {module.typeSeul === TYPES.SYNCHRONE ? 'synchrone' : 'présentiel'}
           </span>
+        )}
+        {bouton && (
+          <button
+            type="button"
+            onClick={() => onBasculer(module.cleGrille ?? cle)}
+            title={
+              module.cleGrille
+                ? 'Revenir à une seule ligne'
+                : 'Afficher la ligne synchrone — pour poser présentiel et synchrone la même semaine'
+            }
+            aria-label={module.cleGrille ? 'Masquer la ligne synchrone' : 'Afficher la ligne synchrone'}
+            className="ml-1 inline-flex size-4 items-center justify-center rounded align-middle text-muted-foreground hover:bg-muted hover:text-accent-purple-deep"
+          >
+            {module.cleGrille ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+          </button>
         )}
       </th>
 
@@ -1032,6 +1131,8 @@ function LigneModule({ module, colonne, semaines, identite, marquesLigne, planni
           onDemarrerRemplissage={onDemarrerRemplissage}
           lectureSeule={lectureSeule}
           onClicDirect={onClicDirect}
+          depliable={depliable}
+          onBasculer={onBasculer}
           survole={estDansLeGlissement(remplissage, cle, semaine.numero)}
           /*
            * ⚠️ Module COMPLET : on ferme les cellules encore VIDES, pas toutes.
@@ -1148,11 +1249,34 @@ function ColonnesStats({ entete, module, poses, ecart }) {
  * obtient le style complet — panneau, groupes, coche, navigation clavier — avec
  * UNE SEULE instance montée à la fois, celle qu'on manipule.
  */
-function CelluleBrute({ semaine, module, identite, cellule, marque, ouverte, onOuvrir, onPoser, complet, survole, onDemarrerRemplissage, lectureSeule, onClicDirect }) {
+function CelluleBrute({ semaine, module, identite, cellule, marque, ouverte, onOuvrir, onPoser, complet, survole, onDemarrerRemplissage, lectureSeule, onClicDirect, depliable, onBasculer }) {
   const cle = cleDe(module);
+  /*
+   * ⚠️ UNE CASE MIXTE NE S'ÉDITE PAS SUR UNE SEULE LIGNE (2026-10-01) : la
+   * liste des heures ne pose qu'UN type, et remplacerait la case entière — la
+   * part de l'autre type disparaîtrait sans un mot. Un clic déplie le module :
+   * chaque part se modifie alors sur sa ligne.
+   */
+  const mixte = estMixte(cellule);
   // Une cellule VIDE d'un module complet n'a plus rien à recevoir.
-  const verrouillee = !semaine.disponible || (complet && !cellule);
+  const verrouillee = !semaine.disponible || (complet && !cellule) || (mixte && !depliable);
   const valeur = cellule ? `${cellule.heures}|${cellule.type}` : VIDE;
+  const parts = mixte ? partsDeCellule(cellule) : null;
+  const titreMixte = mixte
+    ? `Semaine mixte : ${parts.P} h présentiel + ${parts.S} h synchrone` +
+      (depliable && !lectureSeule ? ' — cliquez pour afficher les deux lignes' : '')
+    : undefined;
+  const contenu = mixte ? (
+    <span className="text-[0.65rem] leading-none">
+      <span className={VALEUR_PRESENTIEL}>{parts.P}</span>
+      <span className="text-muted-foreground">+</span>
+      <span className={VALEUR_SYNCHRONE}>{parts.S}</span>
+    </span>
+  ) : cellule ? (
+    cellule.heures
+  ) : (
+    ''
+  );
 
   const choisir = (brut) => {
     onOuvrir(null);
@@ -1214,18 +1338,24 @@ function CelluleBrute({ semaine, module, identite, cellule, marque, ouverte, onO
         {lectureSeule ? (
           // La valeur, sans bouton : rien ne s'ouvre, et le lecteur d'écran ne
           // l'annonce pas comme une commande.
-          <span className={apparence + ' mx-auto cursor-default hover:border-transparent'}>
-            {cellule ? cellule.heures : ''}
+          <span
+            className={apparence + ' mx-auto cursor-default hover:border-transparent'}
+            title={titreMixte}
+          >
+            {contenu}
           </span>
         ) : (
         <button
           type="button"
           disabled={verrouillee}
           onClick={() =>
-            onClicDirect
-              ? onClicDirect(module, semaine)
-              : onOuvrir({ module: cle, semaine: semaine.numero })
+            mixte
+              ? onBasculer?.(cle)
+              : onClicDirect
+                ? onClicDirect(module, semaine)
+                : onOuvrir({ module: cle, semaine: semaine.numero })
           }
+          title={titreMixte}
           className={apparence + ' mx-auto disabled:cursor-not-allowed disabled:opacity-40'}
         >
           {/*
@@ -1236,7 +1366,7 @@ function CelluleBrute({ semaine, module, identite, cellule, marque, ouverte, onO
             de traits où les heures posées ne ressortaient plus. Le bouton garde
             sa taille : il reste cliquable et rien ne bouge quand on saisit.
           */}
-          {cellule ? cellule.heures : ''}
+          {contenu}
         </button>
         )}
         </CarteCellule>
@@ -1250,7 +1380,7 @@ function CelluleBrute({ semaine, module, identite, cellule, marque, ouverte, onO
         points bleus illisible. `touch-none` empêche le défilement de la page de
         voler le geste sur un écran tactile.
       */}
-      {cellule && !ouverte && !lectureSeule && !onClicDirect && (
+      {cellule && !mixte && !ouverte && !lectureSeule && !onClicDirect && (
         <span
           role="presentation"
           onPointerDown={(evenement) => {
@@ -1297,6 +1427,8 @@ const APPARENCE = {
   // ⚠️ La MÊME couleur que la valeur d'une séance dans l'emploi du temps : c'est
   // le même fait montré sous deux angles.
   [TYPES.PRESENTIEL]: APPARENCE_BASE + VALEUR_PRESENTIEL,
+  // Case mixte : chaque part porte sa propre couleur, dans le contenu.
+  [TYPE_MIXTE]: APPARENCE_BASE,
   vide: APPARENCE_BASE + 'text-muted-foreground',
 };
 
@@ -1309,6 +1441,8 @@ const APPARENCE = {
  */
 function fondDeLaCellule(cellule, semaine) {
   if (cellule) {
+    // Case mixte : les deux teintes, du présentiel au synchrone.
+    if (cellule.type === TYPE_MIXTE) return ' ' + FOND_MIXTE;
     return cellule.type === TYPES.SYNCHRONE ? ' ' + FOND_SYNCHRONE : ' ' + FOND_PRESENTIEL;
   }
   if (semaine.motif === 'vacances') return ' bg-primary/10';
@@ -1511,24 +1645,37 @@ function planningSansAbsences(planning, modules, marques, groupe) {
   if (!marques) return planning;
 
   let realise = planning;
+  /*
+   * ⚠️ UNE ABSENCE NE S'ÔTE QU'UNE FOIS par module et par semaine, même quand le
+   * module est déplié sur deux lignes (2026-10-01) : les deux lignes portent les
+   * mêmes repères.
+   */
+  const deduites = new Set();
   for (const module of modules) {
-    const marquesLigne = marques[`${module.groupe ?? groupe}||${module.code}`.toUpperCase()];
+    const cleMarques = `${module.groupe ?? groupe}||${module.code}`.toUpperCase();
+    const marquesLigne = marques[cleMarques];
     if (!marquesLigne) continue;
 
     const cle = cleLigne(module);
     for (const [numero, marque] of Object.entries(marquesLigne)) {
       const absentes = (Number(marque?.absences) || 0) * DUREE_RATTRAPAGE;
-      const cellule = realise?.[cle]?.[numero];
-      const heures = Number(cellule?.heures) || 0;
-      if (absentes <= 0 || heures <= 0) continue;
+      const { P, S } = partsDeCellule(realise?.[cle]?.[numero]);
+      if (absentes <= 0 || P + S <= 0 || deduites.has(`${cleMarques}||${numero}`)) continue;
+      deduites.add(`${cleMarques}||${numero}`);
 
-      realise = poserCellule(
-        realise,
-        cle,
-        Number(numero),
-        Math.max(0, arrondir(heures - absentes)),
-        cellule.type ?? TYPES.PRESENTIEL
-      );
+      /*
+       * Le type de la séance manquée n'est pas connu ici : une case simple
+       * perd sur son type, comme avant ; une case mixte perd d'abord sur le
+       * présentiel, puis sur le synchrone.
+       */
+      const restePresentiel = Math.max(0, arrondir(P - absentes));
+      const resteSynchrone = Math.max(0, arrondir(S - Math.max(0, absentes - P)));
+      const suivante = celluleDepuisParts({ P: restePresentiel, S: resteSynchrone });
+
+      const cellules = { ...(realise?.[cle] ?? {}) };
+      if (suivante) cellules[numero] = suivante;
+      else delete cellules[numero];
+      realise = { ...realise, [cle]: cellules };
     }
   }
 

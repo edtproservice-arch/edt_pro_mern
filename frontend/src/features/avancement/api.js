@@ -32,3 +32,23 @@ export const chargerChronologie = () => api.get('/api/v2/avancement/chronologie'
  */
 export const chargerAchevement = (date = null) =>
   api.get(`/api/v2/avancement/achevement${date ? `?date=${date}` : ''}`);
+
+/**
+ * L'écart de saisie e-note / eDTpro, par formateur et par dépôt e-note.
+ * Relit tous les imports de l'année : à ne charger que là où il s'affiche.
+ */
+export const chargerEcartsSaisie = () => api.get('/api/v2/avancement/ecarts-saisie');
+
+/** Envoie l'état d'écart au formateur par la messagerie EDT Pro (directeur seul). */
+export const envoyerEcartSaisie = (formateur, semaine) =>
+  api.post('/api/v2/avancement/ecarts-saisie/envoyer', { formateur, semaine });
+
+/** Le même envoi, à tous les formateurs en manque d'une semaine. Rend `{total, envoyes, echecs}`. */
+export const envoyerEcartSaisieATous = (semaine) =>
+  api.post('/api/v2/avancement/ecarts-saisie/envoyer-tous', { semaine });
+
+/** Le détail d'une carte : par groupe et module, avec les séances de la grille. */
+export const chargerDetailEcartSaisie = (formateur, semaine) =>
+  api.get(
+    `/api/v2/avancement/ecarts-saisie/detail?formateur=${encodeURIComponent(formateur)}&semaine=${semaine}`
+  );

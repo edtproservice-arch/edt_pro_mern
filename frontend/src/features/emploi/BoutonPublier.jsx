@@ -10,20 +10,21 @@ import { depublierSemaine, publierSemaine } from './api';
 const court = (valeur) => libelleSemaine(valeur, { court: true });
 
 /**
- * Publier la semaine affichée — elle devient celle qui FAIT FOI.
+ * Publier la semaine affichée — elle devient VISIBLE des autres sessions.
  * ← le bouton « Publier » d'emploi.html (pilule verte) + `publish_timetable.php`
  * (2026-09-06, demande du porteur.)
  *
- * ═══ ⚠️ CE QUE PUBLIER FAIT, ET CE QU'IL NE FAIT PAS ═══
- * La semaine publiée devient celle qui S'OUVRE par défaut chez le gestionnaire,
- * le formateur et le stagiaire. Elle ne masque RIEN : ils gardent accès à toutes
- * les semaines. C'est la sémantique de l'ancien EDT Pro, confirmée par le
- * porteur — et c'est pourquoi le libellé dit « publiée », jamais « visible ».
+ * ═══ ⚠️ CE QUE PUBLIER FAIT (2026-10-01, demande du porteur) ═══
+ * « L'emploi du temps ne doit pas être affiché aux sessions formateur,
+ * stagiaire et gestionnaire si le directeur n'a pas cliqué sur Publier, pour
+ * chaque semaine. » Chaque semaine se publie donc À PART : tant qu'elle ne
+ * l'est pas, le gestionnaire, les formateurs et les stagiaires ne la voient
+ * pas. Publier une semaine ne retire plus la publication des autres.
  *
- * ⚠️ UNE SEULE SEMAINE PAR ANNÉE : publier REMPLACE. Le bouton le dit quand une
- * autre est déjà en place, sans quoi on croirait en ajouter une seconde.
+ * @param {string}   semaine       la semaine affichée, « 2026-W12 »
+ * @param {string[]} publications  les semaines déjà publiées de l'année
  */
-export default function BoutonPublier({ semaine, publication }) {
+export default function BoutonPublier({ semaine, publications = [] }) {
   const cache = useQueryClient();
   const [confirmation, setConfirmation] = useState(null);
 
@@ -36,7 +37,7 @@ export default function BoutonPublier({ semaine, publication }) {
     mutationFn: () => publierSemaine(semaine),
     onSuccess: () => {
       toast.success(`${court(semaine)} publiée`, {
-        description: 'Gestionnaires, formateurs et stagiaires l’ouvriront par défaut.',
+        description: 'Gestionnaires, formateurs et stagiaires peuvent maintenant la consulter.',
       });
       rafraichir();
     },
@@ -44,10 +45,10 @@ export default function BoutonPublier({ semaine, publication }) {
   });
 
   const depublier = useMutation({
-    mutationFn: depublierSemaine,
+    mutationFn: () => depublierSemaine(semaine),
     onSuccess: () => {
       toast.success('Publication retirée', {
-        description: 'Chacun revient à la semaine du moment.',
+        description: `${court(semaine)} est de nouveau masquée aux autres sessions.`,
       });
       rafraichir();
     },
@@ -56,24 +57,22 @@ export default function BoutonPublier({ semaine, publication }) {
 
   if (!semaine) return null;
 
-  const publiee = publication?.semaine ?? null;
-  const estPubliee = publiee === semaine;
+  const estPubliee = publications.includes(semaine);
   const enCours = publier.isPending || depublier.isPending;
 
   return (
     <>
-      {/*
-        ⚠️ TROIS ÉTATS, PAS DEUX — c'est le libellé de l'existant, et il est
-        juste : « Publier », « Publiée », et « Publier (actuel : S12) ». Le
-        troisième est celui qui compte : sans lui, on publie en croyant ajouter,
-        alors qu'on REMPLACE la référence de tout l'établissement.
-      */}
       <Button
         type="button"
         variant="outline"
         size="sm"
         disabled={enCours}
         onClick={() => setConfirmation(estPubliee ? 'depublier' : 'publier')}
+        title={
+          estPubliee
+            ? 'Visible du gestionnaire, des formateurs et des stagiaires'
+            : 'Masquée au gestionnaire, aux formateurs et aux stagiaires tant qu’elle n’est pas publiée'
+        }
         className={
           estPubliee
             ? 'h-8 gap-1.5 border-success/40 bg-success/10 text-xs text-success hover:bg-success/20 hover:text-success'
@@ -81,18 +80,14 @@ export default function BoutonPublier({ semaine, publication }) {
         }
       >
         {estPubliee ? <Check className="size-3.5" /> : <Send className="size-3.5" />}
-        {estPubliee ? 'Publiée' : publiee ? `Publier (actuel : ${court(publiee)})` : 'Publier'}
+        {estPubliee ? 'Publiée' : 'Publier'}
       </Button>
 
       <ConfirmationAction
         ouvert={confirmation === 'publier'}
         onOpenChange={(ouvert) => !ouvert && setConfirmation(null)}
         titre={`Publier ${court(semaine)} ?`}
-        description={
-          publiee
-            ? `Elle REMPLACERA ${court(publiee)}, publiée jusqu’ici. Gestionnaires, formateurs et stagiaires ouvriront celle-ci par défaut — les autres semaines restent consultables.`
-            : 'Gestionnaires, formateurs et stagiaires l’ouvriront par défaut. Les autres semaines restent consultables.'
-        }
+        description="Gestionnaires, formateurs et stagiaires pourront consulter l’emploi du temps de cette semaine. Les autres semaines publiées le restent."
         libelleConfirmation="Publier"
         onConfirmer={() => {
           setConfirmation(null);
@@ -104,7 +99,7 @@ export default function BoutonPublier({ semaine, publication }) {
         ouvert={confirmation === 'depublier'}
         onOpenChange={(ouvert) => !ouvert && setConfirmation(null)}
         titre="Retirer la publication ?"
-        description={`${court(semaine)} ne fera plus référence. Gestionnaires, formateurs et stagiaires ouvriront de nouveau la semaine du moment.`}
+        description={`${court(semaine)} ne sera plus visible du gestionnaire, des formateurs ni des stagiaires.`}
         libelleConfirmation="Dépublier"
         onConfirmer={() => {
           setConfirmation(null);

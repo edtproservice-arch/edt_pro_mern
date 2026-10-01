@@ -2046,9 +2046,9 @@ describe('Rentrée — les trois chemins d’écriture', () => {
  * ═══ PUBLICATION DE LA SEMAINE ═══ ← `publish_timetable.php` +
  * `get_published_week.php` (2026-09-06, demande du porteur).
  *
- * Ce que la publication FAIT : elle désigne la semaine qui s'ouvre par défaut
- * chez le gestionnaire, le formateur et le stagiaire. Elle ne masque rien —
- * c'est déjà la sémantique de l'ancien EDT Pro, et le porteur l'a confirmée.
+ * Ce que la publication FAIT (2026-10-01) : chaque semaine se publie à part, et
+ * une semaine non publiée est MASQUÉE au gestionnaire, au formateur et au
+ * stagiaire. Le directeur la voit toujours.
  */
 describe('PUT / DELETE /seances/publication', () => {
   const publier = (semaine) =>
@@ -2064,18 +2064,22 @@ describe('PUT / DELETE /seances/publication', () => {
   });
 
   /*
-   * ⚠️ UNE SEULE PUBLICATION PAR ANNÉE : publier à nouveau REMPLACE, il ne
-   * s'en accumule pas deux. C'est ce que faisait la transaction de l'existant
-   * (dépublier tout, puis publier) — ici c'est l'unicité de l'entrée.
+   * ⚠️ PUBLICATION PAR SEMAINE (2026-10-01) : publier AJOUTE la semaine, sans
+   * retirer les autres ; republier la même ne crée pas de doublon.
    */
-  it('remplace la précédente au lieu d’en ajouter une seconde', async () => {
+  it('ajoute la semaine aux semaines publiées, sans doublon', async () => {
     await publier(SEMAINE);
     await publier('2026-W20');
+    await publier(SEMAINE);
 
     const etab = await Etablissement.findById(etablissement.id).lean();
     const pourLAnnee = etab.publications.filter((p) => p.anneeScolaire === ANNEE);
-    expect(pourLAnnee).toHaveLength(1);
-    expect(pourLAnnee[0].semaine).toBe('2026-W20');
+    expect(pourLAnnee.map((p) => p.semaine).sort()).toEqual(['2026-W20', SEMAINE].sort());
+
+    const semaines = await request(app).get('/api/v2/seances/semaines').set('Cookie', cookies);
+    expect(semaines.body.publications).toEqual([SEMAINE, '2026-W20']);
+    // La DERNIÈRE publiée reste rendue seule, pour le tableau de bord.
+    expect(semaines.body.publication.semaine).toBe('2026-W20');
   });
 
   /*
@@ -2122,21 +2126,78 @@ describe('PUT / DELETE /seances/publication', () => {
     expect(await Seance.countDocuments({ semaine: '2026-W30' })).toBe(0);
   });
 
-  it('dépublie, et seulement pour l’année courante', async () => {
+  it('dépublie UNE semaine, sans toucher aux autres ni aux autres années', async () => {
     await Etablissement.updateOne(
       { _id: etablissement.id },
       { $push: { publications: { anneeScolaire: 2025, semaine: '2025-W10', publieeLe: new Date() } } }
     );
     await publier(SEMAINE);
+    await publier('2026-W20');
 
     const reponse = await request(app)
-      .delete('/api/v2/seances/publication')
+      .delete(`/api/v2/seances/publication?semaine=${SEMAINE}`)
       .set('Cookie', cookies);
 
     expect(reponse.status).toBe(200);
     const etab = await Etablissement.findById(etablissement.id).lean();
-    expect(etab.publications.find((p) => p.anneeScolaire === ANNEE)).toBeUndefined();
+    expect(etab.publications.filter((p) => p.anneeScolaire === ANNEE).map((p) => p.semaine)).toEqual([
+      '2026-W20',
+    ]);
     expect(etab.publications.find((p) => p.anneeScolaire === 2025).semaine).toBe('2025-W10');
+  });
+
+  it('refuse de dépublier sans dire quelle semaine', async () => {
+    const reponse = await request(app).delete('/api/v2/seances/publication').set('Cookie', cookies);
+    expect(reponse.status).toBe(400);
+  });
+
+  /*
+   * ═══ ⚠️ UNE SEMAINE NON PUBLIÉE EST MASQUÉE AU GESTIONNAIRE (2026-10-01) ═══
+   * Il ne la voit ni dans la navigation, ni dans la grille, ni à l'export ; le
+   * directeur, lui, la prépare et la voit toujours.
+   */
+  it('⚠️ masque au gestionnaire une semaine non publiée, puis la montre une fois publiée', async () => {
+    await poser();
+    await User.create({
+      nomComplet: 'Gestionnaire Masque',
+      email: 'gestionnaire3@edtpro.ma',
+      motDePasse: MOT_DE_PASSE,
+      role: ROLES.GESTIONNAIRE,
+      statut: STATUTS_COMPTE.APPROUVE,
+      estVerifie: true,
+      etablissementIds: [etablissement.id],
+    });
+    const connexion = await request(app)
+      .post('/api/v2/auth/connexion')
+      .send({ identifiant: 'gestionnaire3@edtpro.ma', motDePasse: MOT_DE_PASSE });
+    const gestionnaire = connexion.headers['set-cookie'];
+
+    const directeur = await request(app).get(`/api/v2/seances/${SEMAINE}`).set('Cookie', cookies);
+    expect(directeur.body.seances).toHaveLength(1);
+    expect(directeur.body.nonPubliee).toBeUndefined();
+
+    const masquee = await request(app).get(`/api/v2/seances/${SEMAINE}`).set('Cookie', gestionnaire);
+    expect(masquee.status).toBe(200);
+    expect(masquee.body.seances).toEqual([]);
+    expect(masquee.body.nonPubliee).toBe(true);
+
+    const liste = await request(app).get('/api/v2/seances/semaines').set('Cookie', gestionnaire);
+    expect(liste.body.semaines).toEqual([]);
+
+    const exportRefuse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/export`)
+      .set('Cookie', gestionnaire)
+      .send({ format: 'xlsx' });
+    expect(exportRefuse.status).toBe(403);
+    expect(exportRefuse.body.code).toBe('SEMAINE_NON_PUBLIEE');
+
+    await publier(SEMAINE);
+
+    const visible = await request(app).get(`/api/v2/seances/${SEMAINE}`).set('Cookie', gestionnaire);
+    expect(visible.body.seances).toHaveLength(1);
+    expect(visible.body.nonPubliee).toBeUndefined();
+    const listeApres = await request(app).get('/api/v2/seances/semaines').set('Cookie', gestionnaire);
+    expect(listeApres.body.semaines.map((s) => s.semaine)).toEqual([SEMAINE]);
   });
 
   /*
@@ -2488,6 +2549,53 @@ describe('Verrou du chronogramme (2026-09-27)', () => {
         .send(creneau);
       expect(reponse.status).toBe(409);
       expect(await Seance.countDocuments({ etablissementId: etablissement.id })).toBe(1);
+    });
+
+    describe('⚠️ retirer une séance EN TROP ou HORS CHRONOGRAMME (2026-10-01)', () => {
+      /*
+       * Le retrait RAPPROCHE la grille du plan : permis sous verrou, tant qu'il
+       * ne crée aucun manque. Le serveur le recalcule — l'écran peut avoir un
+       * rapport périmé.
+       */
+      const viderCase = (c) =>
+        request(app).delete(`/api/v2/seances/${SEMAINE}/case`).set('Cookie', cookies).send(c);
+
+      it('LAISSE PASSER le retrait d’une séance en trop, puis refuse le suivant', async () => {
+        // Prévu 5 h, posé 7,5 h : une séance est de trop.
+        await poser();
+        await poser({ seance: 'S2' });
+        await poser({ seance: 'S3' });
+
+        expect((await viderCase({ ...creneau, seance: 'S3' })).status).toBe(200);
+        expect(await Seance.countDocuments({ etablissementId: etablissement.id })).toBe(2);
+
+        // Le plan est atteint : retirer encore creuserait un manque.
+        const reponse = await viderCase({ ...creneau, seance: 'S2' });
+        expect(reponse.status).toBe(409);
+        expect(reponse.body.code).toBe('CHRONOGRAMME_VERROUILLE');
+        expect(await Seance.countDocuments({ etablissementId: etablissement.id })).toBe(2);
+      });
+
+      it('LAISSE PASSER le retrait d’une séance hors chronogramme', async () => {
+        await poser({ formateurMatricule: '4211', module: 'M102' });
+
+        const reponse = await viderCase({ ...creneau, formateurMatricule: '4211' });
+        expect(reponse.status).toBe(200);
+        expect(await Seance.countDocuments({ etablissementId: etablissement.id })).toBe(0);
+      });
+
+      it('et dans un lot, comme à l’unité', async () => {
+        await poser();
+        await poser({ seance: 'S2' });
+        await poser({ seance: 'S3' });
+
+        const reponse = await lot([
+          { cle: 'v1', type: 'vider', creneau: { ...creneau, seance: 'S3' } },
+          { cle: 'v2', type: 'vider', creneau: { ...creneau, seance: 'S2' } },
+        ]);
+        // Le premier passe ; le second, jugé APRÈS lui, creuserait un manque.
+        expect(reponse.body.resultats.map((r) => r.ok)).toEqual([true, false]);
+      });
     });
 
     it('REFUSE d’importer une autre semaine', async () => {

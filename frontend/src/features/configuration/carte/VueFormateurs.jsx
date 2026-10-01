@@ -1,5 +1,19 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Plus, Presentation, Search, X } from 'lucide-react';
+import { useMutation } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import {
+  ChevronDown,
+  ChevronRight,
+  File,
+  FileSpreadsheet,
+  FileText,
+  Loader2,
+  Plus,
+  Presentation,
+  Printer,
+  Search,
+  X,
+} from 'lucide-react';
 import {
   affectationsDuFormateur,
   calculerCharges,
@@ -19,6 +33,12 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -31,6 +51,7 @@ import BadgeSemestre from '@/components/common/BadgeSemestre';
 import Teams from '@/components/icons/Teams';
 import { nombre } from '@/lib/nombres';
 import { cn } from '@/lib/utils';
+import { exporterAffectationFormateur } from '../api';
 
 /**
  * La carte d'affectations, vue PAR FORMATEUR.
@@ -161,11 +182,17 @@ function FicheFormateur({
 
   return (
     <div className="rounded-lg border">
+      {/*
+        ⚠️ L'IMPRESSION EST À CÔTÉ DU BOUTON DE L'EN-TÊTE, PAS DEDANS : un menu
+        dans un `<button>` serait un bouton dans un bouton — HTML invalide, et
+        chaque clic sur l'icône replierait aussi la fiche.
+      */}
+      <div className="flex items-center hover:bg-muted/50">
       <button
         type="button"
         onClick={onBasculer}
         aria-expanded={ouvert}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/50"
+        className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left"
       >
         {ouvert ? (
           <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
@@ -197,6 +224,9 @@ function FicheFormateur({
           </span>
         </span>
       </button>
+
+      {total > 0 && <TelechargerAffectation groupes={groupes} nom={nom} />}
+      </div>
 
       {/* ⚠️ DÉMONTÉ, PAS MASQUÉ : c'est ce démontage qui fait tout le gain. */}
       {ouvert && (
@@ -234,6 +264,55 @@ function FicheFormateur({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Télécharger l'affectation annuelle du formateur en Word, PDF ou Excel
+ * (2026-10-01, demande du porteur, canevas transmis). Le serveur lit la carte
+ * de l'ÉCRAN — voir `exportAffectationFormateur.service.js`.
+ */
+function TelechargerAffectation({ groupes, nom }) {
+  const telechargement = useMutation({
+    mutationFn: (format) => exporterAffectationFormateur({ groupes, formateur: nom, format }),
+    onError: (erreur) => toast.error('Téléchargement impossible', { description: erreur.message }),
+  });
+
+  return (
+    <div className="shrink-0 pr-3">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 text-muted-foreground hover:text-foreground"
+            disabled={telechargement.isPending}
+            title="Imprimer l’affectation"
+            aria-label={`Imprimer l’affectation de ${nom}`}
+          >
+            {telechargement.isPending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Printer className="size-4" />
+            )}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuItem onSelect={() => telechargement.mutate('docx')}>
+            <FileText className="size-3.5 text-blue-600" />
+            Télécharger en Word
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => telechargement.mutate('pdf')}>
+            <File className="size-3.5 text-red-600" />
+            Télécharger en PDF
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => telechargement.mutate('xlsx')}>
+            <FileSpreadsheet className="size-3.5 text-green-600" />
+            Télécharger en Excel
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

@@ -161,6 +161,45 @@ export function poseDeLaSemaine(seances = []) {
   return { pose, absences, porteurs, positions, noms, comptees };
 }
 
+/**
+ * Retirer cette séance RAPPROCHE-T-IL la grille du chronogramme ?
+ *
+ * ═══ ⚠️ LA SEULE SUPPRESSION PERMISE SOUS VERROU (2026-10-01, demande du
+ * porteur) ═══ Le verrou protège l'allocation du chronogramme ; retirer une
+ * séance EN TROP ou HORS CHRONOGRAMME la RÉTABLIT au lieu de la rompre.
+ * Permis seulement si le retrait ne crée AUCUN manque : un dépassement d'une
+ * heure ne justifie pas de retirer une séance de 2,5 h.
+ *
+ * ⚠️ UNE SÉANCE FUSIONNÉE COUVRE CHAQUE GROUPE : le retrait doit être permis
+ *    pour TOUS, sans quoi on comblerait le trop de l'un en creusant l'autre.
+ */
+function retraitPermis(prevu, pose, { groupe, module, type, heures }) {
+  const groupes = separerFusion(String(groupe ?? '').trim());
+  if (groupes.length === 0 || String(module ?? '').trim() === '') return false;
+  return groupes.every((g) => {
+    const k = cle(g, module, type);
+    return (pose.get(k) ?? 0) - heures >= (prevu.get(k) ?? 0) - EGAL;
+  });
+}
+
+/**
+ * La même question pour UNE séance, depuis les données brutes de la semaine —
+ * c'est ce que le serveur pose avant de vider une case sous verrou.
+ *
+ * @param {object} seance  la séance à retirer (`groupe`, `module`, `seance`, `salle`…)
+ * @param {object} entrees `{ chronogrammes, seances, semaineChrono }`
+ */
+export function retraitRapprocheDuPlan(seance, { chronogrammes = [], seances = [], semaineChrono } = {}) {
+  const { prevu } = prevuDeLaSemaine(chronogrammes, semaineChrono);
+  const { pose } = poseDeLaSemaine(seances);
+  return retraitPermis(prevu, pose, {
+    groupe: seance?.groupe,
+    module: seance?.module,
+    type: typeDeSeance(seance),
+    heures: dureeSeance(seance?.seance),
+  });
+}
+
 /** Nature d'un écart — trois, parce qu'elles n'appellent pas la même suite. */
 function natureDeLEcart(prevu, pose) {
   if (prevu === 0) return 'hors_chronogramme';
@@ -266,7 +305,22 @@ export function completudeSemaine({
          *    case. Pour « en trop » comme « hors chronogramme », les cases
          *    concernées — c'est l'écran qui choisit laquelle retirer.
          */
-        positions: nature === 'manquante' ? [] : (positions.get(k) ?? []),
+        /*
+         * ⚠️ `retirable` (2026-10-01) : la même règle que le serveur applique
+         *    sous verrou — l'écran n'offre la suppression que là où elle passe.
+         */
+        positions:
+          nature === 'manquante'
+            ? []
+            : (positions.get(k) ?? []).map((position) => ({
+                ...position,
+                retirable: retraitPermis(prevu, pose, {
+                  groupe: position.groupe,
+                  module: moduleMaj,
+                  type,
+                  heures: dureeSeance(position.seance),
+                }),
+              })),
       });
     }
 

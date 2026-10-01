@@ -85,12 +85,16 @@ const SAUT_DE_PAGE = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
 
 /**
  * Taille (en demi-points) et hauteur de ligne (en twips) du nom de formateur,
- * à la verticale — 2026-09-29, demande du porteur : « les noms est trop
- * petit, agrandi un peu plus » (après le premier réglage, 9). La hauteur
- * grandit avec la police, dans la même proportion : sans elle, un nom un peu
- * long revient au bogue du départ (deux colonnes tassées dans la même case).
+ * à la verticale — 2026-09-30, demande du porteur : « je veux agrandi la
+ * taille du texte du nom formateur » (après les réglages précédents, 9 puis
+ * 11). 13 est le maximum sûr : les colonnes de créneau ne font qu'environ
+ * 320 twips de large (16pt), et une police plus grande (essayé : 16) fait
+ * passer le nom le plus long, « ABDESSAMAD AIT TALEB », à la ligne — ce qui
+ * casse l'alignement vertical de toute la rangée. La hauteur de ligne grandit
+ * avec la police, dans la même proportion : sans elle, un nom un peu long
+ * revient au bogue du départ (deux colonnes tassées dans la même case).
  */
-const TAILLE_FORMATEUR = 11;
+const TAILLE_FORMATEUR = 13;
 const HAUTEUR_LIGNE_FORMATEURS = 1800;
 
 /**

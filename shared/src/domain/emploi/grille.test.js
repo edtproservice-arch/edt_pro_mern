@@ -250,6 +250,31 @@ describe('semaineAOuvrir', () => {
     const dimanche = new Date(2026, 10, 8, 20, 0);
     expect(semaineAOuvrir(2026, dimanche)).toBe(valeurSemaine(dimanche));
   });
+
+  /*
+   * ═══ PUBLICATION PAR SEMAINE (2026-10-01) ═══ Les semaines non publiées
+   * sont masquées aux sessions consultatives : on n'en ouvre aucune.
+   */
+  describe('avec la liste des semaines publiées', () => {
+    const mercredi = new Date(2026, 10, 4); // S10
+    const s = (n) => `2026-W${n}`;
+
+    it('ouvre la semaine du moment quand elle est publiée', () => {
+      expect(semaineAOuvrir(2026, mercredi, { semainesPubliees: [s(8), s(9), s(10)] })).toBe(s(10));
+    });
+
+    it('ouvre la PLUS PROCHE semaine publiée en avance, pas la plus lointaine', () => {
+      expect(semaineAOuvrir(2026, mercredi, { semainesPubliees: [s(10), s(11), s(14)] })).toBe(s(11));
+    });
+
+    it('⚠️ la semaine du moment n’est pas publiée : la dernière publiée', () => {
+      expect(semaineAOuvrir(2026, mercredi, { semainesPubliees: [s(7), s(8)] })).toBe(s(8));
+    });
+
+    it('aucune publication : la règle de la date', () => {
+      expect(semaineAOuvrir(2026, mercredi, { semainesPubliees: [] })).toBe(valeurSemaine(mercredi));
+    });
+  });
 });
 
 /*

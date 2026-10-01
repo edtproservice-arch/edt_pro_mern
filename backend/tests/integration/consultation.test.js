@@ -50,6 +50,8 @@ beforeEach(async () => {
     nom: 'ISTA Test',
     anneeScolaire: ANNEE,
     espaces: ['A12'],
+    // ⚠️ PUBLIÉE : une semaine non publiée est masquée aux sessions consultatives.
+    publications: [{ anneeScolaire: ANNEE, semaine: SEMAINE, publieeLe: new Date() }],
   });
 
   directeur.etablissementIds = [etablissement.id];
@@ -219,6 +221,34 @@ describe('GET /consultation/emploi/:semaine — stagiaire', () => {
       .set('Cookie', cookiesStagiaire);
 
     expect(reponse.body.seances.map((s) => s.groupe)).toContain('GM101 GM102');
+  });
+});
+
+/*
+ * ═══ ⚠️ UNE SEMAINE NON PUBLIÉE EST MASQUÉE (2026-10-01, demande du porteur) ═══
+ * Ni dans la navigation, ni dans la grille — et le filtrage a lieu sur le
+ * serveur : les séances ne partent jamais.
+ */
+describe('semaine non publiée — formateur et stagiaire', () => {
+  beforeEach(async () => {
+    await Etablissement.updateOne({ _id: etablissement.id }, { $set: { publications: [] } });
+  });
+
+  it('ne rend aucune séance, et le dit', async () => {
+    for (const cookies of [cookiesFormateur, cookiesStagiaire]) {
+      const reponse = await request(app).get(`/api/v2/consultation/emploi/${SEMAINE}`).set('Cookie', cookies);
+      expect(reponse.status).toBe(200);
+      expect(reponse.body.seances).toEqual([]);
+      expect(reponse.body.nonPubliee).toBe(true);
+    }
+  });
+
+  it('ne la propose pas dans la navigation', async () => {
+    const reponse = await request(app)
+      .get('/api/v2/consultation/emploi/semaines')
+      .set('Cookie', cookiesFormateur);
+    expect(reponse.body.semaines).toEqual([]);
+    expect(reponse.body.publications).toEqual([]);
   });
 });
 

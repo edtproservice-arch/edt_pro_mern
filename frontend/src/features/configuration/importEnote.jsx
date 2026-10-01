@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { importerBaseEnote } from './api';
+import DialogueGroupesRetires from './DialogueGroupesRetires';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,6 +37,9 @@ import {
  *   conflit: object|null,
  *   confirmerRemplacement: () => void,
  *   annulerRemplacement: () => void,
+ *   suppressions: object|null,
+ *   confirmerSuppressions: () => void,
+ *   annulerSuppressions: () => void,
  *   reinitialiser: () => void,
  * }}
  */
@@ -46,11 +50,19 @@ export function useImportEnote({ onImporte, onErreur } = {}) {
    * attend une réponse » de « échoué ».
    */
   const [conflit, setConflit] = useState(null);
+  /*
+   * Les groupes que le fichier fait disparaître alors qu'ils portent encore un
+   * chronogramme, des séances… (2026-10-01). Même logique que `conflit` : posé,
+   * l'import n'a PAS eu lieu, on attend une réponse.
+   */
+  const [suppressions, setSuppressions] = useState(null);
 
   const mutation = useMutation({
-    mutationFn: ({ fichier, remplacer }) => importerBaseEnote(fichier, remplacer),
+    mutationFn: ({ fichier, remplacer, confirmerSuppressions }) =>
+      importerBaseEnote(fichier, remplacer, confirmerSuppressions),
     onSuccess: (resultat) => {
       setConflit(null);
+      setSuppressions(null);
       onImporte?.(resultat);
     },
     onError: (erreur, variables) => {
@@ -64,6 +76,17 @@ export function useImportEnote({ onImporte, onErreur } = {}) {
         setConflit({ fichier: variables.fichier, existant: erreur.details ?? {} });
         return;
       }
+      /* Même principe : une question, pas une erreur. Le remplacement déjà
+         accepté voyage avec, pour ne pas reposer la première question. */
+      if (erreur?.code === 'GROUPES_ENCORE_UTILISES') {
+        setConflit(null);
+        setSuppressions({
+          fichier: variables.fichier,
+          remplacer: variables.remplacer,
+          details: erreur.details ?? [],
+        });
+        return;
+      }
       /* ⚠️ SIGNALÉE ICI, dans le gestionnaire, jamais dans le corps du rendu :
          un `toast` posé au rendu repart à chaque passage, et couperait la page
          d'un message qui se répète. */
@@ -74,20 +97,37 @@ export function useImportEnote({ onImporte, onErreur } = {}) {
   return {
     lancer: (fichier) => {
       setConflit(null);
+      setSuppressions(null);
       mutation.mutate({ fichier, remplacer: false });
     },
     enCours: mutation.isPending,
     resultat: mutation.isSuccess ? mutation.data : null,
     /* ⚠️ LE CONFLIT N'EST PAS UNE ERREUR : l'écran ne doit pas l'afficher en
        rouge SOUS la boîte qui pose déjà la question. */
-    erreur: mutation.isError && mutation.error?.code !== 'IMPORT_HEBDOMADAIRE' ? mutation.error : null,
+    erreur:
+      mutation.isError &&
+      !['IMPORT_HEBDOMADAIRE', 'GROUPES_ENCORE_UTILISES'].includes(mutation.error?.code)
+        ? mutation.error
+        : null,
     conflit,
     confirmerRemplacement: () => {
       if (conflit) mutation.mutate({ fichier: conflit.fichier, remplacer: true });
     },
     annulerRemplacement: () => setConflit(null),
+    suppressions,
+    confirmerSuppressions: () => {
+      if (suppressions) {
+        mutation.mutate({
+          fichier: suppressions.fichier,
+          remplacer: suppressions.remplacer,
+          confirmerSuppressions: true,
+        });
+      }
+    },
+    annulerSuppressions: () => setSuppressions(null),
     reinitialiser: () => {
       setConflit(null);
+      setSuppressions(null);
       mutation.reset();
     },
   };
@@ -160,5 +200,23 @@ export function DialogueRemplacementEnote({ conflit, enCours, onConfirmer, onAnn
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  );
+}
+
+/**
+ * La confirmation des groupes retirés par un import (2026-10-01) — la même
+ * boîte que l'enregistrement de la carte, avec la phrase propre à l'import.
+ */
+export function DialogueSuppressionsEnote({ importation }) {
+  return (
+    <DialogueGroupesRetires
+      details={importation.suppressions?.details ?? null}
+      explication={`Ces groupes ne figurent pas dans « ${
+        importation.suppressions?.fichier?.name ?? 'le fichier'
+      } », mais ils portent encore des données. Importer les supprimera définitivement.`}
+      libelleConfirmation="Supprimer et importer"
+      onConfirmer={importation.confirmerSuppressions}
+      onAnnuler={importation.annulerSuppressions}
+    />
   );
 }

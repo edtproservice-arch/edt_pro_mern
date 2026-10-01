@@ -15,7 +15,7 @@ import {
   YAxis,
 } from 'recharts';
 import { ArrowUpRight, ChevronLeft, ChevronRight } from 'lucide-react';
-import { agregerAvancement, completionModules, dureeSeance } from 'shared/domain';
+import { agregerAvancement, dureeSeance } from 'shared/domain';
 import { Button } from '@/components/ui/button';
 import { chargerContexte, chargerSemaines } from '@/features/emploi/api';
 import { chargerAbsences } from '@/features/absences/api';
@@ -26,6 +26,7 @@ import { COULEURS_PROGRESSION } from '@/features/avancement/GrapheProgression';
 import { nombre } from '@/lib/nombres';
 import { cn } from '@/lib/utils';
 import ATraiter from './ATraiter';
+import EcartsSaisie, { enManqueAuDernierDepot, useEcartsSaisie } from './EcartsSaisie';
 import {
   SectionDiscipline,
   SectionGroupesAbsents,
@@ -149,6 +150,10 @@ export default function TableauDeBordAccueil() {
     },
   );
 
+  // ⚠️ LA MÊME CLÉ QUE LA FRISE : la tuile et la section ne chargent qu'une fois.
+  const ecartsSaisie = useEcartsSaisie();
+  const manqueSaisie = enManqueAuDernierDepot(ecartsSaisie.data);
+
   const donnees = avancement.data;
   const courante = donnees?.semaineCourante ?? numeroDeSemaine(semaines.data?.courante);
   const lignes = donnees?.faces?.edtpro;
@@ -230,6 +235,11 @@ export default function TableauDeBordAccueil() {
       {sectionOuverte === 'risque' && (
         <div className="duration-300 animate-in fade-in-0 zoom-in-95 slide-in-from-top-3 motion-reduce:animate-none">
           <ModulesARisque risques={risques} courante={courante} />
+        </div>
+      )}
+      {sectionOuverte === 'saisie' && (
+        <div className="duration-300 animate-in fade-in-0 zoom-in-95 slide-in-from-top-3 motion-reduce:animate-none">
+          <EcartsSaisie />
         </div>
       )}
       {sectionOuverte === 'service' && (
@@ -366,16 +376,24 @@ export default function TableauDeBordAccueil() {
           ajoutait rien. Les MODULES, comptés depuis les affectations, sont une
           donnée que rien d'autre sur cet accueil ne montre encore.
         */}
+        {/*
+          ⚠️ REMPLACE « MODULES » (2026-10-01, demande du porteur : « changer
+          la stat module par Écart de saisie e-note / eDTpro, et au clic
+          afficher le tableau en haut ») — la frise devient une section
+          repliable comme les autres, ouverte par sa tuile.
+        */}
         <Tuile
-          libelle="Modules"
-          /* ⚠️ LE MÊME COMPTE QUE « N module(s) achevé(s) sur … » (2026-09-30,
-             demande du porteur : les deux chiffres divergeaient, 53 contre 232).
-             Un module, c'est un couple (groupe, module) doté d'une masse
-             affectée — pas un code distinct. */
-          valeur={lignes ? completionModules(lignes).total : null}
-          detail="couples groupe – module de l’année"
-          chargement={avancement.isLoading}
-          vers="/app/parametres/affectations"
+          libelle="Écart de saisie e-note / eDTpro"
+          valeur={manqueSaisie === null ? null : `${manqueSaisie} / ${ecartsSaisie.data?.formateurs?.length ?? 0}`}
+          detail={
+            manqueSaisie === null
+              ? 'Aucune base e-note importée'
+              : 'formateurs en manque de saisie au dernier dépôt'
+          }
+          alerte={manqueSaisie > 0}
+          chargement={ecartsSaisie.isLoading}
+          onClick={() => basculerSection('saisie')}
+          ouvert={sectionOuverte === 'saisie'}
         />
         {/*
           ⚠️ LA DOUZIÈME, POUR REMPLIR LA RANGÉE ENTIÈREMENT (2026-09-29,

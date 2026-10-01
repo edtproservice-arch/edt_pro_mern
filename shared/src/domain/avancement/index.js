@@ -13,6 +13,7 @@ export {
 } from './agregation.js';
 export { lireAvancementEnote, nombre } from './enote.js';
 export { lignesDepuisAffectations } from './edtpro.js';
+export { detailEcartDeSaisie, ecartsDeSaisie } from './ecartsSaisie.js';
 export { SEMESTRES, semestreCumule, semestreDe } from './semestre.js';
 export { objectifsParGroupe, tauxObjectifPedagogique } from './objectif.js';
 export {

@@ -290,8 +290,14 @@ export default function PageAvancement() {
    * domaine, et non un `if` dans le rendu.
    */
   const reference = useMemo(
-    () => referenceDeLAxe(axe, { statutaires: requete.data?.statutaires ?? {}, lignes: retenues }),
-    [axe, requete.data?.statutaires, retenues]
+    () =>
+      referenceDeLAxe(axe, {
+        statutaires: requete.data?.statutaires ?? {},
+        lignes: retenues,
+        /* Face eDTpro seulement : le fichier e-note a déjà une ligne par module non affecté. */
+        nonAffectes: face === 'edtpro' ? requete.data?.nonAffectes ?? {} : {},
+      }),
+    [axe, requete.data?.statutaires, requete.data?.nonAffectes, retenues, face]
   );
 
   const courbeTaux = axe === 'formateur' || axe === 'groupe';

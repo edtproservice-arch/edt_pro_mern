@@ -28,6 +28,8 @@ export function annonceDeModification(message) {
       return semaine
         ? `${auteur} a publié ${semaine}`
         : `${auteur} a retiré la publication de la semaine`;
+    case 'depublication':
+      return `${auteur} a retiré la publication de ${semaine ?? 'la semaine'}`;
     default:
       return null;
   }

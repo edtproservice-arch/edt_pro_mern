@@ -5,6 +5,7 @@ import {
   completudeSemaine,
   poseDeLaSemaine,
   prevuDeLaSemaine,
+  retraitRapprocheDuPlan,
   tauxConformite,
 } from './completude.js';
 
@@ -298,7 +299,14 @@ describe('completudeSemaine — où sont les séances à retirer (2026-09-27)', 
     const hors = bilan.ecarts.find((e) => e.nature === 'hors_chronogramme');
     const manque = bilan.ecarts.find((e) => e.nature === 'manquante');
     expect(hors.positions).toEqual([
-      { jour: 'Mardi', seance: 'S3', periode: 'jour', formateurMatricule: '9863', groupe: 'GM101' },
+      {
+        jour: 'Mardi',
+        seance: 'S3',
+        periode: 'jour',
+        formateurMatricule: '9863',
+        groupe: 'GM101',
+        retirable: true,
+      },
     ]);
     expect(manque.positions).toEqual([]);
   });
@@ -311,5 +319,52 @@ describe('completudeSemaine — où sont les séances à retirer (2026-09-27)', 
       groupesConnus: CONNUS('GM101', 'GM102'),
     });
     expect(bilan.ecarts.map((e) => e.positions[0].groupe)).toEqual(['GM101 GM102', 'GM101 GM102']);
+  });
+});
+
+describe('retraitRapprocheDuPlan — la suppression permise sous verrou', () => {
+  const S = 'S3';
+
+  it('permet de retirer une séance EN TROP quand le retrait ne crée aucun manque', () => {
+    // Prévu 5 h, posé 7,5 h : une séance de 2,5 h est de trop.
+    const seances = [seance('AA101', 'M101'), seance('AA101', 'M101', { seance: 'S3' }), seance('AA101', 'M101', { seance: 'S4' })];
+    const entrees = { chronogrammes: [chrono('AA101', 'M101', S, 5)], seances, semaineChrono: S };
+    expect(retraitRapprocheDuPlan(seances[0], entrees)).toBe(true);
+  });
+
+  it('⚠️ refuse un retrait qui creuserait un manque', () => {
+    // Prévu 5 h, posé 5 h : rien n'est de trop.
+    const seances = [seance('AA101', 'M101'), seance('AA101', 'M101', { seance: 'S3' })];
+    const entrees = { chronogrammes: [chrono('AA101', 'M101', S, 5)], seances, semaineChrono: S };
+    expect(retraitRapprocheDuPlan(seances[0], entrees)).toBe(false);
+
+    // Prévu 4 h, posé 5 h : 1 h de trop ne justifie pas de retirer 2,5 h.
+    const partiel = { ...entrees, chronogrammes: [chrono('AA101', 'M101', S, 4)] };
+    expect(retraitRapprocheDuPlan(seances[0], partiel)).toBe(false);
+  });
+
+  it('permet toujours de retirer une séance HORS CHRONOGRAMME', () => {
+    const seances = [seance('AA101', 'M999')];
+    const entrees = { chronogrammes: [chrono('AA101', 'M101', S, 5)], seances, semaineChrono: S };
+    expect(retraitRapprocheDuPlan(seances[0], entrees)).toBe(true);
+  });
+
+  it('⚠️ une séance fusionnée doit être de trop pour CHAQUE groupe', () => {
+    const fusion = seance('GM101 GM102', 'M101');
+    const seances = [fusion, seance('GM101', 'M101', { seance: 'S3' })];
+    const chronogrammes = [chrono('GM101', 'M101', S, 2.5), chrono('GM102', 'M101', S, 2.5)];
+    // GM101 a 5 h pour 2,5 prévues, mais GM102 n'a que ses 2,5 h : refusé.
+    expect(retraitRapprocheDuPlan(fusion, { chronogrammes, seances, semaineChrono: S })).toBe(false);
+  });
+
+  it('marque `retirable` sur les positions du bilan', () => {
+    const seances = [seance('AA101', 'M101'), seance('AA101', 'M101', { seance: 'S3' })];
+    const bilan = completudeSemaine({
+      chronogrammes: [chrono('AA101', 'M101', S, 2.5)],
+      seances,
+      semaineChrono: S,
+      groupesConnus: CONNUS('AA101'),
+    });
+    expect(bilan.ecarts[0].positions.every((p) => p.retirable)).toBe(true);
   });
 });

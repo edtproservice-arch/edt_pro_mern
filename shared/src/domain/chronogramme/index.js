@@ -16,7 +16,11 @@ export {
 
 export {
   TYPES,
+  TYPE_MIXTE,
   capaciteSemaine,
+  celluleDepuisParts,
+  estMixte,
+  partsDeCellule,
   poserCellule,
   resteAPlanifier,
   totalSemaine,
@@ -63,6 +67,7 @@ export {
   completudeSemaine,
   poseDeLaSemaine,
   prevuDeLaSemaine,
+  retraitRapprocheDuPlan,
   tauxConformite,
 } from './completude.js';
 
@@ -77,10 +82,13 @@ export {
 
 export {
   cellulesDuType,
+  deplierModules,
+  estDepliable,
   estPartageParType,
   fusionnerType,
+  planningDeplie,
   planningDepuisLignes,
   planningDesLignes,
+  planningReplie,
   scinderParType,
-  verrouillerAutreType,
 } from './partage.js';

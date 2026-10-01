@@ -16,8 +16,13 @@ import { api } from '@/lib/apiClient';
  *   Sans ce drapeau, le serveur refuse un second dépôt dans la même semaine
  *   scolaire (409 `IMPORT_HEBDOMADAIRE`) — une seule base e-note par semaine.
  */
-export function importerBaseEnote(fichier, remplacer = false) {
-  return api.televerser('/api/v2/base/import', fichier, 'fichier', { remplacer });
+export function importerBaseEnote(fichier, remplacer = false, confirmerSuppressions = false) {
+  /* `confirmerSuppressions` n'est envoyé que s'il est vrai, comme pour la carte :
+     409 `GROUPES_ENCORE_UTILISES` si des groupes absents du fichier portent des données. */
+  return api.televerser('/api/v2/base/import', fichier, 'fichier', {
+    remplacer,
+    ...(confirmerSuppressions ? { confirmerSuppressions: true } : {}),
+  });
 }
 
 export function chargerBase() {
@@ -117,6 +122,20 @@ export function exporterCarte(carte) {
   return api.telecharger('/api/v2/base/carte/export', carte, {
     nomParDefaut: 'carte-etablissement.xlsx',
   });
+}
+
+/**
+ * L'affectation annuelle d'UN formateur, en Word, PDF ou Excel (2026-10-01).
+ *
+ * ⚠️ LA CARTE DE L'ÉCRAN, comme `exporterCarte` : le document dit ce que la
+ * fiche affiche, retouches non enregistrées comprises.
+ */
+export function exporterAffectationFormateur({ groupes, formateur, format }) {
+  return api.telecharger(
+    '/api/v2/base/affectation-formateur/export',
+    { groupes, formateur, format },
+    { nomParDefaut: `affectation.${format}` }
+  );
 }
 
 /**

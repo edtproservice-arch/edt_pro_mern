@@ -1,4 +1,4 @@
-import { TYPES, poserCellule, verifierCellule } from './planning.js';
+import { TYPES, partsDeCellule, poserCellule, verifierCellule } from './planning.js';
 import { separerFusion } from '../carte/reconstruction.js';
 
 /**
@@ -145,15 +145,13 @@ export function totalSemaineFusionnee(planning = {}, numero, modules = []) {
   const synchrones = new Map();
 
   for (const module of modules) {
-    const cellule = planning?.[cleLigne(module)]?.[numero];
-    const heures = Number(cellule?.heures) || 0;
-    if (heures <= 0) continue;
+    // Une case mixte (2026-10-01) apporte ses deux parts, chacune à sa règle.
+    const { P, S } = partsDeCellule(planning?.[cleLigne(module)]?.[numero]);
+    presentiel += P;
 
-    if (cellule?.type === TYPES.SYNCHRONE) {
+    if (S > 0) {
       const cle = cleSynchrone(module);
-      synchrones.set(cle, Math.max(synchrones.get(cle) ?? 0, heures));
-    } else {
-      presentiel += heures;
+      synchrones.set(cle, Math.max(synchrones.get(cle) ?? 0, S));
     }
   }
 
@@ -213,10 +211,16 @@ export function poserAvecJumelles({
       heures,
       type,
       masses: jumelle.masses,
+      autrePart: partsDeCellule(suivant?.[cleJumelle]?.[semaine.numero]).P,
     });
     if (!verdict.possible) continue;
 
-    suivant = poserCellule(suivant, cleJumelle, semaine.numero, heures, type);
+    /*
+     * ⚠️ LA PART SYNCHRONE SEULE (2026-10-01) : la jumelle peut avoir son propre
+     * présentiel cette semaine-là — un cours en salle qui n'a rien à voir. Le
+     * remplacer l'effaçait ; il forme désormais une case mixte avec la séance.
+     */
+    suivant = poserCellule(suivant, cleJumelle, semaine.numero, heures, type, { partSeule: true });
     reportees += 1;
   }
 
@@ -234,14 +238,15 @@ export function effacerAvecJumelles({ planning, modules = [], module, semaine })
   const etait = planning?.[cle]?.[semaine.numero];
   let suivant = poserCellule(planning, cle, semaine.numero, 0, TYPES.PRESENTIEL);
 
-  if (etait?.type !== TYPES.SYNCHRONE) return { planning: suivant, reportees: 0 };
+  if (partsDeCellule(etait).S <= 0) return { planning: suivant, reportees: 0 };
 
   let reportees = 0;
   for (const jumelle of lignesJumelles(modules, module)) {
     const cleJumelle = cleLigne(jumelle);
-    if (planning?.[cleJumelle]?.[semaine.numero]?.type !== TYPES.SYNCHRONE) continue;
+    if (partsDeCellule(planning?.[cleJumelle]?.[semaine.numero]).S <= 0) continue;
 
-    suivant = poserCellule(suivant, cleJumelle, semaine.numero, 0, TYPES.PRESENTIEL);
+    // La part synchrone seule : le présentiel de la jumelle reste en place.
+    suivant = poserCellule(suivant, cleJumelle, semaine.numero, 0, TYPES.SYNCHRONE, { partSeule: true });
     reportees += 1;
   }
 

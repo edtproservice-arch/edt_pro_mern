@@ -1,5 +1,5 @@
 import { PAS, PLAFOND_CELLULE } from '../chronogramme/semaines.js';
-import { TYPES, poserCellule } from '../chronogramme/planning.js';
+import { TYPES, partsDeCellule, poserCellule } from '../chronogramme/planning.js';
 import { separerFusion } from '../carte/reconstruction.js';
 
 /**
@@ -48,10 +48,12 @@ export function groupesConcernes(champ) {
  * @param {string} params.module code du module de la séance manquée
  * @param {number} params.numeroSemaine semaine du rattrapage (numérotation scolaire)
  * @param {number} params.delta `+DUREE_RATTRAPAGE` pour poser, `-` pour reprendre
+ * @param {'P'|'S'} [params.type] le type de la séance rattrapée, quand il est
+ *   connu — sinon celui de la case (le présentiel d'une case mixte)
  * @returns {{planning: object, etat: string, heures?: number}}
  *   `etat` ∈ `ajoute` · `retire` · `inchange` · `sans_module` · `cellule_pleine`
  */
-export function reporterRattrapage({ planning, module, numeroSemaine, delta }) {
+export function reporterRattrapage({ planning, module, numeroSemaine, delta, type: typeSeance }) {
   const courant = planning ?? {};
   const recherche = String(module ?? '').trim().toUpperCase();
 
@@ -73,13 +75,22 @@ export function reporterRattrapage({ planning, module, numeroSemaine, delta }) {
   const cle = Object.keys(courant).find((existant) => existant.toUpperCase() === recherche) ?? module;
 
   const cellule = courant[cle]?.[numeroSemaine];
-  const heures = Number(cellule?.heures ?? 0);
+  const parts = partsDeCellule(cellule);
   /*
-   * ⚠️ LE TYPE DE LA CELLULE EST CONSERVÉ. Une cellule ne porte qu'un type,
-   * présentiel OU synchrone : rattraper du synchrone dans une case présentielle
-   * en changerait la nature sans le dire.
+   * ⚠️ LE TYPE DE LA CELLULE EST CONSERVÉ : rattraper du synchrone dans une
+   * case présentielle en changerait la nature sans le dire. Depuis la case
+   * mixte (2026-10-01), on ne touche qu'à UNE part — celle de la séance quand
+   * l'appelant la connaît, sinon celle que la case porte (le présentiel si elle
+   * porte les deux).
    */
-  const type = cellule?.type === TYPES.SYNCHRONE ? TYPES.SYNCHRONE : TYPES.PRESENTIEL;
+  const type =
+    typeSeance === TYPES.SYNCHRONE || typeSeance === TYPES.PRESENTIEL
+      ? typeSeance
+      : parts.P === 0 && parts.S > 0
+        ? TYPES.SYNCHRONE
+        : TYPES.PRESENTIEL;
+  const heures = parts[type];
+  const autre = parts[type === TYPES.SYNCHRONE ? TYPES.PRESENTIEL : TYPES.SYNCHRONE];
 
   // Le pas de la grille est de 2,5 h : une valeur intermédiaire ne serait pas
   // re-sélectionnable à l'écran.
@@ -90,15 +101,15 @@ export function reporterRattrapage({ planning, module, numeroSemaine, delta }) {
 
   /*
    * ⚠️ REFUS PLUTÔT QUE TRONCATURE SILENCIEUSE : la cellule ne peut pas porter
-   * plus de 20 h, et rogner l'excédent ferait disparaître des heures que
-   * personne ne viendrait chercher.
+   * plus de 20 h — les deux parts comprises —, et rogner l'excédent ferait
+   * disparaître des heures que personne ne viendrait chercher.
    */
-  if (nouvelles > PLAFOND_CELLULE) {
+  if (nouvelles + autre > PLAFOND_CELLULE) {
     return { planning: courant, etat: 'cellule_pleine', heures };
   }
 
   return {
-    planning: poserCellule(courant, cle, numeroSemaine, nouvelles, type),
+    planning: poserCellule(courant, cle, numeroSemaine, nouvelles, type, { partSeule: true }),
     etat: delta > 0 ? 'ajoute' : 'retire',
     heures: nouvelles,
   };

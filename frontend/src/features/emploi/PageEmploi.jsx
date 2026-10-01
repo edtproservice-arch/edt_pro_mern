@@ -798,6 +798,38 @@ export default function PageEmploi() {
     [ecrire.mutate]
   );
 
+  /*
+   * ═══ SUPPRIMER UNE SÉANCE « EN TROP » DEPUIS LA FENÊTRE CONFORMITÉ ═══
+   * (2026-10-01, demande du porteur.) Une seule des séances du module est de
+   * trop : le directeur désigne LAQUELLE, et elle part sans passer par la
+   * grille. ⚠️ Un geste ordinaire — mémorisé, donc Ctrl+Z le défait — et la
+   * clé suit l'axe affiché, sans quoi « défaire » ne retrouverait pas la case.
+   * ⚠️ PERMIS MÊME SOUS VERROU, et c'est voulu : retirer une séance en trop ou
+   * hors chronogramme RAPPROCHE la grille du plan. Le serveur le recalcule
+   * (`retraitAligne`) ; l'écran ne l'offre que sur les positions `retirable`.
+   */
+  const supprimerSeance = (position) => {
+    if (verrou && !position.retirable) return avertirVerrou();
+    const per = position.periode ?? 'jour';
+    appliquer([
+      {
+        type: 'vider',
+        cle: cleCase(
+          axeGroupe ? position.groupe : position.formateurMatricule,
+          position.jour,
+          position.seance,
+          per
+        ),
+        creneau: {
+          jour: position.jour,
+          seance: position.seance,
+          periode: per,
+          formateurMatricule: position.formateurMatricule,
+        },
+      },
+    ]);
+  };
+
   // ═══ Saisie d'une case ═══
   /*
    * ⚠️ MÉMORISÉE (`useCallback`). `changer`, `ouvrirCase`, `onFermerCase`,
@@ -1348,7 +1380,7 @@ export default function PageEmploi() {
               <BoutonPartager
                 page="emploi"
                 semaine={semaine}
-                publication={semaines.data?.publication}
+                publications={semaines.data?.publications}
                 moi={session.data?.utilisateur}
               />
             )}
@@ -1398,7 +1430,7 @@ export default function PageEmploi() {
           EXCLUSIFS (2026-08-26), et publier est une action indépendante.
         */}
         {estDirecteur && (
-          <BoutonPublier semaine={semaine} publication={semaines.data?.publication} />
+          <BoutonPublier semaine={semaine} publications={semaines.data?.publications} />
         )}
 
         {/*
@@ -1675,6 +1707,8 @@ export default function PageEmploi() {
             libelle={libelleSemaine(semaine)}
             peutPlacer={estDirecteur}
             onAllerAuxCases={allerAuxCases}
+            onSupprimerSeance={supprimerSeance}
+            suppressionEnCours={ecrire.isPending}
           />
         </PanneauDroit>
       )}

@@ -179,6 +179,77 @@ describe('Liste des formateurs', () => {
   });
 });
 
+describe('Modules partagés entre présentiel et synchrone (2026-10-01)', () => {
+  const partages = () =>
+    request(app).get('/api/v2/chronogrammes/partages-type').set('Cookie', cookies);
+
+  it('rend vide sans module partagé par type', async () => {
+    const reponse = await partages();
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.partages).toEqual([]);
+  });
+
+  it('⚠️ retient un module dont un collègue assure l’autre type, et seulement lui', async () => {
+    await Base.updateOne(
+      { anneeScolaire: ANNEE },
+      {
+        $push: {
+          affectations: {
+            formateur: '4211',
+            groupe: 'GM101',
+            module: 'M101',
+            type: TYPES_COURS.SYNCHRONE,
+            s1Heures: 10,
+            s2Heures: 0,
+          },
+        },
+      }
+    );
+
+    const reponse = await partages();
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.partages).toEqual([
+      {
+        groupe: 'GM101',
+        code: 'M101',
+        presentiel: [{ identifiant: MATRICULE, nom: 'BRAHIM LOURID' }],
+        synchrone: [{ identifiant: '4211', nom: 'SAID AMMARI' }],
+      },
+    ]);
+  });
+});
+
+describe('Case MIXTE — présentiel et synchrone la même semaine (2026-10-01)', () => {
+  const ecrire = (planning, version = 0) =>
+    request(app)
+      .put('/api/v2/chronogrammes/GM101')
+      .set('Cookie', cookies)
+      .send({ planning, version });
+  const lire = () => request(app).get('/api/v2/chronogrammes/GM101').set('Cookie', cookies);
+
+  it('s’enregistre en DEUX entrées et se relit en une case mixte', async () => {
+    const mixte = { heures: 7.5, type: 'PS', presentiel: 5, synchrone: 2.5 };
+    const ecriture = await ecrire({ M101: { 3: mixte, 4: { heures: 5, type: 'P' } } });
+    expect(ecriture.status).toBe(200);
+
+    const enBase = await Chronogramme.findOne({ groupe: 'GM101' }).lean();
+    expect(enBase.planning.M101).toEqual([
+      expect.objectContaining({ semaine: 'S3', heures: 5, type: 'P' }),
+      expect.objectContaining({ semaine: 'S3', heures: 2.5, type: 'S' }),
+      expect.objectContaining({ semaine: 'S4', heures: 5, type: 'P' }),
+    ]);
+
+    const relu = await lire();
+    expect(relu.body.planning.M101[3]).toEqual(mixte);
+    expect(relu.body.planning.M101[4]).toEqual({ heures: 5, type: 'P' });
+  });
+
+  it('refuse une case mixte dont les parts ne font pas le total', async () => {
+    const reponse = await ecrire({ M101: { 3: { heures: 10, type: 'PS', presentiel: 5, synchrone: 2.5 } } });
+    expect(reponse.status).toBe(400);
+  });
+});
+
 describe('Envoyer le chronogramme à un formateur (2026-09-22)', () => {
   const envoyer = (matricule) =>
     request(app)
@@ -1330,7 +1401,15 @@ describe('Complétude — l’emploi du temps face au chronogramme (2026-09-27)'
 
     const hors = reponse.body.ecarts.find((e) => e.nature === 'hors_chronogramme');
     expect(hors.positions).toEqual([
-      { jour: 'Mardi', seance: 'S3', periode: 'jour', formateurMatricule: '4211', groupe: 'GM101' },
+      {
+        jour: 'Mardi',
+        seance: 'S3',
+        periode: 'jour',
+        formateurMatricule: '4211',
+        groupe: 'GM101',
+        // ⚠️ Hors chronogramme : son retrait ne creuse aucun manque (2026-10-01).
+        retirable: true,
+      },
     ]);
   });
 
@@ -1755,21 +1834,20 @@ describe('Report emploi → chronogramme (2026-09-27)', () => {
     expect(ligne.version).toBe(4);
   });
 
-  it('⚠️ NOMME une cellule MIXTE au lieu de la taire', async () => {
-    // Le format ne porte qu'un type : on garde le volume TOTAL et le type
-    // DOMINANT, et le cas est nommé pour être corrigé à la main.
+  it('⚠️ présentiel ET distanciel la même semaine : une entrée PAR TYPE (2026-10-01)', async () => {
+    // Plus de « type dominant » : la case mixte garde chaque part sous son type.
     await poser();
     await poser({ seance: 'S2' });
     await poser({ seance: 'S3', salle: 'TEAMS' });
 
     const reponse = await reporter({ simulation: false });
-
-    expect(reponse.body.mixtes).toEqual([
-      expect.objectContaining({ groupe: 'GM101', module: 'M101', semaine: 'S9', retenu: 'P' }),
-    ]);
+    expect(reponse.body.mixtes).toEqual([]);
 
     const planning = await planningDe('GM101');
-    expect(planning.get('M101')[0]).toMatchObject({ heures: 7.5, type: 'P' });
+    expect(planning.get('M101').filter((c) => c.semaine === 'S9')).toEqual([
+      expect.objectContaining({ heures: 5, type: 'P' }),
+      expect.objectContaining({ heures: 2.5, type: 'S' }),
+    ]);
   });
 
   it('⚠️ NE TOUCHE PAS un groupe que la grille ne concerne pas', async () => {

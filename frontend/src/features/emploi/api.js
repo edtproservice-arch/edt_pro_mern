@@ -150,7 +150,8 @@ export function reinitialiserSeances({ portee, semaine }) {
 }
 
 /**
- * Publier la semaine qui FAIT FOI. ← `publish_timetable.php`
+ * Publier UNE semaine — elle devient visible du gestionnaire, des formateurs
+ * et des stagiaires. ← `publish_timetable.php`
  *
  * ⚠️ RÉSERVÉE AU DIRECTEUR côté serveur. L'écran n'affiche le bouton qu'à lui —
  * l'ancien le montrait aussi à l'admin, que le serveur refusait en 403 : un
@@ -160,7 +161,7 @@ export function publierSemaine(semaine) {
   return api.put('/api/v2/seances/publication', { semaine });
 }
 
-/** Retirer la publication — on retombe sur la règle du samedi 06h30. */
-export function depublierSemaine() {
-  return api.delete('/api/v2/seances/publication');
+/** Retirer la publication d'UNE semaine — elle redevient masquée aux sessions consultatives. */
+export function depublierSemaine(semaine) {
+  return api.delete(`/api/v2/seances/publication?${new URLSearchParams({ semaine })}`);
 }

@@ -23,11 +23,14 @@
  * une fois pour toutes côté serveur, elle resterait au niveau de l'année
  * entière et la comparaison n'aurait plus de sens.
  *
- * ⚠️ ELLE NE COUVRE QUE LES MODULES PRÉSENTS DANS LES LIGNES — c'était déjà la
- * limite de l'existant, qui sommait sur les lignes du fichier. Un module que
- * rien ne mentionne n'a pas de ligne, donc pas de masse comptée.
+ * ⚠️ LES MODULES SANS FORMATEUR (2026-10-01, écart signalé par le porteur
+ * entre les faces eDTpro et e-note). Le fichier e-note porte une ligne par
+ * module de la carte, affecté ou non ; la face eDTpro, elle, n'a de ligne que
+ * pour les modules affectés. `nonAffectes` (groupe → masse des modules actifs
+ * sans formateur) comble cet écart — ajouté seulement pour un groupe PRÉSENT
+ * dans les lignes retenues, pour que les filtres s'appliquent encore.
  */
-export function massesGlobalesParGroupe(lignes = []) {
+export function massesGlobalesParGroupe(lignes = [], nonAffectes = {}) {
   const masses = new Map();
 
   for (const ligne of lignes) {
@@ -36,6 +39,11 @@ export function massesGlobalesParGroupe(lignes = []) {
     if (groupe === '' || !(masse > 0)) continue;
 
     masses.set(groupe, (masses.get(groupe) ?? 0) + masse);
+  }
+
+  for (const groupe of masses.keys()) {
+    const complement = Number(nonAffectes?.[groupe] ?? 0);
+    if (complement > 0) masses.set(groupe, masses.get(groupe) + complement);
   }
 
   return Object.fromEntries(
@@ -50,10 +58,10 @@ export function massesGlobalesParGroupe(lignes = []) {
  * deux s'applique où — c'est une règle métier, pas une décision d'affichage.
  *
  * @param {'formateur'|'groupe'|'module'} axe
- * @param {object} sources — `{ statutaires, lignes }`
+ * @param {object} sources — `{ statutaires, lignes, nonAffectes }`
  * @returns {{valeurs: object, libelle: string}|null}
  */
-export function referenceDeLAxe(axe, { statutaires = {}, lignes = [] } = {}) {
+export function referenceDeLAxe(axe, { statutaires = {}, lignes = [], nonAffectes = {} } = {}) {
   if (axe === 'formateur') {
     return Object.keys(statutaires).length === 0
       ? null
@@ -61,7 +69,7 @@ export function referenceDeLAxe(axe, { statutaires = {}, lignes = [] } = {}) {
   }
 
   if (axe === 'groupe') {
-    const valeurs = massesGlobalesParGroupe(lignes);
+    const valeurs = massesGlobalesParGroupe(lignes, nonAffectes);
     return Object.keys(valeurs).length === 0
       ? null
       : { valeurs, libelle: 'Masse horaire globale' };

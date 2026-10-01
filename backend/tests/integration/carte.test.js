@@ -1392,3 +1392,66 @@ describe('Export complet de la carte', () => {
     expect(ligne[9]).toBe(60);   // MHP totale, sans le module désactivé
   });
 });
+describe('Affectation annuelle d’un formateur — Word / Excel (2026-10-01)', () => {
+  const carte = {
+    groupes: [
+      {
+        nom: 'GE101',
+        codeFiliere: 'GE',
+        anneeFormation: 1,
+        niveau: 'TS',
+        modules: [
+          {
+            code: 'M102',
+            nom: 'Droit fondamental',
+            mhpS1: 45,
+            mhsynS1: 15,
+            formateurPresentiel: 'ABDELHAK CHARKAOUI',
+            formateurSynchrone: 'ABDELHAK CHARKAOUI',
+          },
+        ],
+      },
+    ],
+  };
+
+  const exporter = (format, formateur = 'ABDELHAK CHARKAOUI') =>
+    request(app)
+      .post('/api/v2/base/affectation-formateur/export')
+      .set('Cookie', cookies)
+      .send({ ...carte, formateur, format })
+      .responseType('blob');
+
+  it('greffe les affectations dans le canevas Word', async () => {
+    const reponse = await exporter('docx');
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-disposition']).toContain('Affectation_ABDELHAK_CHARKAOUI.docx');
+
+    const { default: JSZip } = await import('jszip');
+    const xml = await (await JSZip.loadAsync(reponse.body)).file('word/document.xml').async('string');
+    expect(xml).toContain('Formateur : ABDELHAK CHARKAOUI');
+    expect(xml).toContain('M102 - Droit fondamental');
+    expect(xml).toContain('TOTAL GLOBAL : 60.00 Heures');
+    // Les lignes de l'exemplaire transmis ne doivent pas survivre.
+    expect(xml).not.toContain('Statistique');
+  });
+
+  it('rend un Excel avec les deux tableaux et leurs totaux', async () => {
+    const reponse = await exporter('xlsx');
+    expect(reponse.status).toBe(200);
+
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(reponse.body);
+    const valeurs = [];
+    classeur.worksheets[0].eachRow((ligne) => valeurs.push(...ligne.values.filter((v) => v !== undefined)));
+
+    expect(valeurs).toContain('Total Présentiel :');
+    expect(valeurs).toContain('Total Synchrone :');
+    expect(valeurs).toContain('TOTAL GLOBAL : 60.00 Heures');
+  });
+
+  it('refuse un formateur sans affectation', async () => {
+    const reponse = await exporter('docx', 'PERSONNE');
+    expect(reponse.status).toBe(400);
+  });
+});

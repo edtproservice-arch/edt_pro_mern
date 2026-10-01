@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { JOURS, PERIODES, ROLES, SEANCES } from 'shared/constants';
 /* ⚠️ `SEANCES_JOUR` vit dans le DOMAINE, pas dans les constantes : c'est une
    règle de grille (S5 est le créneau du soir), pas une liste brute. */
-import { SEANCES_JOUR } from 'shared/domain';
+import { SEANCES_JOUR, droitSuffit } from 'shared/domain';
+import { forbidden } from '../../lib/httpError.js';
 import { validate } from '../../middleware/validate.js';
 import { authenticate } from '../../middleware/authenticate.js';
 import { requireRole } from '../../middleware/requireRole.js';
@@ -72,6 +73,28 @@ const lireEmploiOuEfm = exigerDroitPage(['emploi', 'efm'], 'consulter');
  */
 const PAGES_DES_SEANCES = ['emploi', 'absences', 'avancement', 'efm'];
 
+/*
+ * ═══ ⚠️ LES SEMAINES NON PUBLIÉES SONT MASQUÉES (2026-10-01, demande du porteur) ═══
+ * « L'emploi du temps ne doit pas être affiché aux sessions formateur,
+ * stagiaire et gestionnaire si le directeur n'a pas cliqué sur Publier, pour
+ * chaque semaine. » Seuls la voient :
+ *   - le DIRECTEUR, qui la prépare ;
+ *   - un invité « peut modifier » : on ne saisit pas une grille qu'on ne voit
+ *     pas. `req.droitPage` est posé par `exigerDroitPage` sur la route.
+ */
+function voitNonPubliees(req) {
+  return req.utilisateur?.role === ROLES.DIRECTEUR || droitSuffit(req.droitPage?.droit, 'modifier');
+}
+
+/** Refuse l'export d'une semaine masquée à qui ne fait que consulter. */
+async function exigerSemaineVisible(req) {
+  if (voitNonPubliees(req)) return;
+  if (await service.estPubliee(req.etablissementId, req.anneeScolaire, req.params.semaine)) return;
+  throw forbidden('L’emploi du temps de cette semaine n’est pas encore publié', {
+    code: 'SEMAINE_NON_PUBLIEE',
+  });
+}
+
 /** Formateurs, groupes et salles : ce qui ne change pas d'une semaine à l'autre. */
 router.get('/contexte', lireEmploiOuEfm, async (req, res, next) => {
   try {
@@ -109,12 +132,16 @@ router.put('/publication', directeurSeul, async (req, res, next) => {
   }
 });
 
-/** Retirer la publication — on retombe sur la règle du week-end. */
+/** Retirer la publication d'UNE semaine (`?semaine=`) — elle redevient masquée. */
 router.delete('/publication', directeurSeul, async (req, res, next) => {
   try {
-    await service.depublier(req.etablissementId, req.anneeScolaire);
-    res.json({ success: true, publication: null });
-    annoncerModification(req, 'emploi', { action: 'publication' });
+    const { semaine } = await service.depublier(
+      req.etablissementId,
+      req.anneeScolaire,
+      req.query?.semaine ?? req.body?.semaine
+    );
+    res.json({ success: true, semaine });
+    annoncerModification(req, 'emploi', { action: 'depublication', semaine });
   } catch (error) {
     next(error);
   }
@@ -133,20 +160,24 @@ router.delete('/publication', directeurSeul, async (req, res, next) => {
 router.get('/semaines', lire, async (req, res, next) => {
   try {
     const consulte = req.utilisateur?.role !== ROLES.DIRECTEUR;
+    // ⚠️ Un invité « peut modifier » ouvre comme un consultant, mais VOIT tout.
+    const masque = !voitNonPubliees(req);
 
-    const [liste, publication] = await Promise.all([
+    const [liste, { publication, publications }] = await Promise.all([
       service.semaines(req.etablissementId, req.anneeScolaire),
-      service.publicationCourante(req.etablissementId, req.anneeScolaire),
+      service.publicationsDeLAnnee(req.etablissementId, req.anneeScolaire),
     ]);
 
     res.json({
       success: true,
-      semaines: liste,
+      semaines: masque ? liste.filter((s) => publications.includes(s.semaine)) : liste,
       courante: service.semaineCourante(req.anneeScolaire, new Date(), {
         semainePubliee: consulte ? (publication?.semaine ?? null) : null,
+        semainesPubliees: masque ? publications : null,
         regleWeekEnd: consulte,
       }),
       publication,
+      publications,
     });
   } catch (error) {
     next(error);
@@ -219,12 +250,13 @@ router.get(
   validate({ params: z.object({ semaine: z.string().trim().regex(/^\d{4}-W\d{1,3}$/i) }) }),
   async (req, res, next) => {
     try {
-      const grille = await service.semaine(
-        req.etablissementId,
-        req.anneeScolaire,
-        req.params.semaine
-      );
-      res.json({ success: true, ...grille });
+      const [grille, publiee] = await Promise.all([
+        service.semaine(req.etablissementId, req.anneeScolaire, req.params.semaine),
+        voitNonPubliees(req)
+          ? true
+          : service.estPubliee(req.etablissementId, req.anneeScolaire, req.params.semaine),
+      ]);
+      res.json({ success: true, ...(publiee ? grille : service.masquerSemaine(grille)) });
     } catch (error) {
       next(error);
     }
@@ -279,6 +311,7 @@ router.post(
   }),
   async (req, res, next) => {
     try {
+      await exigerSemaineVisible(req);
       repondreFichier(res, await construireExport(req.etablissementId, req.anneeScolaire, req.params.semaine, req.body));
     } catch (error) {
       next(error);
@@ -304,6 +337,7 @@ router.post(
   }),
   async (req, res, next) => {
     try {
+      await exigerSemaineVisible(req);
       repondreFichier(
         res,
         await construireExportEmargement(req.etablissementId, req.anneeScolaire, req.params.semaine, req.body)
@@ -336,6 +370,7 @@ router.post(
   }),
   async (req, res, next) => {
     try {
+      await exigerSemaineVisible(req);
       repondreFichier(
         res,
         await construireExportIndividuel(req.etablissementId, req.anneeScolaire, req.params.semaine, req.body)

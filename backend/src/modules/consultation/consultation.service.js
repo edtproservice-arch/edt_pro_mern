@@ -48,19 +48,35 @@ import * as avancementService from '../avancement/avancement.service.js';
  * consulter — ce qu'on y cherche le week-end est bien la semaine qui vient.
  */
 export async function semaines(etablissementId, anneeScolaire) {
-  const [liste, publication] = await Promise.all([
+  const [liste, { publication, publications }] = await Promise.all([
     seancesService.semaines(etablissementId, anneeScolaire),
-    seancesService.publicationCourante(etablissementId, anneeScolaire),
+    seancesService.publicationsDeLAnnee(etablissementId, anneeScolaire),
   ]);
 
+  /*
+   * ═══ ⚠️ SEULES LES SEMAINES PUBLIÉES (2026-10-01, demande du porteur) ═══
+   * Une semaine que le directeur n'a pas publiée n'existe pas encore pour un
+   * formateur ou un stagiaire : elle ne figure pas dans la navigation, et la
+   * semaine ouverte par défaut est choisie parmi les publiées.
+   */
   return {
-    semaines: liste,
+    semaines: liste.filter((s) => publications.includes(s.semaine)),
     courante: seancesService.semaineCourante(anneeScolaire, new Date(), {
-      semainePubliee: publication?.semaine ?? null,
+      semainesPubliees: publications,
       regleWeekEnd: true,
     }),
     publication,
+    publications,
   };
+}
+
+/** La grille complète d'une semaine, VIDÉE si elle n'est pas publiée. */
+async function semaineVisible(etablissementId, anneeScolaire, valeur) {
+  const [grille, publiee] = await Promise.all([
+    seancesService.semaine(etablissementId, anneeScolaire, valeur),
+    seancesService.estPubliee(etablissementId, anneeScolaire, valeur),
+  ]);
+  return publiee ? grille : seancesService.masquerSemaine(grille);
 }
 
 /**
@@ -88,7 +104,7 @@ async function intitulesDesSeances(etablissementId, anneeScolaire, seances, base
  * concernent — jamais ceux de ses collègues.
  */
 export async function emploiFormateur(etablissementId, anneeScolaire, valeur, matricule) {
-  const grille = await seancesService.semaine(etablissementId, anneeScolaire, valeur);
+  const grille = await semaineVisible(etablissementId, anneeScolaire, valeur);
   const seances = grille.seances.filter((s) => s.formateurMatricule === matricule);
 
   return {
@@ -121,7 +137,7 @@ export async function emploiFormateur(etablissementId, anneeScolaire, valeur, ma
  */
 export async function emploiStagiaire(etablissementId, anneeScolaire, valeur, groupes) {
   const [grille, base] = await Promise.all([
-    seancesService.semaine(etablissementId, anneeScolaire, valeur),
+    semaineVisible(etablissementId, anneeScolaire, valeur),
     Base.findOne({ etablissementId, anneeScolaire }).select(`formateurs ${CHAMPS_FILIERE}`).lean(),
   ]);
 

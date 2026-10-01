@@ -4,7 +4,6 @@ import {
   cellulesDuType,
   fusionnerType,
   semainesDeLaLigne,
-  verrouillerAutreType,
 } from 'shared/domain';
 import Alerte from '@/components/common/Alerte';
 import GrilleChronogramme from './GrilleChronogramme';
@@ -166,17 +165,11 @@ export default function VueFormateur({
   }, [lignes, plannings]);
 
   /*
-   * Sur ces mêmes lignes, les semaines que la part du collègue occupe déjà sont
-   * fermées : une seule cellule par semaine et par module. Sans ligne partagée,
-   * les lignes sont rendues telles quelles — la mémoïsation des cellules tient.
+   * ⚠️ PLUS DE VERROU SUR LES SEMAINES DU COLLÈGUE (2026-10-01) : sa part et
+   * celle-ci cohabitent dans une case mixte. Les lignes sont rendues telles
+   * quelles — la mémoïsation des cellules tient.
    */
-  const lignesAffichees = useMemo(
-    () =>
-      lignes.some((ligne) => ligne.typeSeul)
-        ? verrouillerAutreType(lignes, (ligne) => plannings?.[ligne.groupe]?.[ligne.code], semaines)
-        : lignes,
-    [lignes, plannings, semaines]
-  );
+  const lignesAffichees = lignes;
 
   /**
    * Et le chemin inverse, à chaque saisie.

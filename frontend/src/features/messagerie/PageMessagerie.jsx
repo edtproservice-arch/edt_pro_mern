@@ -48,6 +48,7 @@ import {
 import Redaction from './Redaction';
 import CarteInvitation from '@/features/partages/CarteInvitation';
 import CarteChronogrammeFormateur from '@/features/chronogramme/CarteChronogrammeFormateur';
+import CarteEcartSaisie from './CarteEcartSaisie';
 import BoutonProposer from '@/features/propositions/BoutonProposer';
 import CarteProposition from '@/features/propositions/CarteProposition';
 
@@ -893,6 +894,9 @@ function Lecture({
 
         {/* Le chronogramme d'un formateur, quand le message en porte l'instantané (2026-09-22). */}
         <CarteChronogrammeFormateur message={message} />
+
+        {/* L'état d'écart de saisie e-note, quand le message en porte un (2026-10-01). */}
+        <CarteEcartSaisie message={message} />
 
         {/* La proposition d'emploi du temps d'un formateur (Phase 9 b). */}
         <CarteProposition message={message} />

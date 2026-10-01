@@ -238,6 +238,10 @@ export default function PageMonEmploi() {
         </Alerte>
       ) : grille.isLoading || !grille.data ? (
         <p className="text-sm text-muted-foreground">Chargement de la semaine…</p>
+      ) : grille.data.nonPubliee ? (
+        <Alerte type="info" titre="Emploi du temps non publié">
+          L’emploi du temps de cette semaine n’a pas encore été publié par la direction.
+        </Alerte>
       ) : sujets.length === 0 ? (
         <Alerte type="avertissement" titre="Aucun groupe connu">
           Votre compte n’est rattaché à aucun groupe pour le moment. Contactez votre établissement.

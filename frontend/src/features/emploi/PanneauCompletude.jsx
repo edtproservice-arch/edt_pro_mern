@@ -47,6 +47,8 @@ export default function PanneauCompletude({
   libelle,
   peutPlacer = false,
   onAllerAuxCases,
+  onSupprimerSeance,
+  suppressionEnCours = false,
 }) {
   if (!bilan) return null;
 
@@ -130,7 +132,12 @@ export default function PanneauCompletude({
               formateur indisponible.
             </p>
 
-            <ListeEcarts ecarts={ecarts} onAllerAuxCases={onAllerAuxCases} />
+            <ListeEcarts
+              ecarts={ecarts}
+              onAllerAuxCases={onAllerAuxCases}
+              onSupprimerSeance={onSupprimerSeance}
+              suppressionEnCours={suppressionEnCours}
+            />
           </div>
         )}
 

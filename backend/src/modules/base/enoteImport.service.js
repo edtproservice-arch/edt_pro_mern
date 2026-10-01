@@ -2,8 +2,9 @@ import mongoose from 'mongoose';
 import { construireBase, semaineDansAnnee } from 'shared/domain';
 import { Base } from '../../models/Base.js';
 import { EnoteImport } from '../../models/EnoteImport.js';
-import { badRequest, conflict } from '../../lib/httpError.js';
+import { HttpError, badRequest, conflict } from '../../lib/httpError.js';
 import { lirePremiereFeuille } from '../../lib/classeur.js';
+import { cascader, compterReferences, groupesRetires, pese } from './cascadeGroupes.js';
 
 /**
  * Lecture d'un fichier e-note et construction de la base.
@@ -101,6 +102,12 @@ export async function importer({
   tampon,
   utilisateurId,
   remplacer = false,
+  /*
+   * ⚠️ FAUX PAR DÉFAUT, comme pour la carte (`enregistrerCarte`) : un groupe
+   * absent du nouveau fichier emporte son chronogramme et ses séances. On
+   * chiffre, on refuse en 409, et on attend un oui explicite.
+   */
+  confirmerSuppressions = false,
 }) {
   // Le nom du fichier voyage jusqu'ici : c'est lui qui dit le format.
   const { entete, lignes } = await lireClasseur(tampon, nomFichier);
@@ -163,8 +170,42 @@ export async function importer({
   try {
     let base;
     let importEnregistre;
+    /** Ce que le retrait de groupes a emporté — `null` s'il n'y en avait pas. */
+    let cascade = null;
 
     await session.withTransaction(async () => {
+      /*
+       * ═══ ⚠️ LA CASCADE, COMME À L'ENREGISTREMENT DE LA CARTE ═══ (2026-10-01,
+       * demande du porteur : « il faut qu'il supprime le chronogramme une fois
+       * le groupe supprimé ».) L'import remplace la base comme la carte, mais
+       * sans regarder ce qu'il faisait disparaître : un groupe absent du
+       * nouveau fichier laissait son chronogramme pointer sur un nom mort, et
+       * la conformité le signalait sans fin (« groupes absents de la carte »).
+       */
+      const precedente = await Base.findOne({ etablissementId, anneeScolaire })
+        .select('groupes affectations')
+        .session(session)
+        .lean();
+      const retires = groupesRetires(precedente, {
+        groupes: structure.groupes,
+        affectations: structure.affectations,
+      });
+
+      if (retires.length > 0) {
+        const references = await compterReferences(etablissementId, anneeScolaire, retires, session);
+        const porteuses = references.filter((detail) => pese(detail) > 0);
+
+        if (porteuses.length > 0 && !confirmerSuppressions) {
+          throw new HttpError(409, 'Des groupes absents du fichier sont encore utilisés', {
+            code: 'GROUPES_ENCORE_UTILISES',
+            details: porteuses,
+          });
+        }
+
+        cascade = await cascader(etablissementId, anneeScolaire, retires, session);
+        cascade.groupes = retires;
+      }
+
       base = await Base.findOneAndUpdate(
         { etablissementId, anneeScolaire },
         {
@@ -214,6 +255,7 @@ export async function importer({
       remplace: dejaCetteSemaine
         ? { nomFichier: dejaCetteSemaine.nomFichier, importeLe: dejaCetteSemaine.importeLe }
         : null,
+      cascade,
       lignesLues: lignes.length,
       effectifs: {
         formateurs: structure.formateurs.length,

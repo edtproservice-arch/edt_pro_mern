@@ -9,6 +9,7 @@ import Alerte from '@/components/common/Alerte';
 import ConfirmationAction from '@/components/common/ConfirmationAction';
 import { chargerContraintesFormateurs, chargerEtablissementCourant, enregistrerCarte, exporterCarte } from '../api';
 import { identifiantFormateur } from '../etapes/filtresFormateurs';
+import DialogueGroupesRetires from '../DialogueGroupesRetires';
 import { useCarte } from './useCarte';
 import SelecteurFiliere from './SelecteurFiliere';
 import ListeFormateurs from './ListeFormateurs';
@@ -680,51 +681,12 @@ export default function CarteEtablissement({
         l'aveugle, et la carte est remplacée à chaque enregistrement comme à
         chaque import e-note.
       */}
-      <ConfirmationAction
-        ouvert={Boolean(suppressionsAConfirmer)}
-        onOpenChange={(ouvert) => !ouvert && setSuppressionsAConfirmer(null)}
-        titre={
-          suppressionsAConfirmer?.length === 1
-            ? `Retirer ${suppressionsAConfirmer[0].groupe} supprimera son contenu`
-            : `Retirer ${suppressionsAConfirmer?.length ?? 0} groupes supprimera leur contenu`
-        }
-        description={
-          <span className="block space-y-2">
-            <span className="block">
-              Ces groupes ne sont plus dans la carte, mais ils portent encore des données.
-              Enregistrer les supprimera définitivement.
-            </span>
-            <span className="block space-y-1">
-              {(suppressionsAConfirmer ?? []).map((detail) => (
-                <span key={detail.groupe} className="block text-xs">
-                  <strong>{detail.groupe}</strong> —{' '}
-                  {[
-                    detail.heuresPlanifiees > 0 && `${detail.heuresPlanifiees} h de chronogramme`,
-                    detail.seances > 0 && `${detail.seances} séance(s)`,
-                    detail.stagiairesADetacher > 0 &&
-                      `${detail.stagiairesADetacher} stagiaire(s) à détacher`,
-                    detail.stages > 0 && `${detail.stages} stage(s)`,
-                    detail.liensFq > 0 && `${detail.liensFq} lien(s) FQ`,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </span>
-              ))}
-            </span>
-            {/*
-              ⚠️ CE QUI SURVIT COMPTE AUTANT : sans cette phrase, un directeur
-              renoncerait de peur d'effacer l'historique disciplinaire de ses
-              stagiaires — qui, lui, ne bouge pas.
-            */}
-            <span className="block text-xs">
-              Les stagiaires sont <strong>détachés, jamais supprimés</strong>, et leurs absences
-              sont conservées.
-            </span>
-          </span>
-        }
+      <DialogueGroupesRetires
+        details={suppressionsAConfirmer}
+        explication="Ces groupes ne sont plus dans la carte, mais ils portent encore des données. Enregistrer les supprimera définitivement."
         libelleConfirmation="Supprimer et enregistrer"
-        destructive
         onConfirmer={() => enregistrement.mutate(true)}
+        onAnnuler={() => setSuppressionsAConfirmer(null)}
       />
 
       <ConfirmationAction

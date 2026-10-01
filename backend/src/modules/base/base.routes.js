@@ -14,6 +14,7 @@ import * as contraintesService from './contraintes.service.js';
 import { contraintesFormateurSchema } from 'shared/schemas';
 import { construireClasseurBilan } from './bilan.service.js';
 import { construireClasseurCarte } from './carteExport.service.js';
+import { construireExportAffectationFormateur } from './exportAffectationFormateur.service.js';
 import { TAILLE_MAXIMALE, importer, lireClasseur } from './enoteImport.service.js';
 import { annoncerModification } from '../tempsReel/annonces.js';
 import { exigerDroitPage } from '../partages/exigerDroitPage.js';
@@ -162,6 +163,8 @@ router.post('/import', directeur, televersement.single('fichier'), async (req, r
        * vrai — et un remplacement non demandé détruirait la base de la semaine.
        */
       remplacer: req.body?.remplacer === 'true',
+      // Même précaution : une chaîne « true », jamais un booléen.
+      confirmerSuppressions: req.body?.confirmerSuppressions === 'true',
     });
 
     res.status(201).json({ success: true, ...resultat });
@@ -514,6 +517,44 @@ router.post('/carte/export', exigerDroitPage('affectations', 'consulter'), valid
     next(error);
   }
 });
+
+/**
+ * L'affectation annuelle d'UN formateur, en Word, PDF ou Excel (2026-10-01,
+ * demande du porteur, canevas transmis) — bouton de la fiche du formateur, vue
+ * « Affectations par formateur ». Comme les exports ci-dessus, la carte vient
+ * de l'ÉCRAN : voir `exportAffectationFormateur.service.js`.
+ */
+router.post(
+  '/affectation-formateur/export',
+  exigerDroitPage('affectations', 'consulter'),
+  validate({
+    body: carteSchema.extend({
+      format: z.enum(['docx', 'pdf', 'xlsx']),
+      formateur: z.string().trim().min(1).max(150),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const { format, formateur, ...carte } = req.body;
+      const { tampon, nomFichier, contentType } = await construireExportAffectationFormateur({
+        etablissementId: req.etablissementId,
+        anneeScolaire: req.anneeScolaire,
+        carte,
+        formateur,
+        format,
+      });
+      res.setHeader('Content-Type', contentType);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="export"; filename*=UTF-8''${encodeURIComponent(nomFichier)}`
+      );
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+      res.send(tampon);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 router.patch('/formateurs', exigerDroitPage('formateurs', 'modifier'), validate({ body: correctionsSchema }), async (req, res, next) => {
   try {

@@ -122,37 +122,39 @@ describe('reporterVersChronogramme', () => {
     expect(cellule(r, 'GM101', 'M101', 'S9').heures).toBe(2.5);
   });
 
-  it('⚠️ UNE CELLULE MIXTE garde le VOLUME TOTAL, le type DOMINANT, et est NOMMÉE', () => {
+  it('⚠️ PRÉSENTIEL ET DISTANCIEL LA MÊME SEMAINE : une entrée PAR TYPE (2026-10-01)', () => {
     /*
-     * Le format ne porte qu'un type. Perdre le volume fausserait l'avancement,
-     * qui se lit sur des heures ; taire le cas le ferait découvrir trop tard.
+     * Le « type dominant » d'avant faisait passer 2,5 h de distanciel pour du
+     * présentiel. La case mixte les garde chacun sous son type.
      */
     const r = reporterVersChronogramme({
       seances: [seance(), seance({ seance: 'S2' }), seance({ seance: 'S3', salle: 'TEAMS' })],
       chronogrammes: [],
     });
 
-    expect(cellule(r, 'GM101', 'M101', 'S9')).toEqual({ semaine: 'S9', heures: 7.5, type: 'P' });
-    expect(r.bilan.mixtes).toEqual([
-      {
-        groupe: 'GM101',
-        module: 'M101',
-        semaine: 'S9',
-        presentiel: 5,
-        distanciel: 2.5,
-        retenu: 'P',
-      },
+    const entrees = r.aEcrire[0].planning.get('M101').filter((c) => c.semaine === 'S9');
+    expect(entrees).toEqual([
+      { semaine: 'S9', heures: 5, type: 'P' },
+      { semaine: 'S9', heures: 2.5, type: 'S' },
     ]);
+    expect(r.bilan.mixtes).toEqual([]);
   });
 
-  it('le type DOMINANT peut être le distanciel', () => {
+  it('une semaine déjà mixte et identique n’est pas réécrite', () => {
     const r = reporterVersChronogramme({
-      seances: [seance({ salle: 'TEAMS' }), seance({ seance: 'S2', salle: 'TEAMS' }), seance({ seance: 'S3' })],
-      chronogrammes: [],
+      seances: [seance(), seance({ seance: 'S3', salle: 'TEAMS' })],
+      chronogrammes: [
+        chrono('GM101', {
+          M101: [
+            { semaine: 'S9', heures: 2.5, type: 'S' },
+            { semaine: 'S9', heures: 2.5, type: 'P' },
+          ],
+        }),
+      ],
     });
 
-    expect(cellule(r, 'GM101', 'M101', 'S9').type).toBe('S');
-    expect(r.bilan.mixtes[0].retenu).toBe('S');
+    expect(r.aEcrire).toEqual([]);
+    expect(r.bilan.cellulesInchangees).toBe(1);
   });
 
   it('⚠️ NE REND QUE LES GROUPES TOUCHÉS', () => {

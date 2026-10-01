@@ -61,10 +61,27 @@ const planningSchema = z.object({
     z.string().trim().min(1).max(60),
     z.record(
       z.string().regex(/^([1-9]|[1-3][0-9]|4[0-5])$/, 'Semaine hors des 45 de l’année'),
-      z.object({
-        heures: z.coerce.number().min(0).max(20),
-        type: z.enum(['P', 'S']),
-      })
+      z
+        .object({
+          heures: z.coerce.number().min(0).max(20),
+          /*
+           * ⚠️ « PS » = case MIXTE (2026-10-01) : présentiel ET synchrone la même
+           * semaine. Ses deux parts DOIVENT être déclarées ici — zod retire les
+           * clés inconnues, et une case mixte sans ses parts arriverait vide en
+           * base, sans erreur.
+           */
+          type: z.enum(['P', 'S', 'PS']),
+          presentiel: z.coerce.number().min(0).max(20).optional(),
+          synchrone: z.coerce.number().min(0).max(20).optional(),
+        })
+        .refine(
+          (cellule) =>
+            cellule.type !== 'PS' ||
+            (cellule.presentiel > 0 &&
+              cellule.synchrone > 0 &&
+              Math.abs(cellule.presentiel + cellule.synchrone - cellule.heures) < 0.01),
+          'Case mixte : les parts présentiel et synchrone doivent faire le total'
+        )
     )
   ),
 });
@@ -332,6 +349,28 @@ router.get('/charge', lire, async (req, res, next) => {
   try {
     const bilan = await service.charge(req.etablissementId, req.anneeScolaire);
     res.json({ success: true, ...bilan });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * Modules partagés entre présentiel et synchrone (« À traiter » de l'accueil).
+ *
+ * ⚠️ Déclarée AVANT `/:groupe`, comme « charge ». Un FORMATEUR n'y voit que les
+ * modules où il intervient — même règle que la liste ci-dessous.
+ */
+router.get('/partages-type', lire, async (req, res, next) => {
+  try {
+    let partages = await service.partagesParType(req.etablissementId, req.anneeScolaire);
+    if (req.utilisateur.role === ROLES.FORMATEUR) {
+      const moi = String(req.utilisateur.identifiant ?? '').trim().toUpperCase();
+      const estMoi = (personne) => String(personne.identifiant).trim().toUpperCase() === moi;
+      partages = partages.filter(
+        (partage) => partage.presentiel.some(estMoi) || partage.synchrone.some(estMoi)
+      );
+    }
+    res.json({ success: true, partages });
   } catch (error) {
     next(error);
   }

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Alerte from '@/components/common/Alerte';
 import { chargerResumeBase } from '../api';
-import { useImportEnote, DialogueRemplacementEnote } from '../importEnote';
+import { useImportEnote, DialogueRemplacementEnote, DialogueSuppressionsEnote } from '../importEnote';
 import { cn } from '@/lib/utils';
 
 /**
@@ -49,6 +49,9 @@ export default function EtapeBase({ onBasePrete, voie, onVoieChange }) {
         description: [
           `${resultat.effectifs.formateurs} formateur(s), ${resultat.effectifs.groupes} groupe(s), ${resultat.effectifs.affectations} affectation(s).`,
           resultat.remplace ? `Remplace « ${resultat.remplace.nomFichier} ».` : null,
+          resultat.cascade
+            ? `${resultat.cascade.groupes.join(', ')} retiré(s) : ${resultat.cascade.chronogrammes} chronogramme(s) et ${resultat.cascade.seances} séance(s) supprimé(s).`
+            : null,
         ]
           .filter(Boolean)
           .join(' '),
@@ -165,6 +168,7 @@ export default function EtapeBase({ onBasePrete, voie, onVoieChange }) {
               onConfirmer={importation.confirmerRemplacement}
               onAnnuler={importation.annulerRemplacement}
             />
+            <DialogueSuppressionsEnote importation={importation} />
           </CardContent>
         </Card>
       ) : (

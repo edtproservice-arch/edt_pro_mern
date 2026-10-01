@@ -16,10 +16,63 @@ import { HEURES_PAR_JOUR, JOURS_PAR_SEMAINE, PAS, plafondSemaine } from './semai
 /** `'P'` présentiel, `'S'` synchrone — les deux seuls types de l'existant. */
 export const TYPES = { PRESENTIEL: 'P', SYNCHRONE: 'S' };
 
+/**
+ * Une case qui porte LES DEUX types la même semaine (2026-10-01, demande du
+ * porteur : « programmer des séances présentiel et synchrone d'un module dans
+ * la même semaine »).
+ *
+ * ═══ LA FORME, ET POURQUOI ELLE NE CASSE RIEN ═══
+ *   `{ heures: 7.5, type: 'PS', presentiel: 5, synchrone: 2.5 }`
+ * `heures` reste le TOTAL de la semaine : tout ce qui additionne des colonnes
+ * (pied de grille, plafond, charge par groupe) reste juste sans changer. Seul
+ * ce qui distingue les types passe par `partsDeCellule`.
+ *
+ * ⚠️ PAS DANS `TYPES` : ce n'est pas un type de séance. Une boucle sur
+ * `TYPES` ne doit jamais le rencontrer.
+ *
+ * Mongo n'a pas changé de forme : une liste `{ semaine, heures, type }` par
+ * module, qui porte simplement deux entrées pour la même semaine.
+ */
+export const TYPE_MIXTE = 'PS';
+
 const nombre = (valeur) => {
   const converti = Number(valeur);
   return Number.isFinite(converti) && converti > 0 ? converti : 0;
 };
+
+/** Les heures de chaque type d'une case, quelle que soit sa forme. */
+export function partsDeCellule(cellule) {
+  if (!cellule) return { P: 0, S: 0 };
+  if (cellule.type === TYPE_MIXTE) {
+    return { P: nombre(cellule.presentiel), S: nombre(cellule.synchrone) };
+  }
+  const heures = nombre(cellule.heures);
+  return cellule.type === TYPES.SYNCHRONE ? { P: 0, S: heures } : { P: heures, S: 0 };
+}
+
+/**
+ * La case qui porte ces parts — simple quand un seul type a des heures, mixte
+ * quand les deux en ont, `null` quand aucun.
+ */
+export function celluleDepuisParts({ P = 0, S = 0 } = {}) {
+  const presentiel = arrondir(nombre(P));
+  const synchrone = arrondir(nombre(S));
+
+  if (presentiel > 0 && synchrone > 0) {
+    return {
+      heures: arrondir(presentiel + synchrone),
+      type: TYPE_MIXTE,
+      presentiel,
+      synchrone,
+    };
+  }
+  if (synchrone > 0) return { heures: synchrone, type: TYPES.SYNCHRONE };
+  if (presentiel > 0) return { heures: presentiel, type: TYPES.PRESENTIEL };
+  return null;
+}
+
+/** Une case mixte ? */
+export const estMixte = (cellule) => cellule?.type === TYPE_MIXTE;
 
 /**
  * Heures déjà posées pour un module, par type.
@@ -37,9 +90,9 @@ export function totauxModule(planning, module, { saufSemaine = null } = {}) {
   for (const [semaine, cellule] of Object.entries(cellules)) {
     if (String(semaine) === String(saufSemaine)) continue;
 
-    const heures = nombre(cellule?.heures);
-    if (cellule?.type === TYPES.SYNCHRONE) synchrone += heures;
-    else presentiel += heures;
+    const parts = partsDeCellule(cellule);
+    presentiel += parts.P;
+    synchrone += parts.S;
   }
 
   return { presentiel: arrondir(presentiel), synchrone: arrondir(synchrone) };
@@ -70,8 +123,6 @@ const REFUS = {
   rentree: 'Ce groupe n’a pas encore fait sa rentrée.',
   stage: 'Ce groupe est en stage cette semaine.',
   formation: 'Le formateur est en formation cette semaine.',
-  // Module partagé par type : l'autre part du module occupe déjà cette semaine.
-  autreType: 'Cette semaine porte déjà l’autre part de ce module (présentiel ou synchrone).',
 };
 
 function motifDeRefus(semaine) {
@@ -100,6 +151,12 @@ export function verifierCellule({
    * hebdomadaire ne s'applique pas — le plafond de cellule, lui, joue toujours.
    */
   posesSemaine = null,
+  /**
+   * Les heures de l'AUTRE type du même module, cette semaine-là — quand on ne
+   * saisit qu'une part d'une case mixte. Le plafond d'une case (un module ne
+   * prend pas plus de 20 h par semaine) porte sur le total des deux.
+   */
+  autrePart = 0,
 }) {
   const valeur = nombre(heures);
 
@@ -112,6 +169,16 @@ export function verifierCellule({
   }
 
   const plafond = plafondSemaine(semaine);
+  const autre = nombre(autrePart);
+  if (autre > 0 && arrondir(valeur + autre) > plafond) {
+    return {
+      possible: false,
+      plafond,
+      motif: `${plafond} h au plus pour ce module cette semaine — ${autre} h déjà posées en ${
+        type === TYPES.SYNCHRONE ? 'présentiel' : 'synchrone'
+      }.`,
+    };
+  }
   if (valeur > plafond) {
     return {
       possible: false,
@@ -165,17 +232,28 @@ export function verifierCellule({
   return { possible: true };
 }
 
-/** Pose une valeur, ou VIDE la cellule si les heures tombent à zéro. */
-export function poserCellule(planning, module, numero, heures, type) {
+/**
+ * Pose une valeur, ou VIDE la cellule si les heures tombent à zéro.
+ *
+ * `partSeule` (2026-10-01) : ne remplace QUE la part de ce type, l'autre reste —
+ * c'est ce qui fabrique une case mixte. Sans lui, la case entière est
+ * remplacée, comme avant.
+ */
+export function poserCellule(planning, module, numero, heures, type, { partSeule = false } = {}) {
   const courant = planning ?? {};
   const cellules = { ...(courant[module] ?? {}) };
   const valeur = nombre(heures);
+  const leType = type === TYPES.SYNCHRONE ? TYPES.SYNCHRONE : TYPES.PRESENTIEL;
 
   // Une cellule à 0 est RETIRÉE, pas conservée à zéro : le planning ne doit
   // porter que ce qui est réellement prévu, sinon l'export et la comparaison
   // « planifié vs réalisé » comptent des séances fantômes.
-  if (valeur === 0) delete cellules[numero];
-  else cellules[numero] = { heures: valeur, type: type ?? TYPES.PRESENTIEL };
+  const suivante = partSeule
+    ? celluleDepuisParts({ ...partsDeCellule(cellules[numero]), [leType]: valeur })
+    : celluleDepuisParts({ [leType]: valeur });
+
+  if (suivante) cellules[numero] = suivante;
+  else delete cellules[numero];
 
   return { ...courant, [module]: cellules };
 }

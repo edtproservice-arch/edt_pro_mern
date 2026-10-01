@@ -2,6 +2,9 @@ import {
   DROITS_PAGE,
   TYPES,
   anneeDuNomGroupe,
+  celluleDepuisParts,
+  cellulesDuType,
+  partsDeCellule,
   chargesHebdomadaires,
   dateRentree,
   fusionnerCellules,
@@ -512,6 +515,54 @@ export async function listerFormateurs(etablissementId, anneeScolaire) {
 }
 
 /**
+ * Modules partagés ENTRE PRÉSENTIEL ET SYNCHRONE, sur tout l'établissement
+ * (2026-10-01, demande du porteur : le message de la vue formateur doit
+ * remonter dans « À traiter » de l'accueil).
+ *
+ * ⚠️ LA MÊME RÈGLE QUE `typeSeul` : un (groupe, module) n'est retenu que si au
+ * moins une personne n'y assure QU'UN type pendant qu'un collègue assure
+ * l'autre — c'est exactement le cas où la vue formateur affiche le message.
+ */
+export async function partagesParType(etablissementId, anneeScolaire) {
+  const base = await Base.findOne({ etablissementId, anneeScolaire }).select(
+    'formateurs affectations'
+  );
+
+  const parCle = new Map();
+  for (const affectation of base?.affectations ?? []) {
+    const formateur = String(affectation.formateur ?? '').trim();
+    const code = String(affectation.module ?? '').trim();
+    if (formateur === '' || code === '') continue;
+    const type = affectation.type === TYPES_COURS.SYNCHRONE ? 'S' : 'P';
+    for (const groupe of separerFusion(affectation.groupe)) {
+      const cle = `${groupe}||${code}`;
+      const entree = parCle.get(cle) ?? { groupe, code, P: new Set(), S: new Set() };
+      entree[type].add(formateur);
+      parCle.set(cle, entree);
+    }
+  }
+
+  const personnes = (ensemble) =>
+    [...ensemble]
+      .map((identifiant) => ({ identifiant, nom: nomDuFormateur(base, identifiant) }))
+      .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+
+  return [...parCle.values()]
+    .filter(({ P, S }) => {
+      const seulP = [...P].some((f) => !S.has(f));
+      const seulS = [...S].some((f) => !P.has(f));
+      return (seulP && S.size > 0) || (seulS && P.size > 0);
+    })
+    .map(({ groupe, code, P, S }) => ({
+      groupe,
+      code,
+      presentiel: personnes(P),
+      synchrone: personnes(S),
+    }))
+    .sort((a, b) => a.groupe.localeCompare(b.groupe, 'fr') || a.code.localeCompare(b.code, 'fr'));
+}
+
+/**
  * Envoie à UN formateur son chronogramme À REMPLIR (2026-09-22, demande du porteur : « le
  * directeur envoie le chronogramme du formateur, à fin de remplir »).
  *
@@ -1013,9 +1064,8 @@ export async function charge(etablissementId, anneeScolaire) {
         [TYPES.PRESENTIEL, module.formateursPresentiel],
         [TYPES.SYNCHRONE, module.formateursSynchrone],
       ]) {
-        const duType = Object.fromEntries(
-          Object.entries(cellules).filter(([, cellule]) => cellule.type === type)
-        );
+        // La part de ce type de chaque case — une case mixte en a deux.
+        const duType = cellulesDuType(cellules, type);
         if (Object.keys(duType).length === 0) continue;
 
         // Sans titulaire connu, la ligne compte pour le GROUPE mais pour
@@ -1193,13 +1243,17 @@ export function versMongo(planning) {
   const converti = {};
 
   for (const [module, cellules] of Object.entries(planning ?? {})) {
-    const seances = Object.entries(cellules ?? {})
-      .filter(([, cellule]) => Number(cellule?.heures) > 0)
-      .map(([semaine, cellule]) => ({
-        semaine: `S${semaine}`,
-        heures: Number(cellule.heures),
-        type: cellule.type === 'S' ? 'S' : 'P',
-      }));
+    /*
+     * ⚠️ UNE CASE MIXTE (2026-10-01) DEVIENT DEUX ENTRÉES, une par type, pour
+     * la même semaine. Le schéma n'a pas changé : il portait déjà une LISTE.
+     */
+    const seances = Object.entries(cellules ?? {}).flatMap(([semaine, cellule]) => {
+      const { P, S } = partsDeCellule(cellule);
+      return [
+        ...(P > 0 ? [{ semaine: `S${semaine}`, heures: P, type: 'P' }] : []),
+        ...(S > 0 ? [{ semaine: `S${semaine}`, heures: S, type: 'S' }] : []),
+      ];
+    });
 
     if (seances.length > 0) converti[module] = seances;
   }
@@ -1212,11 +1266,25 @@ export function depuisMongo(planning) {
   const converti = {};
 
   for (const [module, seances] of planning ?? new Map()) {
-    const cellules = {};
+    /*
+     * ⚠️ DEUX ENTRÉES POUR LA MÊME SEMAINE SE RÉUNISSENT (2026-10-01) : une
+     * présentielle et une synchrone forment une case mixte. Avant, la seconde
+     * écrasait la première sans un mot.
+     */
+    const parts = {};
     for (const seance of seances) {
       const numero = Number(String(seance.semaine).replace(/^S/i, ''));
       if (!Number.isInteger(numero)) continue;
-      cellules[numero] = { heures: seance.heures, type: seance.type };
+      const type = seance.type === 'S' ? 'S' : 'P';
+      parts[numero] ??= { P: 0, S: 0 };
+      // Même type deux fois : la dernière l'emporte, comme avant.
+      parts[numero][type] = Number(seance.heures) || 0;
+    }
+
+    const cellules = {};
+    for (const [numero, valeur] of Object.entries(parts)) {
+      const cellule = celluleDepuisParts(valeur);
+      if (cellule) cellules[numero] = cellule;
     }
     converti[module] = cellules;
   }

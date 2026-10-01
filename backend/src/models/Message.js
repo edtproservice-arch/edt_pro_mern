@@ -232,6 +232,17 @@ const messageSchema = new mongoose.Schema(
      * messagerie ne le déclare pas, Zod le retire. Seul le service du chronogramme le pose.
      */
     chronogrammeFormateur: { type: mongoose.Schema.Types.Mixed, default: null },
+
+    /**
+     * L'état d'écart de saisie e-note d'un formateur, quand le message en porte un (2026-10-01,
+     * demande du porteur : « en message, le même style d'affichage que le panneau »). C'est lui
+     * qui fait afficher les cartes par module dans le fil — le corps ne garde qu'une phrase.
+     * Instantané `{semaine, debut, fin, enote, edt, ecart, lignes}` du détail calculé à l'envoi.
+     *
+     * ⚠️ `Mixed` et AUCUNE ROUTE PUBLIQUE NE L'ÉCRIT, comme `chronogrammeFormateur` : seul le
+     * service de l'avancement le pose.
+     */
+    ecartSaisie: { type: mongoose.Schema.Types.Mixed, default: null },
   },
   /*
    * ⚠️ `minimize: false` (2026-09-22) : par défaut, Mongoose SUPPRIME un objet imbriqué vide à

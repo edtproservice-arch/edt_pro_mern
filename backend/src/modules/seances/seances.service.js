@@ -3,6 +3,7 @@ import { PERIODES, TYPES_COURS } from 'shared/constants';
 import { JOURS } from 'shared/constants';
 import {
   absencesDuJour,
+  analyserSemaine,
   anneeDuNomGroupe,
   avantRentree,
   separerFusion,
@@ -45,7 +46,7 @@ import { Etablissement } from '../../models/Etablissement.js';
 import { Seance } from '../../models/Seance.js';
 import { lister as listerContraintes } from '../base/contraintes.service.js';
 import { HttpError, badRequest, conflict, notFound } from '../../lib/httpError.js';
-import { exigerCoursInchange, refuser, verrouActif } from './verrouChronogramme.js';
+import { exigerCoursInchange, refuser, retraitAligne, verrouActif } from './verrouChronogramme.js';
 import {
   figerParPublication,
   sansFaireEchouer as sansFaireEchouerTrace,
@@ -73,31 +74,59 @@ import { detacherRattrapage, synchroniser } from '../absences/absences.service.j
  */
 
 /**
- * La semaine publiée d'une année, prête à afficher.
+ * ═══ ⚠️ PUBLICATION PAR SEMAINE (2026-10-01, demande du porteur) ═══
+ * « L'emploi du temps ne doit pas être affiché aux sessions formateur,
+ * stagiaire et gestionnaire si le directeur n'a pas cliqué sur Publier, pour
+ * chaque semaine. » Il n'y a donc plus UNE semaine publiée par année, mais une
+ * entrée par semaine publiée ; une semaine sans entrée est MASQUÉE à ceux qui
+ * ne font que consulter (voir `voitNonPubliees` dans les routes).
+ */
+function entreesDeLAnnee(etablissement, anneeScolaire) {
+  return (etablissement?.publications ?? [])
+    .filter((publication) => publication.anneeScolaire === anneeScolaire)
+    // ⚠️ Champ par champ, pas `...publication` : `contexte` lit un document
+    // Mongoose (pas `lean`), dont l'étalement ne rend pas les champs.
+    .map((publication) => ({
+      semaine: publication.semaine,
+      publieeLe: publication.publieeLe,
+      lue: analyserSemaine(publication.semaine),
+    }))
+    .filter((publication) => publication.lue)
+    .sort((a, b) => a.lue.debut.getTime() - b.lue.debut.getTime());
+}
+
+/** Les semaines publiées d'une année, de la plus ancienne à la plus récente. */
+function semainesPublieesDe(etablissement, anneeScolaire) {
+  return entreesDeLAnnee(etablissement, anneeScolaire).map((publication) =>
+    normaliserValeurSemaine(publication.semaine)
+  );
+}
+
+/**
+ * La DERNIÈRE semaine publiée d'une année, prête à afficher — le tableau de
+ * bord et les propositions raisonnent encore sur elle.
  *
  * ⚠️ `null` QUAND RIEN N'EST PUBLIÉ, jamais un objet vide : « aucune
  * publication » et « publication sans semaine » ne veulent pas dire la même
  * chose, et l'écran doit pouvoir retomber sur la règle du week-end.
  */
 function publicationDeLAnnee(etablissement, anneeScolaire) {
-  const entree = (etablissement?.publications ?? []).find(
-    (publication) => publication.anneeScolaire === anneeScolaire
-  );
+  const entree = entreesDeLAnnee(etablissement, anneeScolaire).at(-1);
   if (!entree) return null;
 
   return {
-    semaine: entree.semaine,
+    semaine: normaliserValeurSemaine(entree.semaine),
     publieeLe: entree.publieeLe,
   };
 }
 
 /**
- * Publie une semaine — elle devient celle qui FAIT FOI.
+ * Publie une semaine — elle devient visible des sessions consultatives.
  * ← `publish_timetable.php` (POST)
  *
  * ═══ ⚠️ CE QUI CHANGE PAR RAPPORT À L'EXISTANT ═══
- *  · **Une entrée par ANNÉE** : là-bas une seule colonne servait toutes les
- *    années, et publier dans l'une effaçait la publication de l'autre.
+ *  · **Une entrée par SEMAINE** (2026-10-01) : publier AJOUTE la semaine aux
+ *    semaines publiées, sans retirer les autres.
  *  · **Aucune ligne fantôme** : `publish_timetable.php` INSÉRAIT une semaine
  *    vide (`donnees_json = '{}'`) quand elle n'avait jamais été saisie — il
  *    publiait donc ce qui n'existait pas. Ici rien n'est créé : la publication
@@ -115,13 +144,13 @@ export async function publier(etablissementId, anneeScolaire, valeur, parUtilisa
   }
 
   /*
-   * ⚠️ UN SEUL ALLER-RETOUR, ET PAS DE LECTURE-PUIS-ÉCRITURE. On retire
-   * l'entrée de l'année puis on la repose : deux publications simultanées ne
-   * peuvent pas en laisser deux pour la même année.
+   * ⚠️ PAS DE LECTURE-PUIS-ÉCRITURE. On retire l'entrée de CETTE semaine puis
+   * on la repose : republier ne crée pas de doublon, et ne touche pas aux
+   * autres semaines publiées.
    */
   await Etablissement.updateOne(
     { _id: etablissementId },
-    { $pull: { publications: { anneeScolaire } } }
+    { $pull: { publications: { anneeScolaire, semaine } } }
   );
   await Etablissement.updateOne(
     { _id: etablissementId },
@@ -156,20 +185,25 @@ export async function publier(etablissementId, anneeScolaire, valeur, parUtilisa
 }
 
 /**
- * Retire la publication de l'année — on retombe sur la règle du week-end.
- * ← `publish_timetable.php` (DELETE)
+ * Retire la publication d'UNE semaine — elle redevient masquée aux sessions
+ * consultatives. ← `publish_timetable.php` (DELETE)
  *
- * ⚠️ SEULE L'ANNÉE COURANTE EST TOUCHÉE. L'existant remettait à zéro TOUT
+ * ⚠️ SEULE CETTE SEMAINE EST TOUCHÉE. L'existant remettait à zéro TOUT
  * l'établissement (`UPDATE … WHERE etablissement_id = ?`) : dépublier une
  * semaine effaçait aussi la publication des autres années.
  */
-export async function depublier(etablissementId, anneeScolaire) {
+export async function depublier(etablissementId, anneeScolaire, valeur) {
+  const semaine = normaliserValeurSemaine(valeur);
+  if (!semaine) {
+    throw badRequest(`Semaine invalide : « ${valeur} »`, { code: 'SEMAINE_INVALIDE' });
+  }
+
   await Etablissement.updateOne(
     { _id: etablissementId },
-    { $pull: { publications: { anneeScolaire } } }
+    { $pull: { publications: { anneeScolaire, semaine } } }
   );
 
-  return { semaine: null };
+  return { semaine };
 }
 
 /**
@@ -238,6 +272,7 @@ export async function contexte(etablissementId, anneeScolaire) {
      * présentateur qui s'est présenté sept fois dans ce projet.
      */
     publication: publicationDeLAnnee(etablissement, anneeScolaire),
+    publications: semainesPublieesDe(etablissement, anneeScolaire),
     salles: [...(etablissement?.espaces ?? []), ...empruntes].sort((a, b) =>
       String(a).localeCompare(String(b), 'fr', { numeric: true })
     ),
@@ -1286,7 +1321,10 @@ export async function vider(
     formateurMatricule: creneau.formateurMatricule,
   };
 
-  const occupante = await Seance.findOne(cible).select('rattrapageDe').session(session).lean();
+  const occupante = await Seance.findOne(cible)
+    .select('rattrapageDe groupe module seance salle')
+    .session(session)
+    .lean();
 
   /*
    * ═══ ⚠️ SOUS VERROU, SEUL UN RATTRAPAGE SE VIDE (2026-09-28) ═══
@@ -1295,9 +1333,18 @@ export async function vider(
    * Absences est permis. Les deux font la même chose — `detacherRattrapage`
    * reprend ses 2,5 h au chronogramme juste en dessous —, donc les volumes ne
    * bougent pas : c'est le pendant exact de l'exemption du PLACEMENT d'un
-   * rattrapage. Toute autre séance, et une case vide, restent refusées.
+   * rattrapage.
+   *
+   * ⚠️ ET UNE SÉANCE EN TROP OU HORS CHRONOGRAMME (2026-10-01, demande du
+   * porteur) : la retirer RAPPROCHE la grille du plan, à condition de ne créer
+   * aucun manque — voir `retraitAligne`. Toute autre séance, et une case vide,
+   * restent refusées.
    */
-  if (verrouille && !occupante?.rattrapageDe) {
+  if (
+    verrouille &&
+    !occupante?.rattrapageDe &&
+    !(await retraitAligne(etablissementId, anneeScolaire, normalisee, occupante, session))
+  ) {
     throw refuser('supprimer une séance');
   }
 
@@ -1530,6 +1577,53 @@ export async function publicationCourante(etablissementId, anneeScolaire) {
     .select('publications')
     .lean();
   return publicationDeLAnnee(etablissement, anneeScolaire);
+}
+
+/**
+ * Toutes les semaines publiées d'une année, et la dernière d'entre elles —
+ * en UNE lecture, pour les routes qui ont besoin des deux.
+ */
+export async function publicationsDeLAnnee(etablissementId, anneeScolaire) {
+  const etablissement = await Etablissement.findById(etablissementId)
+    .select('publications')
+    .lean();
+  return {
+    publication: publicationDeLAnnee(etablissement, anneeScolaire),
+    publications: semainesPublieesDe(etablissement, anneeScolaire),
+  };
+}
+
+/**
+ * Cette semaine est-elle publiée ? Une valeur illisible ne l'est jamais.
+ */
+export async function estPubliee(etablissementId, anneeScolaire, valeur) {
+  const semaine = normaliserValeurSemaine(valeur);
+  if (!semaine) return false;
+  const { publications } = await publicationsDeLAnnee(etablissementId, anneeScolaire);
+  return publications.includes(semaine);
+}
+
+/**
+ * Ce qu'une session consultative reçoit d'une semaine NON PUBLIÉE : la forme
+ * de la grille (jours, fériés, vacances) sans aucune séance, et le drapeau qui
+ * permet à l'écran de dire pourquoi elle est vide.
+ *
+ * ⚠️ LE FILTRAGE A LIEU ICI, AVANT QUE LA RÉPONSE NE QUITTE LE SERVEUR —
+ * jamais côté client, où les séances seraient déjà parties.
+ */
+export function masquerSemaine(grille) {
+  return {
+    ...grille,
+    seances: [],
+    jours: (grille.jours ?? []).map((jour) => ({
+      ...jour,
+      stages: [],
+      formations: [],
+      formateursAilleurs: [],
+      espacesAilleurs: [],
+    })),
+    nonPubliee: true,
+  };
 }
 
 /**

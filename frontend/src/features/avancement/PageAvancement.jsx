@@ -19,6 +19,7 @@ import {
   facettesAvancement,
   filtrerAvancement,
   nombreDeFiltres,
+  progressionEnote,
   referenceDeLAxe,
   totalAvancement,
 } from 'shared/domain';
@@ -33,7 +34,7 @@ import BoutonImportEnote from '@/features/configuration/BoutonImportEnote';
 import EnTetePartage from '@/features/partages/EnTetePartage';
 import { usePartagesAvecMoi } from '@/features/partages/usePartagesAvecMoi';
 import { basculerPanneauTaux, usePanneauTaux } from '@/lib/panneauTaux';
-import { chargerAvancement } from './api';
+import { chargerAvancement, chargerPointsEnote } from './api';
 import { nombre } from '@/lib/nombres';
 import { cn } from '@/lib/utils';
 import GrapheAvancement, { Legende } from './GrapheAvancement';
@@ -147,6 +148,31 @@ export default function PageAvancement() {
      */
     placeholderData: keepPreviousData,
   });
+
+  /*
+   * ═══ ⚠️ LA COURBE SUIT LA FACE (2026-10-01, signalé par le porteur : « en
+   * e-note, le graphe semaine par semaine reste celui d'eDTpro, alors que
+   * l'anneau affiche bien le taux e-note ») ═══
+   * Revient sur la décision du 2026-08-31 (`EnTeteAvancement`) de garder la
+   * courbe des séances sur les deux faces : à côté d'un anneau e-note, elle se
+   * lisait comme une contradiction. Sur la face e-note, chaque dépôt devient un
+   * point — le taux déclaré à sa semaine — et le rythme régional reste le même.
+   *
+   * ⚠️ CHARGÉS SEULEMENT SUR CETTE FACE : ils relisent tous les imports de
+   * l'année, ce que l'affichage par défaut n'a pas à payer.
+   */
+  const pointsEnote = useQuery({
+    queryKey: ['avancement', 'points-enote', dateObservee],
+    queryFn: () => chargerPointsEnote(dateObservee),
+    enabled: face === 'enote',
+    retry: false,
+    placeholderData: keepPreviousData,
+  });
+  const progression = useMemo(() => {
+    const brute = requete.data?.progression;
+    if (face !== 'enote' || !brute) return brute;
+    return progressionEnote(brute, pointsEnote.data?.points ?? [], requete.data?.semaineCourante ?? null);
+  }, [face, requete.data, pointsEnote.data]);
 
   /*
    * ═══ ⚠️ FILTRER LES LIGNES, PUIS AGRÉGER — jamais l'inverse ═══
@@ -431,7 +457,7 @@ export default function PageAvancement() {
           total={total}
           totalEtablissement={totalEtablissement}
           face={face}
-          progression={requete.data?.progression}
+          progression={progression}
           regional={regional}
           /* ⚠️ CALCULÉE PAR LE SERVEUR, plus déduite du rythme régional : celui-ci
              ne monte pas pendant les vacances, et la déduction désignait alors la

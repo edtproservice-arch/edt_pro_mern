@@ -14,6 +14,7 @@ import {
   lundiPremiereSemaine,
   objectifsParGroupe,
   plageDeSemaines,
+  pointsEnote,
   progressionEtablissement,
   SEMAINES_ANNEE_REGIONALE,
   semaineDansAnnee,
@@ -992,6 +993,38 @@ async function donneesEcartsSaisie(etablissementId, anneeScolaire, cle = null) {
     maintenant: instantLocal(new Date()),
     horaires: (await horairesSeances()).courant,
   };
+}
+
+/**
+ * Les points de la courbe de la face E-NOTE : le taux déclaré de chaque dépôt,
+ * rangé dans sa semaine scolaire (2026-10-01, signalé par le porteur : la courbe
+ * restait celle d'eDTpro sur la face e-note).
+ *
+ * ⚠️ UNE ROUTE À PART : elle relit TOUS les imports de l'année, un parcours
+ * que la face eDTpro — l'affichage par défaut — n'a pas à payer.
+ *
+ * ⚠️ ELLE SE REMBOBINE comme le reste de l'écran : à une date observée, seuls
+ * les dépôts déjà faits ce jour-là comptent.
+ */
+export async function pointsEnoteDe(etablissementId, anneeScolaire, observation = null) {
+  const [imports, national] = await Promise.all([
+    EnoteImport.find({
+      etablissementId,
+      anneeScolaire,
+      ...(observation ? { importeLe: { $lte: observation } } : {}),
+    })
+      .select('importeLe entete lignes')
+      .lean(),
+    calendrierNational(anneeScolaire),
+  ]);
+
+  /* ⚠️ LA MÊME ANCRE DE S1 QUE LA COURBE eDTpro (`progressionEtablissement`
+     reçoit `national.rentrees`) : sinon les deux faces numéroteraient leurs
+     semaines différemment sur le même axe. */
+  return pointsEnote(
+    imports.map((importe) => ({ importeLe: importe.importeLe, lignes: lireAvancementEnote(importe) })),
+    (date) => semaineDansAnnee(anneeScolaire, date, national.rentrees).numero
+  );
 }
 
 /**

@@ -33,6 +33,10 @@ export const chargerChronologie = () => api.get('/api/v2/avancement/chronologie'
 export const chargerAchevement = (date = null) =>
   api.get(`/api/v2/avancement/achevement${date ? `?date=${date}` : ''}`);
 
+/** Les points de la courbe de la face e-note : le taux déclaré de chaque dépôt, par semaine. */
+export const chargerPointsEnote = (date = null) =>
+  api.get(`/api/v2/avancement/points-enote${date ? `?date=${date}` : ''}`);
+
 /**
  * L'écart de saisie e-note / eDTpro, par formateur et par dépôt e-note.
  * Relit tous les imports de l'année : à ne charger que là où il s'affiche.

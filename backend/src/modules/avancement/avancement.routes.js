@@ -85,6 +85,20 @@ router.get(
 );
 
 /*
+ * Les points de la courbe de la face e-note — chargés seulement sur cette face.
+ * Elle suit la même date que les taux (`?date=`).
+ */
+router.get('/points-enote', async (req, res, next) => {
+  try {
+    res.json({
+      points: await service.pointsEnoteDe(req.etablissementId, req.anneeScolaire, dateObservee(req)),
+    });
+  } catch (erreur) {
+    next(erreur);
+  }
+});
+
+/*
  * Les PLAGES de chaque module — prévue au chronogramme, posée dans la grille.
  * ← `get_modules_completion_dates.php`
  *

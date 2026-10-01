@@ -1,6 +1,7 @@
 import { dureeSeance } from '../emploi/grille.js';
 import { analyserSemaine } from '../planning/semaines.js';
 import { SEMAINES_ANNEE_REGIONALE } from './regional.js';
+import { totalAvancement } from './agregation.js';
 
 /**
  * L'avancement de l'ÉTABLISSEMENT semaine après semaine, face au rythme
@@ -132,4 +133,61 @@ export function heuresParJour(seances = [], jours = [], rentrees = []) {
   }
 
   return parSemaine;
+}
+
+/**
+ * ═══ LA COURBE DE LA FACE E-NOTE ═══ (2026-10-01, signalé par le porteur :
+ * « lorsque je bascule e-note, le graphe semaine par semaine reste celui
+ * d'eDTpro, alors que l'anneau affiche bien le taux e-note ».)
+ *
+ * E-note n'a pas d'historique par semaine : chaque IMPORT est un état déclaré.
+ * La règle « une seule base par semaine » en fait un point hebdomadaire — le
+ * taux de chaque dépôt, calculé comme l'anneau (`totalAvancement` des lignes du
+ * fichier), rangé dans la semaine scolaire de son import. Deux dépôts d'une même
+ * semaine : le dernier fait foi, comme pour la frise.
+ *
+ * ⚠️ LE TAUX DE CHAQUE DÉPÔT SUR SON PROPRE PRÉVU : le dernier point vaut ainsi
+ * exactement ce que dit l'anneau, qui lit le même fichier.
+ *
+ * @param {Array<{importeLe: Date|string, lignes: Array}>} depots — lignes déjà
+ *   lues par `lireAvancementEnote`
+ * @param {(date: Date) => number} semaineDe — le numéro de semaine scolaire d'une date
+ * @returns {Array<{numero: number, avancement: number|null, importeLe: string}>}
+ */
+export function pointsEnote(depots = [], semaineDe) {
+  const parSemaine = new Map();
+  [...depots]
+    .filter((depot) => depot?.importeLe)
+    .sort((a, b) => new Date(a.importeLe) - new Date(b.importeLe))
+    .forEach((depot) => {
+      const { prevu, realise } = totalAvancement(depot.lignes ?? []);
+      parSemaine.set(semaineDe(new Date(depot.importeLe)), {
+        avancement: prevu > 0 ? Math.round((realise / prevu) * 1000) / 10 : null,
+        importeLe: new Date(depot.importeLe).toISOString(),
+      });
+    });
+
+  return [...parSemaine.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([numero, point]) => ({ numero, ...point }));
+}
+
+/**
+ * La progression eDTpro, réécrite avec les points e-note : même axe, même
+ * rythme régional et mêmes vacances — seul l'avancement change de source.
+ *
+ * ⚠️ ENTRE DEUX DÉPÔTS, LE DERNIER ÉTAT DÉCLARÉ TIENT : e-note ne change que
+ * par import. Avant le premier dépôt, rien n'est déclaré (`null`) ; après la
+ * semaine en cours, rien n'a encore pu l'être (`null`) — prolonger la courbe
+ * jusqu'en S39 annoncerait un état futur.
+ */
+export function progressionEnote(progression = [], points = [], semaineCourante = null) {
+  const parNumero = new Map(points.map((point) => [point.numero, point.avancement]));
+  const borne = Math.max(semaineCourante ?? 0, points.at(-1)?.numero ?? 0);
+  let courant = null;
+
+  return progression.map((point) => {
+    if (parNumero.has(point.numero)) courant = parNumero.get(point.numero);
+    return { ...point, avancement: point.numero <= borne ? courant : null };
+  });
 }

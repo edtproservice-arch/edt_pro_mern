@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ChevronDown, Download, File, FileSpreadsheet, FileText, Trash2 } from 'lucide-react';
+import { File, FileSpreadsheet, FileText, Ticket, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -69,8 +69,8 @@ function TableauRegistre({ filtre, encadrement, compact = false }) {
         ⚠️ AUTANT DE BILLETS QUE D'ABSENCES JUSTIFIÉES DANS CETTE LISTE
         (2026-09-29, demande du porteur : « si un seul stagiaire justifié il
         s'affiche une seule billet… si deux stagiaires justifient en même
-        temps il s'affiche deux billets ») — un seul geste, jamais une icône
-        par ligne à recliquer une à une.
+        temps il s'affiche deux billets ») — un seul geste. Chaque ligne
+        justifiée a AUSSI son icône billet (2026-10-01), pour n'en sortir qu'un.
       */}
       {encadrement && !compact && <TelechargerBillets absences={absences} />}
       {!compact && total > absences.length && (
@@ -83,26 +83,55 @@ function TableauRegistre({ filtre, encadrement, compact = false }) {
   );
 }
 
-/** Le bouton « Télécharger les billets » — un billet par absence JUSTIFIÉE actuellement listée. */
+/**
+ * Tous les billets de la liste d'un coup — une icône billet dans le coin DROIT,
+ * au-dessus des icônes de chaque ligne (2026-10-01, demande du porteur).
+ *
+ * ⚠️ SEULEMENT À PARTIR DE DEUX ABSENCES JUSTIFIÉES : pour une seule, l'icône
+ * de sa ligne télécharge déjà le même billet.
+ */
 function TelechargerBillets({ absences }) {
   const justifiees = absences.filter((a) => a.justifiee);
+  if (justifiees.length < 2) return null;
+
+  return (
+    <div className="flex justify-end">
+      <MenuBillet ids={justifiees.map((a) => a.id)} libelle={`Télécharger les ${justifiees.length} billets`}>
+        <span className="ml-1 text-xs font-medium tabular-nums">{justifiees.length}</span>
+      </MenuBillet>
+    </div>
+  );
+}
+
+/** L'icône billet de UNE absence justifiée, sur sa ligne. */
+function BilletDeLigne({ absence }) {
+  if (!absence.justifiee) return null;
+  return <MenuBillet ids={[absence.id]} libelle={`Télécharger le billet de ${absence.nomComplet} du ${absence.date}`} />;
+}
+
+/** Une icône billet qui ouvre le choix du format, puis télécharge les billets `ids`. */
+function MenuBillet({ ids, libelle, children = null }) {
   const telechargement = useMutation({
-    mutationFn: (format) => telechargerBillets({ format, ids: justifiees.map((a) => a.id) }),
+    mutationFn: (format) => telechargerBillets({ format, ids }),
     onError: (erreur) => toast.error('Téléchargement impossible', { description: erreur.message }),
   });
-
-  if (justifiees.length === 0) return null;
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" disabled={telechargement.isPending}>
-          <Download className="size-3.5" />
-          {justifiees.length === 1 ? 'Télécharger le billet' : `Télécharger les ${justifiees.length} billets`}
-          <ChevronDown className="size-3.5 opacity-60" />
+        <Button
+          variant="ghost"
+          size={children ? 'sm' : 'icon'}
+          className={cn('text-muted-foreground hover:text-foreground', children ? 'h-7 px-2' : 'size-7')}
+          disabled={telechargement.isPending}
+          aria-label={libelle}
+          title={libelle}
+        >
+          <Ticket className="size-3.5" />
+          {children}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-56">
+      <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuItem onSelect={() => telechargement.mutate('docx')}>
           <FileText className="size-3.5 text-blue-600" />
           Télécharger en Word
@@ -227,7 +256,18 @@ function colonnes({ encadrement, compact }) {
       rendu: (a) => (encadrement ? <Motif absence={a} /> : <span className="text-xs">{a.motif || '—'}</span>),
     }
   );
-  if (encadrement) liste.push({ id: 'actions', entete: '', rendu: (a) => <Supprimer absence={a} /> });
+  if (encadrement) {
+    liste.push({
+      id: 'actions',
+      entete: '',
+      rendu: (a) => (
+        <span className="flex items-center justify-end gap-0.5">
+          <BilletDeLigne absence={a} />
+          <Supprimer absence={a} />
+        </span>
+      ),
+    });
+  }
   return liste;
 }
 

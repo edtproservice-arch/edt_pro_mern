@@ -73,9 +73,6 @@ const LIBELLE_COMPLEMENT = {
   modules: 'Module(s)',
 };
 
-/** Le même mot, au pluriel, pour le compte de repli : « 13 groupes ». */
-const PLURIEL_COMPLEMENT = { formateurs: 'formateurs', groupes: 'groupes', modules: 'modules' };
-
 /** « A » ne se lit pas : c'est le badge de la grille, pas un mot. */
 const SEMESTRE_LU = { S1: 'Semestre 1', S2: 'Semestre 2', A: 'Annuel' };
 
@@ -119,9 +116,7 @@ export default function GrapheAvancement({
      * calculs finiraient par diverger d'un caractère, et le texte déborderait
      * du tracé sans que rien ne le signale.
      */
-    etiquette: complement
-      ? resumerComplements(ligne.complements, PLURIEL_COMPLEMENT[complement])
-      : null,
+    etiquette: complement ? resumerComplements(ligne.complements) : null,
   }));
 
   const brutes = avecObjectif.filter((ligne) => ligne.prevu > 0 || ligne.realise > 0);
@@ -865,7 +860,7 @@ const MARGE_BASSE =
  * `decouper` qui replie et `tailleCommune` qui rétrécit : le budget ci-dessous
  * suffit à borner la LISTE, et chaque nom retenu reste entier.
  */
-function resumerComplements(valeurs = [], mot = '') {
+function resumerComplements(valeurs = []) {
   if (!valeurs || valeurs.length === 0) return null;
 
   /*
@@ -874,18 +869,22 @@ function resumerComplements(valeurs = [], mot = '') {
    * étaient coupés — or « ACADA101 » et « ACADA101 (FQ) » sont deux groupes
    * différents. Un nom ENTIER suivi d'un compte en dit plus que deux moitiés.
    */
-  let ligne = '';
-  let nommes = 0;
+  /*
+   * ═══ ⚠️ LE PREMIER NOM S'ÉCRIT TOUJOURS ═══ (2026-10-01, signalé par le
+   * porteur : EGT105 affichait « 1 formateurs » au lieu de « SALAH EDDINE EL
+   * BANANI ».) Un nom seul plus long que le budget tombait sur le compte — qui
+   * ne dit rien quand il n'y a qu'une personne. Le budget borne la LISTE, pas un
+   * nom : `decouper` le replie sur trois lignes et `tailleCommune` le rétrécit.
+   */
+  let ligne = valeurs[0];
+  let nommes = 1;
 
-  for (const valeur of valeurs) {
-    const candidat = ligne ? `${ligne}, ${valeur}` : valeur;
+  for (const valeur of valeurs.slice(1)) {
+    const candidat = `${ligne}, ${valeur}`;
     if (candidat.length > BUDGET_COMPLEMENT) break;
     ligne = candidat;
     nommes += 1;
   }
-
-  /* Aucun ne tient : on compte, plutôt que d'afficher un début de mot. */
-  if (nommes === 0) return `${valeurs.length} ${mot}`;
 
   const reste = valeurs.length - nommes;
   return reste > 0 ? `${ligne} +${reste}` : ligne;

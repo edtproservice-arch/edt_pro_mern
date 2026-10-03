@@ -198,3 +198,46 @@ describe('Simulation des relances — le même problème que la génération (20
     expect(problemesEnvoyes[0].taches.map((t) => t.sallesPreferees)).toEqual([['B1']]);
   });
 });
+
+describe('Semaines figées — vacances (2026-10-03, demande du porteur)', () => {
+  /** Met S9 en vacances, aux dates que la génération elle-même lui donne. */
+  async function mettreS9EnVacances() {
+    const { semainesChronogramme } = await import('shared/domain');
+    const { obtenir } = await import('../../src/modules/calendrierNational/calendrierNational.service.js');
+    const { rentrees } = await obtenir(ANNEE);
+    const s9 = semainesChronogramme(ANNEE, { rentrees }).find((s) => s.numero === 9);
+    await Etablissement.updateOne(
+      { _id: ici.id },
+      { $set: { 'calendrier.vacances': [{ libelle: 'Vacances test', debut: s9.debut, fin: s9.fin }] } }
+    );
+  }
+
+  it('la route les liste, avec leur motif', async () => {
+    await mettreS9EnVacances();
+    const figees = await service.semainesFigees(ici.id, ANNEE);
+    expect(figees).toContainEqual({ numero: 9, motif: 'vacances' });
+  });
+
+  it('⚠️ la génération ne la touche pas : ni solveur, ni effacement', async () => {
+    await mettreS9EnVacances();
+    await Seance.create({
+      etablissementId: ici.id,
+      anneeScolaire: ANNEE,
+      semaine: SEMAINE,
+      jour: 'Mardi',
+      date: new Date(`${ANNEE}-11-03T00:00:00.000Z`),
+      seance: 'S1',
+      formateurMatricule: MATRICULE,
+      groupe: 'GM103',
+      module: 'M101',
+      salle: 'A12',
+      statut: 'planifie',
+    });
+
+    const rapport = await service.generer(ici.id, ANNEE, { semaines: [SEMAINE] });
+
+    expect(problemesEnvoyes).toHaveLength(0);
+    expect(rapport.semaines[0]).toMatchObject({ semaine: SEMAINE, figee: true, motif: 'vacances' });
+    expect(await Seance.countDocuments({ etablissementId: ici.id, semaine: SEMAINE })).toBe(1);
+  });
+});

@@ -8,7 +8,12 @@
  */
 
 import { MOTIFS_IGNOREE, PERIODES } from 'shared/constants';
-import { analyserSemaine, normaliserValeurSemaine } from 'shared/domain';
+import {
+  analyserSemaine,
+  fusionnerVacances,
+  normaliserValeurSemaine,
+  semainesChronogramme,
+} from 'shared/domain';
 
 import { AutoGenConfig } from '../../models/AutoGenConfig.js';
 import { Base } from '../../models/Base.js';
@@ -16,6 +21,7 @@ import { Chronogramme } from '../../models/Chronogramme.js';
 import { Etablissement } from '../../models/Etablissement.js';
 import { Seance } from '../../models/Seance.js';
 import { notFound } from '../../lib/httpError.js';
+import { joursFeries as joursFeriesEtablissement } from '../calendrier/calendrier.service.js';
 import { obtenir as calendrierNational } from '../calendrierNational/calendrierNational.service.js';
 import { chargerPieces } from '../espaces/espaces.service.js';
 import { autresEtablissementsDuFormateur } from '../espaces/formateursMutualises.service.js';
@@ -197,6 +203,37 @@ export async function chargerCommun(etablissementId, anneeScolaire) {
       national.rentrees
     ),
   };
+}
+
+/**
+ * Les semaines FIGÉES pour la génération : celles que le chronogramme ferme.
+ *
+ * ═══ ⚠️ LA RÈGLE DU CHRONOGRAMME, PAS UNE SECONDE ═══ (2026-10-03, demande du
+ * porteur : « figer les semaines en vacances pour éviter la génération »)
+ * `semainesChronogramme` sans groupe — la colonne commune : une semaine qui
+ * touche les vacances est fermée en entier, une semaine dont les fériés
+ * prennent tous les jours aussi. C'est exactement ce que l'écran du
+ * chronogramme grise ; une règle à part ferait générer une semaine que le
+ * chronogramme montre fermée, ou l'inverse.
+ *
+ * @returns {Promise<Array<{numero: number, motif: string}>>}
+ */
+export async function semainesFigees(etablissementId, anneeScolaire) {
+  const [etablissement, { joursFeries }, national] = await Promise.all([
+    Etablissement.findById(etablissementId).select('calendrier').lean(),
+    joursFeriesEtablissement(etablissementId, anneeScolaire),
+    calendrierNational(anneeScolaire),
+  ]);
+
+  const vacances = fusionnerVacances(
+    national.vacances,
+    etablissement?.calendrier?.vacances ?? [],
+    etablissement?.calendrier?.vacancesEcartees ?? []
+  );
+
+  return semainesChronogramme(anneeScolaire, { joursFeries, vacances, rentrees: national.rentrees })
+    .filter((semaine) => !semaine.disponible)
+    .map((semaine) => ({ numero: semaine.numero, motif: semaine.motif ?? 'ferie' }));
 }
 
 /**

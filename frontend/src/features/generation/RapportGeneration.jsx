@@ -61,6 +61,20 @@ function LigneSemaine({ semaine }) {
     );
   }
 
+  if (semaine.figee) {
+    // ⚠️ FIGÉE (2026-10-03) : vacances ou fériés partout — rien n'a été touché,
+    //    pas même les séances saisies à la main.
+    return (
+      <li className="flex items-start gap-2 py-1.5 text-xs text-muted-foreground">
+        <CalendarOff className="mt-0.5 size-3.5 shrink-0" />
+        <span>
+          <strong>{libelleSemaine(semaine.semaine, { court: true })}</strong> — semaine figée (
+          {semaine.motif === 'vacances' ? 'vacances' : 'fériés'}) : non générée
+        </span>
+      </li>
+    );
+  }
+
   if (semaine.fermee) {
     /*
      * ═══ ⚠️ FERMÉE N'EST PAS VIDE, ET LA DIFFÉRENCE EST TOUT LE MESSAGE ═══
@@ -131,7 +145,7 @@ function LigneSemaine({ semaine }) {
         {semaine.deconseillees > 0 && (
           <span className="text-warning">
             {' '}
-            · {semaine.deconseillees} sur un créneau à éviter
+            · {semaine.deconseillees} sur une indisponibilité
           </span>
         )}
         {semaine.horsSalle > 0 && (
@@ -343,10 +357,10 @@ export default function RapportGeneration({ rapport, onRelancer }) {
          */
         <Alerte
           type="info"
-          titre="Des consignes de formateurs n’ont pas pu être tenues"
+          titre="Des indisponibilités de formateurs n’ont pas pu être respectées"
         >
           <strong>{total.deconseillees} séance(s)</strong> sont posées sur un créneau
-          qu’un formateur préférait éviter. Le générateur ne s’y résout que faute de
+          où le formateur s’est déclaré indisponible. Le générateur ne s’y résout que faute de
           mieux : l’autre solution était de ne pas placer ces heures du tout. Elles
           sont signalées semaine par semaine ci-dessous.
         </Alerte>
@@ -354,21 +368,20 @@ export default function RapportGeneration({ rapport, onRelancer }) {
 
       {total.horsSalle > 0 && (
         /*
-         * ═══ ⚠️ MÊME RAISON QUE CI-DESSUS, POUR LES SALLES ═══ (2026-09-23)
-         * Une salle déclarée sur l'affectation est une consigne, pas une
-         * interdiction : si l'atelier est pris, la séance se pose ailleurs
-         * plutôt que de ne pas se poser du tout.
+         * ═══ ⚠️ LA SALLE DU MODULE EST IMPOSÉE DEPUIS LE 2026-10-03 ═══
+         * Le générateur ne pose plus une séance hors de sa salle de lui-même :
+         * ce compte n'est non nul que si la relance « toutes les salles » a
+         * levé l'imposition, à la demande du directeur.
          *
          * ⚠️ **SANS CETTE LIGNE, PERSONNE NE SAIT QUE LA CONSIGNE A CÉDÉ.** Le
          *    cours apparaîtrait dans une salle ordinaire alors qu'il demande un
          *    atelier — et c'est le formateur qui le découvrirait devant sa
          *    classe, sans machine.
          */
-        <Alerte type="info" titre="Des salles déclarées n’ont pas pu être tenues">
+        <Alerte type="info" titre="Des salles imposées ont été levées">
           <strong>{total.horsSalle} séance(s)</strong> sont posées ailleurs que dans la
-          salle prévue pour leur module. Le générateur ne s’y résout que faute de mieux :
-          l’autre solution était de ne pas placer ces heures du tout. Elles sont
-          signalées semaine par semaine ci-dessous.
+          salle imposée pour leur module, parce que la relance « toutes les salles » a
+          levé cette règle. Elles sont signalées semaine par semaine ci-dessous.
         </Alerte>
       )}
 

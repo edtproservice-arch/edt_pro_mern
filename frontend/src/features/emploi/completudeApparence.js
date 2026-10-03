@@ -68,7 +68,7 @@ export const libelleNature = (nature) => NATURES[nature]?.libelle ?? nature;
  */
 export const NIVEAUX_PLACEMENT = {
   libre: { libelle: 'Créneau libre', classe: 'bg-success/10 text-success' },
-  a_eviter: { libelle: 'Créneau à éviter', classe: 'bg-warning/15 text-warning' },
+  a_eviter: { libelle: 'Indisponibilité formateur', classe: 'bg-warning/15 text-warning' },
   sans_salle: { libelle: 'Sans salle', classe: 'bg-accent-purple/20 text-accent-purple-deep' },
 };
 

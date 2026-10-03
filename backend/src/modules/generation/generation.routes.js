@@ -100,6 +100,18 @@ router.post(
 );
 
 /**
+ * Les semaines figées de l'année — vacances, ou fériés sur tous les jours
+ * (2026-10-03). Le dialogue les grise ; `generer()` les ignore de toute façon.
+ */
+router.get('/semaines-figees', async (req, res, next) => {
+  try {
+    res.json({ semaines: await service.semainesFigees(req.etablissementId, req.anneeScolaire) });
+  } catch (erreur) {
+    next(erreur);
+  }
+});
+
+/**
  * Ce qu'un assouplissement récupérerait — sans rien écrire.
  *
  * ⚠️ EN POST POUR LA MÊME RAISON QUE `/previsualisation` : la liste des

@@ -73,7 +73,7 @@ export default function PlacementManquantes({ semaine, numero, aPlacer }) {
         <div className="flex flex-col items-end gap-3 rounded-lg border px-3 py-2.5">
           <p className="w-full text-sm text-muted-foreground">
             Chercher une place pour les séances à placer : créneau libre d’abord, puis créneau
-            « à éviter » du formateur, puis créneau sans salle. Rien de ce qui est posé ne bouge.
+            où le formateur est indisponible, puis créneau sans salle. Rien de ce qui est posé ne bouge.
           </p>
           <Button size="sm" onClick={() => simuler.mutate()} disabled={enCours}>
             {simuler.isPending ? (
@@ -91,7 +91,7 @@ export default function PlacementManquantes({ semaine, numero, aPlacer }) {
           <p className="mb-2 text-sm">
             {bilan.simulation ? 'Seraient placées' : 'Placées'} :{' '}
             <strong>{bilan.total.placees} séance(s)</strong>
-            {bilan.total.aEviter > 0 && <> · {bilan.total.aEviter} sur un créneau à éviter</>}
+            {bilan.total.aEviter > 0 && <> · {bilan.total.aEviter} sur une indisponibilité</>}
             {bilan.total.sansSalle > 0 && <> · {bilan.total.sansSalle} sans salle</>}
           </p>
           <div className="overflow-x-auto rounded-lg border">

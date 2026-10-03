@@ -8,6 +8,7 @@ import { MOTEURS } from 'shared/constants';
 import { libelleSemaine } from 'shared/domain';
 
 import Alerte from '@/components/common/Alerte';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
@@ -21,7 +22,7 @@ import {
 } from '@/components/ui/dialog';
 import { ThinkingOrb } from 'thinking-orbs';
 
-import { generer, previsualiser } from './api';
+import { chargerSemainesFigees, generer, previsualiser } from './api';
 import RapportGeneration from './RapportGeneration';
 import {
   bilanRemplacement,
@@ -29,6 +30,7 @@ import {
   FIN_SEMESTRE_1,
   raccourci,
   semainesDeLAnnee,
+  valeurDe,
 } from './selectionSemaines';
 
 /**
@@ -43,6 +45,9 @@ import {
  * éviter signalés). Les rééditer ici en ferait un second jeu à tenir cohérent —
  * la cause n°1 d'instabilité du §4.2. On y renvoie, on ne les recopie pas.
  */
+/** Le motif d'une semaine figée, tel que la case le dit. */
+const LIBELLES_FIGEE = { vacances: 'vacances', ferie: 'fériés' };
+
 export default function DialogueGeneration({ ouvert, onOuvrir, anneeScolaire, semainesExistantes }) {
   const cache = useQueryClient();
 
@@ -75,6 +80,29 @@ export default function DialogueGeneration({ ouvert, onOuvrir, anneeScolaire, se
     setRapport(null);
     setMoteur(MOTEURS.GLOUTON);
   }, [ouvert]);
+
+  /*
+   * ═══ LES SEMAINES FIGÉES (2026-10-03, demande du porteur) ═══
+   * Vacances, ou fériés sur tous les jours : elles ne se cochent pas, et les
+   * raccourcis les sautent. Le serveur les ignore de toute façon — la case
+   * grisée dit seulement d'avance ce qu'il ferait.
+   */
+  const figees = useQuery({
+    queryKey: ['generation', 'semaines-figees', anneeScolaire],
+    queryFn: chargerSemainesFigees,
+    enabled: ouvert,
+    staleTime: 60_000,
+  });
+  const motifFige = useMemo(
+    () =>
+      new Map(
+        (figees.data?.semaines ?? []).map(({ numero, motif }) => [
+          valeurDe(anneeScolaire, numero),
+          motif,
+        ])
+      ),
+    [figees.data, anneeScolaire]
+  );
 
   const apercu = useQuery({
     queryKey: ['generation', 'previsualisation', selection],
@@ -143,12 +171,14 @@ export default function DialogueGeneration({ ouvert, onOuvrir, anneeScolaire, se
     },
   });
 
-  const basculer = (valeur) =>
+  const basculer = (valeur) => {
+    if (motifFige.has(valeur)) return;
     setSelection((actuelle) =>
       actuelle.includes(valeur)
         ? actuelle.filter((autre) => autre !== valeur)
         : [...actuelle, valeur]
     );
+  };
 
   const enCours = lancer.isPending;
   const attente = dureeMaximale(selection.length, moteur);
@@ -291,7 +321,11 @@ export default function DialogueGeneration({ ouvert, onOuvrir, anneeScolaire, se
                     variant="outline"
                     size="sm"
                     className="h-7 text-xs"
-                    onClick={() => setSelection(raccourci(cle, anneeScolaire))}
+                    onClick={() =>
+                      setSelection(
+                        raccourci(cle, anneeScolaire).filter((valeur) => !motifFige.has(valeur))
+                      )
+                    }
                   >
                     {libelle}
                   </Button>
@@ -309,27 +343,43 @@ export default function DialogueGeneration({ ouvert, onOuvrir, anneeScolaire, se
               </div>
 
               <div className="grid max-h-64 grid-cols-3 gap-1 overflow-y-auto rounded-md border p-2 sm:grid-cols-5">
-                {semaines.map((semaine) => (
+                {semaines.map((semaine) => {
+                  const motif = motifFige.get(semaine.valeur);
+                  return (
                   <label
                     key={semaine.valeur}
-                    className="flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 text-xs hover:bg-accent"
+                    title={motif ? `Semaine figée : ${LIBELLES_FIGEE[motif] ?? 'fermée'}` : undefined}
+                    className={cn(
+                      'flex items-center gap-1.5 rounded px-1.5 py-1 text-xs',
+                      motif ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-accent'
+                    )}
                   >
                     <Checkbox
                       checked={selection.includes(semaine.valeur)}
+                      disabled={Boolean(motif)}
                       onCheckedChange={() => basculer(semaine.valeur)}
                     />
-                    <span className="tabular-nums">S{semaine.numero}</span>
+                    <span className={cn('tabular-nums', motif && 'line-through')}>
+                      S{semaine.numero}
+                    </span>
                     {/*
                       ⚠️ CE QUE LA SEMAINE PORTE DÉJÀ, à côté de la case : c'est
                       ce qui sera remplacé. Sans ce nombre, on coche sans savoir.
                     */}
-                    {semaine.seances > 0 && (
+                    {motif ? (
                       <span className="text-[0.65rem] text-muted-foreground">
-                        ({semaine.seances})
+                        {LIBELLES_FIGEE[motif] ?? 'fermée'}
                       </span>
+                    ) : (
+                      semaine.seances > 0 && (
+                        <span className="text-[0.65rem] text-muted-foreground">
+                          ({semaine.seances})
+                        </span>
+                      )
                     )}
                   </label>
-                ))}
+                  );
+                })}
               </div>
 
               {bilan.remplacees > 0 && (
@@ -470,7 +520,7 @@ export default function DialogueGeneration({ ouvert, onOuvrir, anneeScolaire, se
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Settings2 className="size-3.5 shrink-0" />
                 <span>
-                  Salles attribuées et créneaux à éviter se règlent dans{' '}
+                  Salles attribuées et indisponibilités se règlent dans{' '}
                   <Link
                     to="/app/parametres/formateurs"
                     className="underline underline-offset-2"

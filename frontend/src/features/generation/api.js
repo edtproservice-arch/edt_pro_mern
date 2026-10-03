@@ -17,6 +17,14 @@ export function previsualiser(semaines) {
 }
 
 /**
+ * Les semaines figées de l'année (vacances, ou fériés sur tous les jours) :
+ * le dialogue les grise, le serveur ne les génère jamais.
+ */
+export function chargerSemainesFigees() {
+  return api.get('/api/v2/generation/semaines-figees');
+}
+
+/**
  * Ce que chaque assouplissement RÉCUPÉRERAIT sur ces semaines — sans rien écrire.
  *
  * ⚠️ LA RÉPONSE EST SOUVENT ZÉRO, ET C'EST L'INFORMATION UTILE. Depuis que les

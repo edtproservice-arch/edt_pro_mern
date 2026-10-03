@@ -14,7 +14,7 @@ export default function AuthLayout({ titre, sousTitre, largeur = 'max-w-md', chi
       <div className={`w-full ${largeur}`}>
         <div className="mb-6 flex justify-center">
           <Link to="/">
-            <img src="/logo_edtpro.svg" alt="EDT Pro" className="h-10 w-auto" />
+            <img src="/logo_edtpro.svg" alt="EDT Pro" className="h-[3.75rem] w-auto" />
           </Link>
         </div>
 
@@ -29,6 +29,10 @@ export default function AuthLayout({ titre, sousTitre, largeur = 'max-w-md', chi
         {pied && (
           <div className="mt-4 text-center text-sm text-muted-foreground">{pied}</div>
         )}
+
+        <p className="mt-8 text-center text-xs text-muted-foreground">
+          © 2026 Edtpro. Tous droits réservés.
+        </p>
       </div>
     </div>
   );

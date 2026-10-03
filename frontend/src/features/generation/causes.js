@@ -30,11 +30,11 @@ const LIBELLES = {
    *    chercher dans quatre directions à la fois.
    */
   creneau_interdit:
-    'Aucun créneau ouvert : groupe en stage, formateur en formation, rentrée non faite, ou créneaux marqués à éviter',
+    'Aucun créneau ouvert : groupe en stage, formateur en formation, rentrée non faite, ou indisponibilités des formateurs',
   rentree: 'Le groupe n’a pas encore fait sa rentrée cette semaine-là',
   stage: 'Le groupe est en stage sur les journées concernées',
   formation: 'Le formateur est lui-même en formation',
-  a_eviter: 'Les créneaux restants sont marqués « à éviter » par le formateur',
+  a_eviter: 'Les créneaux restants tombent sur une indisponibilité du formateur',
   formateur_occupe: 'Le formateur est déjà occupé sur tous les créneaux restants',
   groupe_occupe: 'Le groupe est déjà occupé sur tous les créneaux restants',
   salle_occupee: 'Aucune salle libre parmi celles autorisées pour ce formateur',
@@ -100,7 +100,7 @@ export function assouplissementsUtiles(causes) {
   if (codes.has('a_eviter') || codes.has('creneau_interdit')) {
     propositions.push({
       cle: 'ignorerIndisponibilites',
-      libelle: 'Ignorer les créneaux « à éviter »',
+      libelle: 'Ignorer les indisponibilités des formateurs',
       explication:
         'Les indisponibilités déclarées par les formateurs sont levées. Les stages, formations, fériés et rentrées, eux, restent — ils ne se contournent pas.',
     });

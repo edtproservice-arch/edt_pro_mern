@@ -32,7 +32,14 @@ import { Seance } from '../../models/Seance.js';
 import { badRequest, conflict } from '../../lib/httpError.js';
 import { AutoGenConfig as ConfigLiaison } from '../../models/AutoGenConfig.js';
 import { poser, semaine as lireSemaine } from '../seances/seances.service.js';
-import { aPreserver, chargerCommun, estDuJour, previsualiser, tachesPour } from './donnees.js';
+import {
+  aPreserver,
+  chargerCommun,
+  estDuJour,
+  previsualiser,
+  semainesFigees,
+  tachesPour,
+} from './donnees.js';
 import { memoPose } from './memoPose.js';
 import { occupationAilleurs } from './occupationAilleurs.js';
 import { construireProbleme, joursFermes, joursOuverts } from './probleme.js';
@@ -436,7 +443,11 @@ export async function generer(
    */
   await exigerChronogrammeLie(etablissementId, anneeScolaire);
 
-  const commun = await chargerCommun(etablissementId, anneeScolaire);
+  const [commun, figees] = await Promise.all([
+    chargerCommun(etablissementId, anneeScolaire),
+    semainesFigees(etablissementId, anneeScolaire),
+  ]);
+  const motifFige = new Map(figees.map(({ numero, motif }) => [numero, motif]));
 
   /*
    * ⚠️ LA GRAINE EST ENREGISTRÉE, PAS SEULEMENT UTILISÉE. C'est ce qui rend une
@@ -465,6 +476,29 @@ export async function generer(
      *    graine commune, les 45 semaines partageraient la même suite de tirages
      *    et se ressembleraient toutes — même jour, mêmes salles.
      */
+    /*
+     * ═══ ⚠️ UNE SEMAINE FIGÉE N'EST PAS TOUCHÉE ═══ (2026-10-03, demande du
+     * porteur) Vacances, ou fériés sur tous ses jours : le chronogramme la
+     * ferme, la génération ne l'ouvre pas. Rien n'est effacé ni posé — les
+     * séances saisies à la main y restent. AU SERVEUR, PAS SEULEMENT DANS LE
+     * DIALOGUE : une requête directe ou un onglet resté ouvert ne doit pas
+     * pouvoir la régénérer.
+     */
+    const motif = motifFige.get(analyserSemaine(valeur)?.numero);
+    if (motif) {
+      resultats.push({
+        semaine: valeur,
+        figee: true,
+        motif,
+        placees: 0,
+        remplacees: 0,
+        preservees: 0,
+        nonPlacees: [],
+      });
+      onProgres?.({ rang: rang + 1, total: valeurs.length, semaine: valeur });
+      continue;
+    }
+
     try {
       const resultat = await genererSemaine(etablissementId, anneeScolaire, valeur, commun, {
         graine: (graineRetenue + numeroDe(valeur)) % 2 ** 31,
@@ -629,5 +663,5 @@ export async function simuler(etablissementId, anneeScolaire, { semaines }) {
   return { semaines: valeurs.length, base, propositions };
 }
 
-/** Réexportée : la route n'a qu'un service à connaître. */
-export { previsualiser };
+/** Réexportées : la route n'a qu'un service à connaître. */
+export { previsualiser, semainesFigees };

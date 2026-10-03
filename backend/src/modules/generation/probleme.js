@@ -121,17 +121,23 @@ function joursAvantRentree(jours, groupes) {
  * la personne qui l'enseigne. Les salles déclarées sur l'affectation sont donc
  * autorisées **même si elles ne sont pas attribuées au formateur**.
  *
- * ═══ ⚠️⚠️ MAIS C'EST UNE PRÉFÉRENCE, PAS UNE INTERDICTION ═══
- * Elles sortent en `preferees`, et les autres restent dans `possibles` : si
- * l'atelier est déjà pris, la séance se pose ailleurs plutôt que de ne pas se
- * poser du tout. C'est mot pour mot l'arbitrage retenu pour les créneaux « à
- * éviter » le 2026-09-21 — **une séance non placée n'est pas arbitrée non plus,
- * elle est perdue** —, et le passage en dur y avait coûté 143 séances sur
- * l'année.
+ * ═══ ⚠️⚠️ ET ELLE EST IMPOSÉE ═══ (décision du porteur, 2026-10-03)
+ * La règle du 2026-09-23 en faisait une simple préférence : atelier pris, la
+ * séance partait dans une autre salle. Renversée : un cours de soudure hors de
+ * l'atelier n'est pas un cours de soudure. `possibles` se réduit donc aux
+ * salles du module ; si elles sont toutes prises, la séance ressort NON PLACÉE
+ * — visible au rapport — plutôt que posée dans un local qui ne convient pas.
+ *
+ * ⚠️ `preferees` VAUT LA MÊME LISTE : elle reste incluse dans `possibles` (ce
+ *    que `lecture.py` exige), et la pénalité « hors salle » des deux moteurs
+ *    ne peut plus jamais s'appliquer.
+ *
+ * ⚠️ LA RELANCE « TOUTES LES SALLES » LÈVE L'IMPOSITION, explicitement : c'est
+ *    le seul moyen de passer outre, et c'est le directeur qui le décide.
  *
  * ⚠️ SANS SALLE DÉCLARÉE, `preferees` EST VIDE et `possibles` vaut exactement
  *    ce que cette fonction rendait avant : le comportement de toutes les cartes
- *    existantes est inchangé, et c'est ce qui rend l'ajout vérifiable.
+ *    existantes est inchangé.
  */
 function sallesDe(tache, index, sallesReelles, { toutesLesSalles = false } = {}) {
   if (tache.type === TYPES_COURS.SYNCHRONE) {
@@ -150,10 +156,12 @@ function sallesDe(tache, index, sallesReelles, { toutesLesSalles = false } = {})
    *    resterait sinon dans la liste — le solveur poserait des séances dans un
    *    local qui n'existe plus.
    */
-  const preferees = (tache.sallesModule ?? []).filter((salle) => sallesReelles.includes(salle));
-  if (preferees.length === 0) return { possibles: base, preferees: [] };
+  const imposees = [
+    ...new Set((tache.sallesModule ?? []).filter((salle) => sallesReelles.includes(salle))),
+  ];
+  if (imposees.length === 0) return { possibles: base, preferees: [] };
 
-  return { possibles: [...new Set([...preferees, ...base])], preferees };
+  return { possibles: imposees, preferees: imposees };
 }
 
 /**
@@ -326,7 +334,8 @@ export function construireProbleme({
     /*
      * ⚠️ DEUX LISTES, PAS UNE : `possibles` est ce que le solveur a le droit
      *    d'employer, `preferees` ce qu'il DEVRAIT employer. Voir `sallesDe` —
-     *    la salle du module est une préférence, jamais une interdiction.
+     *    la salle du module y est IMPOSÉE (2026-10-03) : les deux listes la
+     *    portent seule.
      */
     const salles = sallesDe(tache, index, sallesReelles, assouplissement);
 
@@ -366,7 +375,7 @@ export function construireProbleme({
       /** Consignes du formateur : évitées si possible, employées en dernier recours. */
       creneauxAEviter: aEviter,
       sallesPossibles: salles.possibles,
-      /** Les salles du module : préférées, jamais imposées — voir `sallesDe`. */
+      /** Les salles du module : imposées, donc égales à `sallesPossibles` — voir `sallesDe`. */
       sallesPreferees: salles.preferees,
     });
 

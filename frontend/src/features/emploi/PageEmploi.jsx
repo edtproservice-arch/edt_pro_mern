@@ -8,9 +8,11 @@ import {
   SEANCE_SOIR,
   analyserSemaine,
   fichesModules,
+  horsSalleImposee,
   indexerContraintes,
   libelleSemaine,
   salleParDefaut,
+  sallesImposees,
 } from 'shared/domain';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
@@ -899,17 +901,29 @@ export default function PageEmploi() {
      * attribuée au formateur qui soit libre sur ce créneau. Seulement quand
      * aucune n'est choisie — TEAMS, choisi d'abord, n'est jamais remplacé.
      */
-    if (
-      !base.salle &&
-      base.formateurMatricule &&
-      base.statut !== 'absent' &&
-      ['Groupe', 'Formateur', 'Module'].includes(champ)
-    ) {
+    /*
+     * ⚠️ LA SALLE DU MODULE EST IMPOSÉE (2026-10-03) : celle du formateur,
+     *    pré-remplie avant le choix du module, est retirée si elle n'en fait
+     *    pas partie — le serveur la refuserait.
+     */
+    const coursChange = ['Groupe', 'Formateur', 'Module'].includes(champ);
+    const imposees =
+      base.groupe && base.module
+        ? sallesImposees(
+            contexte.data?.sallesAffectations,
+            base.groupe,
+            base.module,
+            contexte.data?.salles ?? []
+          )
+        : [];
+    if (coursChange && horsSalleImposee(base.salle, imposees)) base.salle = '';
+
+    if (!base.salle && base.formateurMatricule && base.statut !== 'absent' && coursChange) {
       base.salle = salleParDefaut(
         indexContraintes,
         base.formateurMatricule,
         seances.filter((s) => s.jour === jour && s.seance === creneau && s.periode === periode),
-        { id: base.id }
+        { id: base.id, imposees }
       );
     }
 
@@ -941,7 +955,16 @@ export default function PageEmploi() {
 
     oublierBrouillon(cle);
     appliquer([{ type: 'poser', cle, seance: base }]);
-  }, [brouillons, axeGroupe, indexContraintes, seances, oublierBrouillon, appliquer]);
+  }, [
+    brouillons,
+    axeGroupe,
+    indexContraintes,
+    contexte.data?.sallesAffectations,
+    contexte.data?.salles,
+    seances,
+    oublierBrouillon,
+    appliquer,
+  ]);
 
   // ═══ Sélection ═══
   // ⚠️ Le soir n'a qu'UN créneau : la sélection rectangulaire et le collage

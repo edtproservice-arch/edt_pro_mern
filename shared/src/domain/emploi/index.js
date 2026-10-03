@@ -52,6 +52,8 @@ export {
 
 export { DUREE_RATTRAPAGE, groupesConcernes, reporterRattrapage } from './rattrapage.js';
 
+export { horsSalleImposee, sallesImposees } from './sallesModule.js';
+
 export {
   modulesRegionaux,
   seancesDeLExamen,

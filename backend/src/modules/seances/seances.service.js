@@ -20,9 +20,11 @@ import {
   groupesDuSoir,
   heuresPosees,
   heuresPoseesParSeance,
+  horsSalleImposee,
   modulesRegionaux,
   normaliserValeurSemaine,
   optionsDuFormateur,
+  sallesImposees,
   seancesDeLExamen,
   semaineAOuvrir,
   titulairesDuModule,
@@ -216,7 +218,7 @@ export async function depublier(etablissementId, anneeScolaire, valeur) {
 export async function contexte(etablissementId, anneeScolaire) {
   const [base, etablissement] = await Promise.all([
     Base.findOne({ etablissementId, anneeScolaire }).select(
-      'formateurs groupes affectations groupeFilieres'
+      'formateurs groupes affectations groupeFilieres sallesAffectations'
     ),
     Etablissement.findById(etablissementId).select('espaces groupesFq publications'),
   ]);
@@ -310,6 +312,12 @@ export async function contexte(etablissementId, anneeScolaire) {
       s2Heures: affectation.s2Heures ?? 0,
       estRegional: Boolean(affectation.estRegional),
     })),
+
+    /*
+     * ⚠️ LES SALLES IMPOSÉES PAR MODULE (2026-10-03) : la grille pré-remplit la
+     *    salle avec `sallesImposees`, la règle même que `poser()` applique.
+     */
+    sallesAffectations: Object.fromEntries(base.sallesAffectations ?? []),
 
     /*
      * ⚠️ LA COMPOSITION DES GROUPES FQ. Elle sert à l'écran EXACTEMENT comme au
@@ -1005,7 +1013,7 @@ export async function poser(etablissementId, anneeScolaire, valeur, donnees, reg
    * ne se voient pas — ce sont pourtant les mêmes stagiaires.
    */
   const [base, etablissement, existante] = await Promise.all([
-    precharge?.base ?? Base.findOne({ etablissementId, anneeScolaire }).select('affectations').session(session),
+    precharge?.base ?? Base.findOne({ etablissementId, anneeScolaire }).select('affectations sallesAffectations').session(session),
     precharge?.etablissement ??
       Etablissement.findById(etablissementId)
         .select('groupesFq espaces espacesMutualises nom complexe')
@@ -1084,6 +1092,44 @@ export async function poser(etablissementId, anneeScolaire, valeur, donnees, reg
       `« ${donnees.module} » n’est pas un module de ${donnees.groupe} pour ce formateur`,
       { code: 'MODULE_NON_AFFECTE' }
     );
+  }
+
+  /*
+   * ═══ ⚠️ LA SALLE DÉCLARÉE POUR LE MODULE EST IMPOSÉE ═══ (décision du
+   * porteur, 2026-10-03) — à la saisie comme à la génération, par la même
+   * règle (`sallesImposees`).
+   *
+   * ⚠️ SEULEMENT QUAND LA SALLE OU LE COURS CHANGE. Une séance posée avant la
+   *    règle, dans une autre salle, doit encore pouvoir être marquée absente
+   *    ou rattachée à son statut sans qu'on exige d'abord de la déménager.
+   */
+  const memeSalle =
+    existante &&
+    String(existante.salle ?? '').trim().toUpperCase() ===
+      String(donnees.salle ?? '').trim().toUpperCase() &&
+    existante.groupe === donnees.groupe &&
+    existante.module === donnees.module;
+
+  if (!memeSalle) {
+    const imposees = sallesImposees(
+      base.sallesAffectations,
+      donnees.groupe,
+      donnees.module,
+      etablissement?.espaces ?? []
+    );
+    if (horsSalleImposee(donnees.salle, imposees)) {
+      throw badRequest(`« ${donnees.module} » se donne en ${imposees.join(' ou ')}`, {
+        code: 'SALLE_MODULE_IMPOSEE',
+        details: [
+          {
+            type: 'salleModule',
+            message:
+              `La carte impose ${imposees.join(' ou ')} pour ce module. ` +
+              'Choisissez cette salle, ou modifiez la carte de l’établissement.',
+          },
+        ],
+      });
+    }
   }
 
   /*
@@ -1411,7 +1457,7 @@ export async function ecrireLot(etablissementId, anneeScolaire, valeur, operatio
   const normalisee = normaliserValeurSemaine(valeur);
   const [base, etablissement, calendrier] = normalisee
     ? await Promise.all([
-        Base.findOne({ etablissementId, anneeScolaire }).select('affectations'),
+        Base.findOne({ etablissementId, anneeScolaire }).select('affectations sallesAffectations'),
         Etablissement.findById(etablissementId).select('groupesFq espaces espacesMutualises nom complexe').lean(),
         calendrierNational(anneeScolaire),
       ])

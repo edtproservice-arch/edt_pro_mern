@@ -476,12 +476,11 @@ describe('construireProbleme — salles', () => {
 
 describe('construireProbleme — la salle déclarée pour le module', () => {
   /*
-   * ═══ ⚠️ DEUX LISTES, PAS UNE ═══ (2026-09-23)
-   * `sallesPossibles` est ce que le solveur a le DROIT d'employer,
-   * `sallesPreferees` ce qu'il DEVRAIT employer. Les confondre reviendrait à
-   * faire d'une consigne une interdiction — et à perdre les séances que
-   * l'atelier ne peut pas absorber, exactement ce que la décision du
-   * 2026-09-21 sur les créneaux « à éviter » a renversé.
+   * ═══ ⚠️ LA SALLE DU MODULE EST IMPOSÉE ═══ (décision du porteur, 2026-10-03)
+   * Elle était une simple préférence depuis le 2026-09-23. Désormais
+   * `sallesPossibles` se réduit aux salles du module : atelier pris, la séance
+   * ressort non placée plutôt que posée ailleurs. Seule la relance « toutes
+   * les salles » lève l'imposition.
    */
   const tache = (extra = {}) => ({
     id: 'T1',
@@ -495,23 +494,31 @@ describe('construireProbleme — la salle déclarée pour le module', () => {
     ...extra,
   });
 
-  it('met la salle du module EN TÊTE, sans retirer les autres', () => {
+  it('IMPOSE la salle du module : les autres sont retirées', () => {
     const { probleme } = problemeDe({ taches: [tache({ sallesModule: ['Salle 2'] })] });
     expect(probleme.taches[0].sallesPreferees).toEqual(['Salle 2']);
-    expect(probleme.taches[0].sallesPossibles).toEqual(['Salle 2', 'Salle 1']);
+    expect(probleme.taches[0].sallesPossibles).toEqual(['Salle 2']);
   });
 
-  it('LA SALLE DU MODULE L’EMPORTE sur celle du formateur, sans l’exclure', () => {
+  it('LA SALLE DU MODULE REMPLACE celle du formateur', () => {
     /*
      * ⚠️ DÉCISION DU PORTEUR : un atelier est imposé par la MATIÈRE, pas par la
-     *    personne qui l'enseigne. La salle du formateur reste néanmoins
-     *    possible — sinon l'atelier occupé ferait perdre la séance.
+     *    personne qui l'enseigne — même s'il n'est pas attribué au formateur.
      */
     const { probleme } = problemeDe({
       taches: [tache({ sallesModule: ['Salle 1'] })],
       contraintes: [{ formateur: '15688', espaces: ['Salle 2'], indisponibilites: [] }],
     });
     expect(probleme.taches[0].sallesPreferees).toEqual(['Salle 1']);
+    expect(probleme.taches[0].sallesPossibles).toEqual(['Salle 1']);
+  });
+
+  it('la relance « toutes les salles » LÈVE l’imposition', () => {
+    const { probleme } = problemeDe({
+      taches: [tache({ sallesModule: ['Salle 2'] })],
+      assouplissement: { toutesLesSalles: true },
+    });
+    expect(probleme.taches[0].sallesPreferees).toEqual([]);
     expect(probleme.taches[0].sallesPossibles).toEqual(['Salle 1', 'Salle 2']);
   });
 

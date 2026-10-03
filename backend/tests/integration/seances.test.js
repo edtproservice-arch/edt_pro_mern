@@ -2716,3 +2716,62 @@ describe('Verrou du chronogramme (2026-09-27)', () => {
     });
   });
 });
+
+describe('Salle imposée par le module — en saisie manuelle (2026-10-03)', () => {
+  /*
+   * ⚠️ DÉCISION DU PORTEUR : la salle déclarée pour le module dans la carte est
+   *    IMPOSÉE à la saisie comme à la génération. Même règle des deux côtés
+   *    (`sallesImposees`), sinon l'écran proposerait ce que le serveur refuse.
+   */
+  const poserPar = (corps) =>
+    request(app)
+      .put(`/api/v2/seances/${SEMAINE}/case`)
+      .set('Cookie', cookies)
+      .send({
+        jour: 'Lundi',
+        seance: 'S1',
+        periode: 'jour',
+        formateurMatricule: '9863',
+        groupe: 'GM101',
+        module: 'M101',
+        ...corps,
+      });
+
+  beforeEach(async () => {
+    await Base.updateOne({}, { $set: { sallesAffectations: { 'GM101||M101': ['B02'] } } });
+  });
+
+  it('REFUSE une autre salle que celle du module', async () => {
+    const reponse = await poserPar({ salle: 'A12' });
+    expect(reponse.status).toBe(400);
+    expect(reponse.body.error?.code ?? reponse.body.code).toBe('SALLE_MODULE_IMPOSEE');
+    expect(await Seance.countDocuments({})).toBe(0);
+  });
+
+  it('accepte la salle du module, sans salle, ou à distance', async () => {
+    expect((await poserPar({ salle: 'B02' })).status).toBe(200);
+    expect((await poserPar({ seance: 'S2', salle: '' })).status).toBe(200);
+    expect((await poserPar({ seance: 'S3', salle: 'TEAMS' })).status).toBe(200);
+  });
+
+  it('n’impose rien aux autres modules', async () => {
+    const reponse = await poserPar({ groupe: 'GM102', module: 'M102', salle: 'A12' });
+    expect(reponse.status).toBe(200);
+  });
+
+  it('ignore une salle déclarée qui n’existe plus dans l’établissement', async () => {
+    await Base.updateOne({}, { $set: { sallesAffectations: { 'GM101||M101': ['Atelier disparu'] } } });
+    expect((await poserPar({ salle: 'A12' })).status).toBe(200);
+  });
+
+  it('⚠️ laisse modifier le STATUT d’une séance posée avant la règle, sans la déménager', async () => {
+    const ancienne = await poser({ salle: 'A12' });
+    const reponse = await poserPar({ id: ancienne.id, salle: 'A12', statut: 'absent' });
+    expect(reponse.status).toBe(200);
+  });
+
+  it('rend la table au contexte, pour que la grille pré-remplisse la salle', async () => {
+    const reponse = await request(app).get('/api/v2/seances/contexte').set('Cookie', cookies);
+    expect(reponse.body.sallesAffectations).toEqual({ 'GM101||M101': ['B02'] });
+  });
+});

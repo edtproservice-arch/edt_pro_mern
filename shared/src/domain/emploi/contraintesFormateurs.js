@@ -94,10 +94,15 @@ export function creneauAEviter(index, formateur, jour, seance) {
  * ⚠️ LA LIBERTÉ D'UNE SALLE SE JUGE AVEC `detecterConflits`, la fonction du
  * serveur : une seconde règle aurait pré-rempli une salle que le serveur refuse.
  *
+ * ⚠️ `imposees` — LES SALLES DU MODULE (2026-10-03) — REMPLACENT celles du
+ *    formateur : `poser()` refuse toute autre salle. Si aucune n'est libre, on
+ *    rend '' plutôt qu'une salle du formateur que le serveur refuserait.
+ *
  * @returns {string} '' si aucune salle attribuée n'est libre, ou s'il n'y en a aucune
  */
-export function salleParDefaut(index, formateur, surLeCreneau = [], { id } = {}) {
-  const espaces = index?.get(String(formateur ?? '').trim())?.espaces ?? [];
+export function salleParDefaut(index, formateur, surLeCreneau = [], { id, imposees = [] } = {}) {
+  const espaces =
+    imposees.length > 0 ? imposees : (index?.get(String(formateur ?? '').trim())?.espaces ?? []);
   const libre = espaces.find(
     (salle) =>
       !detecterConflits({ id, salle }, surLeCreneau).some((conflit) => conflit.type === 'salle')

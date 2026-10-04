@@ -299,7 +299,8 @@ describe('salle et présence', () => {
     const arrivee = await directeur.attendre((m) => m.type === 'presence' && m.membres.length === 2);
     expect(arrivee.membres.find((m) => m.role === ROLES.ADMIN)).toMatchObject({
       id: admin.id,
-      droit: 'modifier',
+      // Contrôle total depuis le 2026-10-03.
+      droit: 'proprietaire',
       usurpePar: null,
     });
   });
@@ -757,5 +758,158 @@ describe('invités, curseurs et case ouverte (étapes b et c)', () => {
 
     const changement = await formateur.attendre(type('acces-modifie'));
     expect(changement.droit).toBe('consulter');
+  });
+});
+
+/*
+ * ═══ LE GUIDAGE (2026-10-03) ═══ L'administrateur en collaboration emmène les
+ * directeurs de l'établissement de page en page et leur montre son curseur.
+ */
+describe('guidage', () => {
+  async function adminEnCollaboration() {
+    const admin = await creerCompte(ROLES.ADMIN, 'admin@edtpro.ma');
+    const directeurCompte = await User.findOne({ email: 'directeur@edtpro.ma' });
+    const reponse = await request(app)
+      .post(`/api/v2/admin/utilisateurs/${directeurCompte.id}/collaboration`)
+      .set('Cookie', enTeteCookie(await seConnecter(admin.email)))
+      .send({});
+    expect(reponse.status).toBe(200);
+    const client = ouvrir({ cookies: reponse.headers['set-cookie'] });
+    await client.attendre(type('bienvenue'));
+    return client;
+  }
+
+  it('relaie navigation, curseur et défilement au directeur, et le compte', async () => {
+    const directeur = ouvrir({ cookies: await seConnecter('directeur@edtpro.ma') });
+    await directeur.attendre(type('bienvenue'));
+    const formateur = ouvrir({ cookies: await seConnecter('formateur@edtpro.ma') });
+    await formateur.attendre(type('bienvenue'));
+    const admin = await adminEnCollaboration();
+
+    admin.envoyer({ type: 'guide', actif: true });
+    expect(await directeur.attendre(type('guide-debut'))).toMatchObject({ guide: { nom: 'ADMIN TEST' } });
+    expect((await admin.attendre(type('guide-spectateurs'))).nombre).toBe(1);
+
+    admin.envoyer({ type: 'guide-nav', chemin: '/app/chronogramme' });
+    expect((await directeur.attendre(type('guide-nav'))).chemin).toBe('/app/chronogramme');
+    const position = { portee: 'contenu', chemin: [0, 3, 12], x: 0.5, y: 0.25, clic: true };
+    admin.envoyer({ type: 'guide-curseur', position });
+    expect((await directeur.attendre(type('guide-curseur'))).position).toEqual(position);
+    admin.envoyer({ type: 'guide-defilement', y: 0.3 });
+    expect((await directeur.attendre(type('guide-defilement'))).y).toBe(0.3);
+
+    // Les gestes (2026-10-04) : la bascule e-note, la barre latérale.
+    const geste = { action: 'clic', portee: 'contenu', genre: 'switch', texte: '', rang: 0, etat: 'true' };
+    admin.envoyer({ type: 'guide-geste', geste, fenetres: 0, barre: 'collapsed' });
+    expect(await directeur.attendre(type('guide-geste'))).toMatchObject({ geste, fenetres: 0, barre: 'collapsed' });
+    // Une écriture faite chez l'admin (« Délier ») : le directeur doit relire ses données.
+    admin.envoyer({ type: 'guide-geste', geste: null, fenetres: 0, ecriture: true });
+    expect(await directeur.attendre((m) => m.type === 'guide-geste' && m.ecriture)).toMatchObject({ geste: null, ecriture: true });
+    // Le curseur dans le panneau de droite (rapport de conformité).
+    const dansLePanneau = { portee: 'panneau', chemin: [0, 2], x: 0.1, y: 0.9 };
+    admin.envoyer({ type: 'guide-curseur', position: dansLePanneau });
+    expect((await directeur.attendre((m) => m.type === 'guide-curseur' && m.position?.portee === 'panneau')).position).toEqual(dansLePanneau);
+
+    // Un formateur n'est jamais piloté par une démonstration.
+    await rienNeVient(formateur, (m) => m.type.startsWith('guide'));
+
+    admin.envoyer({ type: 'guide', actif: false });
+    await directeur.attendre(type('guide-fin'));
+  });
+
+  it('rejoint un guidage en cours, et le termine quand l’administrateur part', async () => {
+    const admin = await adminEnCollaboration();
+    admin.envoyer({ type: 'guide', actif: true });
+    admin.envoyer({ type: 'guide-nav', chemin: '/app/emploi' });
+    await admin.attendre(type('guide-spectateurs'));
+
+    const directeur = ouvrir({ cookies: await seConnecter('directeur@edtpro.ma') });
+    expect((await directeur.attendre(type('guide-debut'))).chemin).toBe('/app/emploi');
+
+    admin.ws.close();
+    await directeur.attendre(type('guide-fin'));
+  });
+
+  // Dans les deux sens (2026-10-04) : les gestes du directeur reviennent à l'admin, nommés.
+  it('relaie aussi les gestes du directeur à son guide, jamais à lui-même', async () => {
+    const directeur = ouvrir({ cookies: await seConnecter('directeur@edtpro.ma') });
+    await directeur.attendre(type('bienvenue'));
+    const admin = await adminEnCollaboration();
+    admin.envoyer({ type: 'guide', actif: true });
+    await directeur.attendre(type('guide-debut'));
+
+    directeur.envoyer({ type: 'guide-nav', chemin: '/app/avancement' });
+    expect(await admin.attendre(type('guide-nav'))).toMatchObject({ chemin: '/app/avancement', de: { nom: 'DIRECTEUR TEST' } });
+    const geste = { action: 'clic', portee: 'contenu', genre: 'switch', texte: '', rang: 0, etat: 'true' };
+    directeur.envoyer({ type: 'guide-geste', geste, fenetres: 0 });
+    expect((await admin.attendre(type('guide-geste'))).geste).toEqual(geste);
+    // Un raccourci clavier (2026-10-04) : Ctrl+C dans la grille.
+    directeur.envoyer({ type: 'guide-touche', touche: { key: 'c', code: 'KeyC', modifs: 'c' } });
+    expect((await admin.attendre(type('guide-touche'))).touche).toEqual({ key: 'c', code: 'KeyC', modifs: 'c' });
+    // Un double clic, Ctrl tenu.
+    const double = { action: 'double', modifs: 'c', portee: 'contenu', genre: 'react:td', texte: 'GM101', rang: 2 };
+    directeur.envoyer({ type: 'guide-geste', geste: double, fenetres: 0 });
+    expect((await admin.attendre((m) => m.type === 'guide-geste' && m.geste?.action === 'double')).geste).toEqual(double);
+    // Les messages (2026-10-04) : un toast apparu chez le directeur s'affiche chez son guide.
+    directeur.envoyer({ type: 'guide-message', genre: 'error', titre: '1 case(s) refusée(s)', description: 'Mardi S1' });
+    expect(await admin.attendre(type('guide-message'))).toMatchObject({ genre: 'error', titre: '1 case(s) refusée(s)', description: 'Mardi S1' });
+    directeur.envoyer({ type: 'guide-etat', cle: 'emploi.refus', valeur: { '9863|mardi|1|jour': 'Ce formateur a déjà cours' } });
+    expect((await admin.attendre((m) => m.type === 'guide-etat' && m.cle === 'emploi.refus')).valeur).toEqual({ '9863|mardi|1|jour': 'Ce formateur a déjà cours' });
+    // L'état de la page : la sélection de cases et la séance qu'on glisse (2026-10-04).
+    directeur.envoyer({ type: 'guide-etat', cle: 'emploi.selection', valeur: ['9863|lundi|1|jour', '9863|lundi|2|jour'] });
+    expect(await admin.attendre((m) => m.type === 'guide-etat' && m.cle === 'emploi.selection')).toMatchObject({
+      valeur: ['9863|lundi|1|jour', '9863|lundi|2|jour'],
+      de: { nom: 'DIRECTEUR TEST' },
+    });
+    directeur.envoyer({ type: 'guide-etat', cle: 'emploi.depot', valeur: { source: 'a', survol: null } });
+    expect((await admin.attendre((m) => m.type === 'guide-etat' && m.cle === 'emploi.depot')).valeur).toEqual({ source: 'a', survol: null });
+    // Des filtres en listes (Avancement, 2026-10-04).
+    const filtres = { groupe: ['GM101', 'GM102'], formateur: [], filiere: [] };
+    directeur.envoyer({ type: 'guide-etat', cle: 'avancement.filtres', valeur: filtres });
+    expect((await admin.attendre((m) => m.type === 'guide-etat' && m.cle === 'avancement.filtres')).valeur).toEqual(filtres);
+    // Le choix d'une option de Select, avec le bouton qui ouvre sa liste.
+    const option = {
+      action: 'clic', portee: 'menu', genre: 'option', texte: 'S6', rang: 0,
+      declencheur: { portee: 'contenu', genre: 'combobox', texte: 'S5', rang: 0 },
+    };
+    directeur.envoyer({ type: 'guide-geste', geste: option, fenetres: 0 });
+    expect((await admin.attendre((m) => m.type === 'guide-geste' && m.geste?.genre === 'option')).geste).toEqual(option);
+    await rienNeVient(directeur, (m) => m.type === 'guide-nav' || m.type === 'guide-geste');
+  });
+
+  // Sans guidage en cours, un directeur n'émet rien : ses gestes ne partent nulle part.
+  it('n’envoie les gestes d’un directeur qu’à un guide présent', async () => {
+    const directeur = ouvrir({ cookies: await seConnecter('directeur@edtpro.ma') });
+    await directeur.attendre(type('bienvenue'));
+    const admin = await adminEnCollaboration();
+    directeur.envoyer({ type: 'guide-nav', chemin: '/app/avancement' });
+    await rienNeVient(admin, type('guide-nav'));
+  });
+
+  // ⚠️ Un seul curseur : celui du guidage. Celui de la grille ferait doublon (2026-10-04).
+  it('ne relaie pas au directeur guidé le curseur de grille de son guide', async () => {
+    const directeur = await rejoindre(await seConnecter('directeur@edtpro.ma'));
+    const gestionnaire = await rejoindre(await seConnecter('gestionnaire@edtpro.ma'));
+    const admin = await adminEnCollaboration();
+    admin.envoyer({ type: 'rejoindre', page: 'emploi', anneeScolaire: ANNEE });
+    await admin.attendre(type('rejoint'));
+    admin.envoyer({ type: 'guide', actif: true });
+    await directeur.attendre(type('guide-debut'));
+
+    admin.envoyer({ type: 'curseur', page: 'emploi', position: { cle: 'x', x: 0.5, y: 0.5 } });
+    // Le gestionnaire, qui n'est pas guidé, le voit toujours.
+    await gestionnaire.attendre(type('curseur'));
+    await rienNeVient(directeur, type('curseur'));
+  });
+
+  it('refuse le guidage hors collaboration, et toute adresse hors de l’application', async () => {
+    const directeur = ouvrir({ cookies: await seConnecter('directeur@edtpro.ma') });
+    await directeur.attendre(type('bienvenue'));
+    directeur.envoyer({ type: 'guide', actif: true });
+    expect((await directeur.attendre(type('erreur'))).code).toBe('GUIDAGE_REFUSE');
+
+    const admin = await adminEnCollaboration();
+    admin.envoyer({ type: 'guide-nav', chemin: 'https://ailleurs.example/app' });
+    expect((await admin.attendre(type('erreur'))).code).toBe('MESSAGE_INVALIDE');
   });
 });

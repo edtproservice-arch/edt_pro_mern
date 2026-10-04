@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { ROLES } from 'shared/constants';
-import { authenticate } from '../../middleware/authenticate.js';
+import { authenticate, collaborationDe } from '../../middleware/authenticate.js';
 import { requireRole } from '../../middleware/requireRole.js';
 import { resolveTenant } from '../../middleware/resolveTenant.js';
 import { validate } from '../../middleware/validate.js';
@@ -31,7 +31,8 @@ router.use(authenticate);
 router.get('/', async (req, res, next) => {
   try {
     const etablissements = await Etablissement.find({
-      _id: { $in: req.utilisateur.etablissementIds },
+      // L'administrateur en collaboration n'a que l'établissement de son jeton.
+      _id: { $in: collaborationDe(req.utilisateur) ? [collaborationDe(req.utilisateur)] : req.utilisateur.etablissementIds },
     }).sort({ nom: 1 });
 
     res.json({

@@ -711,9 +711,11 @@ describe('l’administrateur collabore, invité par défaut (2026-09-14)', () =>
     expect(reponse.body.etablissement).toMatchObject({ id: etablissement.id, nom: 'ISTA Test' });
 
     const moi = await en('collab').get('/api/v2/partages/moi');
-    expect(moi.body.pages).toEqual(
-      ['emploi', 'chronogramme', 'affectations'].map((page) => ({ page, droit: 'modifier', source: 'admin', partagee: true }))
+    // ⚠️ CONTRÔLE TOTAL (2026-10-03) : propriétaire de TOUTES les pages, comme le directeur.
+    expect(moi.body.pages.map((p) => p.page)).toEqual(
+      expect.arrayContaining(['emploi', 'chronogramme', 'affectations', 'absences'])
     );
+    for (const page of moi.body.pages) expect(page).toMatchObject({ droit: 'proprietaire', source: 'admin' });
     const session = await en('collab').get('/api/v2/auth/moi');
     expect(session.body.collaboration).toEqual({ etablissementId: etablissement.id, nom: 'ISTA Test' });
 
@@ -723,15 +725,18 @@ describe('l’administrateur collabore, invité par défaut (2026-09-14)', () =>
     expect(await AuditLog.countDocuments({ action: ACTIONS_AUDIT.COLLABORATION_DEBUT })).toBe(1);
   });
 
-  it('écrit dans l’emploi du temps, jamais ce qui reste au directeur', async () => {
+  /*
+   * ═══ CONTRÔLE TOTAL (2026-10-03, décision du porteur) ═══ Publier, partager et
+   * les pages qui ne se partagent pas lui sont ouverts, comme au directeur.
+   */
+  it('a le contrôle total du directeur : écrire, publier, partager, toutes les pages', async () => {
     await collaborer();
     expect((await en('collab').put(`/api/v2/seances/${SEMAINE}/case`, seance)).status).toBe(200);
-    expect((await en('collab').put('/api/v2/seances/publication', { semaine: SEMAINE })).status).toBe(403);
+    expect((await en('collab').put('/api/v2/seances/publication', { semaine: SEMAINE })).status).toBeLessThan(300);
     expect(
       (await en('collab').post('/api/v2/partages/emploi/membres', { utilisateurIds: [comptes.formateur.id] })).status
-    ).toBe(403);
-    // Une page qui ne se partage pas lui reste fermée.
-    expect((await en('collab').get('/api/v2/absences')).status).toBe(403);
+    ).toBeLessThan(300);
+    expect((await en('collab').get('/api/v2/absences')).status).toBe(200);
   });
 
   // ⚠️ La règle d'isolation ne s'assouplit pas : SON établissement, et lui seul.

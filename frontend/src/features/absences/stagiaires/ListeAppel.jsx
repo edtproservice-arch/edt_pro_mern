@@ -13,6 +13,7 @@ import { recupererSession } from '@/features/auth/api';
 import { cn } from '@/lib/utils';
 import { chargerAppel, chargerSeancesDuJour, enregistrerAppel, validerAppel } from './api';
 import { adopterVersion, creneauSuivant, marquesCopiees, memesEtats } from './appelOutils';
+import { empreinte, useEtatPartage } from '@/features/guidage/useEtatPartage';
 
 const ETATS = [
   { type: null, libelle: 'Présent', Icone: Check },
@@ -101,6 +102,24 @@ export default function ListeAppel({ appel, dansPanneau, onAvertissementFermetur
     referenceActuelle.current = initial;
     setReference(initial);
   }, [initial, matricules]);
+
+  /*
+   * ═══ LE GUIDAGE VOIT L'APPEL EN COURS (2026-10-04, demande du porteur : « fais
+   * pareil pour les absences ») ═══ Les marques ne partent qu'à « Valider » : tant
+   * qu'elles sont à l'écran, seul celui qui clique les voit. Elles sont donc
+   * partagées PAR STAGIAIRE — l'autre écran pose les mêmes, quel que soit l'ordre
+   * de sa liste —, et les clics sur les marques ne sont pas rejoués
+   * (`data-guidage-edition` plus bas) : l'état suffit.
+   */
+  useEtatPartage(
+    `absences.appel.${empreinte(`${appel.date}|${appel.cours.seance}|${appel.cours.periode}|${appel.cours.groupe}`)}`,
+    etats,
+    (valeurs) => {
+      if (!valeurs || typeof valeurs !== 'object' || Array.isArray(valeurs)) return;
+      setTouche(true);
+      setEtats((avant) => ({ ...avant, ...valeurs }));
+    }
+  );
 
   const fusion = new Set(appel.stagiaires.map((s) => s.groupe)).size > 1;
   const modifie = !memesEtats(etats, reference, matricules);
@@ -201,7 +220,8 @@ export default function ListeAppel({ appel, dansPanneau, onAvertissementFermetur
   const marques = matricules.filter((m) => (etats[m] ?? null) !== null).length;
 
   return (
-    <section className={cn('space-y-3', !dansPanneau && 'rounded-lg border p-2 sm:p-3')}>
+    // `data-guidage-edition` : les marques passent par l'état partagé (plus haut), pas par le clic rejoué.
+    <section data-guidage-edition className={cn('space-y-3', !dansPanneau && 'rounded-lg border p-2 sm:p-3')}>
       <div className="flex flex-wrap items-center gap-2">
         {!dansPanneau && (
           <h3 className="text-sm font-semibold">

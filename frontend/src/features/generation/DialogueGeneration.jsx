@@ -342,7 +342,7 @@ export default function DialogueGeneration({ ouvert, onOuvrir, anneeScolaire, se
                 )}
               </div>
 
-              <div className="grid max-h-64 grid-cols-3 gap-1 overflow-y-auto rounded-md border p-2 sm:grid-cols-5">
+              <div className="grid max-h-64 grid-cols-3 gap-1 overflow-y-auto rounded-md border p-2 sm:max-h-none sm:grid-cols-5 sm:overflow-visible">
                 {semaines.map((semaine) => {
                   const motif = motifFige.get(semaine.valeur);
                   return (

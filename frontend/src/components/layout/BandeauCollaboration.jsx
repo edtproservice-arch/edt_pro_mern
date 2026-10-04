@@ -1,8 +1,9 @@
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Users } from 'lucide-react';
+import { Presentation, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { quitterCollaboration } from '@/features/auth/api';
+import { useEtatGuidage } from '@/features/guidage/useGuidageEmetteur';
 
 /**
  * Bandeau permanent de l'administrateur qui COLLABORE avec un établissement
@@ -21,6 +22,7 @@ import { quitterCollaboration } from '@/features/auth/api';
 export default function BandeauCollaboration({ collaboration }) {
   const navigate = useNavigate();
   const cache = useQueryClient();
+  const guidage = useEtatGuidage();
 
   const quitter = useMutation({
     mutationFn: quitterCollaboration,
@@ -34,18 +36,36 @@ export default function BandeauCollaboration({ collaboration }) {
 
   return (
     // `shrink-0` : premier enfant d'une colonne bornée à l'écran, il ne doit pas être comprimé.
-    <div className="sticky top-0 z-50 shrink-0 border-b border-primary/20 bg-primary/5">
+    // `data-guidage-ignorer` : ses boutons sont ceux de l'admin, jamais rejoués chez le directeur.
+    <div data-guidage-ignorer className="sticky top-0 z-50 shrink-0 border-b border-primary/20 bg-primary/5">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-2 sm:px-6 lg:px-8">
         <p className="flex items-center gap-2 text-sm">
           <Users className="h-4 w-4 shrink-0 text-primary" />
           <span>
             Collaboration — vous travaillez avec <strong>{collaboration.nom}</strong> en tant
-            qu’administrateur. Publier, importer et partager restent au directeur.
+            qu’administrateur, avec le contrôle total du directeur.
           </span>
         </p>
-        <Button size="sm" variant="outline" onClick={() => quitter.mutate()} disabled={quitter.isPending}>
-          {quitter.isPending ? 'Retour…' : 'Quitter la collaboration'}
-        </Button>
+        <div className="flex items-center gap-2">
+          {/*
+            ═══ LE GUIDAGE EST AUTOMATIQUE (2026-10-04) ═══ Plus de bouton : toute
+            collaboration est un guidage. Il ne reste qu'à dire qui regarde.
+          */}
+          {guidage.spectateurs != null && (
+            <span
+              className="flex items-center gap-1.5 rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary"
+              title="Le directeur suit votre navigation et voit vos gestes"
+            >
+              <Presentation className="h-3.5 w-3.5" />
+              {guidage.spectateurs === 0
+                ? 'Directeur hors ligne'
+                : `${guidage.spectateurs} directeur${guidage.spectateurs > 1 ? 's' : ''} vous sui${guidage.spectateurs > 1 ? 'vent' : 't'}`}
+            </span>
+          )}
+          <Button size="sm" variant="outline" onClick={() => quitter.mutate()} disabled={quitter.isPending}>
+            {quitter.isPending ? 'Retour…' : 'Quitter la collaboration'}
+          </Button>
+        </div>
       </div>
     </div>
   );

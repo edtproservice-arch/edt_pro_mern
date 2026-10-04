@@ -11,6 +11,7 @@ import * as appelService from './absencesStagiaires.service.js';
 import * as discipline from './discipline.service.js';
 import { construireExportFeuilleAbsence } from './exportFeuilleAbsence.service.js';
 import { construireBilletsAbsence, construireBilletsVierges } from './exportBilletAbsence.service.js';
+import { construireFeuillePresence } from './exportFeuillePresence.service.js';
 
 /**
  * Absences, retards et indisciplines des stagiaires — la note de discipline (F9).
@@ -112,6 +113,41 @@ router.post(
     const { tampon, nomFichier, contentType } = await construireExportFeuilleAbsence(
       req.etablissementId,
       req.anneeScolaire,
+      req.body
+    );
+    res.setHeader('Content-Type', contentType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="export"; filename*=UTF-8''${encodeURIComponent(nomFichier)}`
+    );
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+    res.send(tampon);
+  })
+);
+
+/**
+ * Une feuille de présence d'épreuve — `eff` ou `cc-efm` — pour un ou plusieurs
+ * groupes, en Word ou PDF (2026-10-02, canevas transmis) — voir
+ * `exportFeuillePresence.service.js`. Depuis la page Documents.
+ *
+ * ⚠️ RÉSERVÉE À L'ENCADREMENT, comme `/export` : elle porte le nom et le
+ * matricule de tous les stagiaires de chaque groupe.
+ */
+router.post(
+  '/presence/:modele',
+  ENCADREMENT,
+  validate({
+    params: z.object({ modele: z.enum(['eff', 'cc-efm', 'liste', 'badges-sans', 'badges-infos', 'checklist', 'verification', 'retrait-definitif', 'retrait-provisoire']) }),
+    body: z.object({
+      format: z.enum(['docx', 'pdf']),
+      groupes: z.array(z.string().trim().min(1).max(200)).min(1).max(100),
+    }),
+  }),
+  route(async (req, res) => {
+    const { tampon, nomFichier, contentType } = await construireFeuillePresence(
+      req.etablissementId,
+      req.anneeScolaire,
+      req.params.modele,
       req.body
     );
     res.setHeader('Content-Type', contentType);

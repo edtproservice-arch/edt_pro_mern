@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { WebSocketServer } from 'ws';
+import { ROLES } from 'shared/constants';
 import { FERMETURES_TEMPS_REEL, messageTempsReelSchema } from 'shared/schemas';
 import { env, isProduction } from '../../config/env.js';
 import { logger } from '../../lib/logger.js';
@@ -228,6 +229,145 @@ export function attacherTempsReel(serveurHttp) {
       connexionId: connexion.id,
       utilisateurId: connexion.utilisateur.id,
     });
+
+    // Un directeur qui arrive pendant un guidage le rejoint aussitôt.
+    for (const [etablissementId, guide] of guides) {
+      if (!estSpectateur(connexion, etablissementId)) continue;
+      envoyer(ws, { type: 'guide-debut', guide: { nom: guide.connexion.utilisateur.nom }, chemin: guide.chemin });
+      compterSpectateurs(etablissementId);
+    }
+  }
+
+  // ═══ Guidage (2026-10-03) ═══
+  /** etablissementId → { connexion de l'administrateur, chemin courant } */
+  const guides = new Map();
+
+  /** L'établissement avec lequel cette connexion collabore — un admin seulement. */
+  const collaborationDe = (connexion) =>
+    connexion.utilisateur.role === ROLES.ADMIN ? connexion.document.$locals?.collaboration ?? null : null;
+
+  /**
+   * ⚠️ LES DIRECTEURS DE L'ÉTABLISSEMENT, ET EUX SEULS : un formateur ou un
+   * stagiaire connecté ne se retrouve pas piloté par une démonstration qui ne
+   * lui est pas destinée.
+   */
+  const estSpectateur = (connexion, etablissementId) =>
+    connexion.utilisateur.role === ROLES.DIRECTEUR &&
+    (connexion.document.etablissementIds ?? []).some((id) => String(id) === etablissementId);
+
+  /** `connexion` guide-t-elle `spectateur` en ce moment ? */
+  const guideDe = (connexion, spectateur) => {
+    const etablissementId = collaborationDe(connexion);
+    return Boolean(etablissementId) && guides.get(etablissementId)?.connexion === connexion && estSpectateur(spectateur, etablissementId);
+  };
+
+  const spectateursDe = (etablissementId) =>
+    [...connexions].filter((connexion) => estSpectateur(connexion, etablissementId));
+
+  function compterSpectateurs(etablissementId) {
+    const guide = guides.get(etablissementId);
+    if (!guide) return;
+    const personnes = new Set(spectateursDe(etablissementId).map((c) => c.utilisateur.id));
+    envoyer(guide.connexion.ws, { type: 'guide-spectateurs', nombre: personnes.size });
+  }
+
+  function diffuserGuide(etablissementId, message) {
+    for (const spectateur of spectateursDe(etablissementId)) envoyer(spectateur.ws, message);
+  }
+
+  /**
+   * L'établissement dont cette connexion est un PARTICIPANT du guidage en
+   * cours : l'administrateur qui guide, ou un directeur guidé.
+   */
+  function seanceDe(connexion) {
+    const collaboration = collaborationDe(connexion);
+    if (collaboration) return guides.get(collaboration)?.connexion === connexion ? collaboration : null;
+    for (const etablissementId of guides.keys()) if (estSpectateur(connexion, etablissementId)) return etablissementId;
+    return null;
+  }
+
+  /**
+   * ═══ DANS LES DEUX SENS (2026-10-04) ═══ Les gestes d'un participant vont à
+   * TOUS les autres — le directeur voit l'administrateur, l'administrateur voit
+   * le directeur —, jamais à lui-même. `de` nomme l'auteur sous son curseur.
+   */
+  function relayerGuide(etablissementId, emetteur, message) {
+    const guide = guides.get(etablissementId);
+    const participants = [guide?.connexion, ...spectateursDe(etablissementId)].filter(Boolean);
+    for (const autre of participants) {
+      if (autre === emetteur) continue;
+      envoyer(autre.ws, { ...message, de: { nom: emetteur.utilisateur.nom } });
+    }
+  }
+
+  function guider(connexion, message) {
+    const etablissementId = collaborationDe(connexion);
+
+    // Un directeur guidé : ses gestes partent vers son guide (et ses autres onglets).
+    if (!etablissementId && message.type !== 'guide') {
+      const seance = seanceDe(connexion);
+      if (seance) relayerGestes(seance, connexion, message);
+      return;
+    }
+
+    // ⚠️ Seul un administrateur EN COLLABORATION ouvre un guidage — refusé, jamais ignoré.
+    if (!etablissementId) {
+      envoyer(connexion.ws, { type: 'erreur', code: 'GUIDAGE_REFUSE', message: 'Guidage réservé à la collaboration' });
+      return;
+    }
+
+    if (message.type === 'guide') {
+      if (message.actif) {
+        // Un second onglet ou un second admin reprend la main : l'ancien est prévenu.
+        const ancien = guides.get(etablissementId);
+        if (ancien && ancien.connexion !== connexion) envoyer(ancien.connexion.ws, { type: 'guide-repris' });
+        guides.set(etablissementId, { connexion, chemin: ancien?.chemin ?? null });
+        diffuserGuide(etablissementId, {
+          type: 'guide-debut',
+          guide: { nom: connexion.utilisateur.nom },
+          chemin: guides.get(etablissementId).chemin,
+        });
+        compterSpectateurs(etablissementId);
+      } else {
+        arreterGuide(connexion);
+      }
+      return;
+    }
+
+    const guide = guides.get(etablissementId);
+    if (!guide || guide.connexion !== connexion) return;
+    relayerGestes(etablissementId, connexion, message);
+  }
+
+  function relayerGestes(etablissementId, emetteur, message) {
+    const guide = guides.get(etablissementId);
+    if (message.type === 'guide-nav') {
+      // La page courante de la séance, que l'arrivant rejoint — qui que ce soit qui l'ait ouverte.
+      if (guide) guide.chemin = message.chemin;
+      relayerGuide(etablissementId, emetteur, { type: 'guide-nav', chemin: message.chemin });
+    } else if (message.type === 'guide-curseur') {
+      relayerGuide(etablissementId, emetteur, { type: 'guide-curseur', position: message.position });
+    } else if (message.type === 'guide-defilement') {
+      relayerGuide(etablissementId, emetteur, { type: 'guide-defilement', y: message.y });
+    } else if (message.type === 'guide-touche') {
+      relayerGuide(etablissementId, emetteur, { type: 'guide-touche', touche: message.touche });
+    } else if (message.type === 'guide-message') {
+      const { genre, titre, description } = message;
+      relayerGuide(etablissementId, emetteur, { type: 'guide-message', genre, titre, ...(description ? { description } : {}) });
+    } else if (message.type === 'guide-etat') {
+      relayerGuide(etablissementId, emetteur, { type: 'guide-etat', cle: message.cle, valeur: message.valeur });
+    } else if (message.type === 'guide-geste') {
+      const { geste, fenetres, barre, ecriture } = message;
+      relayerGuide(etablissementId, emetteur, { type: 'guide-geste', geste, fenetres, barre: barre ?? null, ecriture: Boolean(ecriture) });
+    }
+  }
+
+  function arreterGuide(connexion) {
+    for (const [etablissementId, guide] of [...guides]) {
+      if (guide.connexion !== connexion) continue;
+      guides.delete(etablissementId);
+      diffuserGuide(etablissementId, { type: 'guide-fin' });
+    }
   }
 
   // ═══ Messages ═══
@@ -263,6 +403,7 @@ export function attacherTempsReel(serveurHttp) {
       else if (message.type === 'quitter') quitterPage(connexion, message.page);
       else if (message.type === 'curseur') relayer(connexion, message.page, 'curseur', { position: message.position });
       else if (message.type === 'focus') relayer(connexion, message.page, 'focus', { focus: message.focus });
+      else if (message.type.startsWith('guide')) guider(connexion, message);
     } catch (erreur) {
       envoyer(connexion.ws, {
         type: 'erreur',
@@ -372,6 +513,13 @@ export function attacherTempsReel(serveurHttp) {
       if (type === 'focus' && charge.focus && etat.droit === 'consulter') return;
       for (const autre of registre.connexionsDe(cle)) {
         if (autre === connexion) continue;
+        /*
+         * ⚠️ UN SEUL CURSEUR PAR GUIDE (2026-10-04, signalé par le porteur : « il
+         * affiche deux curseurs pour l'admin »). Le directeur guidé voit déjà
+         * celui du guidage, qui suit TOUTE la page : celui de la grille ferait
+         * doublon.
+         */
+        if (type === 'curseur' && (guideDe(connexion, autre) || guideDe(autre, connexion))) continue;
         envoyer(autre.ws, {
           type,
           page,
@@ -387,6 +535,11 @@ export function attacherTempsReel(serveurHttp) {
     clearTimeout(connexion.expiration);
     connexions.delete(connexion);
     for (const [cle, etat] of [...connexion.salles]) sortirDe(connexion, cle, etat.page);
+    arreterGuide(connexion);
+    // Un directeur qui part : l'administrateur qui le guide voit son public changer.
+    if (connexion.utilisateur.role === ROLES.DIRECTEUR) {
+      for (const etablissementId of guides.keys()) compterSpectateurs(etablissementId);
+    }
   }
 
   function diffuserPresence(cle, page) {

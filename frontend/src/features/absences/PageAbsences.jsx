@@ -48,6 +48,7 @@ import { grouperParFormateur } from './regroupement';
 import OngletStagiaires from './stagiaires/OngletStagiaires';
 import { recupererSession } from '@/features/auth/api';
 import ListeRepliable from './ListeRepliable';
+import { empreinte, useEtatPartage } from '@/features/guidage/useEtatPartage';
 
 /**
  * Ce que la personne peut faire ici (Phase 5bis, étape d2) — lu par les champs,
@@ -564,6 +565,15 @@ function RattrapagePlacement({ absence, enCours, onEnregistrer }) {
   const [vue, setVue] = useState('emploi');
   const [choisi, setChoisiBrut] = useState(null);
   const [semaineAjout, setSemaineAjoutBrut] = useState(null);
+  /*
+   * Le créneau de rattrapage choisi — dans l'emploi ou au chronogramme —,
+   * partagé pendant le guidage (2026-10-04) : l'autre écran voit la même case
+   * retenue avant « Placer ». Une clé PAR ABSENCE : plusieurs fenêtres peuvent
+   * exister sur la page.
+   */
+  const cleRattrapage = `absences.rattrapage.${empreinte(String(absence.id))}`;
+  useEtatPartage(`${cleRattrapage}.choisi`, choisi, setChoisiBrut);
+  useEtatPartage(`${cleRattrapage}.semaine`, semaineAjout, setSemaineAjoutBrut);
   const cache = useQueryClient();
   const posee = absence.rattrapage ?? null;
 

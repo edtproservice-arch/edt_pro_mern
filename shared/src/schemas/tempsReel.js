@@ -120,6 +120,145 @@ export const messageTempsReelSchema = z.discriminatedUnion('type', [
         .nullable(),
     })
     .strict(),
+  /*
+   * ═══ LE GUIDAGE (2026-10-03, demande du porteur) ═══ « Quand l'admin bascule
+   * entre les pages, le directeur bascule aussi, et il voit mon curseur — pour
+   * les démonstrations et la formation à distance. » Seul un administrateur EN
+   * COLLABORATION l'émet (contrôlé par le serveur) ; seuls les directeurs de
+   * l'établissement le reçoivent. Rien n'y écrit : le directeur VOIT, il n'est
+   * piloté que dans sa navigation, et peut cesser de suivre à tout moment.
+   */
+  z.object({ type: z.literal('guide'), actif: z.boolean() }).strict(),
+  z
+    .object({
+      type: z.literal('guide-nav'),
+      // Une adresse de l'application, jamais une URL : pas d'autre origine.
+      chemin: z
+        .string()
+        .max(500)
+        .regex(/^\/app(?:[/?#][^\s]*)?$/),
+    })
+    .strict(),
+  /*
+   * ⚠️ PAS EN PIXELS, pour la même raison que `curseur`. ═══ ACCROCHÉ À
+   * L'ÉLÉMENT SURVOLÉ (2026-10-04) ═══ : son chemin depuis une racine commune
+   * (rang de chaque enfant), et la fraction (0-1) de SA largeur et de SA
+   * hauteur. Une fraction de toute la zone décalait le curseur sur un écran
+   * plus petit. `null` = hors de toute racine.
+   */
+  z
+    .object({
+      type: z.literal('guide-curseur'),
+      position: z
+        .object({
+          portee: z.enum(['contenu', 'barre', 'entete', 'panneau', 'dialogue', 'menu']),
+          chemin: z.array(z.number().int().min(0).max(100_000)).max(60),
+          x: z.number().min(0).max(1),
+          y: z.number().min(0).max(1),
+          clic: z.boolean().optional(),
+        })
+        .strict()
+        .nullable(),
+    })
+    .strict(),
+  z.object({ type: z.literal('guide-defilement'), y: z.number().min(0).max(1) }).strict(),
+  /*
+   * ═══ LES GESTES (2026-10-04) ═══ « Chaque action que je fais s'affiche chez
+   * le directeur. » Un élément est décrit par ce que l'écran MONTRE — sa
+   * portée, son rôle, son libellé, son rang parmi ses semblables — et rejoué
+   * chez le directeur. `etat` est l'état VOULU d'une bascule (« true »,
+   * « expanded ») : le directeur ne clique que si le sien diffère. `fenetres`
+   * et `barre` réalignent ce qu'un clic ailleurs a fermé ou replié.
+   *
+   * ⚠️ UN CLIC QUI ÉCRIT N'ARRIVE JAMAIS ICI : l'émetteur l'écarte (voir
+   * `useGuidageEmetteur`) — rejoué, il écrirait deux fois.
+   */
+  z
+    .object({
+      type: z.literal('guide-geste'),
+      geste: z
+        .object({
+          action: z.enum(['clic', 'double', 'saisie']),
+          // Les touches tenues pendant le clic — Ctrl, Maj, Alt, Méta (2026-10-04).
+          modifs: z.string().regex(/^[csam]{0,4}$/).optional(),
+          portee: z.enum(['document', 'contenu', 'barre', 'panneau', 'dialogue', 'menu']),
+          genre: z.string().max(40),
+          texte: z.string().max(120),
+          rang: z.number().int().min(0).max(10_000),
+          etat: z.string().max(20).nullable().optional(),
+          valeur: z.string().max(500).optional(),
+          // Le bouton qui ouvre la liste d'une option (2026-10-04) — pour l'ouvrir d'abord s'il le faut.
+          declencheur: z
+            .object({
+              portee: z.enum(['document', 'contenu', 'barre', 'panneau', 'dialogue', 'menu']),
+              genre: z.string().max(40),
+              texte: z.string().max(120),
+              rang: z.number().int().min(0).max(10_000),
+            })
+            .strict()
+            .optional(),
+        })
+        .strict()
+        .nullable(),
+      fenetres: z.number().int().min(0).max(20),
+      // Une écriture vient de se faire chez l'émetteur : relire ses données (2026-10-04).
+      ecriture: z.boolean().optional(),
+      barre: z.enum(['expanded', 'collapsed']).nullable().optional(),
+    })
+    .strict(),
+  /*
+   * ═══ L'ÉTAT D'UNE PAGE (2026-10-04) ═══ Ce qu'aucun clic ne porte — la
+   * sélection de cases, la séance en cours de glissement — publié par la page
+   * sous une clé (`emploi.selection`). ⚠️ Des valeurs PLATES et bornées : des
+   * chaînes, une liste de chaînes, un objet de chaînes — jamais un document
+   * arbitraire.
+   */
+  z
+    .object({
+      type: z.literal('guide-etat'),
+      cle: z.string().regex(/^[a-z][a-zA-Z0-9.]{0,59}$/),
+      valeur: z.union([
+        z.null(),
+        z.string().max(200),
+        z.array(z.string().max(200)).max(1500),
+        // Clés de case (« 9863|lundi|1|jour ») et messages de refus : plus longs qu'un identifiant.
+        // Une valeur peut être une LISTE de chaînes : les filtres de l'Avancement (2026-10-04).
+        z.record(
+          z.string().max(200),
+          z.union([z.string().max(500), z.number(), z.boolean(), z.null(), z.array(z.string().max(200)).max(500)])
+        ),
+      ]),
+    })
+    .strict(),
+  /*
+   * ═══ LES MESSAGES (2026-10-04, demande du porteur : « n'importe quel message
+   * qui s'affiche chez moi s'affiche chez lui ») ═══ Une notification (toast)
+   * apparue chez l'un est reproduite chez l'autre — en TEXTE seulement.
+   */
+  /*
+   * ═══ LES RACCOURCIS CLAVIER (2026-10-04) ═══ Hors d'un champ : Ctrl+C dans une
+   * grille, une flèche, Suppr… L'émetteur n'envoie pas ceux qui ont écrit.
+   */
+  z
+    .object({
+      type: z.literal('guide-touche'),
+      touche: z
+        .object({
+          key: z.string().min(1).max(30),
+          code: z.string().max(30),
+          modifs: z.string().regex(/^[csam]{0,4}$/).optional(),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('guide-message'),
+      genre: z.enum(['success', 'error', 'info', 'warning', 'default']),
+      titre: z.string().max(300),
+      description: z.string().max(1000).optional(),
+    })
+    .strict(),
 ]);
 
 /**

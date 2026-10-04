@@ -12,6 +12,7 @@ import { usePartagesAvecMoi } from '@/features/partages/usePartagesAvecMoi';
 import { ROLES } from 'shared/constants';
 import EnTetePartage from '@/features/partages/EnTetePartage';
 import { useDroitPage } from '@/features/partages/useDroitPage';
+import { useEtatPartage } from '@/features/guidage/useEtatPartage';
 
 /**
  * Documents — base des stagiaires (F11).
@@ -46,6 +47,8 @@ export default function PageDocuments() {
   // Une seule carte ouverte à la fois : elles montrent le MÊME détail sous des
   // angles différents, en ouvrir plusieurs répéterait le même arbre.
   const [ouvert, setOuvert] = useState(null);
+  // La carte ouverte, partagée pendant le guidage (2026-10-04).
+  useEtatPartage('documents.carte', ouvert, (valeur) => setOuvert(typeof valeur === 'string' ? valeur : null));
 
   /*
    * ═══ PARTAGEABLE EN LECTURE (Phase 5bis, étape d4) ═══ Le gestionnaire la

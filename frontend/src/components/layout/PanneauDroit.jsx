@@ -31,7 +31,8 @@ export function FournirPanneauDroit({ children }) {
 /** À poser par la coquille, juste APRÈS la zone de page, dans la même rangée. */
 export function EmplacementPanneauDroit() {
   const contexte = useContext(Contexte);
-  return <div ref={contexte?.setEmplacement} className="contents print:hidden" />;
+  // `data-panneau-droit` : une racine où le guidage retrouve curseur et gestes (2026-10-04).
+  return <div ref={contexte?.setEmplacement} data-panneau-droit className="contents print:hidden" />;
 }
 
 /** Ce qu'une page affiche dans le panneau de droite. */

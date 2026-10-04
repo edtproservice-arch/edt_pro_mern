@@ -17,7 +17,6 @@ import {
   Gavel,
   IdCard,
   Mail,
-  Table2,
   Ticket,
   Users,
 } from 'lucide-react';
@@ -29,8 +28,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import { telechargerBilletsVierges } from '@/features/absences/stagiaires/api';
-import DialogueFeuilleAbsence from './DialogueFeuilleAbsence';
+import {
+  exporterFeuilleAbsence,
+  exporterFeuillePresence,
+  telechargerBilletsVierges,
+} from '@/features/absences/stagiaires/api';
+import DialogueChoixGroupes from './DialogueChoixGroupes';
+import { empreinte, useEtatPartage } from '@/features/guidage/useEtatPartage';
 
 /**
  * Documents imprimables, en cartes.
@@ -54,36 +58,61 @@ const DOCUMENTS = [
     titre: 'Liste des stagiaires',
     resume: 'Pour affichage, par groupe',
     icone: Users,
-  },
-  {
-    cle: 'numeros',
-    titre: 'Numéros de table',
-    resume: 'Placement en espace d’examen',
-    icone: Table2,
+    // Canevas transmis (2026-10-02) : les groupes se choisissent d'abord.
+    choixGroupes: {
+      description: 'Une page par groupe, avec son niveau et son effectif.',
+      formats: ['docx', 'pdf'],
+      telecharger: exporterFeuillePresence('liste'),
+    },
   },
   {
     cle: 'presence-eff',
     titre: 'Feuille de présence EFF',
     resume: 'Examen de fin de formation',
     icone: ClipboardList,
+    // Canevas transmis (2026-10-02) : les groupes se choisissent d'abord.
+    choixGroupes: {
+      description: 'Une page par groupe ; l’épreuve, la date et les heures se remplissent à la main.',
+      formats: ['docx', 'pdf'],
+      telecharger: exporterFeuillePresence('eff'),
+    },
   },
   {
     cle: 'presence-cc-efm',
     titre: 'Feuille de présence CC/EFM',
     resume: 'Contrôle continu et EFM',
     icone: ClipboardList,
+    // Canevas transmis (2026-10-02) : les groupes se choisissent d'abord.
+    choixGroupes: {
+      description:
+        'Une page par groupe ; le module, la date, l’horaire et le type d’épreuve se remplissent à la main.',
+      formats: ['docx', 'pdf'],
+      telecharger: exporterFeuillePresence('cc-efm'),
+    },
   },
   {
     cle: 'verification',
     titre: 'Liste de vérification',
     resume: 'Contrôle des inscriptions',
     icone: FileCheck2,
+    // Canevas transmis (2026-10-02) : les groupes se choisissent d'abord.
+    choixGroupes: {
+      description: 'Une page par groupe : CIN, noms en arabe et date de naissance de chaque stagiaire.',
+      formats: ['docx', 'pdf'],
+      telecharger: exporterFeuillePresence('verification'),
+    },
   },
   {
     cle: 'checklist',
     titre: 'Check-list des diplômes',
     resume: 'Pièces à réunir',
     icone: BadgeCheck,
+    // Canevas transmis (2026-10-02) : les groupes se choisissent d'abord.
+    choixGroupes: {
+      description: 'Une page par stagiaire ; la vérification et les visas se remplissent à la main.',
+      formats: ['docx', 'pdf'],
+      telecharger: exporterFeuillePresence('checklist'),
+    },
   },
   {
     cle: 'convocation',
@@ -102,12 +131,24 @@ const DOCUMENTS = [
     titre: 'Badges de numéros de table',
     resume: 'Avec les informations du stagiaire',
     icone: Ticket,
+    // Canevas transmis (2026-10-02) : les groupes se choisissent d'abord.
+    choixGroupes: {
+      description: 'Un badge par stagiaire — groupe, matricule, nom et prénom — numéroté comme la liste du groupe.',
+      formats: ['docx', 'pdf'],
+      telecharger: exporterFeuillePresence('badges-infos'),
+    },
   },
   {
     cle: 'badges-simples',
-    titre: 'Badges de numéros',
+    titre: 'Badges de numéros de table',
     resume: 'Sans informations',
     icone: Ticket,
+    // Canevas transmis (2026-10-02) : les groupes se choisissent d'abord.
+    choixGroupes: {
+      description: 'Un badge par stagiaire, numéroté comme la liste du groupe ; un groupe par page.',
+      formats: ['docx', 'pdf'],
+      telecharger: exporterFeuillePresence('badges-sans'),
+    },
   },
   {
     cle: 'feuille-absence',
@@ -115,7 +156,12 @@ const DOCUMENTS = [
     resume: 'Par groupe, semaine par semaine',
     icone: ClipboardList,
     // Le canevas de « Faire l'appel » : groupes et semaine se choisissent d'abord (2026-10-01).
-    Dialogue: DialogueFeuilleAbsence,
+    choixGroupes: {
+      description: 'Une page par groupe, pour la semaine choisie.',
+      avecSemaine: true,
+      formats: ['docx', 'pdf', 'xlsx'],
+      telecharger: exporterFeuilleAbsence,
+    },
   },
   {
     cle: 'billet-absence',
@@ -136,12 +182,26 @@ const DOCUMENTS = [
     titre: 'Retrait définitif du Bac',
     resume: 'Décharge du diplôme',
     icone: BadgeCheck,
+    // Canevas transmis (2026-10-02) : les groupes se choisissent d'abord.
+    choixGroupes: {
+      description:
+        'Une page par stagiaire ; le baccalauréat (type, année, spécialité, série) et le motif se remplissent à la main.',
+      formats: ['docx', 'pdf'],
+      telecharger: exporterFeuillePresence('retrait-definitif'),
+    },
   },
   {
     cle: 'retrait-provisoire',
     titre: 'Retrait provisoire du Bac',
     resume: 'Décharge temporaire',
     icone: BadgeCheck,
+    // Canevas transmis (2026-10-02) : les groupes se choisissent d'abord.
+    choixGroupes: {
+      description:
+        'Une page par stagiaire ; le baccalauréat, le motif et les dates de retrait et de remise se remplissent à la main.',
+      formats: ['docx', 'pdf'],
+      telecharger: exporterFeuillePresence('retrait-provisoire'),
+    },
   },
   {
     cle: 'convention',
@@ -180,7 +240,7 @@ const APERCU_MAX = 3;
 const CATEGORIES = [
   {
     titre: 'Examen',
-    cles: ['convocation', 'presence-eff', 'presence-cc-efm','liste', 'numeros', 'badges-table', 'badges-simples'],
+    cles: ['convocation', 'presence-eff', 'presence-cc-efm','liste', 'badges-table', 'badges-simples'],
     icone: ClipboardList,
   },
   {
@@ -213,6 +273,8 @@ export default function CartesDocuments({ nombreStagiaires }) {
   const pret = nombreStagiaires > 0;
   // La catégorie dépliée — `null` : toutes repliées, en petites tuiles.
   const [ouverte, setOuverte] = useState(null);
+  // La catégorie dépliée, partagée pendant le guidage (2026-10-04).
+  useEtatPartage('documents.categorie', ouverte, (valeur) => setOuverte(typeof valeur === 'string' ? valeur : null));
   const categorieOuverte = CATEGORIES.find((c) => c.titre === ouverte) ?? null;
   const repliees = CATEGORIES.filter((c) => c !== categorieOuverte);
 
@@ -265,7 +327,7 @@ export default function CartesDocuments({ nombreStagiaires }) {
           */}
           <div className="flex flex-wrap gap-4 p-4">
             {categorieOuverte.documents.map((document) =>
-              document.Dialogue ? (
+              document.choixGroupes ? (
                 <DocumentAvecDialogue key={document.cle} document={document} attenue={!pret} />
               ) : document.telecharger ? (
                 <DocumentTelechargeable key={document.cle} document={document} />
@@ -454,9 +516,16 @@ function DocumentTelechargeable({ document }) {
  * ⚠️ ATTÉNUÉ SANS BASE KONOSYS, comme les autres : la feuille porte les noms
  * des stagiaires importés, et sortirait vide.
  */
+const LIBELLES_FORMAT = { docx: 'Word', pdf: 'PDF', xlsx: 'Excel' };
+
 function DocumentAvecDialogue({ document, attenue }) {
   const [ouvert, setOuvert] = useState(false);
-  const { Dialogue } = document;
+  // La fenêtre de CE document, partagée pendant le guidage (2026-10-04) — enveloppée :
+  // un état partagé est un objet, une liste ou une chaîne, jamais un booléen nu.
+  useEtatPartage(`documents.fenetre.${empreinte(document.titre)}`, { ouvert }, (valeur) =>
+    setOuvert(Boolean(valeur?.ouvert))
+  );
+  const { choixGroupes } = document;
 
   return (
     <>
@@ -469,11 +538,16 @@ function DocumentAvecDialogue({ document, attenue }) {
         <FeuilleDocument
           document={document}
           attenue={attenue}
-          pied="Word · PDF · Excel"
+          pied={choixGroupes.formats.map((f) => LIBELLES_FORMAT[f]).join(' · ')}
           className="cursor-pointer hover:border-border-strong"
         />
       </button>
-      <Dialogue ouvert={ouvert} onFermer={() => setOuvert(false)} />
+      <DialogueChoixGroupes
+        ouvert={ouvert}
+        onFermer={() => setOuvert(false)}
+        titre={document.titre}
+        {...choixGroupes}
+      />
     </>
   );
 }

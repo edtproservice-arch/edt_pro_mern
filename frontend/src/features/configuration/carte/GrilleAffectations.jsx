@@ -301,6 +301,7 @@ function Ensemble({
       <button
         type="button"
         onClick={() => setOuvert(!ouvert)}
+        aria-expanded={ouvert}
         data-case={cleEnTeteEnsemble(ensemble.cle)}
         className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-muted/50"
       >

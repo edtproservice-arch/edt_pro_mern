@@ -76,10 +76,13 @@ export function droitSurPage(utilisateur, partage, page = partage?.page) {
    * jeton désigne l'établissement, `resoudreContexte` refuse tout autre) : hors
    * de là, cette règle n'est jamais lue.
    */
+  /*
+   * ═══ CONTRÔLE TOTAL (2026-10-03, décision du porteur) ═══ Il était « peut
+   * modifier » sur les seules pages partageables ; il a désormais, comme le
+   * directeur, la PROPRIÉTÉ de toutes les pages — publier, importer, partager.
+   */
   if (utilisateur.role === ROLES.ADMIN) {
-    return pagePrete(page)
-      ? { droit: droitBorne(page, DROITS_PAGE.MODIFIER), source: SOURCES_DROIT.ADMIN }
-      : null;
+    return { droit: DROITS_PAGE.PROPRIETAIRE, source: SOURCES_DROIT.ADMIN };
   }
 
   // Le stagiaire n'est jamais invité à préparer un emploi du temps.

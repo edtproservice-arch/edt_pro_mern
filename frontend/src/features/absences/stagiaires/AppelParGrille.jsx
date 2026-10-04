@@ -31,6 +31,7 @@ import GrilleConsultation from '@/features/edition/GrilleConsultation';
 import { useAnneeActive } from '@/lib/anneeActive';
 import { chargerValidationsAppel, exporterFeuilleAbsence } from './api';
 import PanneauAppel from './PanneauAppel';
+import { useEtatPartage } from '@/features/guidage/useEtatPartage';
 
 /** La clé qui désigne UN cours dans le signe « validé » — voir `AppelValidation` côté serveur. */
 const cleValidation = ({ date, seance, periode, groupe }) => `${date}|${seance}|${periode}|${groupe}`;
@@ -78,6 +79,26 @@ export default function AppelParGrille({ encadrement }) {
   const [axe, setAxe] = useState('groupe');
   const [periode, setPeriode] = useState('jour');
   const [choix, setChoix] = useState(null);
+  /*
+   * Le cours ouvert pour l'appel, partagé pendant le guidage (2026-10-04) : à
+   * plat — l'objet de la page porte un sous-objet `cours` —, et rebâti chez l'autre.
+   */
+  useEtatPartage(
+    'absences.grille.choix',
+    choix
+      ? { date: choix.date, seance: choix.cours.seance, periode: choix.cours.periode, groupe: choix.cours.groupe, sousTitre: choix.sousTitre }
+      : null,
+    (valeur) =>
+      setChoix(
+        valeur
+          ? {
+              date: valeur.date,
+              cours: { seance: valeur.seance, periode: valeur.periode, groupe: valeur.groupe },
+              sousTitre: valeur.sousTitre,
+            }
+          : null
+      )
+  );
   /*
    * ⚠️ LE MÊME FILTRE QU'EN ÉDITION (2026-09-29, demande du porteur : « en
    * faire l'appel je veux ajouter l'option de filtre comme en édition ») —

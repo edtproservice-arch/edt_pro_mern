@@ -7,7 +7,7 @@ import { SEANCES_JOUR, droitSuffit } from 'shared/domain';
 import { forbidden } from '../../lib/httpError.js';
 import { validate } from '../../middleware/validate.js';
 import { authenticate } from '../../middleware/authenticate.js';
-import { requireRole } from '../../middleware/requireRole.js';
+import { agitEnDirecteur, requireRole } from '../../middleware/requireRole.js';
 import { resolveTenant } from '../../middleware/resolveTenant.js';
 import * as service from './seances.service.js';
 import { construireExport } from './exportGlobal.service.js';
@@ -83,7 +83,7 @@ const PAGES_DES_SEANCES = ['emploi', 'absences', 'avancement', 'efm'];
  *     pas. `req.droitPage` est posé par `exigerDroitPage` sur la route.
  */
 function voitNonPubliees(req) {
-  return req.utilisateur?.role === ROLES.DIRECTEUR || droitSuffit(req.droitPage?.droit, 'modifier');
+  return agitEnDirecteur(req.utilisateur) || droitSuffit(req.droitPage?.droit, 'modifier');
 }
 
 /** Refuse l'export d'une semaine masquée à qui ne fait que consulter. */
@@ -159,7 +159,7 @@ router.delete('/publication', directeurSeul, async (req, res, next) => {
  */
 router.get('/semaines', lire, async (req, res, next) => {
   try {
-    const consulte = req.utilisateur?.role !== ROLES.DIRECTEUR;
+    const consulte = !agitEnDirecteur(req.utilisateur);
     // ⚠️ Un invité « peut modifier » ouvre comme un consultant, mais VOIT tout.
     const masque = !voitNonPubliees(req);
 

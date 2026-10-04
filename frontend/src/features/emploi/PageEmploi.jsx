@@ -64,6 +64,7 @@ import { PanneauDroit } from '@/components/layout/PanneauDroit';
 import PanneauCompletude from './PanneauCompletude';
 import { useBilanCompletude } from './useBilanCompletude';
 import { ajusterPosees, appliquerOperations, confirmer, resoudreIdentifiants } from './previsionEcriture';
+import { useEtatPartage } from '@/features/guidage/useEtatPartage';
 
 /**
  * Emploi du temps hebdomadaire (F5).
@@ -80,6 +81,20 @@ import { ajusterPosees, appliquerOperations, confirmer, resoudreIdentifiants } f
 
 /** La même fonction à chaque rendu : une flèche inline est une prop neuve. */
 const IDENTITE = (valeur) => valeur;
+
+/**
+ * Le texte d'un refus de case.
+ *
+ * ⚠️ `Array.isArray`, PAS `?.map` — signalé par le porteur le 2026-09-03. Une
+ * route qui rendait `details` en OBJET a fait TOMBER TOUTE LA PAGE sur
+ * « details?.map is not a function », là où le message aurait suffi à expliquer
+ * le refus. La forme a été corrigée côté serveur ; ce garde évite qu'une
+ * prochaine route mal formée coûte l'écran entier.
+ */
+const texteRefus = (erreur) =>
+  Array.isArray(erreur?.details) && erreur.details.length > 0
+    ? erreur.details.map((d) => d.message).join(' ; ')
+    : String(erreur?.message ?? '');
 
 export default function PageEmploi() {
   const cache = useQueryClient();
@@ -139,6 +154,31 @@ export default function PageEmploi() {
    * qui désigne des cases doit repartir de zéro à la bascule.
    */
   const [periode, setPeriode] = useState('jour');
+
+  /*
+   * ═══ LE GUIDAGE VOIT LA SÉLECTION ET LE GLISSEMENT (2026-10-04, demande du
+   * porteur) ═══ Ni l'une ni l'autre ne passe par un élément cliquable que le
+   * guidage saurait rejouer : la page publie donc son état, et l'autre écran —
+   * l'administrateur qui guide, ou le directeur guidé — le pose tel quel. Les
+   * clés de case (`cleCase`) sont les mêmes sur les deux écrans.
+   */
+  useEtatPartage('emploi.selection', [...selection].sort(), (cles) =>
+    setSelection(new Set(Array.isArray(cles) ? cles : []))
+  );
+  useEtatPartage('emploi.depot', depot, (valeur) =>
+    setDepot({ source: valeur?.source ?? null, survol: valeur?.survol ?? null })
+  );
+  /*
+   * Les cases REFUSÉES (« 1 case(s) refusée(s) — ce formateur a déjà cours… ») :
+   * le refus n'arrive qu'à l'écran qui a écrit. Partagé en TEXTE — l'erreur
+   * entière ne voyage pas —, et reposé chez l'autre comme une erreur à message.
+   */
+  useEtatPartage(
+    'emploi.refus',
+    Object.fromEntries([...conflits].map(([cle, erreur]) => [cle, texteRefus(erreur)])),
+    (refus) =>
+      setConflits(new Map(Object.entries(refus ?? {}).map(([cle, message]) => [cle, { message: String(message) }])))
+  );
 
   const changerPeriode = (valeur) => {
     if (valeur === periode) return;
@@ -1558,17 +1598,7 @@ export default function PageEmploi() {
                 {[...conflits].slice(0, 6).map(([cle, erreur]) => (
                   <li key={cle}>
                     {lireCle(cle).jour} {lireCle(cle).creneau} —{' '}
-                    {/*
-                      ⚠️ `Array.isArray`, PAS `?.map` — signalé par le porteur le
-                      2026-09-03. Une route qui rendait `details` en OBJET a fait
-                      TOMBER TOUTE LA PAGE sur « details?.map is not a function »,
-                      là où le message aurait suffi à expliquer le refus. La
-                      forme a été corrigée côté serveur ; ce garde évite qu'une
-                      prochaine route mal formée coûte l'écran entier.
-                    */}
-                    {Array.isArray(erreur.details) && erreur.details.length > 0
-                      ? erreur.details.map((d) => d.message).join(' ; ')
-                      : erreur.message}
+                    {texteRefus(erreur)}
                   </li>
                 ))}
               </ul>

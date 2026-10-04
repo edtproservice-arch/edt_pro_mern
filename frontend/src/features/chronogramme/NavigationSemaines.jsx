@@ -144,7 +144,9 @@ export default function NavigationSemaines({ semaines, planning, conteneur, zoom
   const aujourdhuiDansAnnee = semaines.some((semaine) => semaine.numero === semaineDuJour);
 
   return (
-    <div className="space-y-2">
+    // Naviguer entre les semaines est un geste d'AFFICHAGE : rejoué pendant le guidage,
+    // même dans la page du chronogramme, qui est une zone d'édition (2026-10-04).
+    <div data-guidage-affichage="" className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">
           Semaines{' '}

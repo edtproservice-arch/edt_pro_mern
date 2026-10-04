@@ -1,5 +1,6 @@
 import { api } from '@/lib/apiClient';
 import { decrireAppareil } from '@/lib/appareil';
+import { ROLES } from 'shared/constants';
 
 /**
  * Appels d'authentification — API Express (`/api/v2/auth`).
@@ -60,8 +61,34 @@ export function demanderEssai() {
   return api.post('/api/v2/auth/essai');
 }
 
-export function recupererSession() {
-  return api.get('/api/v2/auth/moi');
+/**
+ * ═══ L'ADMINISTRATEUR EN COLLABORATION SE PRÉSENTE EN DIRECTEUR (2026-10-03) ═══
+ * (décision du porteur : « contrôle total, tous les onglets du directeur ».)
+ * Toutes les gardes, menus et pages lisent `utilisateur.role` dans cette même
+ * session : le présenter en directeur ICI les ouvre tous d'un coup, sans en
+ * oublier un. Le vrai rôle reste lisible (`roleReel`), et `collaboration` dit
+ * toujours qui il est. Le serveur, lui, décide sur le JETON — il a reçu les
+ * mêmes droits (`agitEnDirecteur`, `droitSurPage`).
+ */
+export function presenterSession(session) {
+  const utilisateur = session?.utilisateur;
+  if (!session?.collaboration || utilisateur?.role !== ROLES.ADMIN) return session;
+  return {
+    ...session,
+    utilisateur: {
+      ...utilisateur,
+      role: ROLES.DIRECTEUR,
+      roleReel: ROLES.ADMIN,
+      // Son établissement est celui de la collaboration ; l'assistant de
+      // configuration n'est pas le sien.
+      etablissementIds: [session.collaboration.etablissementId],
+      configurationTerminee: true,
+    },
+  };
+}
+
+export async function recupererSession() {
+  return presenterSession(await api.get('/api/v2/auth/moi'));
 }
 
 /** Met fin à une session déléguée et rend la main à l'administrateur. */

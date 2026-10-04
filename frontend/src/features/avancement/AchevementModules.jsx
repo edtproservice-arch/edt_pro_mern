@@ -22,6 +22,7 @@ import { nombre } from '@/lib/nombres';
 import { cn } from '@/lib/utils';
 import { chargerAchevement } from './api';
 import PanneauFiltres from './PanneauFiltres';
+import { useEtatPartage } from '@/features/guidage/useEtatPartage';
 
 /**
  * L'ACHÈVEMENT des modules — combien sont terminés, et lesquels traînent.
@@ -57,6 +58,10 @@ export default function AchevementModules({
 }) {
   const [ouvert, setOuvert] = useState(false);
   const [filtresModale, setFiltresModale] = useState(FILTRES_VIDES);
+  // Les filtres de la fenêtre, partagés pendant le guidage (2026-10-04).
+  useEtatPartage('avancement.achevement.filtres', filtresModale, (valeur) => {
+    if (valeur && typeof valeur === 'object' && !Array.isArray(valeur)) setFiltresModale({ ...FILTRES_VIDES, ...valeur });
+  });
 
   const completion = useMemo(() => completionModules(lignes), [lignes]);
   const facettes = useMemo(() => facettesAvancement(lignes), [lignes]);

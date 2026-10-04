@@ -253,7 +253,21 @@ export default function CadreReglage({
         </header>
       )}
 
-      {children}
+      {/*
+        ═══ UNE PAGE QUI S'ENREGISTRE SEULE EST UNE ZONE D'ÉDITION POUR LE GUIDAGE
+        (2026-10-04, « fais pareil pour toutes les pages ») ═══ Ses retouches,
+        rejouées chez l'autre, y seraient enregistrées une seconde fois — refusées
+        pour version périmée sur les pages versionnées. Seuls les gestes
+        d'affichage y sont rejoués ; le résultat arrive après l'enregistrement.
+        `contents` : le conteneur ne prend aucune place dans la mise en page.
+      */}
+      {onEnregistrer ? (
+        <div data-guidage-edition className="contents">
+          {children}
+        </div>
+      ) : (
+        children
+      )}
     </>
   );
 }

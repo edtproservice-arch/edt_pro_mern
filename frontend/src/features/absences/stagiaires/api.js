@@ -20,6 +20,15 @@ export const exporterFeuilleAbsence = ({ format, groupes, semaine }) =>
     nomParDefaut: `feuille-absence.${format}`,
   });
 
+/**
+ * Une feuille de présence d'épreuve d'un ou plusieurs groupes, en Word ou PDF
+ * (2026-10-02) — `modele` : `eff` ou `cc-efm`. Une page par groupe.
+ */
+export const exporterFeuillePresence = (modele) => ({ format, groupes }) =>
+  api.telecharger(`${RACINE}/presence/${modele}`, { format, groupes }, {
+    nomParDefaut: `feuille-presence-${modele}.${format}`,
+  });
+
 /** Le tableau de bord du gestionnaire (2026-09-29) : absences et discipline, pour tout l'établissement. */
 export const chargerTableauDeBord = () => api.get(`${RACINE}/tableau-bord`);
 

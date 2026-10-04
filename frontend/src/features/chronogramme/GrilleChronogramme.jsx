@@ -40,6 +40,7 @@ import BadgeSemestre from '@/components/common/BadgeSemestre';
 import { cn } from '@/lib/utils';
 import CarteCellule from './CarteCellule';
 import NavigationSemaines from './NavigationSemaines';
+import { empreinte, useEtatPartage } from '@/features/guidage/useEtatPartage';
 import {
   FOND_AVANT_RENTREE,
   FOND_AVANT_RENTREE_PARTIEL,
@@ -453,6 +454,41 @@ export default function GrilleChronogramme({
   const [remplissage, setRemplissage] = useState(null);
 
   /*
+   * ═══ LE GUIDAGE VOIT LA CASE OUVERTE, LA RECOPIE ET LE DÉPLIAGE (2026-10-04,
+   * demande du porteur : « fais pareil pour le chronogramme ») ═══ Comme dans
+   * l'emploi du temps : ces gestes vivent dans l'état de la grille, aucun clic
+   * rejouable ne les porte. La grille les publie, l'autre écran les pose.
+   *
+   * ⚠️ UNE CLÉ PAR GRILLE : plusieurs groupes — ou plusieurs formateurs — sont
+   * affichés à la fois. Le groupe la nomme ; en vue formateur, ce sont ses
+   * lignes. La modale de rattrapage (clic direct) a la sienne.
+   */
+  const cleGuidage = useMemo(
+    () =>
+      `chrono.${empreinte(
+        `${groupe ?? ''}|${onClicDirect ? 'direct' : ''}|${modulesRecus.map(cleDe).join(',')}`
+      )}`,
+    [groupe, onClicDirect, modulesRecus]
+  );
+  useEtatPartage(`${cleGuidage}.ouverte`, ouverte, (valeur) =>
+    setOuverte(valeur ? { module: valeur.module, semaine: valeur.semaine } : null)
+  );
+  useEtatPartage(`${cleGuidage}.deplies`, [...deplies].sort(), (cles) =>
+    setDeplies(new Set(Array.isArray(cles) ? cles : []))
+  );
+  /*
+   * ⚠️ UNE RECOPIE REÇUE EST `distant` : elle se DESSINE, elle ne s'applique
+   * pas. C'est l'écran qui glisse qui écrit ; si celui qui regarde suivait aussi
+   * sa souris et son relâchement, la recopie serait faite deux fois — et au
+   * premier clic du spectateur, n'importe où.
+   */
+  useEtatPartage(
+    `${cleGuidage}.recopie`,
+    remplissage ? { module: remplissage.module, depuis: remplissage.depuis, jusqu: remplissage.jusqu } : null,
+    (valeur) => setRemplissage(valeur ? { ...valeur, distant: true } : null)
+  );
+
+  /*
    * ⚠️ STABLE D'UN RENDU À L'AUTRE — c'est ce qui rend le `memo` des cellules
    * utile. Voir `useOnPoser`.
    */
@@ -564,7 +600,8 @@ export default function GrilleChronogramme({
    * resterait actif indéfiniment.
    */
   useEffect(() => {
-    if (!remplissage) return undefined;
+    // Une recopie reçue du guidage se dessine seulement (voir `useEtatPartage` plus haut).
+    if (!remplissage || remplissage.distant) return undefined;
 
     const suivre = (evenement) => {
       const sous = document.elementFromPoint(evenement.clientX, evenement.clientY);
@@ -684,7 +721,13 @@ export default function GrilleChronogramme({
           </tr>
         </thead>
 
-        <tbody>
+        {/*
+          `data-guidage-edition` (2026-10-04) : le planning s'enregistre SEUL après chaque
+          retouche. Rejouées chez l'autre, les heures choisies y seraient enregistrées une
+          seconde fois — conflit de version. La case ouverte, la recopie et le dépliage
+          passent par l'état partagé (plus haut) ; les heures, par l'annonce temps réel.
+        */}
+        <tbody data-guidage-edition>
           {modules.map((module) => (
             <LigneModule
               key={cleDe(module)}
@@ -1348,6 +1391,12 @@ function CelluleBrute({ semaine, module, identite, cellule, marque, ouverte, onO
         <button
           type="button"
           disabled={verrouillee}
+          /*
+           * ⚠️ L'OUVERTURE PASSE PAR L'ÉTAT PARTAGÉ (`ouverte`), PAS PAR LE CLIC
+           * REJOUÉ : rejoué en plus, il rouvrirait — ou refermerait — la case
+           * chez l'autre, qui vient d'être ouverte par l'état.
+           */
+          data-guidage-ignorer={!mixte && !onClicDirect ? '' : undefined}
           onClick={() =>
             mixte
               ? onBasculer?.(cle)

@@ -7,6 +7,7 @@ import Alerte from '@/components/common/Alerte';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { chargerStagiaires } from './api';
+import { useEtatPartage } from '@/features/guidage/useEtatPartage';
 
 /**
  * Détail d'un effectif : filière → groupe → stagiaires.
@@ -21,6 +22,12 @@ import { chargerStagiaires } from './api';
 export default function DetailEffectifs({ statistiques }) {
   const [filtre, setFiltre] = useState('');
   const [groupeOuvert, setGroupeOuvert] = useState(null);
+  // Le filtre et le groupe déplié, partagés pendant le guidage (2026-10-04).
+  useEtatPartage('documents.effectifs', { filtre, groupe: groupeOuvert ?? null }, (valeur) => {
+    if (!valeur || typeof valeur !== 'object') return;
+    setFiltre(typeof valeur.filtre === 'string' ? valeur.filtre : '');
+    setGroupeOuvert(typeof valeur.groupe === 'string' ? valeur.groupe : null);
+  });
 
   const filieres = statistiques?.filieres ?? [];
   const motif = filtre.trim().toLowerCase();

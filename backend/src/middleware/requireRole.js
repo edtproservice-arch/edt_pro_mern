@@ -21,6 +21,12 @@ import { forbidden } from '../lib/httpError.js';
  * ⚠️ UNE RÈGLE ICI PLUTÔT QUE « ADMIN » AJOUTÉ AUX HUIT ROUTEURS DES PAGES : on
  * l'y aurait oublié sur le prochain, et un admin HORS collaboration aurait
  * passé la garde pour échouer plus loin sur l'établissement (400 au lieu de 403).
+ *
+ * ═══ CONTRÔLE TOTAL (2026-10-03, décision du porteur) ═══ « Pour la
+ * collaboration, l'admin a un contrôle total : tous les onglets du directeur. »
+ * L'administrateur en collaboration passe désormais AUSSI les gardes réservées
+ * au directeur — publier, importer, partager compris. Il reste tracé
+ * (`COLLABORATION_DEBUT`) et cantonné à l'établissement de son jeton.
  */
 export function requireRole(...rolesAutorises) {
   return (req, res, next) => {
@@ -28,12 +34,24 @@ export function requireRole(...rolesAutorises) {
       return next(forbidden('Accès refusé', { code: 'NON_AUTHENTIFIE' }));
     }
     const collaborateur =
-      req.utilisateur.role === ROLES.ADMIN &&
-      Boolean(req.utilisateur.$locals?.collaboration) &&
-      rolesAutorises.includes(ROLES.FORMATEUR);
+      enCollaboration(req.utilisateur) &&
+      (rolesAutorises.includes(ROLES.DIRECTEUR) || rolesAutorises.includes(ROLES.FORMATEUR));
     if (!rolesAutorises.includes(req.utilisateur.role) && !collaborateur) {
       return next(forbidden('Accès refusé', { code: 'ROLE_INSUFFISANT' }));
     }
     return next();
   };
+}
+
+/** Un administrateur qui collabore avec un établissement (jeton `col`). */
+export function enCollaboration(utilisateur) {
+  return utilisateur?.role === ROLES.ADMIN && Boolean(utilisateur.$locals?.collaboration);
+}
+
+/**
+ * Agit-il en DIRECTEUR ? Le directeur lui-même, ou l'administrateur en
+ * collaboration, qui en a le contrôle total depuis le 2026-10-03.
+ */
+export function agitEnDirecteur(utilisateur) {
+  return utilisateur?.role === ROLES.DIRECTEUR || enCollaboration(utilisateur);
 }

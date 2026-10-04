@@ -14,6 +14,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '@/com
 import BandeauUsurpation from './BandeauUsurpation';
 import BandeauCollaboration from './BandeauCollaboration';
 import BarreLaterale from './BarreLaterale';
+import Guidage from '@/features/guidage/Guidage';
 import { ENTREES } from './navigation';
 import SectionsConsultation from '@/features/consultation/SectionsConsultation';
 import { recupererSession, seDeconnecter } from '@/features/auth/api';
@@ -168,14 +169,13 @@ export default function CoquilleApp() {
    */
   const role = utilisateur?.role;
   /*
-   * ═══ L'ADMINISTRATEUR EN COLLABORATION PREND LA MÊME COQUILLE (2026-09-14) ═══
-   * Trois pages — celles qui se partagent — dans la barre horizontale, comme un
-   * formateur invité : ni la barre latérale du directeur, ni son accueil
-   * d'établissement ne lui sont ouverts.
+   * ═══ L'ADMINISTRATEUR EN COLLABORATION PREND LA COQUILLE DU DIRECTEUR ═══
+   * (2026-10-03, « contrôle total ».) Sa session le présente en directeur
+   * (`presenterSession`) : barre latérale, accueil et tous les onglets lui sont
+   * ouverts. Seul `collaboration` le distingue encore — bandeau et guidage.
    */
   const collaboration = session.data?.collaboration ?? null;
-  const estSession =
-    role === ROLES.FORMATEUR || role === ROLES.STAGIAIRE || (role === ROLES.ADMIN && Boolean(collaboration));
+  const estSession = role === ROLES.FORMATEUR || role === ROLES.STAGIAIRE;
 
   if (session.isLoading || !ancre.pret) return null;
   // Un administrateur HORS collaboration n'a rien sous /app : son espace est /admin.
@@ -226,8 +226,10 @@ export default function CoquilleApp() {
    * ⚠️ PAS EN COLLABORATION : l'établissement d'un administrateur qui collabore
    * vient de son jeton, jamais de `etablissementActif`.
    */
+  // ⚠️ EN COLLABORATION AUSSI depuis le 2026-10-03 : `presenterSession` lui
+  // donne pour seul établissement celui du jeton — un autre, resté stocké,
+  // serait refusé en 403 à chaque requête.
   if (
-    !collaboration &&
     etablissementStocke !== null &&
     !etablissementIds.some((id) => String(id) === etablissementStocke)
   ) {
@@ -308,7 +310,7 @@ export default function CoquilleApp() {
             c'est la combinaison éprouvée par `PageMessagerieAdmin`, qui
             reproduit déjà cette coquille à l'identique pour l'espace admin.
           */}
-          <div className="min-h-0 flex-1 overflow-x-clip overflow-y-auto p-6">
+          <div data-zone-guidage className="min-h-0 flex-1 overflow-x-clip overflow-y-auto p-6">
             {/*
               ⚠️ PAS DE TITRE ICI — il est rendu par `CadreReglage` (2026-09-05,
               correction du porteur). Posé dans cette coquille, il se collait au
@@ -375,6 +377,7 @@ export default function CoquilleApp() {
           impersonateur={session.data?.impersonateur}
           utilisateur={utilisateur}
         />
+        <BandeauCollaboration collaboration={collaboration} />
 
         {/* La navigation ne s'imprime pas : ce qu'on met sur le papier, c'est le
             contenu de la page, jamais la barre d'outils qui y mène.
@@ -382,7 +385,7 @@ export default function CoquilleApp() {
             demande du porteur — 44 px essayés d'abord, jugés trop serrés).
             ⚠️ Deux hauteurs calculées en dépendent : `CadreReglage`
             (100svh − 3,125rem) et `GardeEtapes` (100svh − 6,125rem). */}
-        <header className="sticky top-0 z-30 flex h-[50px] shrink-0 items-center gap-2 border-b bg-background px-4 print:hidden">
+        <header data-guidage-entete className="sticky top-0 z-30 flex h-[50px] shrink-0 items-center gap-2 border-b bg-background px-4 print:hidden">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-2 h-4" />
           <FilAriane courante={courante} />
@@ -414,6 +417,9 @@ export default function CoquilleApp() {
         `PanneauDroit.jsx`.
       */}
       <EmplacementPanneauDroit />
+      {/* Le guidage de l'administrateur en collaboration (2026-10-03). */}
+      {/* Dans les deux sens (2026-10-04) : chez le directeur ET chez l'admin qui collabore. */}
+      {role === ROLES.DIRECTEUR && !session.data?.impersonateur && <Guidage admin={Boolean(collaboration)} />}
     </SidebarProvider>
       </FournirPanneauDroit>
       </FournirEnTetePage>
@@ -444,6 +450,7 @@ function ContenuPage({ affichage, epinglee, children }) {
   return (
     <div
       data-contenu-page
+      data-zone-guidage
       onClick={() => {
         // ⚠️ ÉPINGLÉE, la barre ne bouge plus : c'est tout l'objet du réglage.
         if (epinglee || isMobile || !open) return;

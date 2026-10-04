@@ -137,6 +137,8 @@ function CaseEmploi({
   return (
     <td
       data-case={cle}
+      // Sa sélection au `mousedown` passe par l'état partagé (`emploi.selection`) : pas de clic rejoué en plus.
+      data-guidage-sans-ecoute=""
       /*
        * ⚠️ LE GLISSEMENT NE PEUT PAS SERVIR À DEUX CHOSES À LA FOIS. En mode
        * sélection il trace un rectangle ; hors de ce mode il DÉPLACE la séance.

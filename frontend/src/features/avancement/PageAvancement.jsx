@@ -42,6 +42,7 @@ import EnTeteAvancement, { Chiffres, chiffresAAfficher } from './EnTeteAvancemen
 import PanneauFiltres, { etiquetteValeur } from './PanneauFiltres';
 import SheetChronologie from './SheetChronologie';
 import TableauAvancement from './TableauAvancement';
+import { useEtatPartage } from '@/features/guidage/useEtatPartage';
 
 /**
  * Avancement réalisé / prévu (F7) — Phase 7, sous-livraison (a).
@@ -126,6 +127,33 @@ export default function PageAvancement() {
    * l'emploi du temps.)
    */
   const [chronologieOuverte, setChronologieOuverte] = useState(false);
+
+  /*
+   * ═══ LE GUIDAGE VOIT CE QUE L'AUTRE REGARDE (2026-10-04, demande du porteur :
+   * « fais pareil pour l'avancement ») ═══ Face, axe, vue, recherche, date
+   * observée, chronologie, filtres : tout ce qui décide de l'écran est partagé
+   * TEL QUEL. Les clics rejoués n'y suffisaient pas — un bâton de graphique ou
+   * un point de la frise est un dessin, pas un bouton qu'on retrouve.
+   *
+   * ⚠️ `setFace`, PAS `changerFace` : celle-ci remet les filtres à zéro, et les
+   * filtres de l'autre arrivent par leur propre clé.
+   */
+  useEtatPartage(
+    'avancement.affichage',
+    { face, axe, vue, recherche, dateObservee: dateObservee ?? null, chronologie: chronologieOuverte },
+    (etat) => {
+      if (!etat) return;
+      if (typeof etat.face === 'string') setFace(etat.face);
+      if (typeof etat.axe === 'string') setAxe(etat.axe);
+      if (typeof etat.vue === 'string') setVue(etat.vue);
+      if (typeof etat.recherche === 'string') setRecherche(etat.recherche);
+      setDateObservee(etat.dateObservee ?? null);
+      setChronologieOuverte(Boolean(etat.chronologie));
+    }
+  );
+  useEtatPartage('avancement.filtres', filtres, (valeur) => {
+    if (valeur && typeof valeur === 'object' && !Array.isArray(valeur)) setFiltres({ ...FILTRES_VIDES, ...valeur });
+  });
 
   /* Le panneau du taux, à droite du graphe — une préférence de POSTE. */
   const panneauTaux = usePanneauTaux();

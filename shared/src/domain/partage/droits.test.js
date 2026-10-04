@@ -37,18 +37,14 @@ describe('droitSurPage', () => {
   });
 
   /*
-   * ═══ L'ADMINISTRATEUR EST INVITÉ PAR DÉFAUT (2026-09-14) ═══ « peut modifier »
-   * sur les pages qui se partagent — sans invitation, sans figurer dans la
-   * liste — et rien ailleurs, même si un partage en base prétendait le contraire.
+   * ═══ L'ADMINISTRATEUR EN COLLABORATION A LE CONTRÔLE TOTAL (2026-10-03) ═══
+   * Propriétaire de TOUTES les pages, comme le directeur — sans invitation.
    */
-  it('invite l’administrateur par défaut, à modifier, sur les seules pages qui se partagent', () => {
+  it('donne à l’administrateur la propriété de toutes les pages', () => {
     const admin = { id: 'a', role: ROLES.ADMIN };
-    for (const page of ['emploi', 'chronogramme', 'affectations']) {
-      expect(droitSurPage(admin, null, page)).toEqual({ droit: DROITS_PAGE.MODIFIER, source: SOURCES_DROIT.ADMIN });
+    for (const page of ['emploi', 'chronogramme', 'affectations', 'absences', 'stages']) {
+      expect(droitSurPage(admin, null, page)).toEqual({ droit: DROITS_PAGE.PROPRIETAIRE, source: SOURCES_DROIT.ADMIN });
     }
-    expect(droitSurPage(admin, null, 'absences')).toBeNull();
-    const ouverte = partage({ page: 'stages', general: { portee: PORTEES_GENERALES.ETABLISSEMENT, droit: DROITS_PAGE.MODIFIER } });
-    expect(droitSurPage(admin, ouverte)).toBeNull();
   });
 
   it('ne donne rien à un formateur non invité sur une page restreinte', () => {

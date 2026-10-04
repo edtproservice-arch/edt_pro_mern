@@ -409,7 +409,14 @@ export default function CarteEtablissement({
   }, [reprendre]);
 
   return (
-    <div className="space-y-6">
+    /*
+     * `data-guidage-edition` (2026-10-04) : pendant un guidage, les MODIFICATIONS de
+     * la carte ne sont pas rejouées chez l'autre — elle s'enregistre seule, et les
+     * deux écrans l'enregistreraient deux fois (conflit de version). Seuls les gestes
+     * d'affichage (onglets, groupes dépliés) le sont ; le résultat arrive, lui, par
+     * l'annonce temps réel. Voir `gestes.js`.
+     */
+    <div data-guidage-edition className="space-y-6">
       {/* <Alerte type="info" titre="Carte d'établissement">
         Générez les groupes d&apos;une filière depuis la répartition DRIF, puis affectez un
         formateur à chaque module. L&apos;enregistrement remplace la base de l&apos;année scolaire.
@@ -529,6 +536,8 @@ export default function CarteEtablissement({
                 checked={vue === 'formateur'}
                 onCheckedChange={(actif) => setVue(actif ? 'formateur' : 'ensemble')}
                 aria-label="Basculer entre la vue par filières et la vue par formateurs"
+                // Un geste d'AFFICHAGE : rejoué pendant le guidage, malgré la zone d'édition.
+                data-guidage-affichage=""
               />
               <span
                 className={

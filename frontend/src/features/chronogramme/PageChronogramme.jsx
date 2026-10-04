@@ -65,6 +65,7 @@ import { estVersionPerimee } from '@/lib/useBrouillonVersionne';
 import BarreClasseur from './BarreClasseur';
 import BoutonCharge from './BoutonCharge';
 import BoutonLiaison from './BoutonLiaison';
+import { useEtatPartage } from '@/features/guidage/useEtatPartage';
 
 /**
  * Chronogramme — planning annuel prévisionnel, par groupe (F7).
@@ -296,6 +297,29 @@ export default function PageChronogramme() {
    */
   const [depliees, setDepliees] = useState([]);
 
+  /*
+   * ═══ CE QUE LE GUIDAGE NE PEUT PLUS REJOUER, IL LE PARTAGE (2026-10-04) ═══
+   * La page s'enregistre seule : `CadreReglage` en fait une zone d'édition, où
+   * les clics ne sont plus rejoués. Les groupes ou formateurs affichés, la vue
+   * et les blocs dépliés ne modifient rien — ils sont donc partagés tels quels.
+   */
+  /** L'empreinte d'une sélection reçue de l'autre écran : ses blocs dépliés viennent avec elle. */
+  const depliesRecus = useRef(null);
+  useEtatPartage(
+    'chrono.affichage',
+    { parFormateur, groupes: selection, formateurs: selectionFormateurs, depliees },
+    (etat) => {
+      if (!etat || typeof etat !== 'object') return;
+      // L'empreinte de la sélection REÇUE : seul le changement vers elle saute le défaut.
+      const recue = etat.parFormateur ? etat.formateurs : etat.groupes;
+      depliesRecus.current = Array.isArray(recue) ? recue.join('|') : null;
+      setParFormateur(Boolean(etat.parFormateur));
+      if (Array.isArray(etat.groupes)) setSelection(etat.groupes);
+      if (Array.isArray(etat.formateurs)) setSelectionFormateurs(etat.formateurs);
+      if (Array.isArray(etat.depliees)) setDepliees(etat.depliees);
+    }
+  );
+
   const basculerDepli = (cle, ouvert) =>
     setDepliees((courantes) =>
       ouvert ? [...new Set([...courantes, cle])] : courantes.filter((autre) => autre !== cle)
@@ -409,6 +433,11 @@ export default function PageChronogramme() {
   const empreinteSelection = selectionCourante.join('|');
 
   useEffect(() => {
+    // ⚠️ Une sélection REÇUE du guidage arrive avec ses blocs dépliés : le défaut
+    // les écraserait, et l'écart repartirait chez l'autre.
+    const recue = depliesRecus.current;
+    depliesRecus.current = null;
+    if (recue !== null && recue === empreinteSelection) return;
     setDepliees(selectionCourante.slice(0, OUVERTES_AU_DEPART));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empreinteSelection, parFormateur]);

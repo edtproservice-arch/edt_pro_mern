@@ -102,7 +102,7 @@ function urlSocket() {
 }
 
 function ouvrir() {
-  if (ws || pages.size === 0) return;
+  if (ws || !socketUtile()) return;
   clearTimeout(minuteurReconnexion);
   minuteurReconnexion = null;
 
@@ -138,8 +138,9 @@ function ouvrir() {
     publier({ salles });
     curseurs = {};
     for (const abonne of abonnesCurseurs) abonne();
+    for (const ecouteur of ecouteursGuidage) ecouteur({ type: 'deconnecte' });
 
-    if (pages.size === 0) {
+    if (!socketUtile()) {
       publier({ statut: 'inactif' });
       return;
     }
@@ -206,7 +207,7 @@ function ouvrir() {
 let derniereReauthentification = 0;
 
 function planifierReconnexion() {
-  if (pages.size === 0 || minuteurReconnexion) return;
+  if (!socketUtile() || minuteurReconnexion) return;
   publier({ statut: 'reconnexion' });
   const attente = Math.min(ATTENTE_MAX_MS, 1000 * 2 ** tentative) + Math.random() * 500;
   tentative += 1;
@@ -223,6 +224,13 @@ function recevoir(message) {
     publier({ statut: 'connecte', utilisateurId: message.utilisateurId });
     // Le serveur n'écoute qu'APRÈS ce message : c'est maintenant qu'on rejoint.
     for (const page of pages.keys()) envoyerRejoindre(page);
+    // Le guide qui se reconnecte doit redire qu'il guide : le serveur l'a oublié.
+    for (const ecouteur of ecouteursGuidage) ecouteur({ type: 'connecte' });
+    return;
+  }
+
+  if (message.type?.startsWith('guide')) {
+    for (const ecouteur of ecouteursGuidage) ecouteur(message);
     return;
   }
 
@@ -301,7 +309,7 @@ function recevoir(message) {
  */
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
-    if (!ws && pages.size > 0) {
+    if (!ws && socketUtile()) {
       tentative = 0;
       ouvrir();
     }
@@ -352,19 +360,56 @@ export function entrer(page, { anneeScolaire, vue, surModification, surAcces } =
       envoyer({ type: 'quitter', page });
       publierSalle(page, VIDE);
       viderCurseurs(page);
-
-      if (pages.size > 0) return;
-      clearTimeout(minuteurReconnexion);
-      minuteurReconnexion = null;
-      minuteurFermeture = setTimeout(() => {
-        if (pages.size > 0) return;
-        ws?.close(1000, 'PLUS_DE_PAGE');
-        ws = null;
-        definirConnexionId(null);
-        publier({ statut: 'inactif' });
-      }, GRACE_FERMETURE_MS);
+      fermerSiInutile();
     },
   };
+}
+
+function fermerSiInutile() {
+  if (socketUtile()) return;
+  clearTimeout(minuteurReconnexion);
+  minuteurReconnexion = null;
+  clearTimeout(minuteurFermeture);
+  minuteurFermeture = setTimeout(() => {
+    if (socketUtile()) return;
+    ws?.close(1000, 'PLUS_DE_PAGE');
+    ws = null;
+    definirConnexionId(null);
+    publier({ statut: 'inactif' });
+  }, GRACE_FERMETURE_MS);
+}
+
+/*
+ * ═══ LE GUIDAGE (2026-10-03) ═══
+ * L'administrateur en collaboration montre ses gestes au directeur : sa
+ * navigation, son curseur, son défilement. Il ne dépend d'aucune page — la
+ * socket reste donc ouverte tant qu'un écouteur de guidage est branché, même
+ * sur une page sans salle (accueil, paramètres…).
+ */
+const ecouteursGuidage = new Set();
+
+function socketUtile() {
+  return pages.size > 0 || ecouteursGuidage.size > 0;
+}
+
+/**
+ * Branche un écouteur de guidage : il reçoit chaque message `guide-*`.
+ * @returns {() => void} pour le débrancher.
+ */
+export function ecouterGuidage(rappel) {
+  clearTimeout(minuteurFermeture);
+  minuteurFermeture = null;
+  ecouteursGuidage.add(rappel);
+  ouvrir();
+  return () => {
+    ecouteursGuidage.delete(rappel);
+    fermerSiInutile();
+  };
+}
+
+/** Envoie un message de guidage — perdu en silence si la socket est fermée. */
+export function envoyerGuidage(message) {
+  envoyer(message);
 }
 
 function sAbonner(rappel) {

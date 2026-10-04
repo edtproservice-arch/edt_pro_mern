@@ -43,7 +43,7 @@ import { envoyer as envoyerMessage } from '../messagerie/messagerie.service.js';
  * l'établissement ferait diverger le chronogramme de l'emploi du temps : une
  * semaine fermée d'un côté, ouverte de l'autre, sans que rien ne l'explique.
  */
-function vacancesEffectives(national, etablissement) {
+export function vacancesEffectives(national, etablissement) {
   return fusionnerVacances(
     national.vacances,
     etablissement?.calendrier?.vacances ?? [],
@@ -78,7 +78,7 @@ function vacancesEffectives(national, etablissement) {
  * ← `tableDesNoms()` de reconstruction.js, même raison : les affectations
  * portent l'identifiant, pas le nom.
  */
-function nomDuFormateur(base, cle) {
+export function nomDuFormateur(base, cle) {
   const formateur = (base?.formateurs ?? []).find(
     (candidat) => String(candidat.matricule ?? '').trim() === cle
   );
@@ -102,7 +102,7 @@ function masseStatutaire(base, cle) {
 }
 
 /** Le formateur de la base, par matricule — pour apparier ses formations. */
-function formateurDeCle(base, cle) {
+export function formateurDeCle(base, cle) {
   return (
     (base?.formateurs ?? []).find(
       (candidat) => String(candidat.matricule ?? '').trim() === cle
@@ -110,7 +110,7 @@ function formateurDeCle(base, cle) {
   );
 }
 
-function modulesDuGroupe(base, groupe, intitules = new Map(), contexte = {}) {
+export function modulesDuGroupe(base, groupe, intitules = new Map(), contexte = {}) {
   const recherche = String(groupe).trim().toUpperCase();
   const parCode = new Map();
 

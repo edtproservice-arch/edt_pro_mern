@@ -51,6 +51,33 @@ export {
 export { SEUIL_HEBDOMADAIRE, chargesHebdomadaires } from './charge.js';
 
 export {
+  DERNIERES_SEMAINES,
+  HEURES_PAR_JOUR_CIBLE,
+  bornerALaFinDeFormation,
+  PLAFOND_MODULE_SEMAINE,
+  PLANCHER_HEBDOMADAIRE,
+  PLANCHER_MASSE_MOYENNE,
+  PRIORITES_GENERATION,
+  PRIORITE_METIER_FORMATION,
+  RESERVE_REGIONALE,
+  SEMAINES_METIER_FORMATION,
+  SEUIL_PLANCHER_ABSOLU,
+  SEUIL_PETITE_MASSE,
+  cibleDeLaSemaine,
+  cibleHebdomadaire,
+  derniereSemaineDuGroupe,
+  estModuleMetierFormation,
+  fenetreDuSemestre,
+  joursPerdusFormateur,
+  plafondHebdomadaireModule,
+  plafondSoupleGroupe,
+  plancherHebdomadaire,
+  prioriteGeneration,
+  retirerReserve,
+  semainesDuSemestre,
+} from './generation.js';
+
+export {
   cleLigne,
   cleSynchrone,
   effacerAvecJumelles,

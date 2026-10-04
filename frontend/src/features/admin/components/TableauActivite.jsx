@@ -1,10 +1,17 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Eye, LogIn, Search } from 'lucide-react';
+import { Eye, KeyRound, LogIn, MoreVertical, Search, Trash2, UserX } from 'lucide-react';
 import { ROLES } from 'shared/constants';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -14,11 +21,20 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import TableauTriable from '@/components/common/TableauTriable';
+import ConfirmationAction from '@/components/common/ConfirmationAction';
 import { HAUTEUR_BARRE } from '@/components/layout/BarreNavigation';
 import IndicateurChargement from '@/components/ui/indicateur-chargement';
 import { routeApresUsurpation } from '@/features/auth/routage';
-import { chargerEtablissements, chargerUtilisateurs, connecterEnTantQue } from '../api';
+import {
+  chargerComptesOrphelins,
+  chargerEtablissements,
+  chargerUtilisateurs,
+  connecterEnTantQue,
+  supprimerCompte,
+  supprimerComptesOrphelins,
+} from '../api';
 import BoutonCollaborer from './BoutonCollaborer';
+import DialogueMotDePasse from './DialogueMotDePasse';
 import CelluleUtilisateur from './CelluleUtilisateur';
 import FicheCompte from './FicheCompte';
 import { libelleRole, LIBELLES_ROLE } from './roles';
@@ -112,6 +128,10 @@ export default function TableauActivite() {
   const [recherche, setRecherche] = useState('');
   const [filtres, setFiltres] = useState({});
   const [consulte, setConsulte] = useState(null);
+  const [aSupprimer, setASupprimer] = useState(null);
+  const [orphelinsAConfirmer, setOrphelinsAConfirmer] = useState(false);
+  const [compteAReinitialiser, setCompteAReinitialiser] = useState(null);
+  const [succesMotDePasse, setSuccesMotDePasse] = useState(null);
 
   /*
    * ⚠️ CHARGÉE À PART, ET UNE SEULE FOIS : la liste des établissements ne change
@@ -158,6 +178,37 @@ export default function TableauActivite() {
       navigate(routeApresUsurpation(reponse.utilisateur));
     },
   });
+
+  /*
+   * ═══ SUPPRESSION ET MOT DE PASSE, POUR LES CINQ RÔLES ═══ (2026-10-04,
+   * demande du porteur.) Un formateur ou un stagiaire n'avait aucune action
+   * ici : il fallait se connecter à la place de son directeur pour le
+   * supprimer — et un compte orphelin n'a plus de directeur.
+   */
+  const rafraichir = () => {
+    for (const cle of ['admin-activite', 'admin-utilisateurs', 'admin-stats', 'admin-etablissements', 'admin-orphelins']) {
+      queryClient.invalidateQueries({ queryKey: [cle] });
+    }
+  };
+
+  const mutationSuppression = useMutation({ mutationFn: supprimerCompte, onSuccess: rafraichir });
+
+  /*
+   * ═══ LES COMPTES ORPHELINS ═══ (2026-10-04, demande du porteur.) Avant la
+   * suppression en cascade, supprimer un directeur laissait ses formateurs,
+   * stagiaires et gestionnaires sans établissement : colonne « Établissement »
+   * vide, et plus personne d'autre que l'administrateur pour les voir. Le
+   * bandeau n'apparaît que s'il y en a.
+   */
+  const orphelins = useQuery({
+    queryKey: ['admin-orphelins'],
+    queryFn: chargerComptesOrphelins,
+    retry: false,
+  });
+  const comptesOrphelins = orphelins.data?.comptes ?? [];
+  const mutationOrphelins = useMutation({ mutationFn: supprimerComptesOrphelins, onSuccess: rafraichir });
+
+  const enCours = mutationConnexion.isPending || mutationSuppression.isPending;
 
   const changer = (cle, valeur) =>
     setFiltres((actuels) => ({ ...actuels, [cle]: valeur === TOUS ? undefined : valeur }));
@@ -245,6 +296,30 @@ export default function TableauActivite() {
           </div>
         ))}
       </div>
+
+      {comptesOrphelins.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
+          <p className="flex items-center gap-2 text-sm">
+            <UserX className="size-4 shrink-0 text-destructive" />
+            {comptesOrphelins.length} compte(s) formateur, stagiaire ou gestionnaire sans
+            établissement existant.
+          </p>
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={mutationOrphelins.isPending}
+            onClick={() => setOrphelinsAConfirmer(true)}
+          >
+            <Trash2 />
+            {mutationOrphelins.isPending ? 'Suppression…' : 'Supprimer les comptes orphelins'}
+          </Button>
+        </div>
+      )}
+      {mutationOrphelins.isSuccess && (
+        <p className="text-sm text-muted-foreground">
+          {mutationOrphelins.data.supprimes} compte(s) orphelin(s) supprimé(s).
+        </p>
+      )}
 
       {requete.isLoading ? (
         <EtatVide>
@@ -368,10 +443,11 @@ export default function TableauActivite() {
                     autre page pour agir, c'est perdre le fil au moment précis
                     où on l'a trouvé.
 
-                    ⚠️ MAIS PAS TOUTES : approuver, bloquer et supprimer restent
-                    sur « Directeurs ». Ce tableau couvre les cinq rôles, et un
+                    ⚠️ MAIS PAS TOUTES : approuver et bloquer restent sur
+                    « Directeurs ». Ce tableau couvre les cinq rôles, et un
                     formateur n'a rien à faire approuver — il est créé par son
-                    directeur.
+                    directeur. Supprimer et réinitialiser le mot de passe, en
+                    revanche, valent pour tous (2026-10-04).
                   */
                   const cibleAdmin = ligne.role === ROLES.ADMIN;
                   return (
@@ -380,22 +456,52 @@ export default function TableauActivite() {
                         <Button
                           variant="outline"
                           size="sm"
-                          disabled={mutationConnexion.isPending}
+                          disabled={enCours}
                           onClick={() => mutationConnexion.mutate(ligne.id)}
                         >
                           <LogIn />
                           Se connecter
                         </Button>
                       )}
-                      <BoutonCollaborer compte={ligne} desactive={mutationConnexion.isPending} />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={`Consulter la fiche de ${ligne.nomComplet}`}
-                        onClick={() => setConsulte(ligne)}
-                      >
-                        <Eye />
-                      </Button>
+                      <BoutonCollaborer compte={ligne} desactive={enCours} />
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label={`Autres actions pour ${ligne.nomComplet}`}
+                          >
+                            <MoreVertical />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setConsulte(ligne)}>
+                            <Eye />
+                            Voir la fiche
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            disabled={enCours}
+                            onClick={() => {
+                              setSuccesMotDePasse(null);
+                              setCompteAReinitialiser(ligne);
+                            }}
+                          >
+                            <KeyRound />
+                            Réinitialiser le mot de passe
+                          </DropdownMenuItem>
+                          {!cibleAdmin && (
+                            <DropdownMenuItem
+                              disabled={enCours}
+                              className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                              onClick={() => setASupprimer(ligne)}
+                            >
+                              <Trash2 />
+                              Supprimer le compte
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   );
                 },
@@ -404,9 +510,19 @@ export default function TableauActivite() {
             lignes={lignes}
           />
 
-          {mutationConnexion.isError && (
-            <p className="text-sm text-destructive" role="alert">
-              {mutationConnexion.error.message}
+          {[mutationConnexion, mutationSuppression, mutationOrphelins]
+            .filter((mutation) => mutation.isError)
+            .map((mutation) => (
+              <p key={mutation.error.message} className="text-sm text-destructive" role="alert">
+                {mutation.error.message}
+              </p>
+            ))}
+          {succesMotDePasse && (
+            <p className="text-sm text-muted-foreground">
+              {/* Le mot de passe ne revient que pour les adresses fictives « @placeholder.ofppt.ma ». */}
+              {succesMotDePasse.motDePasse
+                ? `Nouveau mot de passe : ${succesMotDePasse.motDePasse}`
+                : 'Mot de passe réinitialisé — aussi envoyé par e-mail.'}
             </p>
           )}
 
@@ -423,6 +539,44 @@ export default function TableauActivite() {
       )}
 
       <FicheCompte compte={consulte} onOpenChange={(ouvert) => !ouvert && setConsulte(null)} />
+
+      <DialogueMotDePasse
+        compte={compteAReinitialiser}
+        onFermer={() => setCompteAReinitialiser(null)}
+        onReussite={setSuccesMotDePasse}
+      />
+
+      <ConfirmationAction
+        ouvert={Boolean(aSupprimer)}
+        onOpenChange={(ouvert) => !ouvert && setASupprimer(null)}
+        destructive
+        titre="Supprimer définitivement ce compte ?"
+        description={
+          aSupprimer?.role === ROLES.DIRECTEUR
+            ? `${aSupprimer?.nomComplet} (${aSupprimer?.email}) sera supprimé, ainsi que les établissements dont il est propriétaire, toutes leurs données et leurs sessions formateur, stagiaire et gestionnaire. Cette action est IRRÉVERSIBLE.`
+            : `${aSupprimer?.nomComplet} (${aSupprimer?.email}, ${libelleRole(aSupprimer?.role)}) sera supprimé et déconnecté de tous ses appareils. Cette action est IRRÉVERSIBLE.`
+        }
+        libelleConfirmation="Supprimer"
+        onConfirmer={() => {
+          mutationSuppression.mutate(aSupprimer.id);
+          setASupprimer(null);
+        }}
+      />
+
+      <ConfirmationAction
+        ouvert={orphelinsAConfirmer}
+        onOpenChange={setOrphelinsAConfirmer}
+        destructive
+        titre={`Supprimer ${comptesOrphelins.length} compte(s) orphelin(s) ?`}
+        description={`Ces comptes ne sont rattachés à aucun établissement existant : ${comptesOrphelins
+          .map((compte) => `${compte.nomComplet} (${libelleRole(compte.role)})`)
+          .join(', ')}. Cette action est IRRÉVERSIBLE.`}
+        libelleConfirmation="Supprimer"
+        onConfirmer={() => {
+          mutationOrphelins.mutate();
+          setOrphelinsAConfirmer(false);
+        }}
+      />
     </div>
   );
 }

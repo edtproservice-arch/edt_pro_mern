@@ -64,6 +64,7 @@ import {
 import { estVersionPerimee } from '@/lib/useBrouillonVersionne';
 import BarreClasseur from './BarreClasseur';
 import BoutonCharge from './BoutonCharge';
+import BoutonGenerer from './BoutonGenerer';
 import BoutonLiaison from './BoutonLiaison';
 import { useEtatPartage } from '@/features/guidage/useEtatPartage';
 
@@ -1028,6 +1029,13 @@ export default function PageChronogramme() {
               montre pas un bouton qui échouerait.
             */}
             {role === ROLES.DIRECTEUR && <BoutonLiaison lectureSeule={lectureSeule} />}
+
+            {/*
+              Génération automatique (2026-10-04). ⚠️ AU DIRECTEUR SEUL : elle
+              réécrit les plannings de TOUS les groupes — même portée qu'un import
+              de classeur, et le serveur la refuse aux autres rôles.
+            */}
+            {role === ROLES.DIRECTEUR && <BoutonGenerer lectureSeule={lectureSeule} />}
 
             {/*
               ⚠️ AU DIRECTEUR SEUL, ET EN MODE FORMATEUR SEULEMENT — même règle que le bouton

@@ -48,7 +48,19 @@ export function collaborerAvec(id) {
   return api.post(`/api/v2/admin/utilisateurs/${id}/collaboration`, { appareil: decrireAppareil() });
 }
 
-/** Suppression définitive — le compte et ses établissements. */
+/**
+ * Suppression définitive — le compte, ses établissements et, pour un
+ * directeur, les sessions qui n'existaient que par eux.
+ */
 export function supprimerCompte(id) {
   return api.delete(`/api/v2/admin/utilisateurs/${id}`);
+}
+
+/** Comptes formateur, stagiaire et gestionnaire dont aucun établissement n'existe plus. */
+export function chargerComptesOrphelins() {
+  return api.get('/api/v2/admin/comptes-orphelins');
+}
+
+export function supprimerComptesOrphelins() {
+  return api.delete('/api/v2/admin/comptes-orphelins');
 }

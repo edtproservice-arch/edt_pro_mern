@@ -142,6 +142,30 @@ learning ne l'est pas, et un solveur bien pondéré fera mieux.
 
 ---
 
+## Le chronogramme (`generateur/chronogramme/`, 2026-10-04)
+
+Un second problème, distinct du placement : répartir la masse de chaque module
+**sur les semaines de l'année**, sans choisir ni jour ni créneau.
+
+```bash
+echo '{"pas":2.5,"semaines":[...],"formateurs":[...],"groupes":[...],"cellules":[...],"taches":[...]}'   | python -m generateur.chronogramme
+```
+
+Même frontière que le reste : Node traduit les règles du porteur en nombres
+(`shared/src/domain/chronogramme/generation.js`) — priorité régional/semestre,
+cible hebdomadaire masse/35 (plancher de 25 h au-delà de 360 h), −5 h par jour
+férié, de stage partiel, de formation ou avant la rentrée — et Python répartit.
+
+Glouton chronologique. **La charge hebdomadaire du formateur prime** : elle
+n'est jamais dépassée de plus d'un pas (2,5 h). Une échéance de lot (la fin du
+S1) est souhaitée, pas imposée : ce qui n'y tient pas déborde après elle, servi
+avant tout le reste, et une fin d'année plus légère est admise (retour du
+porteur du 2026-10-04 — la première version tenait l'échéance et posait 50 h,
+puis 110 h, à des formateurs à 30 h). Chaque semaine : les lots en retard, puis
+ceux à l'étroit (leur minimum seulement), puis le remplissage par priorité.
+
+---
+
 ## Fichiers
 
 | | |
@@ -154,6 +178,7 @@ learning ne l'est pas, et un solveur bien pondéré fera mieux.
 | `diagnostic.py` | pourquoi une séance n'a pas trouvé de place |
 | `solveur.py` | la boucle maître — **le seul que CP-SAT remplacera** |
 | `__main__.py` · `api.py` | CLI et service HTTP |
+| `chronogramme/` | répartition annuelle des heures — contrat, lecture, solveur |
 
 Les tests d'invariants (`tests/test_solveur.py`) rejouent **200 problèmes tirés
 au hasard** et vérifient qu'aucune contrainte n'est jamais violée. Leur pouvoir

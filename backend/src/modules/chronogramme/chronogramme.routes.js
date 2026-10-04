@@ -10,6 +10,7 @@ import { badRequest, forbidden } from '../../lib/httpError.js';
 import * as service from './chronogramme.service.js';
 import * as completude from './completude.service.js';
 import * as completer from '../generation/completer.service.js';
+import * as generation from './generation.service.js';
 import { exigerDroitPage } from '../partages/exigerDroitPage.js';
 import { annoncerModification } from '../tempsReel/annonces.js';
 
@@ -274,6 +275,44 @@ router.post(
  * ⚠️ EN LECTURE (`consulter`) : ce bilan n'écrit rien. Un formateur invité doit
  *    pouvoir constater l'écart sur ses groupes sans pouvoir toucher à la grille.
  */
+/*
+ * ═══ GÉNÉRATION AUTOMATIQUE DU CHRONOGRAMME (2026-10-04, demande du porteur) ═══
+ * Répartit les heures de chaque module affecté sur les semaines de l'année, par
+ * ordre de priorité (régional d'abord), en visant pour chaque formateur sa
+ * masse affectée / 35 — voir `generation.service.js`.
+ *
+ * ⚠️ AU DIRECTEUR SEUL, comme l'import de classeur et le report : elle réécrit
+ *    les plannings de TOUS les groupes d'un coup. Un invité « peut modifier »
+ *    édite des cases, il ne remplace pas l'année.
+ *
+ * ⚠️ `simulation` VAUT `true` PAR DÉFAUT : un appel distrait rend un bilan,
+ *    jamais une année réécrite.
+ */
+router.post(
+  '/generer',
+  requireRole(ROLES.DIRECTEUR),
+  modifier,
+  validate({
+    body: z.object({
+      mode: z
+        .enum([generation.MODES_GENERATION.REMPLACER, generation.MODES_GENERATION.COMPLETER])
+        .default(generation.MODES_GENERATION.REMPLACER),
+      simulation: z.boolean().default(true),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const bilan = await generation.generer(req.etablissementId, req.anneeScolaire, req.body);
+      if (!bilan.simulation) {
+        annoncerModification(req, PAGES_DU_CHRONOGRAMME, { action: 'generer' });
+      }
+      res.json({ success: true, ...bilan });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 router.get(
   '/completude',
   lire,

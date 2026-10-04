@@ -149,6 +149,26 @@ router.post(
   }
 );
 
+/**
+ * Comptes formateur, stagiaire et gestionnaire dont aucun établissement
+ * n'existe plus — laissés par la suppression d'un directeur avant la cascade.
+ */
+router.get('/comptes-orphelins', async (req, res, next) => {
+  try {
+    res.json({ success: true, comptes: await service.trouverComptesOrphelins() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete('/comptes-orphelins', async (req, res, next) => {
+  try {
+    res.json({ success: true, ...(await service.supprimerComptesOrphelins(req.utilisateur, req.ip)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.delete('/utilisateurs/:id', validate({ params: identifiantMongo }), async (req, res, next) => {
   try {
     const resultat = await service.supprimerCompte(req.params.id, req.utilisateur, req.ip);

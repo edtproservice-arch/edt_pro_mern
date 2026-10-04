@@ -164,3 +164,15 @@ export function placerManquantes(semaine, { simulation = true } = {}) {
 export function reporterVersChronogramme(simulation = true) {
   return api.post('/api/v2/chronogrammes/report', { simulation });
 }
+
+/**
+ * Génération automatique du chronogramme de TOUS les groupes (2026-10-04).
+ *
+ * ⚠️ `simulation: true` PAR DÉFAUT, ici comme au serveur : la génération
+ *    réécrit l'année entière, et l'écran montre d'abord le bilan.
+ *
+ * @param {{mode?: 'remplacer'|'completer', simulation?: boolean}} options
+ */
+export function genererChronogramme({ mode = 'remplacer', simulation = true } = {}) {
+  return api.post('/api/v2/chronogrammes/generer', { mode, simulation });
+}

@@ -3,19 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ban, CircleCheck, Clock, Eye, KeyRound, LogIn, MoreVertical, Trash2 } from 'lucide-react';
 import { ROLES, STATUTS_COMPTE } from 'shared/constants';
-import { motDePasseValide } from 'shared/schemas';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import IndicateurChargement from '@/components/ui/indicateur-chargement';
 import {
   DropdownMenu,
@@ -27,14 +16,13 @@ import {
 import TableauTriable from '@/components/common/TableauTriable';
 import { HAUTEUR_BARRE } from '@/components/layout/BarreNavigation';
 import ConfirmationAction from '@/components/common/ConfirmationAction';
-import ReglesMotDePasse from '@/components/common/ReglesMotDePasse';
 import {
   changerStatut,
   connecterEnTantQue,
-  reinitialiserMotDePasseCompte,
   supprimerCompte,
 } from '../api';
 import BoutonCollaborer from './BoutonCollaborer';
+import DialogueMotDePasse from './DialogueMotDePasse';
 import { routeApresUsurpation } from '@/features/auth/routage';
 import { apparenceStatut, formaterDate } from './statutCompte';
 import CelluleUtilisateur from './CelluleUtilisateur';
@@ -48,26 +36,12 @@ export default function TableauComptes({ comptes, enChargement, onChangement }) 
   const [aConfirmer, setAConfirmer] = useState(null);
   // Le compte pour lequel la boîte « Réinitialiser le mot de passe » est ouverte.
   const [compteAReinitialiser, setCompteAReinitialiser] = useState(null);
-  const [nouveauMotDePasse, setNouveauMotDePasse] = useState('');
+  const [succesMotDePasse, setSuccesMotDePasse] = useState(null);
 
   const queryClient = useQueryClient();
   const mutationStatut = useMutation({
     mutationFn: ({ id, corps }) => changerStatut(id, corps),
     onSuccess: onChangement,
-  });
-
-  /*
-   * ⚠️ L'ADMINISTRATEUR SAISIT LUI-MÊME LE MOT DE PASSE (2026-09-27, demande
-   * du porteur : « le même chez l'admin, il peut réinitialiser tous les
-   * comptes ») — même geste que sur « Sessions » (`ListeComptes`), ouvert ici à
-   * TOUS les rôles (directeur compris).
-   */
-  const mutationMotDePasse = useMutation({
-    mutationFn: ({ id, motDePasse }) => reinitialiserMotDePasseCompte(id, motDePasse),
-    onSuccess: () => {
-      setCompteAReinitialiser(null);
-      setNouveauMotDePasse('');
-    },
   });
 
   const mutationSuppression = useMutation({
@@ -108,7 +82,6 @@ export default function TableauComptes({ comptes, enChargement, onChangement }) 
 
   const enCours =
     mutationStatut.isPending ||
-    mutationMotDePasse.isPending ||
     mutationSuppression.isPending ||
     mutationConnexion.isPending;
 
@@ -280,7 +253,7 @@ export default function TableauComptes({ comptes, enChargement, onChangement }) 
                       <DropdownMenuItem
                         disabled={enCours}
                         onClick={() => {
-                          setNouveauMotDePasse('');
+                          setSuccesMotDePasse(null);
                           setCompteAReinitialiser(compte);
                         }}
                       >
@@ -337,61 +310,17 @@ export default function TableauComptes({ comptes, enChargement, onChangement }) 
       />
 
       <Messages
-        mutations={[mutationStatut, mutationMotDePasse, mutationSuppression, mutationConnexion]}
-        succesMotDePasse={mutationMotDePasse.isSuccess ? mutationMotDePasse.data : null}
+        mutations={[mutationStatut, mutationSuppression, mutationConnexion]}
+        succesMotDePasse={succesMotDePasse}
       />
 
       <FicheCompte compte={consulte} onOpenChange={(ouvert) => !ouvert && setConsulte(null)} />
 
-      {/*
-        ⚠️ LE MOT DE PASSE SE TAPE ICI (2026-09-27, demande du porteur) : cette
-        boîte remplace l'ancien clic unique qui tirait un mot de passe
-        provisoire au hasard. Même geste que sur « Sessions ».
-      */}
-      <Dialog
-        open={Boolean(compteAReinitialiser)}
-        onOpenChange={(ouvert) => !ouvert && setCompteAReinitialiser(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Réinitialiser le mot de passe</DialogTitle>
-            <DialogDescription>
-              {compteAReinitialiser?.nomComplet} ({compteAReinitialiser?.email})
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-2">
-            <Label htmlFor="admin-nouveau-mot-de-passe">Nouveau mot de passe</Label>
-            <Input
-              id="admin-nouveau-mot-de-passe"
-              type="text"
-              value={nouveauMotDePasse}
-              onChange={(evenement) => setNouveauMotDePasse(evenement.target.value)}
-              placeholder="8 caractères minimum"
-              autoComplete="off"
-              autoFocus
-            />
-            <ReglesMotDePasse valeur={nouveauMotDePasse} />
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCompteAReinitialiser(null)}>
-              Annuler
-            </Button>
-            <Button
-              disabled={mutationMotDePasse.isPending || !motDePasseValide(nouveauMotDePasse)}
-              onClick={() =>
-                mutationMotDePasse.mutate({
-                  id: compteAReinitialiser.id,
-                  motDePasse: nouveauMotDePasse,
-                })
-              }
-            >
-              {mutationMotDePasse.isPending ? 'Réinitialisation…' : 'Réinitialiser'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DialogueMotDePasse
+        compte={compteAReinitialiser}
+        onFermer={() => setCompteAReinitialiser(null)}
+        onReussite={setSuccesMotDePasse}
+      />
 
       <ConfirmationAction
         ouvert={Boolean(aConfirmer)}
@@ -404,7 +333,7 @@ export default function TableauComptes({ comptes, enChargement, onChangement }) 
         }
         description={
           aConfirmer?.type === 'supprimer'
-            ? `${aConfirmer?.compte.nomComplet} (${aConfirmer?.compte.email}) sera supprimé, ainsi que les établissements dont il est propriétaire et toutes leurs données. Cette action est IRRÉVERSIBLE.`
+            ? `${aConfirmer?.compte.nomComplet} (${aConfirmer?.compte.email}) sera supprimé, ainsi que les établissements dont il est propriétaire, toutes leurs données et leurs sessions formateur, stagiaire et gestionnaire. Cette action est IRRÉVERSIBLE.`
             : `${aConfirmer?.compte.nomComplet} sera déconnecté immédiatement de tous ses appareils et ne pourra plus accéder à l'application. Le blocage est réversible.`
         }
         libelleConfirmation={aConfirmer?.type === 'supprimer' ? 'Supprimer' : 'Bloquer'}

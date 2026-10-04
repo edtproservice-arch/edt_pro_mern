@@ -259,10 +259,14 @@ export default function CadreReglage({
         rejouées chez l'autre, y seraient enregistrées une seconde fois — refusées
         pour version périmée sur les pages versionnées. Seuls les gestes
         d'affichage y sont rejoués ; le résultat arrive après l'enregistrement.
-        `contents` : le conteneur ne prend aucune place dans la mise en page.
+        ⚠️ `space-y-6`, PAS `contents` (2026-10-05, signalé par le porteur : la
+        pastille « Enregistrement automatique » collait au contenu). Le cadre
+        espace ses enfants par une MARGE (`space-y-6`), et un élément `contents`
+        n'en reçoit aucune : l'en-tête touchait la page. Un bloc ordinaire reçoit
+        la marge du cadre et redonne le même espacement à ce qu'il contient.
       */}
       {onEnregistrer ? (
-        <div data-guidage-edition className="contents">
+        <div data-guidage-edition className="space-y-6">
           {children}
         </div>
       ) : (

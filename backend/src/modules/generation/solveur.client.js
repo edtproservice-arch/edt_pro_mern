@@ -125,12 +125,31 @@ export function resoudre(probleme, { moteur, budgetMs } = {}) {
    *    `GENERATEUR_TIMEOUT_MS` reste le plancher : il borne le glouton, qui ne
    *    lit aucun budget.
    */
-  const delai = delaiPour(budgetMs);
+  return executer('generateur', demande, delaiPour(budgetMs));
+}
 
+/**
+ * Répartition annuelle du CHRONOGRAMME (2026-10-04) — `python -m
+ * generateur.chronogramme`.
+ *
+ * ⚠️ LE MÊME PROCESSUS, LES MÊMES CODES DE SORTIE, LE MÊME DÉLAI QUE LE
+ *    GLOUTON : la répartition de l'année entière tient en quelques dizaines
+ *    de millisecondes. Un second client écrit à côté aurait dérivé de
+ *    celui-ci au premier correctif d'encodage ou de délai.
+ *
+ * @param {object} probleme — le contrat de `ai/generateur/chronogramme/lecture.py`
+ * @returns {Promise<{poses: Array, nonPoses: Array, rapport: object}>}
+ */
+export function resoudreChronogramme(probleme) {
+  return executer('generateur.chronogramme', probleme, env.GENERATEUR_TIMEOUT_MS);
+}
+
+/** Lance `python -m <module>`, lui donne `demande` sur stdin, lit sa réponse. */
+function executer(module, demande, delai) {
   return new Promise((resolve, reject) => {
     let enfant;
     try {
-      enfant = spawn(env.PYTHON_BIN, ['-m', 'generateur'], {
+      enfant = spawn(env.PYTHON_BIN, ['-m', module], {
         cwd: DOSSIER_AI,
         // ⚠️ Sans quoi Windows ouvre les flux en cp1252 : un nom de groupe
         //    accentué ferait échouer l'échange, et seulement pour certains

@@ -137,6 +137,92 @@ describe('Suppression de compte', () => {
     expect(trace.cibleEmail).toBe('directeur@edtpro.ma');
   });
 
+  it('supprime en cascade les sessions formateur, stagiaire et gestionnaire', async () => {
+    const champs = { region: 'Fès-Meknès', complexe: 'CF Bâtiment', anneeScolaire: 2026 };
+    const etablissement = await Etablissement.create({
+      ...champs,
+      proprietaireId: directeur.id,
+      nom: 'ISTA Test',
+    });
+    const autreDirecteur = await creerCompte('autre@edtpro.ma', ROLES.DIRECTEUR);
+    const autreEtablissement = await Etablissement.create({
+      ...champs,
+      proprietaireId: autreDirecteur.id,
+      nom: 'ISTA Autre',
+    });
+
+    const rattacher = async (email, role, etablissementIds) => {
+      const compte = await creerCompte(email, role);
+      compte.etablissementIds = etablissementIds;
+      return compte.save();
+    };
+    const formateur = await rattacher('f@edtpro.ma', ROLES.FORMATEUR, [etablissement._id]);
+    const stagiaire = await rattacher('s@edtpro.ma', ROLES.STAGIAIRE, [etablissement._id]);
+    const gestionnaire = await rattacher('g@edtpro.ma', ROLES.GESTIONNAIRE, [etablissement._id]);
+    const mutualise = await rattacher('m@edtpro.ma', ROLES.FORMATEUR, [
+      etablissement._id,
+      autreEtablissement._id,
+    ]);
+    await connecter('f@edtpro.ma');
+
+    const reponse = await request(app)
+      .delete(`/api/v2/admin/utilisateurs/${directeur.id}`)
+      .set('Cookie', cookiesAdmin);
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.sessionsSupprimees).toBe(3);
+    expect(await User.findById(formateur.id)).toBeNull();
+    expect(await User.findById(stagiaire.id)).toBeNull();
+    expect(await User.findById(gestionnaire.id)).toBeNull();
+    expect(await RefreshToken.countDocuments({ utilisateurId: formateur.id })).toBe(0);
+
+    // Le formateur mutualisé garde son autre établissement.
+    const restant = await User.findById(mutualise.id);
+    expect(restant.etablissementIds.map(String)).toEqual([autreEtablissement.id]);
+    expect(await User.findById(autreDirecteur.id)).not.toBeNull();
+  });
+
+  it('supprime un compte formateur', async () => {
+    const formateur = await creerCompte('f@edtpro.ma', ROLES.FORMATEUR);
+
+    const reponse = await request(app)
+      .delete(`/api/v2/admin/utilisateurs/${formateur.id}`)
+      .set('Cookie', cookiesAdmin);
+
+    expect(reponse.status).toBe(200);
+    expect(await User.findById(formateur.id)).toBeNull();
+  });
+
+  it('liste puis supprime les comptes orphelins, sans toucher aux autres', async () => {
+    const etablissement = await Etablissement.create({
+      proprietaireId: directeur.id,
+      region: 'Fès-Meknès',
+      complexe: 'CF Bâtiment',
+      nom: 'ISTA Test',
+      anneeScolaire: 2026,
+    });
+    const rattache = await creerCompte('r@edtpro.ma', ROLES.FORMATEUR);
+    rattache.etablissementIds = [etablissement._id];
+    await rattache.save();
+    const disparu = await creerCompte('o1@edtpro.ma', ROLES.STAGIAIRE);
+    disparu.etablissementIds = [new Etablissement()._id];
+    await disparu.save();
+    const sansRien = await creerCompte('o2@edtpro.ma', ROLES.GESTIONNAIRE);
+
+    const liste = await request(app).get('/api/v2/admin/comptes-orphelins').set('Cookie', cookiesAdmin);
+    expect(liste.body.comptes.map((c) => c.email).sort()).toEqual(['o1@edtpro.ma', 'o2@edtpro.ma']);
+
+    const reponse = await request(app)
+      .delete('/api/v2/admin/comptes-orphelins')
+      .set('Cookie', cookiesAdmin);
+
+    expect(reponse.body.supprimes).toBe(2);
+    expect(await User.findById(disparu.id)).toBeNull();
+    expect(await User.findById(sansRien.id)).toBeNull();
+    expect(await User.findById(rattache.id)).not.toBeNull();
+    expect(await User.findById(directeur.id)).not.toBeNull();
+  });
+
   it('refuse de supprimer un administrateur ou soi-même', async () => {
     const autreAdmin = await creerCompte('admin2@edtpro.ma', ROLES.ADMIN);
 

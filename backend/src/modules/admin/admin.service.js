@@ -1,4 +1,5 @@
 import { ROLES, STATUTS_COMPTE } from 'shared/constants';
+import { ROLES_GERABLES } from 'shared/schemas';
 import { User } from '../../models/User.js';
 import { Etablissement } from '../../models/Etablissement.js';
 import { RefreshToken } from '../../models/RefreshToken.js';
@@ -566,6 +567,64 @@ export async function collaborerAvec(cibleId, administrateur, appareil, ip) {
 }
 
 /**
+ * Supprime des comptes et ce qui ne vit que par eux : jetons de session, codes
+ * de vérification, et leur place dans les listes d'invités des partages.
+ * MongoDB n'a pas de `ON DELETE CASCADE` : tout passe par ici.
+ */
+export async function purgerComptes(ids) {
+  if (ids.length === 0) return 0;
+  await Promise.all([
+    RefreshToken.deleteMany({ utilisateurId: { $in: ids } }),
+    CodeVerification.deleteMany({ utilisateurId: { $in: ids } }),
+    Partage.updateMany(
+      { 'membres.utilisateurId': { $in: ids } },
+      { $pull: { membres: { utilisateurId: { $in: ids } } } }
+    ),
+  ]);
+  const resultat = await User.deleteMany({ _id: { $in: ids } });
+  return resultat.deletedCount;
+}
+
+/**
+ * Les comptes formateur, stagiaire et gestionnaire ORPHELINS : aucun de leurs
+ * établissements n'existe encore. Avant la suppression en cascade
+ * (2026-10-04), supprimer un directeur les laissait derrière lui — sans
+ * établissement, inutilisables, et visibles du seul administrateur.
+ *
+ * Un formateur mutualisé qui garde au moins un établissement n'en est pas.
+ */
+export async function trouverComptesOrphelins() {
+  const existants = new Set((await Etablissement.find({}).select('_id').lean()).map((e) => String(e._id)));
+  const comptes = await User.find({ role: { $in: ROLES_GERABLES } })
+    .select('nomComplet email role etablissementIds')
+    .sort({ nomComplet: 1 })
+    .lean();
+  return comptes
+    .filter((compte) => !compte.etablissementIds.some((id) => existants.has(String(id))))
+    .map((compte) => ({
+      id: String(compte._id),
+      nomComplet: compte.nomComplet,
+      email: compte.email,
+      role: compte.role,
+    }));
+}
+
+export async function supprimerComptesOrphelins(administrateur, ip) {
+  const orphelins = await trouverComptesOrphelins();
+  const supprimes = await purgerComptes(orphelins.map((compte) => compte.id));
+
+  await tracer({
+    acteur: administrateur,
+    action: ACTIONS_AUDIT.COMPTE_SUPPRIME,
+    cible: null,
+    details: { orphelins: orphelins.map((compte) => compte.email) },
+    ip,
+  });
+
+  return { supprimes };
+}
+
+/**
  * Suppression définitive d'un compte.
  *
  * MongoDB n'a pas de `ON DELETE CASCADE` : les dépendances doivent être
@@ -590,18 +649,33 @@ export async function supprimerCompte(utilisateurId, administrateur, ip) {
   // Établissements dont ce compte est propriétaire. Ils partent avec lui : un
   // établissement sans propriétaire serait inaccessible et invisible.
   const etablissements = await Etablissement.find({ proprietaireId: cible.id }).select('_id nom');
+  const etablissementIds = etablissements.map((e) => e._id);
+
+  /*
+   * ⚠️ SUPPRESSION EN CASCADE DES SESSIONS (2026-10-04, demande du porteur) :
+   * les comptes formateur, stagiaire et gestionnaire créés par ce directeur
+   * partent avec lui. Sans cela, ils restaient en base sans établissement —
+   * impossibles à utiliser et invisibles de tout directeur.
+   *
+   * Seuls les comptes rattachés EXCLUSIVEMENT à ces établissements sont
+   * supprimés : un formateur mutualisé, rattaché aussi à un établissement d'un
+   * autre directeur, est conservé et perd seulement le lien (`$pull` plus bas).
+   */
+  const rattaches = etablissementIds.length
+    ? await User.find({
+        role: { $in: ROLES_GERABLES },
+        etablissementIds: { $in: etablissementIds },
+      }).select('_id etablissementIds')
+    : [];
+  const supprimes = new Set(etablissementIds.map(String));
+  const sessionIds = rattaches
+    .filter((compte) => compte.etablissementIds.every((id) => supprimes.has(String(id))))
+    .map((compte) => compte._id);
 
   await Promise.all([
-    RefreshToken.deleteMany({ utilisateurId: cible.id }),
-    CodeVerification.deleteMany({ utilisateurId: cible.id }),
     Etablissement.deleteMany({ proprietaireId: cible.id }),
-    // Les partages de ses établissements partent avec eux ; et s'il était
-    // invité ailleurs, il quitte ces listes.
-    Partage.deleteMany({ etablissementId: { $in: etablissements.map((e) => e._id) } }),
-    Partage.updateMany(
-      { 'membres.utilisateurId': cible._id },
-      { $pull: { membres: { utilisateurId: cible._id } } }
-    ),
+    // Les partages de ses établissements partent avec eux.
+    Partage.deleteMany({ etablissementId: { $in: etablissementIds } }),
     /*
      * ⚠️ LES AUTRES COMPTES RATTACHÉS PERDENT CES ÉTABLISSEMENTS (2026-09-30,
      * formateur mutualisé signalé par le porteur) : sans ce `$pull`, un
@@ -610,11 +684,11 @@ export async function supprimerCompte(utilisateurId, administrateur, ip) {
      * tournait en boucle.
      */
     User.updateMany(
-      { etablissementIds: { $in: etablissements.map((e) => e._id) } },
-      { $pull: { etablissementIds: { $in: etablissements.map((e) => e._id) } } }
+      { etablissementIds: { $in: etablissementIds } },
+      { $pull: { etablissementIds: { $in: etablissementIds } } }
     ),
   ]);
-  await cible.deleteOne();
+  await purgerComptes([cible._id, ...sessionIds]);
 
   await tracer({
     acteur: administrateur,
@@ -624,11 +698,12 @@ export async function supprimerCompte(utilisateurId, administrateur, ip) {
       role: cible.role,
       statut: cible.statut,
       etablissementsSupprimes: etablissements.map((e) => e.nom),
+      sessionsSupprimees: sessionIds.length,
     },
     ip,
   });
 
-  return { etablissementsSupprimes: etablissements.length };
+  return { etablissementsSupprimes: etablissements.length, sessionsSupprimees: sessionIds.length };
 }
 
 function presenterPourAdmin(utilisateur) {

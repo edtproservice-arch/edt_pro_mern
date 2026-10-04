@@ -159,14 +159,14 @@ class TestRepartition(unittest.TestCase):
         poses = par_tache(resoudre(charge))["S2"]
         self.assertTrue(all(s >= 6 for s in poses))
 
-    def test_la_cible_n_est_jamais_depassee_de_plus_d_un_pas(self):
-        # 2026-10-04, retour du porteur : 120 h à poser en 4 semaines pour une
-        # cible de 25 h ne donne PAS 30 h par semaine — on pose ce qui tient,
-        # et le reste est signalé.
-        charge = probleme([tache(f"M{i}", 40, priorite=1, semaines=[1, 2, 3, 4]) for i in range(3)])
+    def test_la_cible_n_est_jamais_depassee_de_plus_de_5_h(self):
+        # 2026-10-04, retour du porteur : 160 h à poser en 4 semaines pour une
+        # cible de 25 h ne donne PAS 40 h par semaine — on pose ce qui tient
+        # (30 h au plus, la marge acceptée), et le reste est signalé.
+        charge = probleme([tache(f"M{i}", 40, priorite=1, semaines=[1, 2, 3, 4]) for i in range(4)])
         solution = resoudre(charge)
         charges = par_formateur(solution, charge)["F1"]
-        self.assertTrue(all(h <= 27.5 for h in charges.values()), dict(charges))
+        self.assertTrue(all(h <= 30 for h in charges.values()), dict(charges))
         self.assertTrue(solution.non_poses)
         self.assertEqual({n.cause for n in solution.non_poses}, {"cible_formateur"})
 
@@ -186,16 +186,18 @@ class TestRepartition(unittest.TestCase):
         # plus prioritaire, ouvert à partir de S5.
         retard = tache("RETARD", 150, priorite=6)
         retard["lots"][0]["echeance"] = 4
-        suivant = tache("SUIVANT", 100, priorite=1, semaines=[5, 6, 7, 8, 9, 10])
+        # 60 h en six semaines : SUIVANT n'est pas à l'étroit, seule la
+        # priorité le départage du retard.
+        suivant = tache("SUIVANT", 60, priorite=1, semaines=[5, 6, 7, 8, 9, 10])
         poses = par_tache(resoudre(probleme([retard, suivant])))
         self.assertEqual(poses["RETARD"][5], 20)
         self.assertLessEqual(poses["SUIVANT"][5], 7.5)
 
-    def test_le_rythme_ne_gagne_qu_un_pas(self):
-        # En retard sur l'année, le formateur monte d'un pas au plus.
+    def test_le_rythme_ne_gagne_que_5_h(self):
+        # En retard sur l'année, le formateur monte de 5 h au plus.
         charge = probleme([tache(f"M{i}", 100, priorite=i) for i in range(1, 5)])
         charges = par_formateur(resoudre(charge), charge)["F1"]
-        self.assertTrue(all(h <= 27.5 for h in charges.values()))
+        self.assertTrue(all(h <= 30 for h in charges.values()))
         self.assertGreater(sum(charges.values()), 250, "le retard est rattrapé autant que permis")
 
     def test_le_plafond_de_case_est_partage(self):
@@ -211,13 +213,19 @@ class TestRepartition(unittest.TestCase):
         self.assertTrue(all(h <= 20 for h in total.values()))
 
     def test_le_plafond_souple_du_groupe_est_respecte(self):
-        # 3 × 60 h sur 10 semaines : aucune échéance n'oblige à franchir 30 h.
+        # 3 × 60 h sur 10 semaines. Le plafond de 30 h ne cède que d'un
+        # créneau par formateur qui, sinon, n'aurait rien eu cette semaine
+        # (« pas de semaine à vide », 2026-10-04).
         taches = [tache(f"M{i}", 60, formateur=f"F{i}", priorite=i) for i in range(1, 4)]
-        solution = resoudre(probleme(taches))
+        charge = probleme(taches)
+        solution = resoudre(charge)
         total = defaultdict(float)
         for pose in solution.poses:
             total[pose.semaine] += pose.heures
-        self.assertTrue(all(h <= 30 for h in total.values()))
+        charges = par_formateur(solution, charge)
+        for semaine, heures in total.items():
+            sauves = sum(1 for f in charges.values() if f.get(semaine) == 2.5)
+            self.assertLessEqual(heures, 30 + 2.5 * sauves, f"S{semaine}")
 
     def test_une_seance_mutualisee_pese_sur_chaque_groupe(self):
         commune = {
@@ -298,7 +306,7 @@ class TestInvariants(unittest.TestCase):
                     self.assertLessEqual(heures, 60)
                 for formateur, semaines in par_formateur(solution, charge).items():
                     for semaine, heures in semaines.items():
-                        self.assertLessEqual(heures, 25 + 2.5, f"{formateur} S{semaine}")
+                        self.assertLessEqual(heures, 25 + 5, f"{formateur} S{semaine}")
                 manquant = defaultdict(float)
                 for non_pose in solution.non_poses:
                     manquant[non_pose.tache_id] += non_pose.heures
@@ -505,3 +513,270 @@ class TestSansCreux(unittest.TestCase):
         # Budget de 10 h : servi en entier d'abord, le synchrone prendrait la
         # semaine, et le présentiel s'interromprait.
         self.sans_creux(self.module(30, 20, "F1", cibles_s=0, cibles_p=10))
+
+
+class TestPasDeSemaineAVide(unittest.TestCase):
+    """2026-10-04 : « le formateur ne doit chômer en aucun cas »."""
+
+    def test_un_groupe_plein_ne_laisse_pas_un_formateur_sans_heure(self):
+        # F2, prioritaire, remplit G1 jusqu'à son plafond souple chaque
+        # semaine : F1 reçoit quand même un créneau.
+        plein = tache("PLEIN", 300, formateur="F2", priorite=1, plafond=20)
+        # Assez d'heures pour que F1 ait du travail jusqu'à la dernière semaine.
+        petit = tache("PETIT", 60, formateur="F1", priorite=6, plafond=10)
+        charge = probleme(
+            [plein, petit],
+            formateurs=[{"id": "F1", "cibles": par_semaine(10)}, {"id": "F2", "cibles": par_semaine(30)}],
+        )
+        charge["groupes"][0]["plafondsSouples"] = par_semaine(20)
+        charge["groupes"][0]["plafondsToleres"] = par_semaine(22.5)
+        charges = par_formateur(resoudre(charge), charge)["F1"]
+        for semaine in SEMAINES:
+            self.assertGreater(charges[semaine], 0, f"S{semaine}")
+
+    def test_une_cible_minuscule_vaut_un_creneau(self):
+        # 0,3 h visées chaque semaine (fériés) : 2,5 h plutôt que rien.
+        charge = probleme([tache("M", 100, plafond=10)], formateurs=[{"id": "F1", "cibles": par_semaine(0.3)}])
+        charges = par_formateur(resoudre(charge), charge)["F1"]
+        # Au moins un créneau ; au plus la marge de 5 h (le formateur est très
+        # en retard sur l'année : 100 h pour 3 h visées).
+        for semaine in SEMAINES:
+            self.assertGreaterEqual(charges[semaine], 2.5, f"S{semaine}")
+            self.assertLessEqual(charges[semaine], 0.3 + 5, f"S{semaine}")
+
+    def test_sans_retard_une_cible_minuscule_ne_laisse_pas_la_semaine_vide(self):
+        # Rien ne presse (2,5 h pour 3 h visées sur l'année) : sans le
+        # créneau minimal, les arrondis repousseraient la pose en S5.
+        charge = probleme([tache("M", 2.5, plafond=10)], formateurs=[{"id": "F1", "cibles": par_semaine(0.3)}])
+        self.assertEqual(par_formateur(resoudre(charge), charge)["F1"][1], 2.5)
+
+
+class TestPlafondTolere(unittest.TestCase):
+    """« La masse de 30 h par semaine pour les groupes peut être dépassée en
+    cas de besoin, mais pas trop » (2026-10-04)."""
+
+    def charge(self):
+        # F2 remplit G1 à 30 h ; F1 vise 10 h sur le même groupe.
+        plein = tache("PLEIN", 300, formateur="F2", priorite=1, plafond=20)
+        autre = tache("AUTRE", 300, formateur="F2", priorite=1, plafond=20)
+        autre["cellules"] = ["G1||AUTRE"]
+        petit = tache("PETIT", 100, formateur="F1", priorite=6, plafond=10)
+        charge = probleme(
+            [plein, autre, petit],
+            formateurs=[{"id": "F1", "cibles": par_semaine(10)}, {"id": "F2", "cibles": par_semaine(30)}],
+        )
+        charge["groupes"][0]["plafondsToleres"] = par_semaine(35)
+        return charge
+
+    def test_un_formateur_sous_sa_cible_peut_aller_jusqu_au_tolere(self):
+        charge = self.charge()
+        solution = resoudre(charge)
+        self.assertEqual(par_formateur(solution, charge)["F1"][1], 5)
+        total = defaultdict(float)
+        for pose in solution.poses:
+            total[pose.semaine] += pose.heures
+        self.assertTrue(all(h <= 35 for h in total.values()), dict(total))
+
+    def test_sans_tolerance_le_souple_tient(self):
+        charge = self.charge()
+        del charge["groupes"][0]["plafondsToleres"]
+        solution = resoudre(charge)
+        total = defaultdict(float)
+        for pose in solution.poses:
+            total[pose.semaine] += pose.heures
+        self.assertTrue(all(h <= 30 for h in total.values()), dict(total))
+
+    def test_refuse_un_tolere_hors_bornes(self):
+        charge = self.charge()
+        charge["groupes"][0]["plafondsToleres"]["1"] = 70
+        with self.assertRaisesRegex(ProblemeInvalide, "toléré"):
+            lire_probleme_chronogramme(charge)
+
+
+class TestModuleAnnuel(unittest.TestCase):
+    """2026-10-04 : « un intervalle qui ne dépasse pas 2 semaines pour les
+    modules annuels » — le S1 servi S2–S4, puis repris en S18, c'est refusé."""
+
+    SEMAINES = list(range(1, 21))
+
+    def annuel(self, ecart=2, priorite=2):
+        return {
+            "id": "ANNUEL",
+            "formateur": "F1",
+            "groupes": ["G1"],
+            "cellules": ["G1||ANNUEL"],
+            "priorite": priorite,
+            "lots": [
+                # 10 h à étaler sur 12 semaines : servi d'un bloc, il finirait en S4.
+                {"heures": 10, "plafonds": par_semaine(10, range(1, 13)), "echeance": 12, "ecartSuivant": ecart},
+                {"heures": 40, "plafonds": par_semaine(10, range(13, 21))},
+            ],
+        }
+
+    def lots(self, taches):
+        solution = resoudre(probleme(taches, semaines=self.SEMAINES))
+        lots = defaultdict(list)
+        for pose in solution.poses:
+            if pose.tache_id == "ANNUEL":
+                lots[pose.lot].append(pose.semaine)
+        return lots
+
+    def autre(self, identifiant="AUTRE", semaines=None, priorite=4):
+        return {**tache(identifiant, 400, priorite=priorite, semaines=semaines or self.SEMAINES, plafond=20),
+                "cellules": [f"G1||{identifiant}"]}
+
+    def test_le_s1_commence_tard_et_finit_pres_de_son_echeance(self):
+        lots = self.lots([self.annuel(), self.autre()])
+        premier = sorted(lots[0])
+        self.assertGreaterEqual(premier[-1], 12 - 2, premier)
+        self.assertEqual(premier, list(range(premier[0], premier[-1] + 1)), premier)
+        self.assertEqual(min(lots[1]), 13)
+
+    def test_sans_ecart_le_s1_finit_a_son_echeance(self):
+        lots = self.lots([self.annuel(ecart=0), self.autre()])
+        premier = sorted(lots[0])
+        self.assertEqual(premier[-1], 12)
+        self.assertEqual(premier, list(range(premier[0], 13)), premier)
+        self.assertEqual(min(lots[1]), 13)
+
+    def test_sans_contrainte_le_s1_finit_tot(self):
+        lots = self.lots([self.annuel(ecart=None), self.autre()])
+        self.assertLess(max(lots[0]), 10)
+
+    def test_le_s2_prend_le_relais_meme_face_a_des_modules_prioritaires(self):
+        # Au S2, deux modules prioritaires prennent tout le budget : le S2 de
+        # l'annuel garde au moins un créneau dès sa première semaine.
+        taches = [
+            self.annuel(priorite=6),
+            self.autre("A1", semaines=list(range(13, 21)), priorite=1),
+            self.autre("A2", semaines=list(range(13, 21)), priorite=1),
+        ]
+        lots = self.lots(taches)
+        self.assertEqual(min(lots[1]), 13)
+
+    def test_refuse_un_ecart_negatif(self):
+        charge = probleme([tache("M", 10)])
+        charge["taches"][0]["lots"][0]["ecartSuivant"] = -1
+        with self.assertRaisesRegex(ProblemeInvalide, "ecartSuivant"):
+            lire_probleme_chronogramme(charge)
+
+
+class TestGranularite(unittest.TestCase):
+    """2026-10-04 : « les séances synchrones doivent être de 5 h »."""
+
+    def test_chaque_semaine_un_multiple_de_la_seance(self):
+        s = {**tache("S", 30, plafond=5), "pasTache": 5}
+        solution = resoudre(probleme([s]))
+        poses = par_tache(solution)["S"]
+        self.assertTrue(all(h % 5 == 0 for h in poses.values()), poses)
+        self.assertEqual(sum(poses.values()), 30)
+        semaines = sorted(poses)
+        self.assertEqual(semaines, list(range(semaines[0], semaines[-1] + 1)), "sans creux")
+
+    def test_le_reliquat_forme_une_derniere_seance_plus_courte(self):
+        s = {**tache("S", 12.5, plafond=5), "pasTache": 5}
+        solution = resoudre(probleme([s]))
+        poses = par_tache(solution)["S"]
+        self.assertEqual(solution.non_poses, ())
+        self.assertEqual([poses[w] for w in sorted(poses)], [5, 5, 2.5])
+
+    def test_un_budget_d_un_seul_pas_ne_pose_pas_une_demi_seance(self):
+        s = {**tache("S", 20, plafond=5), "pasTache": 5}
+        charge = probleme([s], formateurs=[{"id": "F1", "cibles": par_semaine(2.5)}])
+        poses = par_tache(resoudre(charge))["S"]
+        self.assertTrue(all(h % 5 == 0 for h in poses.values()), poses)
+
+    def test_la_continuite_reserve_une_seance_entiere(self):
+        # Le synchrone avance seul en S1-S2 ; en S3, un module prioritaire
+        # s'ouvre et voudrait tout le budget. Le créneau de continuité du
+        # synchrone doit être une SÉANCE (5 h), sinon il tombe à zéro.
+        s = {**tache("S", 20, priorite=6, plafond=5), "pasTache": 5}
+        prioritaire = tache("P", 80, priorite=1, semaines=list(range(3, 11)), plafond=10)
+        charge = probleme([s, prioritaire], formateurs=[{"id": "F1", "cibles": par_semaine(10)}])
+        poses = par_tache(resoudre(charge))["S"]
+        semaines = sorted(poses)
+        self.assertEqual(sum(poses.values()), 20, poses)
+        self.assertEqual(semaines, list(range(semaines[0], semaines[-1] + 1)), poses)
+        self.assertTrue(all(h % 5 == 0 for h in poses.values()), poses)
+
+    def test_refuse_une_granularite_hors_pas(self):
+        charge = probleme([{**tache("S", 20), "pasTache": 3}])
+        with self.assertRaisesRegex(ProblemeInvalide, "pasTache"):
+            lire_probleme_chronogramme(charge)
+
+
+class TestMinimumAvantEnchainement(unittest.TestCase):
+    """2026-10-04 : une formatrice aux modules tous annuels restait sous son
+    minimum en début de S1, ses modules attendant de finir pile en S17."""
+
+    def charge(self, minimum):
+        semaines = list(range(1, 21))
+        taches = []
+        for n in range(4):
+            taches.append({
+                "id": f"ANNUEL{n}",
+                "formateur": "F1",
+                "groupes": ["G1"],
+                "cellules": [f"G1||A{n}"],
+                "priorite": 5,
+                "lots": [
+                    {"heures": 20, "plafonds": par_semaine(10, range(1, 13)), "echeance": 12, "ecartSuivant": 0},
+                    {"heures": 20, "plafonds": par_semaine(10, range(13, 21))},
+                ],
+            })
+        formateur = {"id": "F1", "cibles": par_semaine(25, semaines)}
+        if minimum:
+            formateur["minimums"] = par_semaine(minimum, semaines)
+        return probleme(taches, semaines=semaines, formateurs=[formateur])
+
+    def test_sous_son_minimum_le_formateur_commence_plus_tot(self):
+        charge = self.charge(minimum=25)
+        charges = par_formateur(resoudre(charge), charge)["F1"]
+        self.assertGreaterEqual(charges[1], 10)
+
+    def test_sans_minimum_l_enchainement_retient(self):
+        charge = self.charge(minimum=None)
+        charges = par_formateur(resoudre(charge), charge)["F1"]
+        self.assertEqual(charges.get(1, 0), 0)
+
+
+class TestPoseMinimale(unittest.TestCase):
+    """2026-10-04 : « pour les modules de 70 h et plus, des séances de 5 h à
+    10 h » — jamais 2,5 h seules, sauf la séance qui solde la masse."""
+
+    def charge(self, pose_min):
+        # BAS avance seul en S1-S2 ; en S3 HAUT, prioritaire, s'ouvre et prend
+        # le budget : BAS n'a plus que son créneau de continuité — 2,5 h.
+        bas = tache("BAS", 100, priorite=6, plafond=10)
+        if pose_min:
+            bas["poseMin"] = pose_min
+        haut = tache("HAUT", 60, priorite=1, semaines=[3, 4, 5, 6], plafond=20)
+        return probleme([bas, haut], formateurs=[{"id": "F1", "cibles": par_semaine(20)}])
+
+    def poses_par_lot(self, solution):
+        lots = defaultdict(list)
+        for pose in solution.poses:
+            lots[(pose.tache_id, pose.lot)].append((pose.semaine, pose.heures))
+        return lots
+
+    def test_chaque_semaine_au_moins_la_pose_minimale(self):
+        lots = self.poses_par_lot(resoudre(self.charge(5)))
+        for cle, poses in lots.items():
+            poses.sort()
+            for semaine, heures in poses[:-1]:
+                self.assertGreaterEqual(heures, 5, (cle, semaine, poses))
+
+    def test_la_pose_minimale_ne_casse_pas_la_continuite(self):
+        # Face au prioritaire, BAS garde une séance de 5 h plutôt que rien.
+        poses = par_tache(resoudre(self.charge(5)))["BAS"]
+        semaines = sorted(poses)
+        self.assertEqual(semaines, list(range(semaines[0], semaines[-1] + 1)), poses)
+
+    def test_sans_pose_minimale_des_semaines_a_2_5_h(self):
+        lots = self.poses_par_lot(resoudre(self.charge(None)))
+        self.assertTrue(any(h == 2.5 for poses in lots.values() for _, h in sorted(poses)[:-1]))
+
+    def test_la_derniere_pose_peut_solder_plus_court(self):
+        t = {**tache("M", 12.5, plafond=10), "poseMin": 5}
+        poses = par_tache(resoudre(probleme([t], formateurs=[{"id": "F1", "cibles": par_semaine(5)}])))["M"]
+        self.assertEqual([poses[w] for w in sorted(poses)], [5, 5, 2.5])

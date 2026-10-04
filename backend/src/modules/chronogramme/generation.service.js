@@ -1,24 +1,36 @@
 import mongoose from 'mongoose';
 import {
+  ECART_MAX_MODULE_ANNUEL,
   PAS,
+  PLAFOND_HEBDOMADAIRE_PIE,
+  PREMIERE_SEMAINE_PIE,
   PRIORITE_METIER_FORMATION,
   SEMAINES_METIER_FORMATION,
   bornerALaFinDeFormation,
   derniereSemaineDuGroupe,
+  estGroupePIE,
   estModuleMetierFormation,
+  ferieSurJourDisponible,
+  joursDisponibles,
+  plafondTolereGroupe,
   TYPES,
   capaciteSemaine,
   celluleDepuisParts,
   cibleDeLaSemaine,
   cibleHebdomadaire,
   joursPerdusFormateur,
+  ouvrirAPartirDe,
   partsDeCellule,
   plafondHebdomadaireModule,
+  plafondHebdomadaireSynchrone,
   plancherHebdomadaire,
+  poseMinimaleModule,
   plafondSemaine,
   plafondSoupleGroupe,
   RESERVE_REGIONALE,
+  SEANCE_SYNCHRONE,
   prioriteGeneration,
+  repartirSemestresAuPas,
   retirerReserve,
   semainesChronogramme,
   semainesDeLaLigne,
@@ -29,6 +41,7 @@ import {
 } from 'shared/domain';
 import { TYPES_COURS } from 'shared/constants';
 
+import { AutoGenConfig } from '../../models/AutoGenConfig.js';
 import { Base } from '../../models/Base.js';
 import { Chronogramme } from '../../models/Chronogramme.js';
 import { Etablissement } from '../../models/Etablissement.js';
@@ -93,6 +106,8 @@ const MOTIFS = {
   capacite_partagee: () =>
     'Les semaines du groupe sont pleines (5 h par jour ouvert), prises par des modules prioritaires.',
   hors_pas: () => `Reliquat inférieur à ${PAS} h : la saisie se fait par pas de ${PAS} h.`,
+  hors_seance: () =>
+    `Reliquat inférieur à ${SEANCE_SYNCHRONE} h : les séances synchrones durent ${SEANCE_SYNCHRONE} h.`,
 };
 
 const cleCase = (groupe, module) => `${groupe}||${module}`;
@@ -125,6 +140,8 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
     // cleGroupeModule → intitulé (`intitulesParGroupe`) : sert à reconnaître
     // le module « Métier et formation ».
     intitules = new Map(),
+    // formateur → ses indisponibilités déclarées (`AutoGenConfig.contraintes`).
+    indisponibilites = new Map(),
   } = donnees;
   const completer = mode === MODES.COMPLETER;
 
@@ -141,9 +158,13 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
        */
       semainesGroupe.set(
         groupe,
-        bornerALaFinDeFormation(
-          semainesChronogramme(anneeScolaire, { joursFeries, vacances, stages, groupe, rentrees }),
-          derniereSemaineDuGroupe(groupe)
+        ouvrirAPartirDe(
+          bornerALaFinDeFormation(
+            semainesChronogramme(anneeScolaire, { joursFeries, vacances, stages, groupe, rentrees }),
+            derniereSemaineDuGroupe(groupe)
+          ),
+          // Groupe PIE : rien avant S3 (2026-10-04).
+          estGroupePIE(groupe) ? PREMIERE_SEMAINE_PIE : null
         )
       );
     }
@@ -296,8 +317,9 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
       dejaParFormateur.set(tache.formateur, parSemaine);
     }
 
+    // ⚠️ Découpage S1/S2 arrondi au pas, total inchangé (11,11 + 8,89 → 10 + 10).
     const reserve = retirerReserve(
-      { s1: tache.s1, s2: tache.s2 },
+      repartirSemestresAuPas(tache.s1, tache.s2),
       porteReserve(tache) ? RESERVE_REGIONALE : 0
     );
     reserveRegionale += reserve.retenu * tache.groupes.length;
@@ -306,6 +328,9 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
     let resteTotal = Math.max(0, reserve.s1 + reserve.s2 - totalDeja);
 
     const lots = [];
+
+    // ⚠️ Groupe PIE : 5 h par semaine pour TOUT le groupe, donc pour chaque module.
+    const plafondDuGroupe = tache.groupes.some(estGroupePIE) ? PLAFOND_HEBDOMADAIRE_PIE : Infinity;
 
     /*
      * ═══ « MÉTIER ET FORMATION » : S1, AU PLUS TARD S2 (2026-10-04) ═══
@@ -324,7 +349,10 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
         .map((semaine) => semaine.numero)
         .filter((numero) => plafondLigne(numero) > 0)
         .slice(0, SEMAINES_METIER_FORMATION);
-      const plafondModule = plafondHebdomadaireModule(aPoser, SEMAINES_METIER_FORMATION);
+      const plafondModule = Math.min(
+        plafondHebdomadaireModule(aPoser, SEMAINES_METIER_FORMATION),
+        plafondDuGroupe
+      );
       const plafonds = {};
       for (const numero of fenetre) {
         const libre = Math.min(plafondLigne(numero), plafondModule) - (deja.get(numero) ?? 0);
@@ -365,7 +393,13 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
       const ouvertesDuSemestre = semainesDuSemestre(semestre).filter(
         (numero) => plafondLigne(numero) > 0
       ).length;
-      const plafondModule = plafondHebdomadaireModule(heures, ouvertesDuSemestre);
+      // ⚠️ Le synchrone : une séance de 5 h par semaine (2026-10-04).
+      const plafondModule = Math.min(
+        tache.type === TYPES.SYNCHRONE
+          ? plafondHebdomadaireSynchrone(heures, ouvertesDuSemestre)
+          : plafondHebdomadaireModule(heures, ouvertesDuSemestre),
+        plafondDuGroupe
+      );
 
       const plafonds = {};
       for (const numero of fenetre) {
@@ -382,6 +416,13 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
       : Math.min(
           ...tache.groupes.map((groupe) => prioriteGeneration(infoModule(groupe, tache.module)))
         );
+    const masseModule = Math.max(
+      ...tache.groupes.map((groupe) => {
+        const masses = infoModule(groupe, tache.module).masses ?? {};
+        return (masses.presentiel ?? 0) + (masses.synchrone ?? 0);
+      })
+    );
+    const poseMin = metierFormation ? null : poseMinimaleModule(tache.module, masseModule);
     const cellules = tache.groupes.map((groupe) => cleCase(groupe, tache.module));
     cellules.forEach((cle) => casesUtilisees.add(cle));
 
@@ -391,9 +432,24 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
       groupes: tache.groupes,
       cellules,
       priorite,
-      lots: lots.map(({ heures, plafonds, echeance }) =>
-        echeance === null ? { heures, plafonds } : { heures, plafonds, echeance }
-      ),
+      // « Les séances synchrones doivent être de 5 h. »
+      ...(tache.type === TYPES.SYNCHRONE ? { pasTache: SEANCE_SYNCHRONE } : {}),
+      // « Modules de 70 h et plus : des séances de 5 h à 10 h, sauf EG… »
+      ...(poseMin ? { poseMin } : {}),
+      /*
+       * ⚠️ MODULE ANNUEL : SON S1 ENCHAÎNE SUR SON S2 (2026-10-04, demande du
+       *    porteur : aucun arrêt entre les deux). Sans cela, un module
+       *    prioritaire voyait ses heures du S1 servies d'un bloc en octobre,
+       *    puis attendait janvier.
+       */
+      lots: lots.map(({ heures, plafonds, echeance }, index) => ({
+        heures,
+        plafonds,
+        ...(echeance === null ? {} : { echeance }),
+        ...(echeance !== null && index < lots.length - 1
+          ? { ecartSuivant: ECART_MAX_MODULE_ANNUEL }
+          : {}),
+      })),
     });
     descriptions.set(tache.id, { ...tache, priorite, lots, metierFormation });
   }
@@ -431,7 +487,11 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
     const plafonds = {};
     const charges = {};
     for (const semaine of semainesDe(groupe)) {
-      const plafond = plafondSemaine(semaine);
+      // Groupe PIE : la case ne peut pas porter plus que le groupe entier.
+      const plafond = Math.min(
+        plafondSemaine(semaine),
+        estGroupePIE(groupe) ? PLAFOND_HEBDOMADAIRE_PIE : Infinity
+      );
       if (plafond > 0) plafonds[semaine.numero] = plafond;
       const pris = charge(groupe, module, semaine.numero);
       if (pris > 0) charges[semaine.numero] = pris;
@@ -443,12 +503,21 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
   const groupesSolveur = groupesUtilises.map((groupe) => {
     const plafondsDurs = {};
     const plafondsSouples = {};
+    const plafondsToleres = {};
     const charges = {};
+    // ⚠️ Groupe PIE : 5 h au TOTAL par semaine, tous plafonds confondus — même
+    //    « en cas de besoin » ou pour éviter une semaine à vide au formateur.
+    const limite = estGroupePIE(groupe) ? PLAFOND_HEBDOMADAIRE_PIE : Infinity;
     for (const semaine of semainesDe(groupe)) {
-      const dur = capaciteSemaine(semaine);
+      const dur = Math.min(limite, capaciteSemaine(semaine));
       if (dur > 0) {
         plafondsDurs[semaine.numero] = dur;
         plafondsSouples[semaine.numero] = Math.min(dur, plafondSoupleGroupe(semaine));
+        // « En cas de besoin, 30 h peuvent être dépassées, mais pas trop. »
+        plafondsToleres[semaine.numero] = Math.min(
+          dur,
+          Math.max(plafondsSouples[semaine.numero], plafondTolereGroupe(semaine, dur))
+        );
       }
       const pris = Object.keys(conserves[groupe] ?? {}).reduce(
         (somme, module) => somme + charge(groupe, module, semaine.numero),
@@ -456,7 +525,7 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
       );
       if (pris > 0) charges[semaine.numero] = arrondir(pris);
     }
-    return { id: groupe, plafondsSouples, plafondsDurs, charges };
+    return { id: groupe, plafondsSouples, plafondsToleres, plafondsDurs, charges };
   });
 
   // ─── 6. Formateurs : masse affectée → cible de chaque semaine (B, C, D) ───
@@ -473,11 +542,12 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
     const sesTaches = parFormateur.get(formateur);
     const masseAffectee = arrondir(sesTaches.reduce((somme, t) => somme + t.s1 + t.s2, 0));
     const cibleBase = cibleHebdomadaire(masseAffectee);
-    const plancher = plancherHebdomadaire(masseAffectee);
+    const disponibles = joursDisponibles(indisponibilites.get(formateur) ?? []);
     const sesGroupes = [...new Set(sesTaches.flatMap((t) => t.groupes))];
     const formation = formationDe(formateur);
 
     const parSemaine = {};
+    const minimums = {};
     for (const commune of semainesCommunes) {
       if (!commune.disponible) continue;
       const ouverts = sesGroupes
@@ -486,18 +556,24 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
       // Aucun de ses groupes n'est là (rentrée à venir, stages) : rien à viser.
       if (ouverts.length === 0) continue;
 
-      const cible = cibleDeLaSemaine(
-        cibleBase,
-        joursPerdusFormateur({
-          feries: commune.feries?.length ?? 0,
-          formation: formation.get(commune.numero) ?? 0,
-          groupes: ouverts.map((semaine) =>
-            Math.max(semaine.joursStage ?? 0, semaine.joursRentree ?? 0)
-          ),
-        }),
-        plancher
-      );
+      const perdus = joursPerdusFormateur({
+        feries: commune.feries?.length ?? 0,
+        formation: formation.get(commune.numero) ?? 0,
+        groupes: ouverts.map((semaine) =>
+          Math.max(semaine.joursStage ?? 0, semaine.joursRentree ?? 0)
+        ),
+      });
+      const plancher = plancherHebdomadaire(masseAffectee, {
+        ferieSurJourDisponible: ferieSurJourDisponible(commune.feries, disponibles),
+      });
+      const cible = cibleDeLaSemaine(cibleBase, perdus, plancher);
       if (cible > 0) parSemaine[commune.numero] = cible;
+      /*
+       * Le minimum de la semaine : sous lui, le solveur laisse un module annuel
+       * commencer plus tôt que son enchaînement ne le voudrait.
+       */
+      const minimum = cibleDeLaSemaine(0, perdus, plancher);
+      if (minimum > 0) minimums[commune.numero] = Math.min(cible, minimum);
     }
 
     const charges = Object.fromEntries(
@@ -508,7 +584,7 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
     );
 
     cibles.set(formateur, { masseAffectee, cibleHebdomadaire: cibleBase, parSemaine });
-    formateursSolveur.push({ id: formateur, cibles: parSemaine, charges });
+    formateursSolveur.push({ id: formateur, cibles: parSemaine, minimums, charges });
   }
 
   return {
@@ -548,6 +624,7 @@ export function assemblerSolution(construit, solution) {
     });
 
   const lotsPar = new Map(probleme.taches.map((t) => [t.id, t.lots]));
+  const courtes = new Set();
   const posesParTache = new Map();
 
   /*
@@ -577,6 +654,21 @@ export function assemblerSolution(construit, solution) {
     const plafond = lotsPar.get(pose.tacheId)[pose.lot]?.plafonds[pose.semaine] ?? 0;
     if (heures > plafond + 1e-6) {
       throw incoherence(`${heures} h en S${pose.semaine} pour « ${pose.tacheId} », plafond ${plafond} h`);
+    }
+    /*
+     * ⚠️ SÉANCES SYNCHRONES DE 5 h — une seule plus courte par tâche : celle
+     *    qui solde le reliquat de sa masse (2026-10-04).
+     */
+    if (
+      tache.type === TYPES.SYNCHRONE &&
+      Math.abs(heures / SEANCE_SYNCHRONE - Math.round(heures / SEANCE_SYNCHRONE)) > 1e-6
+    ) {
+      if (courtes.has(pose.tacheId)) {
+        throw incoherence(
+          `« ${pose.tacheId} » : plus d'une séance synchrone de moins de ${SEANCE_SYNCHRONE} h`
+        );
+      }
+      courtes.add(pose.tacheId);
     }
     posesParTache.set(pose.tacheId, (posesParTache.get(pose.tacheId) ?? 0) + heures);
 
@@ -674,7 +766,13 @@ function bilan(construit, solution, plannings, base) {
         semestre,
         heures: nonPose.heures,
         cause: nonPose.cause,
-        motif: (MOTIFS[tache.metierFormation ? 'metier_formation' : nonPose.cause] ??
+        motif: (MOTIFS[
+          tache.metierFormation
+            ? 'metier_formation'
+            : nonPose.cause === 'hors_pas' && tache.type === TYPES.SYNCHRONE
+              ? 'hors_seance'
+              : nonPose.cause
+        ] ??
           (() => nonPose.cause))(semestre),
       };
     })
@@ -743,10 +841,11 @@ function bilan(construit, solution, plannings, base) {
  *    demander confirmation.
  */
 export async function generer(etablissementId, anneeScolaire, { mode = MODES.REMPLACER, simulation = true } = {}) {
-  const [base, etablissement, existants] = await Promise.all([
+  const [base, etablissement, existants, configuration] = await Promise.all([
     Base.findOne({ etablissementId, anneeScolaire }),
     Etablissement.findById(etablissementId).select('calendrier stages formations'),
     Chronogramme.find({ etablissementId, anneeScolaire }),
+    AutoGenConfig.findOne({ etablissementId, anneeScolaire }).select('contraintes').lean(),
   ]);
   if (!base) throw notFound('Aucune base pour cette année scolaire', { code: 'BASE_ABSENTE' });
 
@@ -772,6 +871,12 @@ export async function generer(etablissementId, anneeScolaire, { mode = MODES.REM
       rentrees: national.rentrees,
       plannings: Object.fromEntries(existants.map((c) => [c.groupe, depuisMongo(c.planning)])),
       intitules,
+      indisponibilites: new Map(
+        (configuration?.contraintes ?? []).map((c) => [
+          String(c.formateur ?? '').trim(),
+          c.indisponibilites ?? [],
+        ])
+      ),
     },
     { mode }
   );

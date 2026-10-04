@@ -1,3 +1,5 @@
+import { JOURS } from '../../constants/index.js';
+import { prefixeDuNom } from '../carte/nomsGroupes.js';
 import { anneeDuNomGroupe } from '../carte/reconstruction.js';
 import { groupesDuSoir } from '../emploi/grille.js';
 import { SEUIL_HEBDOMADAIRE } from './charge.js';
@@ -116,8 +118,14 @@ export function joursPerdusFormateur({ feries = 0, formation = 0, groupes = [] }
  */
 export const SEUIL_PLANCHER_ABSOLU = 900;
 
-/** Entre 360 h et 900 h affectées, le minimum de chaque semaine (2026-10-04). */
+/** À 900 h affectées ou moins, le minimum de chaque semaine (2026-10-04). */
 export const PLANCHER_MASSE_MOYENNE = 10;
+
+/**
+ * À 360 h ou moins, une semaine dont un férié tombe sur un jour où le
+ * formateur est disponible : un créneau, pour qu'elle ne reste pas vide.
+ */
+export const PLANCHER_MINIMAL = PAS;
 
 /**
  * Le minimum hebdomadaire d'un formateur, que les réductions de la règle D ne
@@ -130,11 +138,51 @@ export const PLANCHER_MASSE_MOYENNE = 10;
  *    semaines à deux jours fériés. À ce volume, la semaine allégée ne se
  *    rattrape plus ailleurs.
  */
-export function plancherHebdomadaire(masseAffectee) {
+export function plancherHebdomadaire(masseAffectee, { ferieSurJourDisponible = false } = {}) {
   const masse = Number(masseAffectee) || 0;
+  if (masse <= 0) return 0;
   if (masse > SEUIL_PLANCHER_ABSOLU) return PLANCHER_HEBDOMADAIRE;
-  if (masse > SEUIL_PETITE_MASSE) return PLANCHER_MASSE_MOYENNE;
-  return 0;
+  /*
+   * ⚠️ À 360 h OU MOINS, LE FÉRIÉ PEUT FAIRE DESCENDRE SOUS 10 h — mais
+   *    seulement s'il tombe un jour où le formateur est DISPONIBLE (2026-10-04,
+   *    demande du porteur). Un vacataire présent le mardi ne perd rien d'un
+   *    férié du jeudi : son minimum de 10 h reste dû.
+   *
+   *    Jamais zéro pour autant (« le formateur ne doit chômer en aucun cas ») :
+   *    un créneau.
+   */
+  if (masse <= SEUIL_PETITE_MASSE && ferieSurJourDisponible) return PLANCHER_MINIMAL;
+  return PLANCHER_MASSE_MOYENNE;
+}
+
+/**
+ * Séances de JOURNÉE : un jour où elles sont toutes déclarées indisponibles
+ * est un jour où le formateur ne vient pas. S5 (le soir) n'y entre pas.
+ */
+const SEANCES_DE_JOURNEE = ['S1', 'S2', 'S3', 'S4'];
+
+/**
+ * Les jours où un formateur est disponible, d'après ses indisponibilités
+ * déclarées (`AutoGenConfig.contraintes[].indisponibilites`).
+ *
+ * ⚠️ SANS DÉCLARATION, TOUS LES JOURS : c'est la lecture prudente — un férié
+ *    compte alors toujours, comme avant cette règle.
+ *
+ * @param {Array<{jour: string, seance: string}>} indisponibilites
+ * @returns {Set<string>} « Lundi » … « Samedi »
+ */
+export function joursDisponibles(indisponibilites = []) {
+  const pris = new Set((indisponibilites ?? []).map((c) => `${c?.jour}|${c?.seance}`));
+  return new Set(JOURS.filter((jour) => !SEANCES_DE_JOURNEE.every((s) => pris.has(`${jour}|${s}`))));
+}
+
+/** Un de ces fériés tombe-t-il un jour où le formateur est disponible ? */
+export function ferieSurJourDisponible(feries = [], disponibles = new Set(JOURS)) {
+  return (feries ?? []).some((ferie) => {
+    const date = new Date(`${String(ferie?.date ?? ferie).slice(0, 10)}T12:00:00`);
+    if (Number.isNaN(date.getTime())) return false;
+    return disponibles.has(JOURS[(date.getDay() + 6) % 7]);
+  });
 }
 
 /**
@@ -201,6 +249,20 @@ export function plafondSoupleGroupe(semaine) {
   if (!semaine?.disponible) return 0;
   const jours = Math.max(0, Math.min(JOURS_PAR_SEMAINE, semaine.joursDisponibles ?? 0));
   return jours * HEURES_PAR_JOUR_CIBLE;
+}
+
+/**
+ * « En cas de besoin, la masse de 30 h par semaine pour les groupes peut être
+ * dépassée, mais pas trop » (2026-10-04, demande du porteur) : 5 h de plus,
+ * soit 35 h en semaine pleine — et jamais plus que ce que les jours ouverts
+ * contiennent physiquement.
+ */
+export const DEPASSEMENT_GROUPE = 5;
+
+export function plafondTolereGroupe(semaine, capacite = Infinity) {
+  const souple = plafondSoupleGroupe(semaine);
+  if (souple <= 0) return 0;
+  return Math.min(capacite, souple + DEPASSEMENT_GROUPE);
 }
 
 /**
@@ -327,4 +389,105 @@ const sansAccents = (texte) =>
 export function estModuleMetierFormation(intitule) {
   const texte = sansAccents(intitule);
   return /\bmetiers?\b/.test(texte) && /\bformation\b/.test(texte);
+}
+
+/**
+ * Semaines d'arrêt tolérées entre les deux semestres d'un module ANNUEL :
+ * AUCUNE (2026-10-04, demande du porteur — d'abord 2 semaines, puis « annuler
+ * l'intervalle »). Ses heures du S1 s'étalent jusqu'à la dernière semaine du
+ * S1, et celles du S2 enchaînent dès la première du S2.
+ */
+export const ECART_MAX_MODULE_ANNUEL = 0;
+
+/**
+ * Durée d'une séance synchrone : le synchrone se planifie par 5 h (2026-10-04,
+ * demande du porteur : « les séances synchrones doivent être de 5 h »).
+ */
+export const SEANCE_SYNCHRONE = 5;
+
+/**
+ * Ce que le synchrone d'un module prend AU PLUS chaque semaine : UNE séance —
+ * sauf si sa masse exige davantage pour tenir dans ses semaines ouvertes, et
+ * alors un nombre entier de séances.
+ */
+export function plafondHebdomadaireSynchrone(heures, semainesOuvertes) {
+  const masse = Number(heures) || 0;
+  if (!(semainesOuvertes > 0)) return SEANCE_SYNCHRONE;
+  const seances = Math.ceil(masse / semainesOuvertes / SEANCE_SYNCHRONE - 1e-9);
+  return Math.max(1, seances) * SEANCE_SYNCHRONE;
+}
+
+/**
+ * Les heures d'un module par semestre, ARRONDIES AU PAS sans changer leur
+ * total (2026-10-04).
+ *
+ * ⚠️ LA CARTE PORTE DES DÉCOUPAGES COMME 11,11 h + 8,89 h. Planifié par pas de
+ *    2,5 h, chaque semestre perdait sa fraction — 1,11 h et 1,39 h — et un
+ *    synchrone de 20 h ressortait à 17,5 h, avec un écart de −2,5 h que rien
+ *    n'expliquait à l'écran. On arrondit donc le S1 au pas le plus proche, et
+ *    le S2 prend le reste du total.
+ *
+ * @returns {{s1: number, s2: number}}
+ */
+export function repartirSemestresAuPas(s1 = 0, s2 = 0) {
+  const un = Math.max(0, Number(s1) || 0);
+  const deux = Math.max(0, Number(s2) || 0);
+  const total = Math.floor((un + deux) / PAS + 1e-9) * PAS;
+  if (un === 0 || deux === 0) {
+    return un === 0 ? { s1: 0, s2: total } : { s1: total, s2: 0 };
+  }
+  const premier = Math.min(total, Math.round(un / PAS) * PAS);
+  return { s1: premier, s2: Math.round((total - premier) * 100) / 100 };
+}
+
+/**
+ * ═══ LES LONGS MODULES : DES SÉANCES DE 5 h À 10 h (2026-10-04) ═══
+ * « Pour les modules de 70 h et plus, il est préférable de planifier des
+ * séances de 5 h à 10 h, sauf les modules qui commencent par EG. » Une
+ * semaine où un tel module a cours, il a donc au moins 5 h — jamais 2,5 h
+ * seules, sauf la dernière séance, qui solde sa masse. Le plafond de 10 h
+ * existe déjà (`PLAFOND_MODULE_SEMAINE`).
+ *
+ * ⚠️ LA MASSE DU MODULE DANS LE GROUPE, présentiel et synchrone confondus —
+ *    celle des colonnes MHP de la grille.
+ * ⚠️ « EG » : les modules d'enseignement général (EGTS, EGQ, EGT…), courts
+ *    par nature et étalés sur l'année.
+ */
+export const SEUIL_MODULE_LONG = 70;
+export const POSE_MIN_MODULE_LONG = 5;
+
+/** La pose minimale d'une semaine pour ce module, ou `null`. */
+export function poseMinimaleModule(code, masseModule) {
+  const estGeneral = String(code ?? '').trim().toUpperCase().startsWith('EG');
+  return !estGeneral && (Number(masseModule) || 0) >= SEUIL_MODULE_LONG ? POSE_MIN_MODULE_LONG : null;
+}
+
+/**
+ * ═══ LES GROUPES PIE : 5 h AU TOTAL PAR SEMAINE, À PARTIR DE S3 (2026-10-04) ═══
+ * « 5 h au maximum TOTAL par semaine à partir de la semaine S3 » — précision
+ * du porteur, après une première écriture qui limitait chaque MODULE à 5 h
+ * et laissait le groupe à 10 h par semaine. La limite porte donc sur le
+ * GROUPE, tous modules confondus, et rien n'est planifié avant S3.
+ *
+ * ⚠️ RECONNUS PAR LE PRÉFIXE DU NOM (« PIE101 (FQ) »), la règle de
+ *    `prefixeDuNom` : c'est ainsi que la base les nomme.
+ */
+export const PLAFOND_HEBDOMADAIRE_PIE = 5;
+export const PREMIERE_SEMAINE_PIE = 3;
+
+export function estGroupePIE(groupe) {
+  return prefixeDuNom(groupe) === 'PIE';
+}
+
+/**
+ * Les semaines d'un groupe, FERMÉES avant sa première semaine de cours.
+ * Fermées, pas retirées — comme `bornerALaFinDeFormation`.
+ */
+export function ouvrirAPartirDe(semaines, premiere) {
+  if (!Number.isInteger(premiere)) return semaines;
+  return semaines.map((semaine) =>
+    semaine.numero >= premiere
+      ? semaine
+      : { ...semaine, disponible: false, joursDisponibles: 0, motif: 'debut_formation' }
+  );
 }

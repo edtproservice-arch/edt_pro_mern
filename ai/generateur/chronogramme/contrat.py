@@ -35,7 +35,7 @@ from typing import Any
 #: Identité du moteur, comme `generateur.contrat.MOTEUR` — à incrémenter dès
 #: que la répartition change, pour que deux heuristiques ne se confondent pas.
 MOTEUR = "chronogramme-glouton"
-VERSION = "1.4.0"
+VERSION = "1.11.0"
 
 
 # --------------------------------------------------------------------------
@@ -53,6 +53,13 @@ class Formateur:
     #: Le porteur tranche : la charge hebdomadaire passe AVANT l'échéance — une
     #: fin d'année plus légère est acceptable, une semaine intenable non.
     cibles: dict[int, float] = field(default_factory=dict)
+    #: Ce que le formateur doit AU MOINS recevoir chaque semaine. En dessous,
+    #: l'enchaînement des lots (`Lot.ecart_suivant`) cède : un lot peut
+    #: commencer plus tôt que son rythme ne le voudrait (2026-10-04 — une
+    #: formatrice aux seize modules annuels restait à 5-15 h tout le début du
+    #: S1, ses modules attendant de « finir pile » en S17, et perdait des
+    #: heures en fin d'année). Absent = aucun minimum.
+    minimums: dict[int, float] = field(default_factory=dict)
     #: Heures DÉJÀ portées chaque semaine (mode « compléter ») : elles comptent
     #: dans la cible de la semaine.
     charges: dict[int, float] = field(default_factory=dict)
@@ -61,9 +68,12 @@ class Formateur:
 @dataclass(frozen=True)
 class Groupe:
     id: str
-    #: Ce que le groupe reçoit au plus en temps normal. Le remplissage ne le
-    #: dépasse jamais ; une ÉCHÉANCE peut le dépasser, jusqu'au plafond dur.
+    #: Ce que le groupe reçoit au plus en temps normal.
     plafonds_souples: dict[int, float] = field(default_factory=dict)
+    #: Ce qu'il peut recevoir « en cas de besoin » — un formateur encore sous
+    #: sa cible, ou sans aucune heure (2026-10-04, demande du porteur : « la
+    #: masse de 30 h peut être dépassée, mais pas trop »). Absent = souple.
+    plafonds_toleres: dict[int, float] | None = None
     #: Ce que la semaine peut physiquement contenir. Jamais dépassé.
     plafonds_durs: dict[int, float] = field(default_factory=dict)
     charges: dict[int, float] = field(default_factory=dict)
@@ -96,6 +106,13 @@ class Lot:
     #: servies AVANT tout le reste — mais jamais au-delà de la cible du
     #: formateur. `None` : pas d'échéance.
     echeance: int | None = None
+    #: ═══ ENCHAÎNEMENT AVEC LE LOT SUIVANT DE LA MÊME TÂCHE (2026-10-04) ═══
+    #: Nombre de semaines ouvertes qu'on tolère entre la fin de ce lot et son
+    #: échéance — donc avant que le lot suivant ne prenne le relais. Le lot ne
+    #: commence pas plus tôt qu'il ne faut, puis avance à rythme régulier
+    #: jusqu'à l'échéance, au lieu d'être servi d'un bloc et de laisser un
+    #: trou de plusieurs mois. `None` : pas de contrainte.
+    ecart_suivant: int | None = None
 
 
 @dataclass(frozen=True)
@@ -115,6 +132,18 @@ class Tache:
     #: d'un module ne tombe ni au début ni à la fin de son présentiel — mais
     #: Python n'en sait rien : il compte des semaines, pas des natures de cours.
     encadree_par: tuple[str, ...] = ()
+    #: ═══ GRANULARITÉ DE LA TÂCHE, EN HEURES (2026-10-04) ═══
+    #: Chaque semaine, elle pose un MULTIPLE de cette durée — Node y met 5 h
+    #: pour le synchrone (« les séances synchrones doivent être de 5 h »).
+    #: Seule exception : la DERNIÈRE pose, qui solde la masse — le reliquat
+    #: qui ne fait pas une séance entière y forme une séance plus courte.
+    #: `None` : le pas du problème. Doit en être un multiple.
+    pas_tache: float | None = None
+    #: ═══ POSE MINIMALE D'UNE SEMAINE, EN HEURES (2026-10-04) ═══
+    #: Une semaine où la tâche reçoit quelque chose, elle reçoit AU MOINS
+    #: cela — sauf la pose qui solde la masse. Node y met 5 h pour les longs
+    #: modules (« de 70 h et plus, des séances de 5 h à 10 h »). `None` : un pas.
+    pose_min: float | None = None
 
 
 @dataclass(frozen=True)

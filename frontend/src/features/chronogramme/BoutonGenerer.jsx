@@ -3,14 +3,21 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
+  DEPASSEMENT_GROUPE,
   DERNIERES_SEMAINES,
+  ECART_MAX_MODULE_ANNUEL,
   FIN_SEMESTRE_1,
   HEURES_PAR_JOUR_CIBLE,
   PAS,
+  PLAFOND_HEBDOMADAIRE_PIE,
+  PREMIERE_SEMAINE_PIE,
   PLAFOND_MODULE_SEMAINE,
+  POSE_MIN_MODULE_LONG,
   PLANCHER_HEBDOMADAIRE,
   PLANCHER_MASSE_MOYENNE,
   RESERVE_REGIONALE,
+  SEANCE_SYNCHRONE,
+  SEUIL_MODULE_LONG,
   SEUIL_PETITE_MASSE,
   SEUIL_PLANCHER_ABSOLU,
 } from 'shared/domain';
@@ -131,27 +138,40 @@ export default function BoutonGenerer({ lectureSeule = false }) {
                   avant la rentrée.
                 </span>
                 <span className="block">
-                  Cette charge n’est jamais dépassée de plus de {PAS} h : les heures du S1 qui
+                  Cette charge n’est dépassée — de {2 * PAS} h au plus — que pour un formateur en
+                  retard sur l’année : les heures du S1 qui
                   n’y tiennent pas passent après la S{FIN_SEMESTRE_1}, et la fin d’année peut
                   être plus légère.
                 </span>
                 <span className="block">
                   Minimum par semaine, fériés compris : {PLANCHER_HEBDOMADAIRE} h au-delà de{' '}
-                  {SEUIL_PLANCHER_ABSOLU} h affectées, {PLANCHER_MASSE_MOYENNE} h entre{' '}
-                  {SEUIL_PETITE_MASSE} h et {SEUIL_PLANCHER_ABSOLU} h. Un module ne prend pas plus
+                  {SEUIL_PLANCHER_ABSOLU} h affectées, {PLANCHER_MASSE_MOYENNE} h en deçà — sauf, à{' '}
+                  {SEUIL_PETITE_MASSE} h ou moins, quand un férié tombe un jour où le formateur est
+                  disponible. Aucun formateur ne reste sans heure une semaine où il a cours. Un
+                  groupe peut dépasser 30 h en cas de besoin, jusqu’à {30 + DEPASSEMENT_GROUPE} h. Un module ne prend pas plus
                   de {PLAFOND_MODULE_SEMAINE} h par semaine pour un groupe, sauf si sa masse
                   l’exige pour tenir dans son semestre.
                 </span>
                 <span className="block">
-                  Un module commencé reçoit au moins un créneau chaque semaine jusqu’à sa fin. Chaque
+                  Un module commencé reçoit au moins un créneau chaque semaine jusqu’à sa fin ; un
+                  module annuel{' '}
+                  {ECART_MAX_MODULE_ANNUEL === 0
+                    ? 'enchaîne ses deux semestres sans arrêt.'
+                    : `ne s’arrête pas plus de ${ECART_MAX_MODULE_ANNUEL} semaines entre ses deux semestres.`} Chaque
                   module régional garde {RESERVE_REGIONALE} h non planifiées par groupe.
+                </span>
+                <span className="block">
+                  Un module de {SEUIL_MODULE_LONG} h ou plus reçoit de {POSE_MIN_MODULE_LONG} h à{' '}
+                  {PLAFOND_MODULE_SEMAINE} h les semaines où il a cours (sauf les modules « EG… »). Dans
+                  les groupes PIE : {PLAFOND_HEBDOMADAIRE_PIE} h au total par semaine, à partir de la S
+                  {PREMIERE_SEMAINE_PIE}.
                 </span>
                 <span className="block">
                   Le module « Métier et formation » est planifié en S1, au plus tard en S2.
                 </span>
                 <span className="block">
-                  Les séances synchrones d’un module ne tombent ni sur sa première ni sur sa
-                  dernière semaine de présentiel.
+                  Le synchrone se planifie par séances de {SEANCE_SYNCHRONE} h, une par semaine ; il ne
+                  tombe ni sur la première ni sur la dernière semaine de présentiel du module.
                 </span>
                 <span className="block">
                   Fin de planification : S{DERNIERES_SEMAINES.PREMIERE} en 1ʳᵉ année, S

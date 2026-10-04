@@ -70,6 +70,17 @@ def _par_semaine(source: dict, cle: str, chemin: str, semaines: frozenset[int]) 
     return sortie
 
 
+def _pas_tache(objet: dict, chemin: str, pas: float, cle: str = "pasTache") -> float | None:
+    """Une durée de tâche (granularité, pose minimale) : un multiple > 0 du pas."""
+    if cle not in objet:
+        return None
+    valeur = _nombre(objet[cle], f"{chemin}.{cle}")
+    multiple = valeur / pas
+    if valeur <= 0 or abs(multiple - round(multiple)) > 1e-6:
+        raise ProblemeInvalide(f"{chemin}.{cle} : multiple de {pas} h attendu, reçu {valeur}")
+    return valeur
+
+
 def _uniques(identifiants: list[str], chemin: str) -> None:
     vus: set[str] = set()
     for identifiant in identifiants:
@@ -103,11 +114,12 @@ def lire_probleme_chronogramme(charge: Any) -> ProblemeChronogramme:
     for i, brut in enumerate(_exiger_liste(racine["formateurs"], "probleme.formateurs")):
         chemin = f"probleme.formateurs[{i}]"
         objet = _exiger_objet(brut, chemin)
-        _cles(objet, chemin, {"id", "cibles", "charges"}, {"id"})
+        _cles(objet, chemin, {"id", "cibles", "minimums", "charges"}, {"id"})
         formateurs.append(
             Formateur(
                 id=_texte(objet, "id", chemin),
                 cibles=_par_semaine(objet, "cibles", chemin, semaines),
+                minimums=_par_semaine(objet, "minimums", chemin, semaines),
                 charges=_par_semaine(objet, "charges", chemin, semaines),
             )
         )
@@ -117,10 +129,16 @@ def lire_probleme_chronogramme(charge: Any) -> ProblemeChronogramme:
     for i, brut in enumerate(_exiger_liste(racine["groupes"], "probleme.groupes")):
         chemin = f"probleme.groupes[{i}]"
         objet = _exiger_objet(brut, chemin)
-        _cles(objet, chemin, {"id", "plafondsSouples", "plafondsDurs", "charges"}, {"id"})
+        _cles(objet, chemin, {"id", "plafondsSouples", "plafondsToleres", "plafondsDurs", "charges"}, {"id"})
+        souples = _par_semaine(objet, "plafondsSouples", chemin, semaines)
         groupe = Groupe(
             id=_texte(objet, "id", chemin),
-            plafonds_souples=_par_semaine(objet, "plafondsSouples", chemin, semaines),
+            plafonds_souples=souples,
+            plafonds_toleres=(
+                _par_semaine(objet, "plafondsToleres", chemin, semaines)
+                if "plafondsToleres" in objet
+                else dict(souples)
+            ),
             plafonds_durs=_par_semaine(objet, "plafondsDurs", chemin, semaines),
             charges=_par_semaine(objet, "charges", chemin, semaines),
         )
@@ -130,6 +148,13 @@ def lire_probleme_chronogramme(charge: Any) -> ProblemeChronogramme:
             if souple > groupe.plafonds_durs.get(semaine, 0):
                 raise ProblemeInvalide(
                     f"{chemin} : plafond souple {souple} > plafond dur en semaine {semaine}"
+                )
+        # ⚠️ souple ≤ toléré ≤ dur : sinon la tolérance retirerait de la place,
+        #    ou en promettrait que la semaine n'a pas.
+        for semaine, tolere in groupe.plafonds_toleres.items():
+            if tolere < groupe.plafonds_souples.get(semaine, 0) or tolere > groupe.plafonds_durs.get(semaine, 0):
+                raise ProblemeInvalide(
+                    f"{chemin} : plafond toléré {tolere} hors de [souple, dur] en semaine {semaine}"
                 )
         groupes.append(groupe)
     _uniques([g.id for g in groupes], "probleme.groupes")
@@ -159,7 +184,7 @@ def lire_probleme_chronogramme(charge: Any) -> ProblemeChronogramme:
         _cles(
             objet,
             chemin,
-            {"id", "formateur", "groupes", "cellules", "priorite", "lots", "encadreePar"},
+            {"id", "formateur", "groupes", "cellules", "priorite", "lots", "encadreePar", "pasTache", "poseMin"},
             {"id", "formateur", "groupes", "cellules", "priorite", "lots"},
         )
 
@@ -187,7 +212,10 @@ def lire_probleme_chronogramme(charge: Any) -> ProblemeChronogramme:
         for j, brut_lot in enumerate(_exiger_liste(objet["lots"], f"{chemin}.lots")):
             chemin_lot = f"{chemin}.lots[{j}]"
             lot = _exiger_objet(brut_lot, chemin_lot)
-            _cles(lot, chemin_lot, {"heures", "plafonds", "echeance"}, {"heures"})
+            _cles(lot, chemin_lot, {"heures", "plafonds", "echeance", "ecartSuivant"}, {"heures"})
+            ecart = lot.get("ecartSuivant")
+            if ecart is not None and (isinstance(ecart, bool) or not isinstance(ecart, int) or ecart < 0):
+                raise ProblemeInvalide(f"{chemin_lot}.ecartSuivant : entier positif attendu, reçu {ecart!r}")
             echeance = lot.get("echeance")
             if echeance is not None and (
                 isinstance(echeance, bool) or not isinstance(echeance, int) or echeance not in semaines
@@ -198,6 +226,7 @@ def lire_probleme_chronogramme(charge: Any) -> ProblemeChronogramme:
                     heures=_nombre(lot["heures"], f"{chemin_lot}.heures"),
                     plafonds=_par_semaine(lot, "plafonds", chemin_lot, semaines),
                     echeance=echeance,
+                    ecart_suivant=ecart,
                 )
             )
 
@@ -210,6 +239,8 @@ def lire_probleme_chronogramme(charge: Any) -> ProblemeChronogramme:
                 priorite=priorite,
                 lots=tuple(lots),
                 encadree_par=_textes(objet.get("encadreePar", []), f"{chemin}.encadreePar"),
+                pas_tache=_pas_tache(objet, chemin, pas),
+                pose_min=_pas_tache(objet, chemin, pas, cle="poseMin"),
             )
         )
     _uniques([t.id for t in taches], "probleme.taches")

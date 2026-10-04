@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   bornerALaFinDeFormation,
   derniereSemaineDuGroupe,
+  estGroupePIE,
+  ouvrirAPartirDe,
   estModuleMetierFormation,
   HEURES_PAR_JOUR_CIBLE,
   PLANCHER_HEBDOMADAIRE,
@@ -10,11 +12,17 @@ import {
   cibleDeLaSemaine,
   cibleHebdomadaire,
   fenetreDuSemestre,
+  ferieSurJourDisponible,
+  joursDisponibles,
   joursPerdusFormateur,
   plafondHebdomadaireModule,
+  plafondHebdomadaireSynchrone,
   plafondSoupleGroupe,
+  plafondTolereGroupe,
   plancherHebdomadaire,
+  poseMinimaleModule,
   prioriteGeneration,
+  repartirSemestresAuPas,
   retirerReserve,
   semainesDuSemestre,
 } from './generation.js';
@@ -168,9 +176,18 @@ describe('plancher absolu au-delà de 900 h', () => {
     expect(cibleDeLaSemaine(25, 2, plancherHebdomadaire(600))).toBe(15);
   });
 
-  it('aucun plancher à 360 h ou moins', () => {
-    expect(plancherHebdomadaire(360)).toBe(0);
-    expect(cibleDeLaSemaine(10, 2, plancherHebdomadaire(360))).toBe(0);
+  it('10 h aussi à 360 h ou moins', () => {
+    expect(plancherHebdomadaire(360)).toBe(10);
+    expect(plancherHebdomadaire(0)).toBe(0);
+  });
+
+  it('à 360 h ou moins, sous 10 h seulement si un férié tombe un jour où il est disponible', () => {
+    const plancher = plancherHebdomadaire(360, { ferieSurJourDisponible: true });
+    expect(plancher).toBe(2.5);
+    // 10,29 h − 2 fériés = 0,29 h : un créneau, jamais zéro.
+    expect(cibleDeLaSemaine(10.29, 2, plancher)).toBe(2.5);
+    // Au-delà de 360 h, le férié ne fait pas tomber le plancher de 10 h.
+    expect(plancherHebdomadaire(600, { ferieSurJourDisponible: true })).toBe(10);
   });
 
   it('ne vise pas plus que les jours restants ne contiennent', () => {
@@ -220,5 +237,98 @@ describe('estModuleMetierFormation', () => {
     expect(estModuleMetierFormation('Algorithmique')).toBe(false);
     expect(estModuleMetierFormation('Formation en entreprise')).toBe(false);
     expect(estModuleMetierFormation('')).toBe(false);
+  });
+});
+
+describe('joursDisponibles et ferieSurJourDisponible', () => {
+  const seances = (jour) => ['S1', 'S2', 'S3', 'S4'].map((seance) => ({ jour, seance }));
+
+  it('un jour aux quatre séances de journée indisponibles n’est pas disponible', () => {
+    const jours = joursDisponibles([...seances('Jeudi'), { jour: 'Mardi', seance: 'S1' }]);
+    expect(jours.has('Jeudi')).toBe(false);
+    expect(jours.has('Mardi')).toBe(true);
+  });
+
+  it('sans déclaration, tous les jours', () => {
+    expect(joursDisponibles().size).toBe(6);
+  });
+
+  it('le férié compte s’il tombe un jour disponible', () => {
+    // 2026-11-05 est un jeudi.
+    const jours = joursDisponibles(seances('Jeudi'));
+    expect(ferieSurJourDisponible([{ date: '2026-11-05' }], jours)).toBe(false);
+    expect(ferieSurJourDisponible([{ date: '2026-11-06' }], jours)).toBe(true);
+  });
+});
+
+describe('plafondTolereGroupe', () => {
+  it('30 h + 5 h en semaine pleine, borné par la capacité', () => {
+    const pleine = { disponible: true, joursDisponibles: 6 };
+    expect(plafondTolereGroupe(pleine, 60)).toBe(35);
+    expect(plafondTolereGroupe({ disponible: true, joursDisponibles: 1 }, 10)).toBe(10);
+    expect(plafondTolereGroupe({ disponible: false }, 60)).toBe(0);
+  });
+});
+
+describe('plafondHebdomadaireSynchrone — séances de 5 h', () => {
+  it('une séance par semaine quand elle suffit', () => {
+    expect(plafondHebdomadaireSynchrone(15, 10)).toBe(5);
+  });
+
+  it('un nombre entier de séances quand la masse l’exige', () => {
+    expect(plafondHebdomadaireSynchrone(30, 4)).toBe(10);
+  });
+});
+
+describe('repartirSemestresAuPas', () => {
+  it('garde le total quand le découpage tombe hors pas', () => {
+    expect(repartirSemestresAuPas(11.11, 8.89)).toEqual({ s1: 10, s2: 10 });
+    expect(repartirSemestresAuPas(10.67, 9.33)).toEqual({ s1: 10, s2: 10 });
+  });
+
+  it('ne touche pas un découpage déjà au pas', () => {
+    expect(repartirSemestresAuPas(40, 35)).toEqual({ s1: 40, s2: 35 });
+  });
+
+  it('un seul semestre : le total au pas', () => {
+    expect(repartirSemestresAuPas(0, 12)).toEqual({ s1: 0, s2: 10 });
+    expect(repartirSemestresAuPas(15, 0)).toEqual({ s1: 15, s2: 0 });
+  });
+});
+
+describe('poseMinimaleModule — les longs modules', () => {
+  it('5 h minimum à partir de 70 h', () => {
+    expect(poseMinimaleModule('M201', 70)).toBe(5);
+    expect(poseMinimaleModule('M102', 140)).toBe(5);
+  });
+
+  it('rien sous 70 h', () => {
+    expect(poseMinimaleModule('M201', 67.5)).toBeNull();
+  });
+
+  it('jamais pour les modules qui commencent par EG', () => {
+    expect(poseMinimaleModule('EGQ202', 75)).toBeNull();
+    expect(poseMinimaleModule('egts102', 90)).toBeNull();
+  });
+});
+
+describe('estGroupePIE', () => {
+  it('reconnaît les groupes PIE à leur préfixe', () => {
+    expect(estGroupePIE('PIE101 (FQ)')).toBe(true);
+    expect(estGroupePIE('PIE202')).toBe(true);
+  });
+
+  it('ne prend pas les autres', () => {
+    expect(estGroupePIE('PM101')).toBe(false);
+    expect(estGroupePIE('GC_PIE')).toBe(false);
+  });
+});
+
+describe('ouvrirAPartirDe', () => {
+  it('ferme les semaines avant la première, sans les retirer', () => {
+    const semaines = [1, 2, 3].map((numero) => ({ numero, disponible: true, joursDisponibles: 6 }));
+    const ouvertes = ouvrirAPartirDe(semaines, 3);
+    expect(ouvertes.map((s) => s.disponible)).toEqual([false, false, true]);
+    expect(ouvrirAPartirDe(semaines, null)).toBe(semaines);
   });
 });

@@ -94,6 +94,29 @@ describe('le synchrone, encadré par le présentiel du module', () => {
     expect(probleme.taches.filter((t) => t.encadreePar)).toHaveLength(1);
   });
 
+  it('le synchrone se pose par séances de 5 h, une par semaine', () => {
+    const { probleme } = construire([affectation('200', 'GM101', 'M101', S, 20)]);
+    const [tache] = probleme.taches;
+    expect(tache.pasTache).toBe(5);
+    expect(Math.max(...Object.values(tache.lots[0].plafonds))).toBe(5);
+  });
+
+  it('le contrôle admet UNE séance synchrone plus courte, pas deux', () => {
+    const construit = construire([affectation('200', 'GM101', 'M101', S, 20)]);
+    const pose = (semaine, heures) => ({ tacheId: '200|GM101|M101|S', lot: 0, semaine, heures });
+    expect(() => assemblerSolution(construit, { poses: [pose(3, 5), pose(4, 2.5)] })).not.toThrow();
+    expect(() =>
+      assemblerSolution(construit, { poses: [pose(3, 2.5), pose(4, 2.5)] })
+    ).toThrow(/incohérente/);
+  });
+
+  (pythonDisponible ? it : it.skip)('un synchrone de 12,5 h : deux séances de 5 h et une de 2,5 h', async () => {
+    const construit = construire([affectation('200', 'GM101', 'M101', S, 12.5)]);
+    const solution = await resoudreChronogramme(construit.probleme);
+    expect(solution.nonPoses).toEqual([]);
+    expect(solution.poses.map((p) => p.heures).sort()).toEqual([2.5, 5, 5]);
+  });
+
   it('un module tout à distance n’a pas d’encadrante', () => {
     const { probleme } = construire([affectation('200', 'GM101', 'M101', S, 20)]);
     expect(probleme.taches[0].encadreePar).toBeUndefined();
@@ -177,7 +200,81 @@ describe('le module « Métier et formation »', () => {
   });
 });
 
+describe('les longs modules : des séances de 5 h à 10 h', () => {
+  it('5 h minimum à partir de 70 h dans le groupe, présentiel et synchrone confondus', () => {
+    const { probleme } = construire([
+      affectation('100', 'GM101', 'M201', P, 50),
+      affectation('200', 'GM101', 'M201', S, 20),
+      affectation('100', 'GM101', 'M202', P, 60),
+      affectation('100', 'GM101', 'EGQ202', P, 75),
+    ]);
+    expect(tacheDe(probleme, '100|GM101|M201|P').poseMin).toBe(5);
+    expect(tacheDe(probleme, '200|GM101|M201|S').poseMin).toBe(5);
+    expect(tacheDe(probleme, '100|GM101|M202|P').poseMin).toBeUndefined();
+    expect(tacheDe(probleme, '100|GM101|EGQ202|P').poseMin).toBeUndefined();
+  });
+});
+
+describe('les groupes PIE : 5 h au total par semaine, à partir de S3', () => {
+  const pie = (affectations) =>
+    construireProblemeChronogramme(ANNEE, { base: base(affectations, ['PIE101 (FQ)', 'GM101']) });
+
+  it('5 h au total pour le groupe PIE, et rien avant S3', () => {
+    const { probleme } = pie([affectation('100', 'PIE101 (FQ)', 'M101', P, 27.5)]);
+    const groupe = probleme.groupes.find((g) => g.id === 'PIE101 (FQ)');
+    for (const plafonds of [groupe.plafondsSouples, groupe.plafondsToleres, groupe.plafondsDurs]) {
+      expect(Math.max(...Object.values(plafonds))).toBe(5);
+      expect(Math.min(...Object.keys(plafonds).map(Number))).toBe(3);
+    }
+    expect(Math.min(...Object.keys(probleme.taches[0].lots[0].plafonds).map(Number))).toBe(3);
+  });
+
+  it('plafonne les lots et les cases du groupe PIE à 5 h', () => {
+    const { probleme } = pie([
+      affectation('100', 'PIE101 (FQ)', 'M101', P, 27.5),
+      affectation('100', 'GM101', 'M101', P, 27.5),
+    ]);
+    const lotPie = tacheDe(probleme, '100|PIE101 (FQ)|M101').lots[0];
+    expect(Math.max(...Object.values(lotPie.plafonds))).toBe(5);
+    const casePie = probleme.cellules.find((c) => c.id === 'PIE101 (FQ)||M101');
+    expect(Math.max(...Object.values(casePie.plafonds))).toBe(5);
+    // L'autre groupe garde la règle ordinaire.
+    expect(Math.max(...Object.values(tacheDe(probleme, '100|GM101|M101').lots[0].plafonds))).toBe(10);
+  });
+
+  (pythonDisponible ? it : it.skip)('le groupe PIE ne dépasse jamais 5 h par semaine', async () => {
+    const construit = pie([
+      affectation('100', 'PIE101 (FQ)', 'M101', P, 27.5),
+      affectation('100', 'PIE101 (FQ)', 'M102', P, 27.5),
+      affectation('100', 'PIE101 (FQ)', 'M103', P, 0, 25),
+    ]);
+    const solution = await resoudreChronogramme(construit.probleme);
+    const plannings = assemblerSolution(construit, solution);
+    expect(solution.nonPoses).toEqual([]);
+    const parSemaine = {};
+    for (const cellules of Object.values(plannings['PIE101 (FQ)'])) {
+      for (const [semaine, cellule] of Object.entries(cellules)) {
+        parSemaine[semaine] = (parSemaine[semaine] ?? 0) + cellule.heures;
+      }
+    }
+    for (const [semaine, total] of Object.entries(parSemaine)) {
+      expect(total, `S${semaine}`).toBeLessThanOrEqual(5);
+      expect(Number(semaine), 'rien avant S3').toBeGreaterThanOrEqual(3);
+    }
+  });
+});
+
 describe('les lots et leurs fenêtres', () => {
+  it('un module annuel : son S1 enchaîne sur son S2, sans arrêt', () => {
+    const { probleme } = construire([affectation('100', 'GM101', 'M101', P, 40, 60)]);
+    const [s1, s2] = probleme.taches[0].lots;
+    expect(s1.ecartSuivant).toBe(0);
+    expect(s2.ecartSuivant).toBeUndefined();
+    // Un module d'un seul semestre n'enchaîne sur rien.
+    const seul = construire([affectation('100', 'GM101', 'M102', P, 40)]).probleme.taches[0].lots[0];
+    expect(seul.ecartSuivant).toBeUndefined();
+  });
+
   it('un module annuel donne deux lots : le S1 vise la S17 mais peut déborder, le S2 ne remonte pas', () => {
     const { probleme } = construire([affectation('100', 'GM101', 'M101', P, 40, 60)]);
     const [s1, s2] = probleme.taches[0].lots;
@@ -260,6 +357,44 @@ describe('règles B, C et D — la cible de chaque semaine', () => {
     });
     // 25 h − 4 jours × 5 h = 5 h : remonté à 10 h.
     expect(cibles.get('100').parSemaine[semaineDu('2026-11-10')]).toBe(10);
+  });
+
+  it('à 360 h ou moins : 10 h minimum, sauf si le férié tombe un jour où il est disponible', () => {
+    const jeudis = ['S1', 'S2', 'S3', 'S4'].map((seance) => ({ jour: 'Jeudi', seance }));
+    // 2026-11-05 est un jeudi, 2026-11-06 un vendredi.
+    const avec = (date, indisponibilites) =>
+      construire([affectation('200', 'GM101', 'M101', P, 150, 150)], {
+        joursFeries: [{ date: '2026-11-02' }, { date }],
+        indisponibilites: new Map([['200', indisponibilites]]),
+      }).cibles.get('200').parSemaine[semaineDu(date)];
+    // Fériés un lundi et un vendredi, jours où il vient : sous 10 h permis.
+    expect(avec('2026-11-06', jeudis)).toBe(2.5);
+    // Un lundi et un jeudi — le jeudi, il ne vient pas, mais le lundi si.
+    expect(avec('2026-11-05', jeudis)).toBe(2.5);
+    // Ne venant que le jeudi, deux fériés hors de ses jours : 10 h restent dues.
+    const horsJeudi = ['Lundi', 'Mardi', 'Mercredi', 'Vendredi', 'Samedi'].flatMap((jour) =>
+      ['S1', 'S2', 'S3', 'S4'].map((seance) => ({ jour, seance }))
+    );
+    expect(avec('2026-11-06', [...horsJeudi])).toBe(10);
+  });
+
+  it('le minimum de chaque semaine part avec la cible', () => {
+    const { probleme } = construire([affectation('100', 'GM101', 'M101', P, 500, 500)]);
+    const [formateur] = probleme.formateurs;
+    expect(formateur.minimums[5]).toBe(25);
+    expect(formateur.cibles[5]).toBeGreaterThanOrEqual(25);
+  });
+
+  it('un découpage S1/S2 hors pas est arrondi sans perdre d’heure', () => {
+    const { probleme } = construire([affectation('200', 'GM101', 'M101', S, 11.11, 8.89)]);
+    expect(probleme.taches[0].lots.map((l) => l.heures)).toEqual([10, 10]);
+  });
+
+  it('les groupes ont un plafond toléré de 35 h en semaine pleine', () => {
+    const { probleme } = construire([affectation('100', 'GM101', 'M101', P, 60)]);
+    const [groupe] = probleme.groupes;
+    expect(groupe.plafondsSouples[5]).toBe(30);
+    expect(groupe.plafondsToleres[5]).toBe(35);
   });
 
   it('D : −5 h par jour férié', () => {
@@ -429,6 +564,23 @@ describe('le contrôle de la réponse', () => {
     expect(Object.values(plannings.GM101.M101).reduce((s, c) => s + c.heures, 0)).toBe(20);
   });
 
+  it('⚠️ un module annuel prioritaire ne s’arrête pas des mois entre ses deux semestres', async () => {
+    const construit = construire([
+      affectation('100', 'GM101', 'M107', P, 20, 60, true),
+      affectation('100', 'GM101', 'M108', P, 200),
+      affectation('100', 'GM102', 'M201', P, 300, 300),
+    ]);
+    const solution = await resoudreChronogramme(construit.probleme);
+    const plannings = assemblerSolution(construit, solution);
+    const semaines = Object.keys(plannings.GM101.M107).map(Number).sort((a, b) => a - b);
+    const ouvertes = construit.semainesDe('GM101').filter((s) => s.disponible).map((s) => s.numero);
+    // Entre deux semaines posées, aucune semaine OUVERTE sans rien.
+    for (let k = 1; k < semaines.length; k += 1) {
+      const trou = ouvertes.filter((n) => n > semaines[k - 1] && n < semaines[k]).length;
+      expect(trou, `S${semaines[k - 1]} → S${semaines[k]}`).toBe(0);
+    }
+  });
+
   it('⚠️ le synchrone ne tombe ni à la première ni à la dernière semaine du présentiel', async () => {
     const construit = construire([
       affectation('100', 'GM101', 'M101', P, 60),
@@ -438,6 +590,11 @@ describe('le contrôle de la réponse', () => {
     const solution = await resoudreChronogramme(construit.probleme);
     const plannings = assemblerSolution(construit, solution);
     expect(solution.nonPoses).toEqual([]);
+
+    for (const cellule of Object.values(plannings.GM101.M101)) {
+      const synchrone = cellule.type === 'S' ? cellule.heures : (cellule.synchrone ?? 0);
+      expect(synchrone % 5, 'séances synchrones de 5 h').toBe(0);
+    }
 
     const semaines = (type) =>
       Object.entries(plannings.GM101.M101)

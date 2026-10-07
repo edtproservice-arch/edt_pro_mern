@@ -724,3 +724,61 @@ describe('GET /avancement — accès', () => {
     expect(reponse.body.code).toBe('BASE_ABSENTE');
   });
 });
+
+describe('POST /avancement/achevement/export — Word / Excel (2026-10-07)', () => {
+  const corps = (format) => ({
+    format,
+    resume: '1 achevé(s) et 1 en cours, sur 2.',
+    colonnes: [
+      { id: 'groupe', entete: 'Groupe' },
+      { id: 'module', entete: 'Module' },
+      { id: 'intitule', entete: 'Intitulé du module' },
+      { id: 'fin', entete: 'Fin' },
+    ],
+    lignes: [
+      ['AVOI101', 'M109', 'Connaissances de base & <caméra>', 'En cours (56 %)'],
+      ['ESA301 (CDS)', 'M305', 'Installation', 'N/A'],
+    ],
+  });
+
+  const exporter = (format) =>
+    request(app)
+      .post('/api/v2/avancement/achevement/export')
+      .set('Cookie', cookies)
+      .send(corps(format))
+      .responseType('blob');
+
+  it('met les lignes de la fenêtre dans un Word, en paysage', async () => {
+    const reponse = await exporter('docx');
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-disposition']).toContain('Achevement_modules.docx');
+
+    const { default: JSZip } = await import('jszip');
+    const zip = await JSZip.loadAsync(reponse.body);
+    const xml = await zip.file('word/document.xml').async('string');
+    expect(xml).toContain('Intitulé du module');
+    expect(xml).toContain('Connaissances de base &amp; &lt;caméra&gt;');
+    expect(xml).toContain('w:orient="landscape"');
+    expect(await zip.file('word/header1.xml').async('string')).toContain('Achèvement des modules');
+  });
+
+  it('rend un Excel avec l’en-tête et les lignes', async () => {
+    const reponse = await exporter('xlsx');
+    expect(reponse.status).toBe(200);
+
+    const ExcelJS = (await import('exceljs')).default;
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(reponse.body);
+    const feuille = classeur.worksheets[0];
+    expect(feuille.getRow(5).getCell(3).value).toBe('Intitulé du module');
+    expect(feuille.getRow(6).getCell(4).value).toBe('En cours (56 %)');
+  });
+
+  it('refuse un format inconnu', async () => {
+    const reponse = await request(app)
+      .post('/api/v2/avancement/achevement/export')
+      .set('Cookie', cookies)
+      .send(corps('odt'));
+    expect(reponse.status).toBe(400);
+  });
+});

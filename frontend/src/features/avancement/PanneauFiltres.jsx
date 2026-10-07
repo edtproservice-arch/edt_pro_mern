@@ -29,8 +29,22 @@ import { cn } from '@/lib/utils';
  * l'écran — deux grammaires sur deux écrans du même produit seraient
  * indevinables.
  */
-export default function PanneauFiltres({ facettes, filtres, onChange }) {
-  const actifs = nombreDeFiltres(filtres);
+export default function PanneauFiltres({
+  facettes,
+  filtres,
+  onChange,
+  /*
+   * Des facettes PROPRES À L'APPELANT, hors du domaine (2026-10-07) : la
+   * fenêtre « Achèvement des modules » y met la SOURCE (Emploi, Chronogramme,
+   * Non planifié), une donnée qu'elle calcule elle-même et que les lignes de
+   * la page ne portent pas. `[{ cle, libelle, valeurs }]`, rangées avec les
+   * facettes courtes ; leur choix vit dans le même objet `filtres`.
+   */
+  supplementaires = [],
+}) {
+  const extras = supplementaires.filter((facette) => facette.valeurs.length > 1);
+  const actifs =
+    nombreDeFiltres(filtres) + extras.reduce((somme, { cle }) => somme + (filtres[cle]?.length ?? 0), 0);
 
   const basculer = (cle, valeur) => {
     const choisies = filtres[cle] ?? [];
@@ -68,7 +82,7 @@ export default function PanneauFiltres({ facettes, filtres, onChange }) {
 
   /* ⚠️ AUCUNE FACETTE À PROPOSER = PAS DE BOUTON — comme `FiltreGroupes`. Un
      panneau qui s'ouvre sur des sections vides fait douter du filtre. */
-  if (utiles.length === 0) return null;
+  if (utiles.length === 0 && extras.length === 0) return null;
 
   /*
    * ⚠️ DEUX FAMILLES, ET C'EST LA HAUTEUR QUI LES SÉPARE : « Niveau »,
@@ -77,7 +91,11 @@ export default function PanneauFiltres({ facettes, filtres, onChange }) {
    * donnerait des colonnes aux trois quarts vides.
    */
   const longues = utiles.filter(([cle]) => COLONNE_PROPRE.has(cle));
-  const courtes = utiles.filter(([cle]) => !COLONNE_PROPRE.has(cle));
+  const courtes = [
+    ...utiles.filter(([cle]) => !COLONNE_PROPRE.has(cle)),
+    ...extras.map(({ cle, libelle }) => [cle, { libelle }]),
+  ];
+  const valeursDe = (cle) => facettes[cle] ?? extras.find((facette) => facette.cle === cle)?.valeurs ?? [];
 
   return (
     <Popover>
@@ -133,7 +151,7 @@ export default function PanneauFiltres({ facettes, filtres, onChange }) {
                 <Section key={cle} libelle={libelle}>
                   <Jetons
                     cle={cle}
-                    valeurs={facettes[cle]}
+                    valeurs={valeursDe(cle)}
                     choisies={filtres[cle]}
                     onBasculer={basculer}
                   />

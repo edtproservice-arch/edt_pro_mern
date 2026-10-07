@@ -1,16 +1,28 @@
 import { useMemo, useState } from 'react';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { CheckCircle2, ChevronRight, Star } from 'lucide-react';
+import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import {
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Download,
+  File,
+  FileSpreadsheet,
+  FileText,
+  Star,
+} from 'lucide-react';
 import {
   FILTRES_VIDES,
   SEUIL_ACHEVEMENT,
   completionModules,
+  datesDeLaPlage,
   facettesAvancement,
   filtrerAvancement,
 } from 'shared/domain';
-import BadgeSemestre from '@/components/common/BadgeSemestre';
+import BadgeSemestre, { normaliserSemestre } from '@/components/common/BadgeSemestre';
 import TableauTriable from '@/components/common/TableauTriable';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -18,9 +30,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { nombre } from '@/lib/nombres';
 import { cn } from '@/lib/utils';
-import { chargerAchevement } from './api';
+import { chargerAchevement, exporterAchevement } from './api';
 import PanneauFiltres from './PanneauFiltres';
 import { useEtatPartage } from '@/features/guidage/useEtatPartage';
 
@@ -70,6 +88,38 @@ export default function AchevementModules({
     [lignes, filtresModale]
   );
   const completionFiltree = useMemo(() => completionModules(retenues), [retenues]);
+  const lignesTableau = useLignesTableau({
+    details: completionFiltree?.details ?? [],
+    ouvert,
+    anneeScolaire,
+    dateObservee,
+    face,
+    intitules,
+  });
+
+  /*
+   * ═══ LE FILTRE PAR SOURCE (2026-10-07, demande du porteur) ═══ La source
+   * (Emploi / Chronogramme / Non planifié) n'existe qu'une fois les plages
+   * chargées : elle se filtre donc APRÈS le domaine, sur les lignes du tableau,
+   * et seulement sur la face eDTpro, la seule qui la montre.
+   */
+  const sources = useMemo(
+    () =>
+      face === 'edtpro'
+        ? ORDRE_SOURCES.filter((source) => lignesTableau.lignes.some((ligne) => ligne.source === source))
+        : [],
+    [face, lignesTableau.lignes]
+  );
+  // Une source retenue sur la face eDTpro ne doit pas vider la face e-note, qui n'en a pas.
+  const sourcesChoisies = face === 'edtpro' ? (filtresModale.source ?? AUCUNE) : AUCUNE;
+  const lignesVisibles = useMemo(
+    () =>
+      sourcesChoisies.length === 0
+        ? lignesTableau.lignes
+        : lignesTableau.lignes.filter((ligne) => sourcesChoisies.includes(ligne.source)),
+    [lignesTableau.lignes, sourcesChoisies]
+  );
+  const acheves = lignesVisibles.filter((ligne) => ligne.acheve).length;
 
   if (!completion || completion.total === 0) return null;
 
@@ -130,15 +180,16 @@ export default function AchevementModules({
           garde sa taille et le tableau prend le reste, avec `min-h-0` pour
           l'autoriser à devenir plus court que son contenu.
         */}
-        {/* ⚠️ `max-w-7xl` (demande du porteur, 2026-09-29) : avec l'intitulé
-            sous le code, `max-w-5xl` coupait la colonne « Source » derrière un
-            défilement horizontal alors que l'écran avait la place. */}
-        <DialogContent className="flex max-h-[85vh] max-w-7xl flex-col overflow-hidden">
+        {/* ⚠️ JUSQU'À 96 % DE L'ÉCRAN (2026-10-07, demande du porteur : « s'il y a
+            l'espace augmenter le width du modal pour annuler le scroll bar
+            horizontal ») — `max-w-7xl` (1 280 px) ne suffisait plus depuis que
+            l'intitulé a sa propre colonne, et la fin prévue sa seconde ligne. */}
+        <DialogContent className="flex max-h-[85vh] w-[96vw] max-w-[min(96vw,120rem)] flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>Achèvement des modules</DialogTitle>
             <DialogDescription>
-              {completionFiltree.acheves} achevé(s) et {completionFiltree.enCours} en cours, sur{' '}
-              {completionFiltree.total}. Un module est tenu pour achevé à partir de{' '}
+              {acheves} achevé(s) et {lignesVisibles.length - acheves} en cours, sur{' '}
+              {lignesVisibles.length}. Un module est tenu pour achevé à partir de{' '}
               {SEUIL_ACHEVEMENT} % de sa masse affectée — les modules en cours viennent en premier.
             </DialogDescription>
           </DialogHeader>
@@ -151,18 +202,22 @@ export default function AchevementModules({
             scrollbar » demandé — mais son propre état : fermer cette fenêtre et
             la rouvrir retrouve la liste complète, jamais un filtre oublié.
           */}
-          <div className="flex shrink-0 justify-end">
-            <PanneauFiltres facettes={facettes} filtres={filtresModale} onChange={setFiltresModale} />
+          <div className="flex shrink-0 justify-end gap-2">
+            <PanneauFiltres
+              facettes={facettes}
+              filtres={filtresModale}
+              onChange={setFiltresModale}
+              supplementaires={[{ cle: 'source', libelle: 'Source', valeurs: sources }]}
+            />
+            <Telecharger
+              face={face}
+              lignes={lignesVisibles}
+              resume={`${acheves} achevé(s) et ${lignesVisibles.length - acheves} en cours, sur ${lignesVisibles.length}.`}
+              dateObservee={dateObservee}
+            />
           </div>
 
-          <Tableau
-            details={completionFiltree.details}
-            ouvert={ouvert}
-            anneeScolaire={anneeScolaire}
-            dateObservee={dateObservee}
-            face={face}
-            intitules={intitules}
-          />
+          <Tableau lignes={lignesVisibles} face={face} chargement={lignesTableau.chargement} />
         </DialogContent>
       </Dialog>
     </>
@@ -188,7 +243,11 @@ export default function AchevementModules({
  * l'existant, qui relisait le texte des cellules et faisait passer « 90 h »
  * avant « 100 h ».
  */
-function Tableau({ details, ouvert, anneeScolaire, dateObservee, face, intitules }) {
+/**
+ * Les lignes du détail, dates comprises — calculées UNE fois, pour le tableau ET
+ * pour l'export : le fichier téléchargé dit exactement ce que la fenêtre montre.
+ */
+function useLignesTableau({ details, ouvert, anneeScolaire, dateObservee, face, intitules }) {
   const avecDates = face === 'edtpro';
 
   /*
@@ -220,11 +279,20 @@ function Tableau({ details, ouvert, anneeScolaire, dateObservee, face, intitules
       ...detail,
       intitule: intitules[detail.module] ?? null,
       ...(avecDates
-        ? datesDuModule(detail, parCle[`${detail.groupe}||${detail.module}`] ?? null)
+        ? datesDuModule(detail, parCle[`${detail.groupe}||${detail.module}`] ?? null, {
+            anneeScolaire,
+            dateObservee,
+            rentrees: plages.data?.rentrees ?? [],
+          })
         : {}),
     }));
-  }, [details, avecDates, plages.data, intitules]);
+  }, [details, avecDates, plages.data, intitules, anneeScolaire, dateObservee]);
 
+  return { lignes, chargement: plages.isLoading };
+}
+
+function Tableau({ lignes, face, chargement }) {
+  const avecDates = face === 'edtpro';
   const colonnes = avecDates ? COLONNES_DATES : COLONNES_HEURES;
 
   return (
@@ -260,28 +328,113 @@ function Tableau({ details, ouvert, anneeScolaire, dateObservee, face, intitules
         className="min-h-0 flex-1 overflow-hidden max-h-[calc(85vh-11rem)]"
       />
 
-      {plages.isLoading && (
+      {chargement && (
         <p className="pt-2 text-center text-xs text-muted-foreground">Chargement des dates…</p>
       )}
     </>
   );
 }
 
+/**
+ * Télécharger le détail en Word, PDF ou Excel (2026-10-07, demande du porteur).
+ *
+ * ⚠️ LES LIGNES DE LA FENÊTRE, FILTRE COMPRIS : l'écran envoie le texte de
+ * chaque cellule tel qu'il l'affiche — dates, « En cours (83 %) », source —
+ * et le serveur ne fait que le mettre en page. Recalculer côté serveur aurait
+ * fait une seconde lecture des mêmes règles, libre de diverger.
+ */
+function Telecharger({ face, lignes, resume, dateObservee }) {
+  const telechargement = useMutation({
+    mutationFn: (format) => {
+      const colonnes = face === 'edtpro' ? EXPORT_DATES : EXPORT_HEURES;
+      return exporterAchevement({
+        format,
+        resume,
+        dateObservee,
+        colonnes: colonnes.map(({ id, entete }) => ({ id, entete })),
+        lignes: lignes.map((ligne) => colonnes.map(({ valeur }) => String(valeur(ligne) ?? ''))),
+      });
+    },
+    onError: (erreur) => toast.error('Téléchargement impossible', { description: erreur.message }),
+  });
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9 gap-1.5"
+          disabled={lignes.length === 0 || telechargement.isPending}
+        >
+          <Download className="size-4" />
+          {telechargement.isPending ? 'Préparation…' : 'Télécharger'}
+          <ChevronDown className="size-3.5 opacity-60" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuItem onSelect={() => telechargement.mutate('docx')}>
+          <FileText className="size-3.5 text-blue-600" />
+          Télécharger en Word
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => telechargement.mutate('pdf')}>
+          <File className="size-3.5 text-red-600" />
+          Télécharger en PDF
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => telechargement.mutate('xlsx')}>
+          <FileSpreadsheet className="size-3.5 text-green-600" />
+          Télécharger en Excel
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** Les sources, dans l'ordre où le filtre les propose. */
+const ORDRE_SOURCES = ['Emploi', 'Chronogramme', 'Non planifié'];
+const AUCUNE = [];
+
+/* Les colonnes du FICHIER — le texte de chaque cellule, comme à l'écran. */
+const EXPORT_COMMUNES = [
+  { id: 'groupe', entete: 'Groupe', valeur: (l) => l.groupe },
+  { id: 'module', entete: 'Module', valeur: (l) => l.module },
+  { id: 'intitule', entete: 'Intitulé du module', valeur: (l) => l.intitule ?? '' },
+  {
+    id: 'formateur',
+    entete: 'Formateur',
+    valeur: (l) => (l.formateurs.length > 0 ? l.formateurs.join(' · ') : 'Non assigné'),
+  },
+  { id: 'semestre', entete: 'Semestre', valeur: (l) => normaliserSemestre(l.semestre) ?? '' },
+  { id: 'regional', entete: 'Régional', valeur: (l) => (l.estRegional ? 'Oui' : '') },
+];
+const EXPORT_DATES = [
+  ...EXPORT_COMMUNES,
+  { id: 'debut', entete: 'Début', valeur: (l) => l.debut },
+  { id: 'fin', entete: 'Fin', valeur: (l) => l.finTexte },
+  { id: 'source', entete: 'Source', valeur: (l) => l.source },
+];
+const EXPORT_HEURES = [
+  ...EXPORT_COMMUNES,
+  { id: 'affecte', entete: 'Affecté (H)', valeur: (l) => nombre(l.prevu) },
+  { id: 'realise', entete: 'Réalisé (H)', valeur: (l) => nombre(l.realise) },
+  { id: 'taux', entete: 'Taux (%)', valeur: (l) => `${nombre(l.taux)} %` },
+  { id: 'statut', entete: 'Statut', valeur: (l) => (l.acheve ? 'Achevé' : 'En cours') },
+];
+
 /* ─── Les colonnes communes aux deux faces ──────────────────────────────── */
 
 const COLONNES_COMMUNES = [
   { id: 'groupe', entete: 'Groupe', tri: (l) => l.groupe, rendu: (l) => <span className="font-medium">{l.groupe}</span> },
+  { id: 'module', entete: 'Module', tri: (l) => l.module, rendu: (l) => l.module },
   {
-    id: 'module',
-    entete: 'Module',
-    tri: (l) => l.module,
-    /* Le code, puis le nom complet dessous : « EGTSI106 » seul n'apprend rien. */
+    /* ⚠️ SA PROPRE COLONNE (2026-10-07, demande du porteur) : sous le code, le
+       nom complet ne se triait pas et ne se lisait qu'en petit. */
+    id: 'intitule',
+    entete: 'Intitulé du module',
+    tri: (l) => l.intitule ?? '',
     rendu: (l) => (
-      <div className="min-w-48 max-w-72">
-        <div>{l.module}</div>
-        {l.intitule && (
-          <div className="text-xs leading-snug text-muted-foreground">{l.intitule}</div>
-        )}
+      <div className="min-w-48 max-w-80 text-xs leading-snug">
+        {l.intitule ?? <span className="text-muted-foreground">—</span>}
       </div>
     ),
   },
@@ -409,9 +562,9 @@ const COLONNES_HEURES = [
  * à la semaine, et lui donner un jour précis lui prêterait une exactitude qu'il
  * n'a pas. C'est déjà le choix de l'existant.
  *
- * @returns {{debut, fin, source, semaineDebut: number, semaineFin: number}}
+ * @returns {{debut, fin, finTexte: string, source, semaineDebut: number, semaineFin: number}}
  */
-function datesDuModule(detail, plage) {
+function datesDuModule(detail, plage, contexte = {}) {
   let debut = 'N/A';
   let source = 'Non planifié';
   /* `Infinity` range ce qui n'a pas de date EN DERNIER, jamais au milieu. */
@@ -438,12 +591,33 @@ function datesDuModule(detail, plage) {
    * L'afficher comme telle annoncerait un module terminé qui ne l'est pas.
    */
   let fin = 'N/A';
+  let finTexte = null;
   let semaineFin = Infinity;
 
   if (detail.taux > 0 && !detail.acheve) {
+    const prevision = finPrevisionnelle(detail, plage, contexte);
+    // Le même libellé en texte brut, pour l'export.
+    finTexte = `En cours (${Math.round(detail.taux)} %)${
+      prevision ? ` — ${prevision.libelle} S${prevision.semaine} (${enDate(prevision.date)})${prevision.depassee ? ', dépassée' : ''}` : ''
+    }`;
+    // Trié sur la fin ATTENDUE : un module en cours se range avec ceux qui finissent la même semaine.
+    if (prevision) semaineFin = prevision.semaine;
     fin = (
-      <span className="font-semibold text-accent-orange">
-        En cours ({Math.round(detail.taux)} %)
+      <span className="block whitespace-nowrap">
+        <span className="font-semibold text-accent-orange">En cours ({Math.round(detail.taux)} %)</span>
+        {prevision && (
+          <span
+            className={cn('block text-[0.7rem]', prevision.depassee ? 'text-destructive' : 'text-muted-foreground')}
+            title={
+              prevision.estimee
+                ? 'Estimée au rythme constaté dans l’emploi : aucun chronogramme pour ce module.'
+                : 'Dernière semaine prévue au chronogramme.'
+            }
+          >
+            {prevision.libelle} S{prevision.semaine} · {enDate(prevision.date)}
+            {prevision.depassee && ' (dépassée)'}
+          </span>
+        )}
       </span>
     );
   } else if (source === 'Chronogramme') {
@@ -454,7 +628,67 @@ function datesDuModule(detail, plage) {
     semaineFin = plage.posee.fin;
   }
 
-  return { debut, fin, source, semaineDebut, semaineFin };
+  return { debut, fin, finTexte: finTexte ?? fin, source, semaineDebut, semaineFin };
+}
+
+/**
+ * La fin ATTENDUE d'un module en cours (2026-10-07, demande du porteur : « même
+ * si la source est emploi et le module en cours, montrer aussi la semaine de
+ * fin d'après le chronogramme, et proposer une date prévisionnelle »).
+ *
+ * 1. Le CHRONOGRAMME d'abord : sa dernière semaine prévue, et le samedi de
+ *    cette semaine comme date prévisionnelle.
+ * 2. Sans chronogramme, une ESTIMATION au rythme constaté dans l'emploi : le
+ *    taux atteint divisé par les semaines écoulées depuis la première séance,
+ *    prolongé jusqu'à 100 %. Les vacances n'y sont pas retirées — d'où le mot
+ *    « estimée », et le survol qui le dit.
+ *
+ * « Dépassée » : la date attendue est déjà passée (à la date observée, ou
+ * aujourd'hui) alors que le module n'est pas achevé.
+ *
+ * @returns {{semaine: number, date: string, libelle: string, estimee: boolean, depassee: boolean} | null}
+ */
+function finPrevisionnelle(detail, plage, { anneeScolaire, dateObservee, rentrees = [] } = {}) {
+  let semaine = null;
+  let estimee = false;
+  let date = null;
+
+  if (plage?.prevue) {
+    semaine = plage.prevue.fin;
+    // Le samedi de la dernière semaine prévue, tel que le serveur l'a daté.
+    date = plage.datesPrevues?.fin ?? null;
+  } else if (plage?.posee) {
+    const ecoulees = plage.posee.fin - plage.posee.debut + 1;
+    const rythme = detail.taux / ecoulees;
+    if (rythme > 0) {
+      semaine = plage.posee.fin + Math.ceil((100 - detail.taux) / rythme);
+      estimee = true;
+    }
+  }
+
+  /* ⚠️ LES RENTRÉES DU SERVEUR : ce sont elles qui ancrent S1 (07/09 en
+     2026-2027) — sans elles, la date tomberait une semaine trop tôt. */
+  if (!date && semaine) {
+    date = datesDeLaPlage(Number(anneeScolaire), { debut: semaine, fin: semaine }, rentrees)?.fin ?? null;
+  }
+  if (!date) return null;
+
+  const reference = dateObservee ? String(dateObservee).slice(0, 10) : aujourdhui();
+  return {
+    semaine,
+    date,
+    estimee,
+    libelle: estimee ? 'Estimée' : 'Prévue',
+    depassee: date < reference,
+  };
+}
+
+/** « AAAA-MM-JJ » du jour, en heure locale. */
+function aujourdhui() {
+  const maintenant = new Date();
+  const mois = String(maintenant.getMonth() + 1).padStart(2, '0');
+  const jour = String(maintenant.getDate()).padStart(2, '0');
+  return `${maintenant.getFullYear()}-${mois}-${jour}`;
 }
 
 /** D'où vient la date affichée — la grille, le chronogramme, ou rien. */

@@ -632,12 +632,20 @@ export async function referentielDesModules(lignes, base = null) {
  * précisément ce à quoi on compare le réalisé.
  */
 export async function achevementDesModules(etablissementId, anneeScolaire, observation = null) {
-  const [chronogrammes, toutesLesSeances] = await Promise.all([
+  const [chronogrammes, toutesLesSeances, national] = await Promise.all([
     Chronogramme.find({ etablissementId, anneeScolaire }).select('groupe planning').lean(),
     Seance.find({ etablissementId, anneeScolaire })
       .select('groupe module semaine statut estEfm date')
       .lean(),
+    calendrierNational(anneeScolaire),
   ]);
+  /*
+   * ⚠️ LES RENTRÉES NATIONALES ANCRENT S1 (2026-10-07) : le chronogramme et la
+   * grille numérotent leurs semaines depuis la rentrée — S1 = 07/09 en
+   * 2026-2027. Sans elles, `datesDeLaPlage` retombait sur le 31/08 et chaque
+   * date affichée avançait d'une semaine.
+   */
+  const rentrees = national?.rentrees ?? [];
 
   /* ⚠️ LA MÊME BORNE PAR DÉFAUT QUE LES TAUX : le décompte de modules achevés
      et les plages posées vivent dans le même bloc de l'écran, et deux bornes
@@ -698,12 +706,12 @@ export async function achevementDesModules(etablissementId, anneeScolaire, obser
     plages[identifiant] = {
       prevue,
       posee,
-      datesPrevues: datesDeLaPlage(anneeScolaire, prevue),
-      datesPosees: datesDeLaPlage(anneeScolaire, posee),
+      datesPrevues: datesDeLaPlage(anneeScolaire, prevue, rentrees),
+      datesPosees: datesDeLaPlage(anneeScolaire, posee, rentrees),
     };
   }
 
-  return plages;
+  return { plages, rentrees };
 }
 
 /** La clé d'un couple (groupe, module) — celle que l'écran emploie aussi. */

@@ -33,6 +33,15 @@ export const chargerChronologie = () => api.get('/api/v2/avancement/chronologie'
 export const chargerAchevement = (date = null) =>
   api.get(`/api/v2/avancement/achevement${date ? `?date=${date}` : ''}`);
 
+/**
+ * Le détail de l'achèvement des modules en Word, PDF ou Excel (2026-10-07).
+ * L'écran envoie ses lignes déjà mises en texte — voir `AchevementModules`.
+ */
+export const exporterAchevement = (corps) =>
+  api.telecharger('/api/v2/avancement/achevement/export', corps, {
+    nomParDefaut: `achevement-modules.${corps.format}`,
+  });
+
 /** Les points de la courbe de la face e-note : le taux déclaré de chaque dépôt, par semaine. */
 export const chargerPointsEnote = (date = null) =>
   api.get(`/api/v2/avancement/points-enote${date ? `?date=${date}` : ''}`);

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { ROLES } from 'shared/constants';
 import { authenticate } from '../../middleware/authenticate.js';
 import { requireRole } from '../../middleware/requireRole.js';
@@ -6,6 +7,8 @@ import { resolveTenant } from '../../middleware/resolveTenant.js';
 import * as service from './avancement.service.js';
 import { badRequest } from '../../lib/httpError.js';
 import { exigerDroitPage } from '../partages/exigerDroitPage.js';
+import { validate } from '../../middleware/validate.js';
+import { construireExportAchevement } from './exportAchevement.service.js';
 
 /**
  * Avancement réalisé / prévu (F7).
@@ -114,13 +117,53 @@ router.get(
       /* ⚠️ ELLE SUIT LA MÊME DATE que les taux : les plages posées et le nombre
          de modules achevés vivent dans le même bloc de l'écran, et deux dates
          différentes s'y contrediraient sans que rien ne le dise. */
-      res.json({
-        plages: await service.achevementDesModules(
-          req.etablissementId,
-          req.anneeScolaire,
-          dateObservee(req)
-        ),
+      /* `rentrees` repart avec les plages : l'écran en tire la date d'une
+         semaine estimée, sur la MÊME origine que les plages (2026-10-07). */
+      const { plages, rentrees } = await service.achevementDesModules(
+        req.etablissementId,
+        req.anneeScolaire,
+        dateObservee(req)
+      );
+      res.json({ plages, rentrees });
+    } catch (erreur) {
+      next(erreur);
+    }
+  }
+);
+
+/*
+ * Le détail « Achèvement des modules » en Word, PDF ou Excel (2026-10-07,
+ * demande du porteur) — voir `exportAchevement.service.js` : l'écran envoie
+ * ses lignes déjà mises en texte, le serveur les met en page.
+ */
+router.post(
+  '/achevement/export',
+  validate({
+    body: z.object({
+      format: z.enum(['docx', 'pdf', 'xlsx']),
+      resume: z.string().trim().max(300).default(''),
+      dateObservee: z.string().trim().max(40).nullish(),
+      colonnes: z
+        .array(z.object({ id: z.string().trim().min(1).max(30), entete: z.string().trim().min(1).max(60) }))
+        .min(1)
+        .max(15),
+      lignes: z.array(z.array(z.string().max(500)).max(15)).max(5000),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const { tampon, nomFichier, contentType } = await construireExportAchevement({
+        etablissementId: req.etablissementId,
+        anneeScolaire: req.anneeScolaire,
+        ...req.body,
       });
+      res.setHeader('Content-Type', contentType);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="export"; filename*=UTF-8''${encodeURIComponent(nomFichier)}`
+      );
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+      res.send(tampon);
     } catch (erreur) {
       next(erreur);
     }

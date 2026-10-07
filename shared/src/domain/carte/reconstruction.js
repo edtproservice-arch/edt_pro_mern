@@ -1,4 +1,5 @@
 import { TYPES_COURS } from '../../constants/index.js';
+import { estModuleTransversal } from './bilanCharge.js';
 import { prefixeDuNom, sansSuffixe } from './nomsGroupes.js';
 /*
  * ⚠️ ALIAS OBLIGATOIRE : ce fichier a DÉJÀ un `cleModule` local, qui désigne
@@ -295,10 +296,38 @@ export function reconstruireGroupes(base, referentiel = new Map()) {
       } else {
         cible.formateurPresentiel = nom;
       }
+
+      // Un module transversal EGT* garde la masse du DRIF, quel que soit le mode.
+      if (module && !estModuleTransversal(module)) poserMasseAffectee(module, affectation, synchrone);
     }
   }
 
   return [...parGroupe.values()];
+}
+
+/**
+ * Reporte sur le module la masse AFFECTÉE enregistrée (2026-10-07).
+ *
+ * ⚠️ LA RÉPARTITION DRIF N'EST QUE LA RÉFÉRENCE. Un groupe alterné reçoit
+ * souvent moins d'heures que le DRIF — « Les techniques de vente » : 40 h au
+ * DRIF, 20 h affectées. Reconstruire avec les heures du DRIF affichait 40 h, et
+ * l'enregistrement automatique de la carte les réécrivait ensuite dans la base,
+ * effaçant l'affectation importée d'e-note.
+ *
+ * La masse du DRIF reste dans `reference` : « Rétablir » y ramène, et
+ * `masseAjustee` signale l'écart à l'écran.
+ */
+function poserMasseAffectee(module, affectation, synchrone) {
+  const s1 = Number(affectation.s1Heures ?? 0);
+  const s2 = Number(affectation.s2Heures ?? 0);
+  const [champS1, champS2] = synchrone ? ['mhsynS1', 'mhsynS2'] : ['mhpS1', 'mhpS2'];
+
+  const egal = (a, b) => Math.round(Number(a ?? 0) * 100) === Math.round(Number(b ?? 0) * 100);
+  if (egal(module[champS1], s1) && egal(module[champS2], s2)) return;
+
+  module[champS1] = s1;
+  module[champS2] = s2;
+  if (!synchrone) module.masseAjustee = true;
 }
 
 /**

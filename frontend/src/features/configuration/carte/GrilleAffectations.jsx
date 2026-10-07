@@ -431,6 +431,7 @@ function MatricePresentiel({
           Mode <strong className="text-foreground">{ensemble.mode}</strong> : une partie de
           l&apos;année se passe en entreprise. Les masses horaires sont donc ajustables sous chaque
           affectation, groupe par groupe — deux groupes peuvent avoir des rythmes différents.
+          Les modules transversaux (EGT…) gardent la masse du DRIF.
         </p>
       )}
 
@@ -654,8 +655,10 @@ function MatricePresentiel({
                         Un groupe alterné ou par apprentissage passe une partie
                         de l'année en entreprise : ses heures ne sont pas celles
                         de la répartition, et les y forcer fausse l'avancement.
+                        Sauf un module transversal EGT* : sa masse reste celle
+                        du DRIF.
                       */}
-                      {masseModifiable(groupe) && (
+                      {masseModifiable(groupe, module) && (
                         <MasseAjustable
                           module={module}
                           cleFocus={cleCase}

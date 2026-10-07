@@ -1,4 +1,4 @@
-import { cleEnsemble, estActif } from './bilanCharge.js';
+import { cleEnsemble, estActif, estModuleTransversal } from './bilanCharge.js';
 import { separerFusion } from './reconstruction.js';
 
 /**
@@ -417,8 +417,13 @@ export function definirSallesGroupe(groupes, nomGroupe, module, salles) {
  */
 export const MODES_MASSE_MODIFIABLE = ['Alterné', 'Par apprentissage'];
 
-/** La masse horaire de ce groupe peut-elle être ajustée ? */
-export function masseModifiable(groupe) {
+/**
+ * La masse horaire de ce groupe — et de ce module, s'il est donné — peut-elle
+ * être ajustée ? Jamais pour un module transversal EGT* : il garde la masse du
+ * DRIF quel que soit le mode (`estModuleTransversal`).
+ */
+export function masseModifiable(groupe, module) {
+  if (module && estModuleTransversal(module)) return false;
   return MODES_MASSE_MODIFIABLE.includes(groupe?.mode);
 }
 
@@ -451,6 +456,7 @@ export function definirMasseHoraire(groupes, nomGroupe, module, champ, valeur) {
       ...groupe,
       modules: (groupe.modules ?? []).map((m) => {
         if (cleModule(m) !== module) return m;
+        if (!masseModifiable(groupe, m)) return m;
 
         if (valeur === null) {
           const reference = m.reference ?? {};

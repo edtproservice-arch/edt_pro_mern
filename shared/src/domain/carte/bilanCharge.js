@@ -181,6 +181,17 @@ export function estModuleStage(module) {
   return MOTIF_STAGE.test(intitule);
 }
 
+/**
+ * Un module TRANSVERSAL — code « EGT… » (EGTS, EGTT…) (2026-10-07).
+ *
+ * Sa masse horaire ne varie pas avec le mode de formation : un groupe alterné
+ * le suit comme un groupe résidentiel, à la masse du DRIF. Elle n'est donc ni
+ * ajustable dans la carte, ni reprise de l'affectée e-note.
+ */
+export function estModuleTransversal(module) {
+  return /^EGT/i.test(String(module?.code ?? '').trim());
+}
+
 /** Un formateur est-il déjà posé sur ce module ? */
 const porteUnFormateur = (module) =>
   String(module?.formateurPresentiel ?? '').trim() !== '' ||

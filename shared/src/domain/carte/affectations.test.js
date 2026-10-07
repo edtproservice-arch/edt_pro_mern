@@ -521,6 +521,13 @@ describe('definirMasseHoraire', () => {
     expect(groupes[1].modules[0].mhpS1).toBe(30);
   });
 
+  it("refuse d'ajuster un module transversal EGT*, même alterné", () => {
+    const egt = module('EGTS201', { mhpS1: 30, mhpS2: 30, reference: { mhpS1: 30, mhpS2: 30 } });
+    const groupes = definirMasseHoraire([alterne([egt])], 'GM101', 'EGTS201', 'mhpS1', 18);
+
+    expect(groupes[0].modules[0].mhpS1).toBe(30);
+  });
+
   it('refuse un champ qui n\'est pas une masse présentielle', () => {
     expect(() => definirMasseHoraire([alterne([avecReference()])], 'GM101', 'M101', 'mhsynS1', 5))
       .toThrow(TypeError);
@@ -533,6 +540,12 @@ describe('masseModifiable', () => {
     expect(masseModifiable({ mode: 'Par apprentissage' })).toBe(true);
     expect(masseModifiable({ mode: 'Résidentiel' })).toBe(false);
     expect(masseModifiable({})).toBe(false);
+  });
+
+  it('exclut les modules transversaux EGT*, qui gardent la masse du DRIF', () => {
+    expect(masseModifiable({ mode: 'Alterné' }, { code: 'EGTS201' })).toBe(false);
+    expect(masseModifiable({ mode: 'Alterné' }, { code: 'EGTT105' })).toBe(false);
+    expect(masseModifiable({ mode: 'Alterné' }, { code: 'M203' })).toBe(true);
   });
 });
 

@@ -354,6 +354,87 @@ describe('aller-retour base → carte → base', () => {
   });
 });
 
+describe('reconstruireGroupes — masse AFFECTÉE (2026-10-07)', () => {
+  // Cas du porteur : un groupe alterné reçoit 20 h là où le DRIF en prévoit 40.
+  const affectee = {
+    ...base,
+    affectations: [
+      {
+        formateur: '9863',
+        groupe: 'DEVOWFS202',
+        module: 'M202',
+        type: TYPES_COURS.PRESENTIEL,
+        s1Heures: 15,
+        s2Heures: 5,
+        filiere: 'DEVOWFS_S',
+      },
+      {
+        formateur: '9863',
+        groupe: 'DEVOWFS202',
+        module: 'M202',
+        type: TYPES_COURS.SYNCHRONE,
+        s1Heures: 5,
+        s2Heures: 0,
+        filiere: 'DEVOWFS_S',
+      },
+    ],
+  };
+  const m202 = (groupes, nom) =>
+    groupes.find((g) => g.nom === nom).modules.find((m) => m.code === 'M202');
+
+  it('affiche les heures affectées, pas celles du DRIF', () => {
+    const module = m202(reconstruireGroupes(affectee, referentiel), 'DEVOWFS202');
+    expect([module.mhpS1, module.mhpS2]).toEqual([15, 5]);
+    expect([module.mhsynS1, module.mhsynS2]).toEqual([5, 0]);
+    expect(module.masseAjustee).toBe(true);
+    // Le DRIF reste la référence, pour « Rétablir ».
+    expect(module.reference).toEqual({ mhpS1: 20, mhpS2: 20 });
+  });
+
+  it('laisse le DRIF au groupe voisin, non affecté', () => {
+    const module = m202(reconstruireGroupes(affectee, referentiel), 'DEVOWFS201');
+    expect([module.mhpS1, module.mhpS2]).toEqual([20, 20]);
+    expect(module.masseAjustee).toBeUndefined();
+  });
+
+  it('⚠️ ne réécrit pas le DRIF dans la base au réenregistrement', () => {
+    const groupes = reconstruireGroupes(affectee, referentiel);
+    const relue = construireBase(carteVersLignesEnote({ groupes }, 2026));
+    const presentiel = relue.affectations.find(
+      (a) => a.groupe === 'DEVOWFS202' && a.module === 'M202' && a.type === TYPES_COURS.PRESENTIEL
+    );
+    expect([presentiel.s1Heures, presentiel.s2Heures]).toEqual([15, 5]);
+  });
+
+  it('garde la masse du DRIF pour un module transversal EGT*', () => {
+    const referentielEgt = new Map([
+      [
+        'DEVOWFS_S||2',
+        {
+          ...referentiel.get('DEVOWFS_S||2'),
+          modules: [{ code: 'EGTS201', nom: 'Anglais technique', mhpS1: 20, mhpS2: 20, mhsynS1: 0, mhsynS2: 0 }],
+        },
+      ],
+    ]);
+    const groupes = reconstruireGroupes(
+      { ...affectee, affectations: [{ ...affectee.affectations[0], module: 'EGTS201' }] },
+      referentielEgt
+    );
+    const module = groupes.find((g) => g.nom === 'DEVOWFS202').modules[0];
+
+    expect(module.formateurPresentiel).toBe('AHMED CHERKAOUI');
+    expect([module.mhpS1, module.mhpS2]).toEqual([20, 20]);
+    expect(module.masseAjustee).toBeUndefined();
+  });
+
+  it('ne marque pas ajusté un module dont l’affectée égale le DRIF', () => {
+    const module = reconstruireGroupes(base, referentiel)
+      .find((g) => g.nom === 'DEVOWFS201')
+      .modules.find((m) => m.code === 'M201');
+    expect(module.masseAjustee).toBeUndefined();
+  });
+});
+
 describe('reconstruireGroupes — modules désactivés', () => {
   const actif = (groupes, nomGroupe, code) =>
     groupes.find((g) => g.nom === nomGroupe).modules.find((m) => m.code === code).actif;

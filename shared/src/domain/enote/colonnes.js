@@ -3,7 +3,7 @@
  *
  * ← includes/parse_base_rows.php:148-157
  *
- * Le fichier compte 51 colonnes ; l'import n'en lit que 14. Elles sont
+ * Le fichier compte 51 colonnes ; l'import n'en lit que 16. Elles sont
  * repérées par leur NOM quand l'en-tête est disponible, et par leur INDEX
  * sinon — certains fichiers arrivent sans ligne d'en-tête, et les index sont
  * alors la seule prise.
@@ -22,8 +22,12 @@ export const COLONNES = {
   formateurSynchrone: { index: 22, nom: 'Formateur Affecté Syn Actif' },
   /** Colonne X : part du semestre 1. */
   partS1: { index: 23, nom: null },
+  /** Colonne Y : part synchrone du semestre 1 (MHSYN S1 DRIF). */
+  partSynS1: { index: 24, nom: null },
   /** Colonne AB : part du semestre 2. */
   partS2: { index: 27, nom: null },
+  /** Colonne AC : part synchrone du semestre 2 (MHSYN S2 DRIF). */
+  partSynS2: { index: 28, nom: null },
   /* Les masses du RÉFÉRENTIEL DRIF — ce que le programme prévoit, à distinguer
      des masses AFFECTÉES (35-36), qui disent ce qui a été confié. */
   masseDrifPresentiel: { index: 31, nom: null },

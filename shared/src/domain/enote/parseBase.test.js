@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { construireBase } from './parseBase.js';
 import { indexColonne, resoudreColonnes } from './colonnes.js';
+import { arrondir } from './massesHoraires.js';
 
 /**
  * TEST DE CARACTÉRISATION — le garde-fou du module F4.
@@ -103,6 +104,37 @@ function versFormatPhp(structure) {
   };
 }
 
+/**
+ * L'ancien calcul des masses (`enoteMassesHoraires` de PHP) : prorata des
+ * colonnes X et AB, au centième, pour le présentiel COMME pour le synchrone.
+ *
+ * ⚠️ ÉCART VOLONTAIRE AVEC PHP (décision du 2026-10-07) : `massesHoraires()`
+ * suit désormais les colonnes DRIF synchrones et arrondit le S1 au pas du
+ * chronogramme. La caractérisation rebranche l'ancien calcul pour continuer à
+ * vérifier tout le RESTE de la structure à l'octet ; la nouvelle règle est
+ * couverte par massesHoraires.test.js.
+ */
+function massesCommePhp(ligne, col) {
+  const nb = (valeur) => {
+    const resultat = Number.parseFloat(String(valeur ?? '0').trim().replace(',', '.'));
+    return Number.isFinite(resultat) ? resultat : 0;
+  };
+  const partS1 = nb(ligne[col.partS1]);
+  const base = partS1 + nb(ligne[col.partS2]);
+  const repartir = (total) => {
+    if (total <= 0) return { s1: 0, s2: 0, total: 0 };
+    if (base <= 0) return { s1: total, s2: 0, total };
+    const s1 = arrondir(total * (partS1 / base));
+    return { s1, s2: arrondir(total - s1), total };
+  };
+  return {
+    presentiel: repartir(nb(ligne[col.masseHorairePresentiel])),
+    synchrone: repartir(nb(ligne[col.masseHoraireSynchrone])),
+  };
+}
+
+const commePhp = (lignes) => construireBase(lignes, { massesHoraires: massesCommePhp });
+
 const empreinteDe = (structure) =>
   crypto.createHash('sha256').update(JSON.stringify(canoniser(structure))).digest('hex');
 
@@ -117,7 +149,7 @@ describe('construireBase — caractérisation sur les imports réels', () => {
       imp,
     ])
   )('reproduit la structure PHP — %s', (_libelle, imp) => {
-    const obtenu = construireBase(imp.entrees.map(ligneComplete));
+    const obtenu = commePhp(imp.entrees.map(ligneComplete));
 
     // Effectifs d'abord : en cas d'écart, le message dit tout de suite QUOI
     // diffère, avant que l'empreinte ne dise seulement QUE ça diffère.
@@ -144,7 +176,7 @@ describe('construireBase — structures détaillées', () => {
       // Les 3 imports détaillés ne sont pas tous parmi les 13 distincts.
       if (!entree) return;
 
-      const obtenu = versFormatPhp(construireBase(entree.entrees.map(ligneComplete)));
+      const obtenu = versFormatPhp(commePhp(entree.entrees.map(ligneComplete)));
 
       expect(obtenu.groupes).toEqual(imp.structure.groupes);
       expect(obtenu.fusionGroupes).toEqual(imp.structure.fusionGroupes);
@@ -191,6 +223,20 @@ describe('construireBase — règles', () => {
       mhp,
       mhsyn,
     ]);
+
+  it("garde l'affectée et répartit l'écart selon le DRIF de chaque type", () => {
+    // DRIF MHP 50 + 30, affectée 47,5 ; DRIF MHSYN 5 + 5 (Y, AC), affectée 5.
+    const brute = construire({
+      matriculeS: '9863', formateurS: 'AHMED CHERKAOUI',
+      partS1: '50', partS2: '30', mhp: '47.5', mhsyn: '5',
+    });
+    brute[24] = '5';
+    brute[28] = '5';
+
+    const [presentiel, synchrone] = construireBase([brute]).affectations;
+    expect([presentiel.s1Heures, presentiel.s2Heures]).toEqual([30, 17.5]);
+    expect([synchrone.s1Heures, synchrone.s2Heures]).toEqual([2.5, 2.5]);
+  });
 
   it('identifie un formateur par son matricule', () => {
     const base = construireBase([construire()]);

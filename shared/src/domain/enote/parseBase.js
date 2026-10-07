@@ -124,6 +124,9 @@ export function cleGroupeLigne(codeFiliere, groupeBrut) {
  *   la règle de l'import — suffixer les seuls noms en collision — les défaisait
  *   (« GE101 (GC) » gardé, « GE103 (GC) » ramené à « GE103 »). Un import e-note
  *   ne la passe jamais : sa règle, caractérisée sur 24 fichiers réels, reste.
+ * @param {Function} [options.massesHoraires]
+ *   Calcul des masses S1/S2 d'une ligne. Réservé au test de caractérisation,
+ *   qui y rebranche l'ancien calcul PHP pour vérifier tout le reste à l'octet.
  * @returns {{formateurs, formateursDetails, nouveauxFormateurs,
  *            formateursSansMatricule, groupes, fusionGroupes, affectations,
  *            groupeModes}}
@@ -135,6 +138,7 @@ export function construireBase(lignes, options = {}) {
 
   const col = resoudreColonnes(options.entete ?? []);
   const massesConnues = options.massesConnues ?? new Map();
+  const calculerMasses = options.massesHoraires ?? massesHoraires;
 
   /*
    * Adresses RÉELLES déjà connues, indexées comme les masses : par matricule en
@@ -253,7 +257,7 @@ export function construireBase(lignes, options = {}) {
     }
 
     const estRegional = majuscules(ligne[col.efmRegional]) === 'O';
-    const masses = massesHoraires(ligne, col);
+    const masses = calculerMasses(ligne, col);
 
     const presentiel = parNomComplet.get(majuscules(ligne[col.formateurPresentiel]));
     if (presentiel && module) {

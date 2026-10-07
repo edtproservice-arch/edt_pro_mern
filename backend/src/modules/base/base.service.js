@@ -41,6 +41,8 @@ export async function obtenir(etablissementId, anneeScolaire) {
      * page vide et faisait effacer les salles au premier enregistrement.
      */
     modulesInactifs: Object.fromEntries(base.modulesInactifs ?? []),
+    // Même piège : un stage réactivé reviendrait désactivé sans cette ligne.
+    modulesActives: Object.fromEntries(base.modulesActives ?? []),
     groupeFilieres: Object.fromEntries(base.groupeFilieres ?? []),
     /*
      * ⚠️ MÊME PIÈGE QUE `modulesInactifs` CI-DESSUS, et il a déjà coûté une

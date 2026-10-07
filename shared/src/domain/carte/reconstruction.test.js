@@ -388,6 +388,16 @@ describe('reconstruireGroupes — modules désactivés', () => {
     expect(actif(groupes, 'DEVOWFS202', 'M202')).toBeUndefined();
   });
 
+  it('rend ACTIF un stage que la base dit réactivé', () => {
+    const groupes = reconstruireGroupes(
+      { ...base, modulesActives: { DEVOWFS201: ['M202'] } },
+      referentiel
+    );
+
+    expect(actif(groupes, 'DEVOWFS201', 'M202')).toBe(true);
+    expect(actif(groupes, 'DEVOWFS202', 'M202')).toBeUndefined();
+  });
+
   it('n’écrit PAS `actif: true` sur les modules ordinaires', () => {
     /*
      * `actif` absent vaut actif partout ailleurs — bilan, lignes e-note. Le

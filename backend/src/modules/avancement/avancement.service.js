@@ -4,6 +4,7 @@ import {
   datesDeLaPlage,
   detailEcartDeSaisie,
   ecartsDeSaisie,
+  estModuleStage,
   filieresParGroupe,
   fusionnerVacances,
   heuresParJour,
@@ -74,7 +75,7 @@ export async function avancement(etablissementId, anneeScolaire, observation = n
      * jamais rien fait douter du filtre plutôt que des données.
      */
     Base.findOne({ etablissementId, anneeScolaire })
-      .select('affectations formateurs groupeModes groupes groupeFilieres modulesInactifs')
+      .select('affectations formateurs groupeModes groupes groupeFilieres modulesInactifs modulesActives')
       .lean(),
     /*
      * Le plus RÉCENT des imports de l'année : c'est l'état courant du système
@@ -442,7 +443,9 @@ export async function avancement(etablissementId, anneeScolaire, observation = n
  * et ne retombe sur le code seul que pour un groupe sans filière connue.
  *
  * ⚠️ LES MODULES DÉSACTIVÉS NE COMPTENT PAS : ils ne produisent aucune ligne
- * e-note, et la face e-note ne les compte donc pas non plus.
+ * e-note, et la face e-note ne les compte donc pas non plus. Un module de
+ * STAGE non affecté non plus, sauf s'il a été réactivé : il est désactivé par
+ * défaut (`estActif`, 2026-10-07), y compris dans une base importée d'e-note.
  *
  * @returns {Promise<Record<string, number>>} groupe → masse non affectée
  */
@@ -463,17 +466,23 @@ async function poserMassesDuProgramme(base, lignes, massesParCode) {
 
   const references = demandes.size
     ? await Repartition.find({ $or: [...demandes.values()] })
-        .select('codeFiliereCarte anneeFormation codeModule mhpS1 mhpS2 mhsynS1 mhsynS2')
+        .select('codeFiliereCarte anneeFormation codeModule module mhpS1 mhpS2 mhsynS1 mhsynS2')
         .sort({ codeModule: 1 })
         .lean()
     : [];
 
   // ensemble → code (MAJUSCULES) → masse. Présentiel + synchrone, comme `referentielDesModules`.
   const programmes = new Map();
+  // ensemble → codes des modules de stage, désactivés par défaut.
+  const stages = new Map();
   for (const reference of references) {
     const cle = `${reference.codeFiliereCarte}||${reference.anneeFormation}`;
     const code = String(reference.codeModule ?? '').trim().toUpperCase();
     if (code === '') continue;
+    if (estModuleStage({ nom: reference.module })) {
+      if (!stages.has(cle)) stages.set(cle, new Set());
+      stages.get(cle).add(code);
+    }
     if (!programmes.has(cle)) programmes.set(cle, new Map());
     const programme = programmes.get(cle);
     if (!programme.has(code)) {
@@ -497,6 +506,7 @@ async function poserMassesDuProgramme(base, lignes, massesParCode) {
   }
 
   const inactifs = base?.modulesInactifs ?? {};
+  const actives = base?.modulesActives ?? {};
   const nonAffectes = {};
   for (const groupe of base?.groupes ?? []) {
     const programme = programmes.get(ensembleDe(groupe));
@@ -504,6 +514,12 @@ async function poserMassesDuProgramme(base, lignes, massesParCode) {
     const desactives = new Set(
       (inactifs[groupe] ?? []).map((code) => String(code).trim().toUpperCase())
     );
+    const reactives = new Set(
+      (actives[groupe] ?? []).map((code) => String(code).trim().toUpperCase())
+    );
+    for (const code of stages.get(ensembleDe(groupe)) ?? []) {
+      if (!reactives.has(code)) desactives.add(code);
+    }
     let masse = 0;
     for (const [code, heures] of programme) {
       if (affectes.get(groupe)?.has(code) || desactives.has(code)) continue;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { carteVersLignesEnote,
-  modulesInactifs, NB_COLONNES, nomsGroupesDeLaCarte } from './lignesEnote.js';
+  modulesInactifs, modulesActives, NB_COLONNES, nomsGroupesDeLaCarte } from './lignesEnote.js';
 import { cleGroupeLigne, construireBase } from '../enote/parseBase.js';
 
 const MAINTENANT = new Date(2026, 7, 15, 9, 5, 3); // 15/08/2026 09:05:03
@@ -146,7 +146,7 @@ describe('carteVersLignesEnote', () => {
 
   it('accepte un module sans masse horaire ni formateur', () => {
     const carte = carteMinimale();
-    carte.groupes[0].modules = [{ code: 'M202', nom: 'Stage' }];
+    carte.groupes[0].modules = [{ code: 'M202', nom: 'Veille technologique' }];
 
     const [ligne] = carteVersLignesEnote(carte, 2026, { maintenant: MAINTENANT });
     expect(ligne[16]).toBe('M202');
@@ -280,6 +280,12 @@ describe('nomsGroupesDeLaCarte — les noms de la carte survivent à l’enregis
 describe('modulesInactifs', () => {
   const carte = (modules) => ({ groupes: [{ nom: 'GM101', modules }] });
 
+  it('relève un stage non réactivé : il est désactivé par défaut', () => {
+    expect(
+      modulesInactifs(carte([{ code: 'M110', nom: 'Intégration au milieu de travail' }, { code: 'M102' }]))
+    ).toEqual({ GM101: ['M110'] });
+  });
+
   it('relève les modules désactivés, par groupe', () => {
     expect(
       modulesInactifs(carte([{ code: 'M101', actif: false }, { code: 'M102' }]))
@@ -300,5 +306,36 @@ describe('modulesInactifs', () => {
   it('tolère une carte vide', () => {
     expect(modulesInactifs()).toEqual({});
     expect(modulesInactifs({ groupes: [] })).toEqual({});
+  });
+});
+
+describe('modulesActives', () => {
+  const carte = (modules) => ({ groupes: [{ nom: 'GM101', modules }] });
+
+  it('relève les seuls stages réactivés', () => {
+    expect(
+      modulesActives(
+        carte([
+          { code: 'M110', nom: 'Intégration au milieu de travail', actif: true },
+          { code: 'M111', nom: 'Stage en entreprise' },
+          // Un module ordinaire n'a pas besoin d'y figurer : il est actif par défaut.
+          { code: 'M101', nom: 'Programmation', actif: true },
+        ])
+      )
+    ).toEqual({ GM101: ['M110'] });
+  });
+
+  it('ne produit aucune ligne e-note pour un stage non réactivé', () => {
+    const lignes = carteVersLignesEnote({
+      groupes: [
+        {
+          nom: 'GM101',
+          codeFiliere: 'GM',
+          anneeFormation: 1,
+          modules: [{ code: 'M110', nom: 'Stage', mhpS1: 30 }],
+        },
+      ],
+    });
+    expect(lignes).toEqual([]);
   });
 });

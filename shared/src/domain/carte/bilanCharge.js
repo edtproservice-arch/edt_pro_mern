@@ -162,13 +162,45 @@ function empreinteSeance(cleDEnsemble, groupe, module) {
 }
 
 /**
+ * Un module de STAGE — « Intégration au milieu de travail », « Stage en
+ * entreprise », « Stage de fin de formation »… (2026-10-07).
+ *
+ * Reconnu par son INTITULÉ : le DRIF n'a aucun code réservé, et les libellés
+ * varient d'une filière à l'autre (« en / au milieu de / du travail », « milieu
+ * professionnel »). Accents et casse ignorés ; « \bstage » ne prend pas
+ * « Ajustage ».
+ */
+const MOTIF_STAGE = /\bstages?\b|\bmilieu (?:de|du) travail\b|\bmilieu professionnel\b/;
+
+export function estModuleStage(module) {
+  const intitule = String(module?.nom ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+  return MOTIF_STAGE.test(intitule);
+}
+
+/** Un formateur est-il déjà posé sur ce module ? */
+const porteUnFormateur = (module) =>
+  String(module?.formateurPresentiel ?? '').trim() !== '' ||
+  String(module?.formateurSynchrone ?? '').trim() !== '';
+
+/**
  * Un module désactivé est-il à ignorer ?
  *
  * `actif` absent vaut ACTIF : les modules issus de la répartition DRIF n'ont pas
  * ce champ, et les traiter comme désactivés viderait la carte.
+ *
+ * ⚠️ SAUF UN MODULE DE STAGE (décision du porteur, 2026-10-07) : il n'a pas de
+ * séances en salle, il est donc DÉSACTIVÉ PAR DÉFAUT. Le commutateur le
+ * réactive (`actif: true`, conservé dans `Base.modulesActives`). Un stage qui
+ * porte déjà un formateur reste actif : le désactiver d'office supprimerait
+ * l'affectation au prochain enregistrement.
  */
 export function estActif(module) {
-  return module?.actif !== false;
+  if (typeof module?.actif === 'boolean') return module.actif;
+  return !estModuleStage(module) || porteUnFormateur(module);
 }
 
 /**

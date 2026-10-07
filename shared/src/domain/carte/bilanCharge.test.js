@@ -5,6 +5,7 @@ import {
   construireEnsembles,
   cleEnsemble,
   estActif,
+  estModuleStage,
   etatAffectation,
   heuresPresentiel,
   heuresSynchrone,
@@ -480,6 +481,42 @@ describe('estActif', () => {
     expect(estActif({ code: 'M101' })).toBe(true);
     expect(estActif({ code: 'M101', actif: true })).toBe(true);
     expect(estActif({ code: 'M101', actif: false })).toBe(false);
+  });
+
+  it('désactive PAR DÉFAUT un module de stage (2026-10-07)', () => {
+    expect(estActif({ code: 'M110', nom: 'Intégration au milieu de travail' })).toBe(false);
+    expect(estActif({ code: 'M201', nom: 'Stage en entreprise' })).toBe(false);
+    // Le commutateur le réactive.
+    expect(estActif({ code: 'M110', nom: 'Intégration au milieu de travail', actif: true })).toBe(true);
+  });
+
+  it('garde actif un stage qui porte déjà un formateur', () => {
+    // Le désactiver d'office effacerait l'affectation au prochain enregistrement.
+    expect(estActif({ code: 'M110', nom: 'Stage', formateurPresentiel: 'AHMED' })).toBe(true);
+  });
+});
+
+describe('estModuleStage', () => {
+  it.each([
+    'Intégration au milieu de travail',
+    'Intégration en milieu du travail',
+    'Initiation au milieu de travail',
+    'Stage en entreprise',
+    'Stage de fin de formation',
+    'STAGE',
+    'Intégrer le milieu professionnel (stage en entreprise)',
+    'Stage en milieu professionnel',
+  ])('reconnaît « %s »', (nom) => {
+    expect(estModuleStage({ nom })).toBe(true);
+  });
+
+  it.each([
+    'Ajustage montage de cellules',
+    'Technique de soudure et ajustage',
+    'Programmation orientée objet',
+    '',
+  ])('ignore « %s »', (nom) => {
+    expect(estModuleStage({ nom })).toBe(false);
   });
 });
 

@@ -493,6 +493,40 @@ describe('Enregistrement de la carte', () => {
     expect(relue.body.base.modulesInactifs).toEqual({ DEVOWFS201: ['M202'] });
   });
 
+  it('désactive un stage par défaut, et CONSERVE sa réactivation (2026-10-07)', async () => {
+    const avecStages = (actif) => ({
+      ...carte,
+      groupes: [
+        {
+          ...carte.groupes[0],
+          modules: [
+            ...carte.groupes[0].modules,
+            { code: 'M210', nom: 'Intégration au milieu de travail', mhpS1: 0, mhpS2: 60, ...actif },
+          ],
+        },
+      ],
+    });
+
+    // Sans `actif` : le stage est désactivé d'office, et ne produit aucune ligne.
+    let reponse = await request(app).post('/api/v2/base/carte').set('Cookie', cookies).send(avecStages({}));
+    expect(reponse.status).toBe(201);
+    let base = await Base.findOne({ etablissementId: etablissement.id, anneeScolaire: ANNEE });
+    expect(Object.fromEntries(base.modulesInactifs).DEVOWFS201).toContain('M210');
+
+    // Réactivé : il sort des inactifs, et sa réactivation revient à l'écran.
+    reponse = await request(app)
+      .post('/api/v2/base/carte')
+      .set('Cookie', cookies)
+      .send(avecStages({ actif: true }));
+    expect(reponse.status).toBe(201);
+    base = await Base.findOne({ etablissementId: etablissement.id, anneeScolaire: ANNEE });
+    expect(Object.fromEntries(base.modulesInactifs).DEVOWFS201 ?? []).not.toContain('M210');
+    expect(Object.fromEntries(base.modulesActives)).toEqual({ DEVOWFS201: ['M210'] });
+
+    const relue = await request(app).get('/api/v2/base').set('Cookie', cookies);
+    expect(relue.body.base.modulesActives).toEqual({ DEVOWFS201: ['M210'] });
+  });
+
   it('⚠️⚠️ GARDE LES NOMS DE LA CARTE — pas de groupe fantôme entre filières homonymes', async () => {
     /*
      * Signalé par le porteur (2026-09-11). GC_GE_TS (quatre groupes) et

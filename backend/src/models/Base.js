@@ -97,6 +97,15 @@ const baseSchema = new mongoose.Schema(
     modulesInactifs: { type: Map, of: [String], default: {} },
 
     /**
+     * groupe → codes des modules de STAGE réactivés (2026-10-07).
+     *
+     * Un stage est désactivé PAR DÉFAUT (`estActif`). Le réactiver sans lui
+     * poser de formateur ne laisse aucune trace dans les lignes : sans ce
+     * champ, il redeviendrait inactif au rechargement de la carte.
+     */
+    modulesActives: { type: Map, of: [String], default: {} },
+
+    /**
      * groupe → code de filière DRIF.
      *
      * ⚠️ SANS CE CHAMP, UN GROUPE SANS AFFECTATION PERD SON IDENTITÉ. La filière

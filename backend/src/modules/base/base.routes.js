@@ -250,7 +250,9 @@ const moduleSchema = z
     metier: z.string().trim().max(150).default(''),
     // Un module désactivé par l'établissement ne produit aucune ligne e-note :
     // il n'est ni dispensé, ni suivi en avancement.
-    actif: z.boolean().default(true),
+    // ⚠️ PAS DE `.default(true)` : absent, il vaut actif SAUF pour un stage,
+    // désactivé par défaut (`estActif`). Le forcer à vrai les réactivait tous.
+    actif: z.boolean().optional(),
     formateurPresentiel: z.string().trim().max(150).default(''),
     formateurSynchrone: z.string().trim().max(150).default(''),
     groupeFusion: z.string().trim().max(150).default(''),

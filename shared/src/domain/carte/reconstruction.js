@@ -200,6 +200,18 @@ export function reconstruireGroupes(base, referentiel = new Map()) {
   );
 
   /*
+   * Les modules de STAGE sont désactivés par défaut (2026-10-07, voir
+   * `estActif`). Ceux que l'établissement a réactivés se relisent ici — sans
+   * cette table, ils redeviendraient inactifs à chaque rechargement.
+   */
+  const actives = new Map(
+    Object.entries(lireTable(base?.modulesActives)).map(([groupe, codes]) => [
+      groupe,
+      new Set((codes ?? []).map((code) => String(code).trim().toUpperCase())),
+    ])
+  );
+
+  /*
    * ⚠️ MÊME RAISON QUE LES MODULES DÉSACTIVÉS (2026-09-23) : le format e-note
    * n'a aucune colonne de salle, donc elles se relisent à part. Sans cette
    * table, la carte reviendrait sans salles à l'écran — et le premier
@@ -235,10 +247,13 @@ export function reconstruireGroupes(base, referentiel = new Map()) {
         formateurSynchrone: '',
         groupeFusion: '',
         // `actif` n'est posé QUE s'il vaut faux : absent, il vaut actif partout
-        // ailleurs, et l'écrire à `true` ferait diverger les deux formes.
+        // ailleurs, et l'écrire à `true` ferait diverger les deux formes. Seule
+        // exception : un stage RÉACTIVÉ, désactivé sinon par défaut.
         ...(inactifs.get(nom)?.has(String(module.code ?? module.nom).trim().toUpperCase())
           ? { actif: false }
-          : {}),
+          : actives.get(nom)?.has(String(module.code ?? module.nom).trim().toUpperCase())
+            ? { actif: true }
+            : {}),
         /*
          * ⚠️ POSÉ SEULEMENT S'IL Y EN A, comme `actif` : un tableau vide écrit
          *    partout gonflerait la carte et rendrait indiscernable « aucune

@@ -1,5 +1,6 @@
 import { cleGroupeLigne } from '../enote/parseBase.js';
 import { nomGroupeBrut } from './nomsGroupes.js';
+import { estActif, estModuleStage } from './bilanCharge.js';
 import { cleModule } from '../emploi/indicateurs.js';
 
 /**
@@ -89,12 +90,13 @@ export function carteVersLignesEnote(carte, anneeScolaire, { maintenant = new Da
     for (const module of groupe.modules ?? []) {
       // Un module désactivé par l'établissement n'est pas dispensé : lui laisser
       // une ligne le ferait réapparaître dans l'avancement et dans l'emploi du
-      // temps. `actif` absent vaut ACTIF — les modules DRIF n'ont pas ce champ.
+      // temps. `actif` absent vaut ACTIF — les modules DRIF n'ont pas ce champ —
+      // sauf un module de STAGE, désactivé par défaut (voir `estActif`).
       //
       // ⚠️ Le module SORT du fichier, mais son état est conservé à part par
       // `modulesInactifs()` : sans cela, la répartition DRIF le ferait revenir
       // actif au prochain rechargement de la carte.
-      if (module.actif === false) continue;
+      if (!estActif(module)) continue;
 
       const mhpS1 = nombre(module.mhpS1);
       const mhpS2 = nombre(module.mhpS2);
@@ -230,12 +232,36 @@ export function modulesInactifs(carte) {
 
   for (const groupe of carte?.groupes ?? []) {
     const codes = (groupe.modules ?? [])
-      .filter((module) => module.actif === false)
+      .filter((module) => !estActif(module))
       .map((module) => String(module.code ?? module.nom ?? '').trim())
       .filter(Boolean);
 
     // On n'écrit que les groupes CONCERNÉS : une entrée vide par groupe
     // gonflerait le document sans rien dire de plus.
+    if (codes.length > 0) parGroupe[groupe.nom] = codes.sort();
+  }
+
+  return parGroupe;
+}
+
+/**
+ * Modules de STAGE que l'établissement a RÉACTIVÉS, groupe par groupe.
+ *
+ * Contrepartie de `modulesInactifs` pour les stages, désactivés par défaut
+ * (2026-10-07) : sans cette table, un stage réactivé sans formateur reviendrait
+ * désactivé au rechargement, et le commutateur paraîtrait sans effet.
+ *
+ * @returns {Object<string, string[]>} nom de groupe → codes réactivés
+ */
+export function modulesActives(carte) {
+  const parGroupe = {};
+
+  for (const groupe of carte?.groupes ?? []) {
+    const codes = (groupe.modules ?? [])
+      .filter((module) => estModuleStage(module) && module.actif === true)
+      .map((module) => String(module.code ?? module.nom ?? '').trim())
+      .filter(Boolean);
+
     if (codes.length > 0) parGroupe[groupe.nom] = codes.sort();
   }
 

@@ -4,6 +4,7 @@ import {
   construireBase,
   emailDeduit,
   modulesInactifs,
+  modulesActives,
   sallesParAffectation,
   nomsGroupesDeLaCarte,
   resoudreHomonymes,
@@ -496,6 +497,8 @@ export async function enregistrerCarte({
             // ⚠️ Rangé à part des lignes : un module désactivé n'en produit
             // aucune, et la répartition DRIF le ferait revenir actif.
             modulesInactifs: modulesInactifs(carte),
+            // Les stages, désactivés par défaut : ceux qu'on a réactivés.
+            modulesActives: modulesActives(carte),
             // ⚠️ Même raison : la filière se déduisait des affectations, et un
             // groupe qui n'en a aucune perdait son identité.
             /*

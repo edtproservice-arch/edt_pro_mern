@@ -20,6 +20,9 @@ import { Seance } from '../../models/Seance.js';
  *    précharge, c'est-à-dire `autresEtablissementsDuFormateur` — pas une
  *    seconde lecture des bases qui pourrait en diverger.
  */
+/** Jour, séance ET période : un S5 de jour n'est pas le soir. */
+const cle = ({ jour, seance, periode }) => `${jour}||${seance}||${periode ?? PERIODES.JOUR}`;
+
 export async function occupationAilleurs(commun, anneeScolaire, semaine, taches, creneauVersCase) {
   const matricules = [...new Set(taches.map((tache) => tache.formateurMatricule).filter(Boolean))];
   const parMatricule = await Promise.all(
@@ -39,18 +42,21 @@ export async function occupationAilleurs(commun, anneeScolaire, semaine, taches,
   const prises = await Seance.find({
     anneeScolaire,
     semaine,
-    periode: PERIODES.JOUR,
+    // ⚠️ LE SOIR AUSSI DEPUIS LE 2026-10-09 : la génération pose des cours du
+    //    soir (CDS). Sans tâche du soir, le problème n'a pas ces créneaux, et
+    //    ces séances sont simplement écartées ci-dessous.
+    periode: { $in: [PERIODES.JOUR, PERIODES.SOIR] },
     $or: conditions,
   })
-    .select('jour seance formateurMatricule')
+    .select('jour seance periode formateurMatricule')
     .lean();
 
   const idDe = new Map(
-    [...creneauVersCase].map(([id, creneau]) => [`${creneau.jour}||${creneau.seance}`, id])
+    [...creneauVersCase].map(([id, creneau]) => [cle(creneau), id])
   );
   return prises
     .map((prise) => ({
-      creneauId: idDe.get(`${prise.jour}||${prise.seance}`),
+      creneauId: idDe.get(cle(prise)),
       formateur: prise.formateurMatricule,
     }))
     .filter((occupation) => occupation.creneauId !== undefined);

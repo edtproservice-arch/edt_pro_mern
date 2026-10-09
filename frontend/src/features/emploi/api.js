@@ -98,12 +98,21 @@ const ID_SERVEUR = /^[a-f0-9]{24}$/i;
  * @returns {Promise<{resultats: Array<{cle, ok, salleRetiree?, inchangee?, erreur?}>}>}
  */
 export function ecrireLot(semaine, operations) {
-  const nettoyees = operations.map(({ type, cle, seance, creneau, source }) => ({
+  const nettoyer = (seance) =>
+    seance && (seance.id && !ID_SERVEUR.test(seance.id) ? { ...seance, id: undefined } : seance);
+
+  const nettoyees = operations.map(({ type, cle, seance, creneau, source, autre }) => ({
     type,
     cle,
-    seance: seance && (seance.id && !ID_SERVEUR.test(seance.id) ? { ...seance, id: undefined } : seance),
+    seance: nettoyer(seance),
     creneau,
     source,
+    /*
+     * ⚠️ LA SECONDE SÉANCE D'UNE PERMUTATION (2026-10-09). Oubliée dans cette
+     * liste de champs, elle n'arrivait pas au serveur : il rejetait TOUT le lot
+     * (« Données invalides »), sans qu'aucun échange ne puisse passer.
+     */
+    autre: nettoyer(autre),
   }));
 
   return api.post(`/api/v2/seances/${encodeURIComponent(semaine)}/lot`, { operations: nettoyees });

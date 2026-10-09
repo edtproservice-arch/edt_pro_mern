@@ -53,6 +53,8 @@ export default function BarreFlottante({
       <div
         role="toolbar"
         aria-label="Actions sur la sélection"
+        // Un clic ici agit SUR la sélection : il ne doit pas l'annuler (PageEmploi).
+        data-barre-selection=""
         className={cn(
           'pointer-events-auto flex flex-wrap items-center gap-1 rounded-xl border bg-card p-1.5',
           'shadow-lg shadow-black/5'

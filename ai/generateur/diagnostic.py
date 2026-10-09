@@ -75,6 +75,11 @@ def diagnostiquer(
         return CRENEAU_INTERDIT
 
     for creneau in contexte.creneaux.values():
+        # ⚠️ UN CRÉNEAU D'UNE AUTRE PÉRIODE N'EST PAS UNE CAUSE (2026-10-09) :
+        #    une séance du soir n'a jamais pu aller le matin. Le compter ferait
+        #    dire « créneau interdit » là où ce sont les soirées qui manquent.
+        if creneau.periode != tache.periode:
+            continue
         examines += 1
 
         # ⚠️ L'ORDRE COMPTE : chaque refus arrête l'examen de ce créneau, donc

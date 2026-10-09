@@ -138,6 +138,38 @@ export function datesDeLaPlage(anneeScolaire, plage, rentrees = []) {
   return { debut: enJour(debut), fin: enJour(fin) };
 }
 
+/**
+ * Les dates PRÉVISIONNELLES d'une plage, jours fériés exclus (2026-10-09,
+ * demande du porteur, pour l'export Excel) : le premier jour OUVRABLE de la
+ * première semaine, et le dernier de la dernière — un lundi férié fait donc
+ * commencer le module le mardi, un samedi férié le fait finir le vendredi.
+ * Le dimanche n'est jamais ouvrable.
+ *
+ * @param {string[]} [feries] — dates « AAAA-MM-JJ »
+ */
+export function datesOuvrablesDeLaPlage(anneeScolaire, plage, rentrees = [], feries = []) {
+  const brutes = datesDeLaPlage(anneeScolaire, plage, rentrees);
+  if (!brutes) return null;
+
+  const fermes = new Set(feries.map((jour) => String(jour).slice(0, 10)));
+  return {
+    debut: jourOuvrable(brutes.debut, 1, fermes),
+    fin: jourOuvrable(brutes.fin, -1, fermes),
+  };
+}
+
+/** Le premier jour ouvrable à partir de `iso`, en avançant (`pas` = 1) ou en reculant (-1). */
+function jourOuvrable(iso, pas, fermes) {
+  const date = new Date(`${iso}T12:00:00`);
+  // Deux semaines suffisent largement : aucune suite de fériés n'est plus longue.
+  for (let essai = 0; essai < 14; essai += 1) {
+    const jour = enJour(date);
+    if (date.getDay() !== 0 && !fermes.has(jour)) return jour;
+    date.setDate(date.getDate() + pas);
+  }
+  return iso;
+}
+
 const arrondir = (valeur) => Math.round(valeur * 100) / 100;
 
 /** « AAAA-MM-JJ » en heure LOCALE — `toISOString()` décalerait d'un jour. */

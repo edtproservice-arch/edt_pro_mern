@@ -1415,6 +1415,178 @@ export async function vider(
 }
 
 /**
+ * Pose une séance déplacée — et, si SEULE la salle bloque, la pose sans salle.
+ *
+ * ⚠️ SEULE LA SALLE CÈDE, JAMAIS LES PERSONNES (2026-09-19, demande du porteur).
+ * Si le formateur ou le groupe sont pris, la séance ne peut pas atterrir ici. Si
+ * TOUS les conflits rendus ne portent que sur la salle, la séance a bien sa
+ * place : on la pose SANS salle plutôt que de perdre le déplacement pour un
+ * détail qui se rechoisit d'un clic dans la case.
+ */
+const seulementLaSalle = (erreur) =>
+  erreur instanceof HttpError &&
+  erreur.code === 'CRENEAU_OCCUPE' &&
+  Array.isArray(erreur.details) &&
+  erreur.details.length > 0 &&
+  erreur.details.every((detail) => detail.type === 'salle');
+
+/*
+ * ⚠️ `sallesDeRepli` (2026-10-09, permutation) : avant de retirer la salle, on
+ *    essaie celles-ci, dans l'ordre — pour un échange, la salle que la
+ *    partenaire LAISSE sur ce créneau. Une salle de repli refusée (prise elle
+ *    aussi, ou contraire à la salle imposée du module) fait passer à la
+ *    suivante ; seules les personnes, elles, arrêtent tout.
+ */
+async function poserSalleCedante(etablissementId, anneeScolaire, valeur, donnees, reglages, sallesDeRepli = []) {
+  try {
+    return { posee: await poser(etablissementId, anneeScolaire, valeur, donnees, reglages), salleRetiree: false };
+  } catch (erreur) {
+    if (!seulementLaSalle(erreur)) throw erreur;
+  }
+
+  const propre = String(donnees.salle ?? '').trim().toUpperCase();
+  const essais = [...new Set(sallesDeRepli.map((salle) => String(salle ?? '').trim()))].filter(
+    (salle) => salle && salle.toUpperCase() !== propre
+  );
+  for (const salle of essais) {
+    try {
+      return {
+        posee: await poser(etablissementId, anneeScolaire, valeur, { ...donnees, salle }, reglages),
+        salleRetiree: false,
+        salleReprise: salle,
+      };
+    } catch (erreur) {
+      if (!seulementLaSalle(erreur) && erreur?.code !== 'SALLE_MODULE_IMPOSEE') throw erreur;
+    }
+  }
+
+  return {
+    posee: await poser(etablissementId, anneeScolaire, valeur, { ...donnees, salle: '' }, reglages),
+    salleRetiree: true,
+  };
+}
+
+/** La semaine d'attente d'une séance pendant sa permutation — invisible hors de la transaction. */
+const semaineDAttente = (id) => `permutation:${id}`;
+
+/**
+ * ═══ PERMUTER DEUX SÉANCES (2026-10-09, demande du porteur) ═══
+ * Glisser une séance sur une case DÉJÀ OCCUPÉE échange les deux : `seance`
+ * (celle qu'on glisse) prend la place de `autre`, et `autre` celle qu'elle
+ * quitte.
+ *
+ * ⚠️ LE CHEVAUCHEMENT SE VÉRIFIE DANS LES DEUX SENS, chacune SANS l'autre. Posée
+ *    à la suite par deux `poser`, chaque séance se heurterait à sa partenaire
+ *    encore en place — même formateur, même groupe : refus garanti. On met donc
+ *    `seance` en attente (hors de la semaine), on pose `autre` à son départ,
+ *    puis `seance` à l'arrivée. Chaque pose passe par TOUS les contrôles de
+ *    `poser` (affectation, salle imposée, rentrée, rattrapage, quota,
+ *    formateur et salles mutualisés) contre les séances qui restent.
+ *
+ * ⚠️ TOUT OU RIEN : une transaction. Si l'une des deux ne peut pas aller chez
+ *    l'autre, aucune ne bouge — un échange à moitié fait serait un déplacement
+ *    que personne n'a demandé, ou une séance perdue.
+ *
+ * ⚠️ SOUS VERROU, comme un déplacement : permis, puisqu'aucun volume ne change,
+ *    à condition que chacune garde son cours (groupe et module). Ce contrôle se
+ *    fait ICI — le type d'opération vient du client.
+ *
+ * ⚠️ LA SALLE SEULE CÈDE, pour chacune, comme pour un déplacement — MAIS
+ *    D'ABORD VERS LA SALLE QUE LA PARTENAIRE LAISSE (2026-10-09, signalé par le
+ *    porteur : un échange avait retiré une salle). Chacune quitte le créneau
+ *    que l'autre prend : la salle de la partenaire y est donc libre, sauf
+ *    règle contraire. OPCM102 partait en « Espace Sport » vers un créneau où
+ *    GM103 l'occupait déjà, alors que l'« Atelier CM1 » qu'OPCM101 venait d'y
+ *    libérer l'attendait — la séance était posée sans salle. Deux séances de
+ *    la MÊME salle, elles, la gardent sans détour : elle n'est jamais prise
+ *    deux fois.
+ */
+export async function permuter(
+  etablissementId,
+  anneeScolaire,
+  valeur,
+  { seance, autre },
+  { precharge = null, verrouille = false } = {}
+) {
+  const normalisee = normaliserValeurSemaine(valeur);
+  if (!normalisee) {
+    throw badRequest(`Semaine « ${valeur} » illisible`, { code: 'SEMAINE_INVALIDE' });
+  }
+  if (!seance?.id || !autre?.id || String(seance.id) === String(autre.id)) {
+    throw badRequest('Échange incomplet : il faut deux séances distinctes', { code: 'PERMUTATION_INVALIDE' });
+  }
+
+  const actuelles = await Seance.find({
+    _id: { $in: [seance.id, autre.id] },
+    etablissementId,
+    anneeScolaire,
+    semaine: normalisee,
+  })
+    .select('groupe module')
+    .lean();
+  if (actuelles.length !== 2) {
+    throw conflict('Une des deux séances a changé entre-temps', {
+      code: 'PERMUTATION_PERIMEE',
+      details: [{ message: 'Rechargez la semaine, puis recommencez l’échange.' }],
+    });
+  }
+
+  if (verrouille) {
+    const parId = new Map(actuelles.map((s) => [String(s._id), s]));
+    const memeCours = (donnees) => {
+      const enBase = parId.get(String(donnees.id));
+      return (
+        String(enBase.groupe ?? '').trim() === String(donnees.groupe ?? '').trim() &&
+        String(enBase.module ?? '').trim() === String(donnees.module ?? '').trim()
+      );
+    };
+    if (!memeCours(seance) || !memeCours(autre)) throw refuser('changer le cours d’une séance');
+  }
+
+  /*
+   * ⚠️ LE REFUS DIT LAQUELLE NE PASSE PAS. « Créneau occupé » seul laisserait
+   *    chercher dans le mauvais sens : est-ce la séance glissée qui ne va pas
+   *    à l'arrivée, ou celle qu'elle chasse qui ne va pas au départ ?
+   */
+  const poserCote = async (donnees, quoi, reglages, salleLaissee) => {
+    try {
+      return await poserSalleCedante(etablissementId, anneeScolaire, normalisee, donnees, reglages, [salleLaissee]);
+    } catch (erreur) {
+      if (erreur instanceof HttpError) {
+        erreur.message = `Échange impossible — ${quoi} (${donnees.module}, ${donnees.groupe}) : ${erreur.message}`;
+      }
+      throw erreur;
+    }
+  };
+
+  const session = await mongoose.startSession();
+  try {
+    let bilan;
+    await session.withTransaction(async () => {
+      const reglages = { precharge, session, verrou: false };
+
+      await Seance.updateOne(
+        { _id: seance.id, etablissementId },
+        { $set: { semaine: semaineDAttente(seance.id) } },
+        { session }
+      );
+      // Chacune peut reprendre la salle que l'autre laisse sur son nouveau créneau.
+      const partie = await poserCote(autre, 'la séance remplacée', reglages, seance.salle);
+      const arrivee = await poserCote(seance, 'la séance déplacée', reglages, autre.salle);
+
+      bilan = {
+        seance: arrivee.posee,
+        autre: partie.posee,
+        ...((arrivee.salleRetiree || partie.salleRetiree) && { salleRetiree: true }),
+      };
+    });
+    return bilan;
+  } finally {
+    await session.endSession();
+  }
+}
+
+/**
  * Un geste entier en une requête — voir la route `POST /:semaine/lot`.
  *
  * Chaque opération passe par `poser` / `vider`, donc par TOUS leurs contrôles ;
@@ -1424,13 +1596,11 @@ export async function vider(
  * ⚠️ UN DÉPLACEMENT POSE D'ABORD, VIDE ENSUITE — et ne vide que si la pose a
  * réussi. L'ordre inverse perdrait la séance dès qu'un conflit refuse l'arrivée.
  *
- * ⚠️ SEULE LA SALLE CÈDE, JAMAIS LES PERSONNES (2026-09-19, demande du porteur).
- * Si le formateur ou le groupe sont pris, la séance ne peut pas atterrir ici. Si
- * TOUS les conflits rendus ne portent que sur la salle, la séance a bien sa
- * place : on la pose SANS salle plutôt que de perdre le déplacement pour un
- * détail qui se rechoisit d'un clic dans la case.
+ * ⚠️ SEULE LA SALLE CÈDE, JAMAIS LES PERSONNES — voir `poserSalleCedante`.
  *
- * @returns {{resultats: Array<{cle, ok, seance?, salleRetiree?, inchangee?, erreur?}>, dureeMs: number}}
+ * ⚠️ UNE PERMUTATION (`permuter`) EST TOUT OU RIEN, dans sa propre transaction.
+ *
+ * @returns {{resultats: Array<{cle, ok, seance?, autre?, salleRetiree?, inchangee?, erreur?}>, dureeMs: number}}
  *   un résultat par opération, dans l'ordre
  */
 export async function ecrireLot(etablissementId, anneeScolaire, valeur, operations) {
@@ -1497,6 +1667,15 @@ export async function ecrireLot(etablissementId, anneeScolaire, valeur, operatio
         continue;
       }
 
+      if (type === 'permuter') {
+        const bilan = await permuter(etablissementId, anneeScolaire, valeur, operation, {
+          precharge,
+          verrouille,
+        });
+        resultats.push({ cle, ok: true, ...bilan });
+        continue;
+      }
+
       /*
        * ═══ ⚠️ UN DÉPLACEMENT EST **UN** GESTE, EXÉCUTÉ EN DEUX ÉCRITURES ═══
        * `poser` à la destination puis `vider` à la source. Laisser chacune
@@ -1536,29 +1715,13 @@ export async function ecrireLot(etablissementId, anneeScolaire, valeur, operatio
        */
       const reglagesEcriture = { precharge, ...(type === 'deplacer' && { verrou: false }) };
 
-      let salleRetiree = false;
-      let posee;
-      try {
-        posee = await poser(etablissementId, anneeScolaire, valeur, operation.seance, reglagesEcriture);
-      } catch (erreur) {
-        const seulementLaSalle =
-          type === 'deplacer' &&
-          erreur instanceof HttpError &&
-          erreur.code === 'CRENEAU_OCCUPE' &&
-          Array.isArray(erreur.details) &&
-          erreur.details.length > 0 &&
-          erreur.details.every((detail) => detail.type === 'salle');
-        if (!seulementLaSalle) throw erreur;
-
-        posee = await poser(
-          etablissementId,
-          anneeScolaire,
-          valeur,
-          { ...operation.seance, salle: '' },
-          reglagesEcriture
-        );
-        salleRetiree = true;
-      }
+      const { posee, salleRetiree } =
+        type === 'deplacer'
+          ? await poserSalleCedante(etablissementId, anneeScolaire, valeur, operation.seance, reglagesEcriture)
+          : {
+              posee: await poser(etablissementId, anneeScolaire, valeur, operation.seance, reglagesEcriture),
+              salleRetiree: false,
+            };
 
       if (type === 'deplacer') {
         await vider(etablissementId, anneeScolaire, valeur, operation.source, { verrou: false });

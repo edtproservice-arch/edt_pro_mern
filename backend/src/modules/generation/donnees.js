@@ -13,6 +13,7 @@ import {
   fusionnerVacances,
   normaliserValeurSemaine,
   semainesChronogramme,
+  separerFusion,
 } from 'shared/domain';
 
 import { AutoGenConfig } from '../../models/AutoGenConfig.js';
@@ -254,7 +255,7 @@ export async function previsualiser(etablissementId, anneeScolaire, { semaines }
       anneeScolaire,
       semaine: { $in: valeurs },
     })
-      .select('semaine periode estEfm rattrapageDe')
+      .select('semaine periode groupe estEfm rattrapageDe')
       .lean(),
     /*
      * ═══ ⚠️ CE QUE LA CARTE VA PERDRE, DIT AVANT DE GÉNÉRER ═══ (2026-09-22)
@@ -292,20 +293,28 @@ export async function previsualiser(etablissementId, anneeScolaire, { semaines }
   const groupesAbsents = new Set();
 
   const parSemaine = valeurs.map((valeur) => {
-    const deLaSemaine = existantes.filter(
-      (seance) => seance.semaine === valeur && estDuJour(seance)
-    );
-
     let demandees = 0;
+    /** Les groupes CDS régénérés : leur soir est remplacé aussi (2026-10-09). */
+    const groupesCds = new Set();
     const analyse = analyserSemaine(valeur);
     if (analyse) {
       const { taches, ignorees } = tachesPour(commun, analyse.numero);
+      for (const tache of taches) {
+        if (tache.cds) for (const membre of tache.groupes) groupesCds.add(membre.toUpperCase());
+      }
       demandees = taches.reduce((total, tache) => total + tache.seancesRequises, 0);
       for (const entree of ignorees) {
         if (entree.motif === MOTIFS_IGNOREE.GROUPE_ABSENT) groupesAbsents.add(entree.groupe);
         else modulesSansAffectation.add(`${entree.groupe} · ${entree.module}`);
       }
     }
+
+    const deLaSemaine = existantes.filter(
+      (seance) =>
+        seance.semaine === valeur &&
+        (estDuJour(seance) ||
+          separerFusion(seance.groupe).some((membre) => groupesCds.has(membre.toUpperCase())))
+    );
 
     return {
       semaine: valeur,

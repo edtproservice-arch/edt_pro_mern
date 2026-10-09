@@ -2458,6 +2458,120 @@ describe('POST /seances/:semaine/lot — un geste entier en une requête', () =>
   });
 });
 
+/*
+ * ═══ PERMUTER DEUX SÉANCES (2026-10-09, demande du porteur) ═══
+ * Glisser une séance sur une case occupée les échange. Le chevauchement se
+ * vérifie DANS LES DEUX SENS, chacune sans l'autre, et c'est tout ou rien.
+ */
+describe('POST /seances/:semaine/lot — permuter deux séances', () => {
+  const lot = (operations) =>
+    request(app).post(`/api/v2/seances/${SEMAINE}/lot`).set('Cookie', cookies).send({ operations });
+
+  const versLeCreneau = (seance, creneau) => ({
+    id: seance.id,
+    jour: seance.jour,
+    seance: creneau,
+    periode: 'jour',
+    formateurMatricule: seance.formateurMatricule,
+    groupe: seance.groupe,
+    module: seance.module,
+    salle: seance.salle,
+  });
+
+  const permuter = (a, b) =>
+    lot([{ type: 'permuter', cle: 'arrivee', seance: versLeCreneau(a, b.seance), autre: versLeCreneau(b, a.seance) }]);
+
+  let a;
+  let b;
+  beforeEach(async () => {
+    a = await poser(); // 9863 · GM101 · M101 · Lundi S1 · A12
+    b = await poser({ seance: 'S2', groupe: 'GM102', module: 'M102', salle: 'B02' }); // 9863 · Lundi S2
+  });
+
+  it('échange les deux séances, en gardant leurs identifiants', async () => {
+    const reponse = await permuter(a, b);
+
+    expect(reponse.status).toBe(200);
+    const [resultat] = reponse.body.resultats;
+    expect(resultat).toMatchObject({ cle: 'arrivee', ok: true });
+    expect(resultat.seance).toMatchObject({ id: a.id, seance: 'S2', module: 'M101' });
+    expect(resultat.autre).toMatchObject({ id: b.id, seance: 'S1', module: 'M102' });
+
+    expect((await Seance.findById(a.id)).seance).toBe('S2');
+    expect((await Seance.findById(b.id)).seance).toBe('S1');
+    expect(await Seance.countDocuments({})).toBe(2);
+    expect(await Seance.countDocuments({ semaine: SEMAINE })).toBe(2);
+  });
+
+  it('⚠️ deux séances dans la MÊME salle s’échangent en GARDANT leur salle (2026-10-09)', async () => {
+    // Chacune quitte le créneau que l'autre prend : la salle n'est jamais prise deux fois.
+    await Seance.updateOne({ _id: b._id }, { salle: 'A12' });
+    b = await Seance.findById(b._id);
+
+    const [resultat] = (await permuter(a, b)).body.resultats;
+
+    expect(resultat.ok).toBe(true);
+    expect(resultat.salleRetiree).toBeUndefined();
+    expect((await Seance.findById(a.id)).salle).toBe('A12');
+    expect((await Seance.findById(b.id)).salle).toBe('A12');
+  });
+
+  it('⚠️ une salle PRISE à l’arrivée cède la place à celle que la partenaire LAISSE (2026-10-09)', async () => {
+    // Cas réel : B part en B02 vers Lundi S1, où un autre cours occupe déjà B02 —
+    // mais A y libère A12. B doit reprendre A12, pas perdre sa salle.
+    await poser({ formateurMatricule: '4211', groupe: 'GE101 (CDS)', module: 'M102', salle: 'B02' });
+
+    const [resultat] = (await permuter(a, b)).body.resultats;
+
+    expect(resultat.ok).toBe(true);
+    expect(resultat.salleRetiree).toBeUndefined();
+    expect((await Seance.findById(b.id)).salle).toBe('A12');
+    expect((await Seance.findById(a.id)).salle).toBe('A12');
+  });
+
+  it('⚠️ refuse si la séance CHASSÉE ne peut pas aller au départ — et rien ne bouge', async () => {
+    // GM102 a déjà cours Lundi S1 avec un autre formateur : B ne peut pas y aller.
+    await poser({ formateurMatricule: '4211', groupe: 'GM102', module: 'M102', salle: 'B02' });
+
+    const [resultat] = (await permuter(a, b)).body.resultats;
+
+    expect(resultat.ok).toBe(false);
+    expect(resultat.erreur.code).toBe('CRENEAU_OCCUPE');
+    expect(resultat.erreur.message).toMatch(/séance remplacée/);
+    expect(resultat.erreur.details.map((d) => d.type)).toContain('groupe');
+    expect((await Seance.findById(a.id)).seance).toBe('S1');
+    expect((await Seance.findById(a.id)).semaine).toBe(SEMAINE);
+    expect((await Seance.findById(b.id)).seance).toBe('S2');
+  });
+
+  it('⚠️ refuse si la séance GLISSÉE ne peut pas aller à l’arrivée — et rien ne bouge', async () => {
+    // GM101 a déjà cours Lundi S2 avec un autre formateur : A ne peut pas y aller.
+    await poser({ seance: 'S2', formateurMatricule: '4211', groupe: 'GM101', module: 'M102', salle: 'B02' });
+
+    const [resultat] = (await permuter(a, b)).body.resultats;
+
+    expect(resultat.ok).toBe(false);
+    expect(resultat.erreur.message).toMatch(/séance déplacée/);
+    expect((await Seance.findById(a.id)).seance).toBe('S1');
+    expect((await Seance.findById(a.id)).semaine).toBe(SEMAINE);
+    expect((await Seance.findById(b.id)).seance).toBe('S2');
+  });
+
+  it('refuse un échange sur une séance qui n’existe plus', async () => {
+    const disparue = { ...b.toObject(), id: '0123456789abcdef01234567' };
+    const [resultat] = (await permuter(a, disparue)).body.resultats;
+
+    expect(resultat.ok).toBe(false);
+    expect(resultat.erreur.code).toBe('PERMUTATION_PERIMEE');
+    expect((await Seance.findById(a.id)).seance).toBe('S1');
+  });
+
+  it('rejette une permutation sans sa seconde séance', async () => {
+    const reponse = await lot([{ type: 'permuter', cle: 'x', seance: versLeCreneau(a, 'S2') }]);
+    expect(reponse.status).toBe(400);
+  });
+});
+
 describe('Verrou du chronogramme (2026-09-27)', () => {
   /*
    * ═══ ⚠️ CE QUE CETTE SUITE GARDE ═══
@@ -2539,6 +2653,39 @@ describe('Verrou du chronogramme (2026-09-27)', () => {
       const reponse = await ecrire({ ...cours, groupe: 'GM102' });
       expect(reponse.status).toBe(409);
       expect(reponse.body.message).toContain('groupe');
+    });
+
+    it('⚠️ PERMET de permuter deux séances — aucun volume ne change (2026-10-09)', async () => {
+      const a = await poser();
+      const b = await poser({ seance: 'S2', groupe: 'GM102', module: 'M102', salle: 'B02' });
+      const placer = (s, creneau_) => ({ ...cours, id: s.id, seance: creneau_, groupe: s.groupe, module: s.module, salle: s.salle });
+
+      const [resultat] = (
+        await lot([{ type: 'permuter', cle: 'x', seance: placer(a, 'S2'), autre: placer(b, 'S1') }])
+      ).body.resultats;
+
+      expect(resultat.ok).toBe(true);
+      expect((await Seance.findById(a.id)).seance).toBe('S2');
+    });
+
+    it('⚠️ mais REFUSE une « permutation » qui change le cours d’une séance', async () => {
+      const a = await poser();
+      const b = await poser({ seance: 'S2', groupe: 'GM102', module: 'M102', salle: 'B02' });
+
+      const [resultat] = (
+        await lot([
+          {
+            type: 'permuter',
+            cle: 'x',
+            seance: { ...cours, id: a.id, seance: 'S2', groupe: 'GM102', module: 'M102' },
+            autre: { ...cours, id: b.id, seance: 'S1' },
+          },
+        ])
+      ).body.resultats;
+
+      expect(resultat.ok).toBe(false);
+      expect(resultat.erreur.code).toBe('CHRONOGRAMME_VERROUILLE');
+      expect((await Seance.findById(a.id)).module).toBe('M101');
     });
 
     it('REFUSE de vider une case', async () => {

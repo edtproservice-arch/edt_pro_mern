@@ -1,5 +1,12 @@
 import { NOMBRE_SEMAINES, PAS, PLAFOND_CELLULE } from './semaines.js';
-import { TYPES, celluleDepuisParts, partsDeCellule } from './planning.js';
+import {
+  TYPES,
+  VALEURS_PRESENTIEL_CDS,
+  celluleDepuisParts,
+  estGroupeDuSoir,
+  heuresProposees,
+  partsDeCellule,
+} from './planning.js';
 import { estPartageParType } from './partage.js';
 
 /**
@@ -51,6 +58,33 @@ export const VALEURS_AUTORISEES = Array.from(
   { length: PLAFOND_CELLULE / PAS },
   (_, rang) => (rang + 1) * PAS
 );
+
+/**
+ * Les valeurs du présentiel d'un groupe du COURS DU SOIR (2026-10-09) — les
+ * mêmes que la grille (`VALEURS_PRESENTIEL_CDS`). Son synchrone n'en a aucune.
+ */
+export const VALEURS_AUTORISEES_CDS = VALEURS_PRESENTIEL_CDS;
+
+/**
+ * Une valeur relue est-elle de celles que la grille accepte pour CE groupe et
+ * CE type ?
+ *
+ * ⚠️ LA MÊME LISTE QUE L'ÉCRAN (`heuresProposees`) : un fichier retouché hors
+ *    ligne ne doit pas poser une valeur que la grille refuserait — 3 h, ou du
+ *    synchrone dans un groupe du soir. Avant le 2026-10-09, l'import ne
+ *    vérifiait rien : seule la liste déroulante d'Excel bornait la saisie.
+ *
+ * @returns {string|null} le motif du refus, ou `null`
+ */
+export function refusDeValeur({ groupe, type, heures }) {
+  if (heuresProposees({ groupe, type, plafond: PLAFOND_CELLULE }).includes(heures)) return null;
+  if (estGroupeDuSoir(groupe)) {
+    return type === TYPES.SYNCHRONE
+      ? 'pas de synchrone pour un groupe du cours du soir'
+      : `${heures} h refusé — cours du soir : ${VALEURS_PRESENTIEL_CDS.join(' ; ')} h`;
+  }
+  return `${heures} h refusé — par pas de ${PAS} h, jusqu’à ${PLAFOND_CELLULE} h`;
+}
 
 /** Feuilles produites par l'export qui ne sont pas des données. */
 export const FEUILLES_TECHNIQUES = ['valeurs', 'charge groupes', 'charge formateurs'];
@@ -333,6 +367,12 @@ export function lireFeuilleChronogramme(feuille, referentiel) {
         continue;
       }
       if (lue.heures === 0) continue; // un zéro explicite ne pose rien
+
+      const motif = refusDeValeur({ groupe, type: lue.type, heures: lue.heures });
+      if (motif) {
+        refus.push(`ligne ${numeroLigne}, S${semaine} : ${motif}`);
+        continue;
+      }
 
       const cle = `${base}||${lue.type}`;
       const existant = parCellule.get(cle);

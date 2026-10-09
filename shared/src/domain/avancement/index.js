@@ -32,6 +32,7 @@ export {
   SEUIL_ACHEVEMENT,
   completionModules,
   datesDeLaPlage,
+  datesOuvrablesDeLaPlage,
   plageDeSemaines,
 } from './completion.js';
 export {

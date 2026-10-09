@@ -79,6 +79,7 @@ function CaseEmploi({
   survolee,
   personnesLibresDeplacement = false,
   salleLibreDeplacement = false,
+  permutableDeplacement = false,
   finDuJour,
   finDuTableau,
   bords,
@@ -252,6 +253,22 @@ function CaseEmploi({
         ((premiereLigne && personnesLibresDeplacement) || (champ === 'Espace' && salleLibreDeplacement)) &&
           !seance &&
           'bg-success/10 outline-dashed outline-1 -outline-offset-1 outline-success',
+        /*
+         * ⚠️ SUR UNE CASE OCCUPÉE OÙ L'ÉCHANGE PASSE, la ligne ESPACE dit aussi
+         * « salle disponible » quand chacune garde la sienne — deux séances de
+         * la même salle (2026-10-09, demande du porteur).
+         */
+        champ === 'Espace' &&
+          salleLibreDeplacement &&
+          permutableDeplacement &&
+          seance &&
+          'bg-success/10 outline-dashed outline-1 -outline-offset-1 outline-success',
+        /*
+         * ⚠️ UNE CASE OCCUPÉE OÙ L'ÉCHANGE PASSE (2026-10-09) : un pointillé de
+         * la couleur du dépôt, pas du vert « libre » — déposer ici ne remplit
+         * pas une case vide, il ÉCHANGE deux séances.
+         */
+        premiereLigne && permutableDeplacement && seance && 'outline-dashed outline-1 -outline-offset-1 outline-primary',
         // La SÉLECTION l'emporte visuellement : c'est elle qu'on manipule.
         selectionnee && 'bg-primary/10',
         // La DESTINATION d'un dépôt est plus marquée encore, et en pointillé :

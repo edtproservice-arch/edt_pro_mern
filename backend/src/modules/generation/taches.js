@@ -10,12 +10,58 @@
  *    erreur ne le dise. Elle se teste donc sur des données littérales.
  */
 
-import { MOTIFS_IGNOREE, TYPES_COURS } from 'shared/constants';
-import { cleModule, partsDeCellule } from 'shared/domain';
+import { MOTIFS_IGNOREE, PERIODES, TYPES_COURS } from 'shared/constants';
+import { cleModule, DUREE_SOIR, estGroupeDuSoir, partsDeCellule } from 'shared/domain';
 import { separerFusion, semestreDe } from 'shared/domain';
 
 /** Durée d'une séance de jour, en heures. ← `Math.ceil(heures / 2.5)` de l'ancien. */
 export const DUREE_SEANCE = 2.5;
+
+/**
+ * ═══ LE COURS DU SOIR (CDS) : JOUR OU SOIR, SELON LE VOLUME ═══
+ * (2026-10-09, demande du porteur.) Pour un groupe « (CDS) », le présentiel
+ * d'une cellule se lit sur son volume :
+ *  · qui ne se découpe qu'en séances de 2 h (2, 4, 6, 8, 12) → le SOIR ;
+ *  · qui ne se découpe qu'en séances de 2,5 h (2,5, 5, 7,5) → le JOUR, de
+ *    préférence le samedi (voir `construireProbleme`).
+ *
+ * ⚠️ 10 H SE DÉCOUPE DES DEUX FAÇONS (5 × 2 ou 4 × 2,5). Règle du porteur :
+ *    on regarde les AUTRES cellules du groupe cette semaine-là — de 2 h ou
+ *    4 h, le soir ; de 2,5 h ou 5 h, le jour. Si la semaine ne tranche pas
+ *    (10 h seul, ou les deux sortes à la fois), le jour : c'est ce que la
+ *    génération faisait avant cette règle.
+ */
+const multiple = (heures, duree) =>
+  heures > 0 && Math.abs(heures / duree - Math.round(heures / duree)) < 1e-9;
+const seulementSoir = (heures) => multiple(heures, DUREE_SOIR) && !multiple(heures, DUREE_SEANCE);
+const seulementJour = (heures) => multiple(heures, DUREE_SEANCE) && !multiple(heures, DUREE_SOIR);
+
+/**
+ * La période d'une part de cellule. Hors CDS ou hors présentiel : le jour.
+ *
+ * @param {{soir?: boolean, jour?: boolean}} semaineDuGroupe — la semaine du
+ *   groupe compte-t-elle des cellules qui ne vont qu'au soir, qu'au jour ?
+ */
+export function periodeDe(groupe, type, heures, semaineDuGroupe = {}) {
+  if (type !== TYPES_COURS.PRESENTIEL || !estGroupeDuSoir(groupe)) return PERIODES.JOUR;
+  if (seulementSoir(heures)) return PERIODES.SOIR;
+  if (seulementJour(heures)) return PERIODES.JOUR;
+  if (multiple(heures, DUREE_SOIR) && semaineDuGroupe.soir && !semaineDuGroupe.jour) {
+    return PERIODES.SOIR;
+  }
+  return PERIODES.JOUR;
+}
+
+/** Les cellules présentielles d'un groupe, cette semaine : y en a-t-il « soir seul », « jour seul » ? */
+function sortesDeLaSemaine(planning, numero) {
+  const sortes = { soir: false, jour: false };
+  for (const cellules of Object.values(planning ?? {})) {
+    const heures = partsDeCellule(cellules?.[numero]).P;
+    if (seulementSoir(heures)) sortes.soir = true;
+    if (seulementJour(heures)) sortes.jour = true;
+  }
+  return sortes;
+}
 
 /** Le chronogramme écrit 'P' / 'S' ; les affectations 'presentiel' / 'synchrone'. */
 const TYPE_CHRONO = { P: TYPES_COURS.PRESENTIEL, S: TYPES_COURS.SYNCHRONE };
@@ -125,6 +171,7 @@ export function tachesDeLaSemaine({
   }
 
   for (const { groupe, planning } of chronogrammes) {
+    const semaineDuGroupe = estGroupeDuSoir(groupe) ? sortesDeLaSemaine(planning, numero) : {};
     for (const [module, cellules] of Object.entries(planning ?? {})) {
       /*
        * ⚠️ UNE CASE MIXTE (2026-10-01) porte du présentiel ET du synchrone la
@@ -173,7 +220,9 @@ export function tachesDeLaSemaine({
        */
       const libelle = String(affectation.groupe ?? groupe).trim() || groupe;
       const formateur = String(affectation.formateur ?? '').trim();
-      const empreinte = `${libelle}||${module}||${formateur}||${type}`;
+      const periode = periodeDe(groupe, type, heures, semaineDuGroupe);
+      // ⚠️ LA PÉRIODE ENTRE DANS L'EMPREINTE : un soir et un jour ne se fusionnent pas.
+      const empreinte = `${libelle}||${module}||${formateur}||${type}||${periode}`;
 
       const existante = parEmpreinte.get(empreinte);
       if (existante) {
@@ -210,6 +259,9 @@ export function tachesDeLaSemaine({
         sallesModule: sallesAffectations[cleModule(groupe, module)] ?? [],
         semestre,
         priorite: prioriteDe(Boolean(affectation.estRegional), semestre),
+        periode,
+        /** Un groupe du cours du soir : son cours de JOUR se donne de préférence le samedi. */
+        cds: estGroupeDuSoir(groupe),
       });
       }
     }
@@ -225,7 +277,10 @@ export function tachesDeLaSemaine({
      *    rencontrés laisserait poser un autre cours au même moment pour lui.
      */
     groupes: separerFusion(tache.groupeLibelle),
-    seancesRequises: Math.ceil(tache.heures / DUREE_SEANCE),
+    // ⚠️ 2 H AU SOIR, 2,5 H LE JOUR (`DUREE_SOIR`, la durée de la grille du soir).
+    seancesRequises: Math.ceil(
+      tache.heures / (tache.periode === PERIODES.SOIR ? DUREE_SOIR : DUREE_SEANCE) - 1e-9
+    ),
   }));
 
   return { taches, ignorees };

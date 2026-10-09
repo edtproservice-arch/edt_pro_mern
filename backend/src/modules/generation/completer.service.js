@@ -33,7 +33,7 @@ import { Seance } from '../../models/Seance.js';
 import { badRequest } from '../../lib/httpError.js';
 import { completudeDUneSemaine } from '../chronogramme/completude.service.js';
 import { poser, semaine as lireSemaine } from '../seances/seances.service.js';
-import { chargerCommun, estDuJour, tachesPour } from './donnees.js';
+import { chargerCommun, tachesPour } from './donnees.js';
 import { exigerChronogrammeLie } from './generation.service.js';
 import { memoPose } from './memoPose.js';
 import { occupationAilleurs } from './occupationAilleurs.js';
@@ -129,7 +129,10 @@ export async function completerSemaine(
    *    et rattrapages que la génération préserve. Rien de ce qui est posé ne
    *    bouge : c'est toute la différence avec une génération.
    */
-  const existantes = (etatSemaine.seances ?? []).filter(estDuJour);
+  // ⚠️ LE SOIR AUSSI (2026-10-09) : une tâche CDS de 2 h se pose au soir, et
+  //    les soirées déjà prises doivent l'empêcher. Sans tâche du soir, le
+  //    problème n'a pas ces créneaux et elles sont écartées.
+  const existantes = etatSemaine.seances ?? [];
 
   const { probleme, creneauVersCase } = construireProbleme({
     semaine: etatSemaine,

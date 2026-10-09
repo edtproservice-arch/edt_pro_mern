@@ -76,7 +76,7 @@ export default function LoginPage() {
       >
         {raisonInactivite && (
           <Alerte type="avertissement" titre="Session expirée" className="mb-4">
-            Votre session a expiré après 5 minutes d&apos;inactivité. Veuillez vous reconnecter.
+            Votre session a expiré après 15 minutes d&apos;inactivité. Veuillez vous reconnecter.
           </Alerte>
         )}
 

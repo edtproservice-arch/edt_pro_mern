@@ -24,7 +24,7 @@
 import mongoose from 'mongoose';
 
 import { MOTEURS, PERIODES } from 'shared/constants';
-import { analyserSemaine, normaliserValeurSemaine } from 'shared/domain';
+import { analyserSemaine, normaliserValeurSemaine, separerFusion } from 'shared/domain';
 
 import { AutoGenConfig } from '../../models/AutoGenConfig.js';
 import { AbsenceFormateur } from '../../models/AbsenceFormateur.js';
@@ -45,6 +45,36 @@ import { occupationAilleurs } from './occupationAilleurs.js';
 import { construireProbleme, joursFermes, joursOuverts } from './probleme.js';
 import { optionsSolveur, resoudre } from './solveur.client.js';
 import { balayer, enregistrer, sansFaireEchouer } from './traces.service.js';
+
+const majuscules = (valeur) => String(valeur ?? '').trim().toUpperCase();
+
+/**
+ * Ce que la génération garde de la semaine, et ce qu'elle remplace au soir.
+ *
+ * ═══ LE SOIR DES GROUPES CDS (2026-10-09) ═══
+ * Leurs cours de 2 h se génèrent désormais sur la grille du soir : leurs
+ * séances du soir de la semaine sont REMPLACÉES, comme le jour — EFM et
+ * rattrapages exceptés. Celles des autres groupes du soir restent, et
+ * occupent leurs créneaux pour le solveur.
+ *
+ * ⚠️ PARTAGÉE AVEC LA SIMULATION : ce qu'elle promet doit être ce que la
+ *    génération fera.
+ */
+function conserveesDeLaSemaine(etatSemaine, taches) {
+  const seances = etatSemaine.seances ?? [];
+  const preservees = seances.filter(estDuJour).filter(aPreserver);
+  const groupesCds = new Set(
+    taches.filter((tache) => tache.cds).flatMap((tache) => tache.groupes.map(majuscules))
+  );
+  const soir = seances.filter((seance) => !estDuJour(seance));
+  const soirRemplacees = soir.filter(
+    (seance) =>
+      !aPreserver(seance) &&
+      separerFusion(seance.groupe).some((membre) => groupesCds.has(majuscules(membre)))
+  );
+  const soirGardees = soir.filter((seance) => !soirRemplacees.includes(seance));
+  return { preservees, soirRemplacees, soirGardees };
+}
 
 function numeroDe(valeur) {
   const analyse = analyserSemaine(normaliserValeurSemaine(valeur));
@@ -119,8 +149,7 @@ async function genererSemaine(etablissementId, anneeScolaire, valeur, commun, op
     };
   }
 
-  const existantes = (etatSemaine.seances ?? []).filter(estDuJour);
-  const preservees = existantes.filter(aPreserver);
+  const { preservees, soirRemplacees, soirGardees } = conserveesDeLaSemaine(etatSemaine, taches);
 
   const { probleme, index, creneauVersCase } = construireProbleme({
     semaine: etatSemaine,
@@ -131,7 +160,7 @@ async function genererSemaine(etablissementId, anneeScolaire, valeur, commun, op
     formateurs: commun.formateurs,
     graine: options.graine,
     assouplissement: options.assouplissement ?? {},
-    aPreserver: preservees,
+    aPreserver: [...preservees, ...soirGardees],
   });
 
   /*
@@ -211,6 +240,19 @@ async function genererSemaine(etablissementId, anneeScolaire, valeur, commun, op
         { session }
       );
       remplacees = suppression.deletedCount ?? 0;
+
+      if (soirRemplacees.length > 0) {
+        const soirSupprime = await Seance.deleteMany(
+          {
+            _id: { $in: soirRemplacees.map((seance) => seance.id) },
+            etablissementId,
+            estEfm: { $ne: true },
+            rattrapageDe: null,
+          },
+          { session }
+        );
+        remplacees += soirSupprime.deletedCount ?? 0;
+      }
 
       /*
        * La précharge évite de relire base, établissement et rentrées pour
@@ -603,6 +645,7 @@ async function compter(etablissementId, anneeScolaire, valeurs, commun, graine, 
     const { taches } = tachesPour(commun, numero);
     if (taches.length === 0) continue;
 
+    const conservees = conserveesDeLaSemaine(etat, taches);
     const { probleme, creneauVersCase } = construireProbleme({
       semaine: etat,
       taches,
@@ -618,7 +661,7 @@ async function compter(etablissementId, anneeScolaire, valeurs, commun, graine, 
        */
       graine: (graine + numero) % 2 ** 31,
       assouplissement,
-      aPreserver: (etat.seances ?? []).filter(estDuJour).filter(aPreserver),
+      aPreserver: [...conservees.preservees, ...conservees.soirGardees],
     });
 
     /*

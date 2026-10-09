@@ -1,5 +1,5 @@
 import { SALLES_SANS_CONFLIT } from '../emploi/conflits.js';
-import { dureeSeance } from '../emploi/grille.js';
+import { DUREE_SOIR, dureeSeance } from '../emploi/grille.js';
 
 /**
  * Placer les séances qu'il MANQUE à une semaine pour être conforme au
@@ -99,7 +99,9 @@ export function seancesManquantes({ taches = [], ecarts = [] } = {}) {
       couverts.add(cle);
       plusGrand = Math.max(plusGrand, trouve.heures);
     }
-    if (plusGrand > EGAL) aPlacer.set(tache.id, Math.ceil(plusGrand / DUREE - EGAL));
+    // ⚠️ 2 H POUR UNE TÂCHE DU SOIR (cours du soir CDS, 2026-10-09), 2,5 H SINON.
+    const duree = tache.periode === 'soir' ? DUREE_SOIR : DUREE;
+    if (plusGrand > EGAL) aPlacer.set(tache.id, Math.ceil(plusGrand / duree - EGAL));
   }
 
   /*

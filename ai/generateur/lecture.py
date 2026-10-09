@@ -147,7 +147,12 @@ def lire_probleme(source: Any) -> Probleme:
     for i, brut in enumerate(_exiger_liste(racine["creneaux"], "creneaux")):
         chemin = f"creneaux[{i}]"
         objet = _exiger_objet(brut, chemin)
-        _cles(objet, chemin, connues={"id", "jour", "rang", "duree"}, requises={"id", "jour", "rang"})
+        _cles(
+            objet,
+            chemin,
+            connues={"id", "jour", "rang", "duree", "periode"},
+            requises={"id", "jour", "rang"},
+        )
         identifiant = _entier(objet, "id", chemin, minimum=0)
         if identifiant in vus:
             raise ProblemeInvalide(f"{chemin}.id : identifiant {identifiant} déjà utilisé")
@@ -158,6 +163,7 @@ def lire_probleme(source: Any) -> Probleme:
                 jour=_texte(objet, "jour", chemin),
                 rang=_entier(objet, "rang", chemin, minimum=0),
                 duree=_reel(objet, "duree", chemin, 2.5, strictement_positif=True),
+                periode=_texte(objet, "periode", chemin) if "periode" in objet else "jour",
             )
         )
     if not creneaux:
@@ -196,6 +202,7 @@ def lire_probleme(source: Any) -> Probleme:
                 "priorite", "difficulte", "creneauxInterdits", "creneauxAEviter",
                 "motifsInterdiction",
                 "sallesPossibles", "sallesPreferees",
+                "periode", "creneauxSecours",
             },
             requises={"id", "formateur", "groupes", "seancesRequises"},
         )
@@ -235,6 +242,20 @@ def lire_probleme(source: Any) -> Probleme:
             #    prime, et le compter deux fois fausserait la pénalité du solveur.
             if valeur not in interdits:
                 a_eviter.add(valeur)
+
+        secours = set()
+        for j, valeur in enumerate(
+            _exiger_liste(objet.get("creneauxSecours", []), f"{chemin}.creneauxSecours")
+        ):
+            if isinstance(valeur, bool) or not isinstance(valeur, int):
+                raise ProblemeInvalide(
+                    f"{chemin}.creneauxSecours[{j}] : entier attendu, reçu {valeur!r}"
+                )
+            if valeur not in vus:
+                raise ProblemeInvalide(f"{chemin}.creneauxSecours[{j}] : créneau {valeur} inconnu")
+            # Comme pour `creneauxAEviter` : l'interdiction prime.
+            if valeur not in interdits:
+                secours.add(valeur)
 
         # ═══ Motifs d'interdiction — ÉTIQUETTES OPAQUES, jamais interprétées ══
         #
@@ -303,6 +324,8 @@ def lire_probleme(source: Any) -> Probleme:
                 motifs_interdiction=tuple(motifs),
                 salles_possibles=possibles,
                 salles_preferees=frozenset(preferees),
+                periode=_texte(objet, "periode", chemin) if "periode" in objet else "jour",
+                creneaux_secours=frozenset(secours),
             )
         )
 

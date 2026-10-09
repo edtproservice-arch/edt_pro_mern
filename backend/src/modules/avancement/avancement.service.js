@@ -632,12 +632,16 @@ export async function referentielDesModules(lignes, base = null) {
  * précisément ce à quoi on compare le réalisé.
  */
 export async function achevementDesModules(etablissementId, anneeScolaire, observation = null) {
-  const [chronogrammes, toutesLesSeances, national] = await Promise.all([
+  const [chronogrammes, toutesLesSeances, national, fermes] = await Promise.all([
     Chronogramme.find({ etablissementId, anneeScolaire }).select('groupe planning').lean(),
     Seance.find({ etablissementId, anneeScolaire })
       .select('groupe module semaine statut estEfm date')
       .lean(),
     calendrierNational(anneeScolaire),
+    /* Les fériés, ajustements de l'établissement compris : l'export Excel en
+       retire les dates prévisionnelles (2026-10-09). Leur absence ne doit pas
+       priver l'écran de ses plages. */
+    joursFeries(etablissementId, anneeScolaire).catch(() => ({ joursFeries: [] })),
   ]);
   /*
    * ⚠️ LES RENTRÉES NATIONALES ANCRENT S1 (2026-10-07) : le chronogramme et la
@@ -711,7 +715,8 @@ export async function achevementDesModules(etablissementId, anneeScolaire, obser
     };
   }
 
-  return { plages, rentrees };
+  const feries = (fermes?.joursFeries ?? []).map((ferie) => String(ferie.date).slice(0, 10));
+  return { plages, rentrees, feries };
 }
 
 /** La clé d'un couple (groupe, module) — celle que l'écran emploie aussi. */

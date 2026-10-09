@@ -3,6 +3,7 @@ import {
   SEUIL_ACHEVEMENT,
   completionModules,
   datesDeLaPlage,
+  datesOuvrablesDeLaPlage,
   plageDeSemaines,
 } from './completion.js';
 
@@ -169,5 +170,32 @@ describe('datesDeLaPlage', () => {
   it('rend null sur une entrée inexploitable', () => {
     expect(datesDeLaPlage(2026, null)).toBeNull();
     expect(datesDeLaPlage(null, { debut: 1, fin: 2 })).toBeNull();
+  });
+});
+
+describe('datesOuvrablesDeLaPlage', () => {
+  // S1 = 31/08 → 05/09/2026, sans rentrées.
+  it('rend les dates brutes quand aucun jour n’est férié', () => {
+    expect(datesOuvrablesDeLaPlage(2026, { debut: 1, fin: 3 })).toEqual({
+      debut: '2026-08-31',
+      fin: '2026-09-19',
+    });
+  });
+
+  it('saute un lundi férié en avant et un samedi férié en arrière', () => {
+    expect(
+      datesOuvrablesDeLaPlage(2026, { debut: 1, fin: 1 }, [], ['2026-08-31', '2026-09-05'])
+    ).toEqual({ debut: '2026-09-01', fin: '2026-09-04' });
+  });
+
+  it('enjambe une suite de fériés', () => {
+    expect(
+      datesOuvrablesDeLaPlage(2026, { debut: 1, fin: 1 }, [], ['2026-08-31', '2026-09-01', '2026-09-02'])
+        .debut
+    ).toBe('2026-09-03');
+  });
+
+  it('rend null sur une entrée inexploitable', () => {
+    expect(datesOuvrablesDeLaPlage(2026, null)).toBeNull();
   });
 });

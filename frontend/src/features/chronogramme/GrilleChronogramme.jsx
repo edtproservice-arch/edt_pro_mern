@@ -1,16 +1,16 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Presentation, Star } from 'lucide-react';
+import { toast } from 'sonner';
 import Teams from '@/components/icons/Teams';
 import {
   FIN_SEMESTRE_1,
-  PAS,
-  PLAFOND_CELLULE,
   TYPES,
   TYPE_MIXTE,
   celluleDepuisParts,
   deplierModules,
   estDepliable,
   estMixte,
+  heuresProposees,
   partsDeCellule,
   plafondSemaine,
   planningDeplie,
@@ -39,6 +39,7 @@ import {
 import BadgeSemestre from '@/components/common/BadgeSemestre';
 import { cn } from '@/lib/utils';
 import CarteCellule from './CarteCellule';
+import FiltreColonne from '@/components/common/FiltreColonne';
 import NavigationSemaines from './NavigationSemaines';
 import { empreinte, useEtatPartage } from '@/features/guidage/useEtatPartage';
 import {
@@ -79,8 +80,9 @@ const LARGEURS = {
    * passait à la ligne suivante.
    */
   module: 10, // rem
-  regional: 2.5,
-  semestre: 3,
+  // 3,5 et 4 (2026-10-09) : l'en-tête porte désormais le bouton de filtre.
+  regional: 3.5,
+  semestre: 4,
   formateur: 11,
   stat: 3.5,
 };
@@ -101,9 +103,6 @@ const DROITE = {
   poseSynchrone: LARGEURS.stat,
   ecart: 0,
 };
-
-/** Valeurs proposées — celles de `hoursOptions` de l'existant. */
-const HEURES = Array.from({ length: PLAFOND_CELLULE / PAS }, (_, rang) => (rang + 1) * PAS);
 
 const rem = (valeur) => `${valeur}rem`;
 
@@ -217,6 +216,76 @@ const COLLANTE_ENTETE = 'sticky z-30 bg-tableau-tete border-r';
  */
 const cleDe = (module) => module.cle ?? module.code;
 
+/** Le semestre d'un module, tel que le filtre le nomme. */
+const LIBELLES_SEMESTRE = { S1: 'Semestre 1', S2: 'Semestre 2', annuel: 'Annuel' };
+
+/*
+ * ═══ COPIER-COLLER ENTRE GRILLES (2026-10-09) ═══
+ * Le presse-papiers est PARTAGÉ par toutes les grilles de la page : on copie
+ * dans le groupe GM101 et l'on colle dans GM102. `grilleActive` désigne la
+ * dernière grille cliquée — la seule à répondre au clavier.
+ */
+let pressePapiers = null;
+let grilleActive = null;
+
+/**
+ * Pose une valeur dans une case avec les MÊMES contrôles qu'une saisie à la
+ * main (`verifierCellule`) — pour le collage. `partSeule` : n'écrit que ce
+ * type, à côté de l'autre (la seconde part d'une case mixte).
+ *
+ * @returns {{planning: object, motif?: string}} `motif` : refusée
+ */
+function essayerPose({ planning, modules, module, semaine, heures, type, groupe, semainesParDefaut, partSeule = false }) {
+  const cle = cleLigne(module);
+  const sansCetteCase = poserCellule(planning, cle, semaine.numero, 0, TYPES.PRESENTIEL);
+  const autre = partSeule
+    ? partsDeCellule(planning?.[cle]?.[semaine.numero])[type === TYPES.SYNCHRONE ? 'P' : 'S']
+    : autrePartDe(modules, planning, module, semaine.numero);
+  const controle = verifierCellule({
+    planning,
+    module: cle,
+    semaine,
+    heures,
+    type,
+    masses: module.masses,
+    posesSemaine: totalSemaineFusionnee(sansCetteCase, semaine.numero, modules),
+    autrePart: autre,
+    groupe,
+  });
+  if (!controle.possible) return { planning, motif: controle.motif };
+  if (partSeule) {
+    return { planning: poserCellule(planning, cle, semaine.numero, heures, type, { partSeule: true }) };
+  }
+  return {
+    planning: poserAvecJumelles({ planning, modules, module, semaine, heures, type, semainesParDefaut }).planning,
+  };
+}
+
+/*
+ * ═══ UN SEUL CADRE AUTOUR DE LA SÉLECTION, COMME DANS EXCEL (2026-10-09) ═══
+ * Chaque case sélectionnée reçoit un MASQUE : bit 1 = sélectionnée, puis les
+ * bords à tracer — haut (2), bas (4), gauche (8), droite (16) — c'est-à-dire
+ * les côtés dont la voisine N'est PAS sélectionnée. Le contour du bloc est
+ * donc continu, sans trait entre deux cases : la première version, un cadre
+ * par case, quadrillait la sélection (retour du porteur).
+ *
+ * ⚠️ UN NOMBRE, PAS UN OBJET, pour le `memo` des cellules ; et les 32 classes
+ *    PRÉCALCULÉES, pas un `cn()` par case (voir `APPARENCE`).
+ */
+const BORD_HAUT = 2;
+const BORD_BAS = 4;
+const BORD_GAUCHE = 8;
+const BORD_DROIT = 16;
+const CADRES_SELECTION = Array.from(
+  { length: 32 },
+  (_, masque) =>
+    'pointer-events-none absolute inset-0 z-[1] border-primary bg-primary/10' +
+    (masque & BORD_HAUT ? ' border-t-2' : '') +
+    (masque & BORD_BAS ? ' border-b-2' : '') +
+    (masque & BORD_GAUCHE ? ' border-l-2' : '') +
+    (masque & BORD_DROIT ? ' border-r-2' : '')
+);
+
 /**
  * Les heures de l'AUTRE part du même module cette semaine-là — celles de la
  * ligne sœur, quand le module s'affiche sur deux lignes (dépliage de la grille
@@ -249,7 +318,9 @@ function autrePartDe(modules, planning, module, numero) {
  * une pose ne peut donc pas écrire par-dessus un état périmé, ce qui est
  * exactement le piège déjà payé sur l'historique de l'emploi du temps.
  */
-function useOnPoser(planning, onChanger, modules, semainesParDefaut) {
+function useOnPoser(planning, onChanger, modules, semainesParDefaut, groupeGrille) {
+  const groupeRef = useRef(groupeGrille);
+  groupeRef.current = groupeGrille;
   const planningRef = useRef(planning);
   const onChangerRef = useRef(onChanger);
   const modulesRef = useRef(modules);
@@ -296,6 +367,8 @@ function useOnPoser(planning, onChanger, modules, semainesParDefaut) {
       masses,
       posesSemaine: totalSemaineFusionnee(sansCetteCase, semaine.numero, tous),
       autrePart: autrePartDe(tous, courant, module, semaine.numero),
+      // Cours du soir : ses valeurs, et pas de synchrone (2026-10-09).
+      groupe: module.groupe ?? groupeRef.current ?? null,
     });
 
     if (!controle.possible) {
@@ -492,7 +565,351 @@ export default function GrilleChronogramme({
    * ⚠️ STABLE D'UN RENDU À L'AUTRE — c'est ce qui rend le `memo` des cellules
    * utile. Voir `useOnPoser`.
    */
-  const onPoser = useOnPoser(planning, onChanger, modules, semaines);
+  const onPoser = useOnPoser(planning, onChanger, modules, semaines, groupe);
+
+  /*
+   * ═══ FILTRES DES QUATRE PREMIÈRES COLONNES (2026-10-09, demande du porteur) ═══
+   * Module, EFM, semestre, formateur (ou groupe en vue formateur) — comme le
+   * filtre automatique d'Excel. Une colonne sans filtre vaut `null`.
+   *
+   * ⚠️ LES FILTRES MASQUENT DES LIGNES, ILS NE TOUCHENT PAS AU PLANNING : le
+   *    pied de grille (total par semaine) reste celui de TOUTES les lignes —
+   *    c'est la charge réelle du groupe ou du formateur, que masquer un module
+   *    ne diminue pas.
+   * ⚠️ LA SÉLECTION, LE COPIER-COLLER ET SUPPR NE VOIENT QUE LES LIGNES
+   *    AFFICHÉES : la sélection est vidée à chaque changement de filtre, pour
+   *    ne jamais effacer une case qu'on ne voit plus.
+   */
+  const [filtres, setFiltres] = useState({ module: null, efm: null, semestre: null, colonne: null });
+  const valeursDeLigne = useMemo(
+    () => ({
+      module: (ligne) => [ligne.code],
+      efm: (ligne) => [ligne.estRegional ? 'Régional' : 'Non régional'],
+      semestre: (ligne) => [LIBELLES_SEMESTRE[ligne.semestre] ?? '—'],
+      colonne: (ligne) =>
+        String(colonne.valeur(ligne) || '—')
+          .split(' · ')
+          .map((valeur) => valeur.trim())
+          .filter(Boolean),
+    }),
+    [colonne]
+  );
+  const optionsFiltres = useMemo(() => {
+    const options = {};
+    for (const [cle, lire] of Object.entries(valeursDeLigne)) {
+      options[cle] = [...new Set(modules.flatMap(lire))].sort((a, b) => a.localeCompare(b, 'fr'));
+    }
+    return options;
+  }, [modules, valeursDeLigne]);
+  const affichees = useMemo(
+    () =>
+      modules.filter((ligne) =>
+        Object.entries(filtres).every(
+          ([cle, choisies]) => choisies === null || valeursDeLigne[cle](ligne).some((v) => choisies.has(v))
+        )
+      ),
+    [modules, filtres, valeursDeLigne]
+  );
+  const filtreActif = Object.values(filtres).some((choisies) => choisies !== null);
+
+  /*
+   * ═══ SÉLECTION MULTIPLE (2026-10-09, demande du porteur) ═══
+   * « Permettre la sélection multiple avec Ctrl, et la suppression avec Suppr. »
+   * Ctrl+clic (⌘ sur Mac) ajoute ou retire une case ; un clic ordinaire vide la
+   * sélection ; Échap aussi ; Suppr efface toutes les cases sélectionnées.
+   *
+   * ⚠️ `cle||semaine`, la même clé que l'ouverture d'une case.
+   * ⚠️ UN SEUL ENVOI pour toute la sélection : effacer case par case via
+   *    `onPoser` relirait chaque fois le planning d'AVANT le rendu, et seule
+   *    la dernière case serait effacée.
+   */
+  const [selection, setSelection] = useState(() => new Set());
+  const filtrer = useCallback((cle, choisies) => {
+    setFiltres((courants) => ({ ...courants, [cle]: choisies }));
+    setSelection((courante) => (courante.size === 0 ? courante : new Set()));
+  }, []);
+  const onSelectionner = useCallback((cle, numero) => {
+    setSelection((courante) => {
+      if (cle === null) return courante.size === 0 ? courante : new Set();
+      const suivante = new Set(courante);
+      const id = `${cle}||${numero}`;
+      if (suivante.has(id)) suivante.delete(id);
+      else suivante.add(id);
+      return suivante;
+    });
+  }, []);
+
+  /*
+   * ═══ SÉLECTION PAR GLISSEMENT, COMME DANS EXCEL (2026-10-09) ═══
+   * Clic maintenu puis glissement : le RECTANGLE lignes × semaines entre la
+   * case de départ et celle sous le curseur. Ctrl + glissement l'ajoute à la
+   * sélection existante ; Maj+clic l'étend depuis la dernière case cliquée.
+   *
+   * ⚠️ UN SEUL ÉCOUTEUR SUR LA FENÊTRE, posé à l'appui et retiré au
+   *    relâchement — la leçon de la recopie (plus haut) : un gestionnaire par
+   *    cellule faisait re-rendre la grille entière à chaque pixel.
+   * ⚠️ UN CLIC SANS GLISSEMENT reste un clic : il ouvre la liste des heures.
+   *    Seul un glissement réel (le curseur a changé de case) sélectionne, et
+   *    le clic qui le suit éventuellement est alors avalé.
+   * ⚠️ `souris` EST STABLE (refs) : les cellules mémoïsées ne se re-rendent
+   *    pas à cause d'elle.
+   */
+  const identiteGrille = useRef(Symbol('grille'));
+  const activer = useCallback(() => {
+    grilleActive = identiteGrille.current;
+  }, []);
+
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
+  const modulesRef = useRef(affichees);
+  modulesRef.current = affichees;
+
+  const souris = useMemo(() => {
+    let glissement = null;
+    let ancre = null;
+    let avaler = false;
+
+    const rectangle = (depart, arrivee) => {
+      const lignes = modulesRef.current.map(cleDe);
+      const a = lignes.indexOf(depart.cle);
+      const b = lignes.indexOf(arrivee.cle);
+      if (a < 0 || b < 0) return null;
+      const [haut, bas] = a <= b ? [a, b] : [b, a];
+      const [debut, fin] = [Math.min(depart.numero, arrivee.numero), Math.max(depart.numero, arrivee.numero)];
+      const cases = new Set();
+      for (let rang = haut; rang <= bas; rang += 1) {
+        for (let numero = debut; numero <= fin; numero += 1) cases.add(`${lignes[rang]}||${numero}`);
+      }
+      return cases;
+    };
+    const reunir = (base, cases) => new Set([...base, ...cases]);
+
+    const suivre = (evenement) => {
+      if (!glissement) return;
+      const sous = document
+        .elementFromPoint(evenement.clientX, evenement.clientY)
+        ?.closest('[data-ligne][data-semaine]');
+      if (!sous) return;
+      const cible = { cle: sous.dataset.ligne, numero: Number(sous.dataset.semaine) };
+      const id = `${cible.cle}||${cible.numero}`;
+      if (id === glissement.derniere) return;
+      glissement.derniere = id;
+      if (!glissement.actif && id === `${glissement.ancre.cle}||${glissement.ancre.numero}`) return;
+      const cases = rectangle(glissement.ancre, cible);
+      if (!cases) return;
+      glissement.actif = true;
+      setSelection(reunir(glissement.base, cases));
+    };
+
+    const finir = () => {
+      if (glissement?.actif) avaler = true;
+      glissement = null;
+      window.removeEventListener('pointermove', suivre);
+      window.removeEventListener('pointerup', finir);
+    };
+
+    return {
+      /** Appui sur une case : un glissement PEUT commencer. */
+      debut(cle, numero, evenement) {
+        activer();
+        if (evenement.button !== 0 || evenement.shiftKey) return;
+        avaler = false;
+        ancre = { cle, numero };
+        const ajout = evenement.ctrlKey || evenement.metaKey;
+        glissement = {
+          ancre,
+          base: ajout ? new Set(selectionRef.current) : new Set(),
+          actif: false,
+          derniere: `${cle}||${numero}`,
+        };
+        window.addEventListener('pointermove', suivre);
+        window.addEventListener('pointerup', finir);
+      },
+      /** Le clic qui suit un glissement ne doit pas ouvrir la case. */
+      consommer() {
+        const etait = avaler;
+        avaler = false;
+        return etait;
+      },
+      /** Maj+clic : le rectangle depuis la dernière case cliquée. */
+      etendre(cle, numero, ajout) {
+        const depart = ancre ?? { cle, numero };
+        const cases = rectangle(depart, { cle, numero });
+        if (!cases) return;
+        setSelection(ajout ? reunir(selectionRef.current, cases) : cases);
+      },
+      /** Un Ctrl+clic fixe aussi le point de départ d'un futur Maj+clic. */
+      ancrer(cle, numero) {
+        ancre = { cle, numero };
+      },
+      /** La dernière case cliquée — point de collage sans sélection. */
+      ancreActuelle() {
+        return ancre;
+      },
+    };
+  }, [activer]);
+
+  /*
+   * ═══ LE CLAVIER : Suppr, Échap, Ctrl+C, Ctrl+V (2026-10-09) ═══
+   *
+   * ⚠️ SEULE LA GRILLE ACTIVE RÉPOND — la dernière où l'on a cliqué. La page
+   *    affiche souvent plusieurs grilles (un groupe chacune) : sans ce garde,
+   *    Ctrl+V collerait dans toutes celles qui gardent une sélection.
+   */
+  useEffect(() => {
+    if (lectureSeule || onClicDirect) return undefined;
+
+    /** `cle||semaine` → { cle, numero } */
+    const lire = (id) => {
+      const separateur = id.lastIndexOf('||');
+      return { cle: id.slice(0, separateur), numero: Number(id.slice(separateur + 2)) };
+    };
+    const lignes = affichees.map(cleDe);
+    const semaineDe = (module, numero) =>
+      (module?.semaines ?? semaines).find((candidate) => candidate.numero === numero);
+
+    const effacer = () => {
+      let suivant = planning;
+      for (const id of selection) {
+        const { cle, numero } = lire(id);
+        const module = modules.find((candidat) => cleLigne(candidat) === cle);
+        const semaine = semaineDe(module, numero);
+        // Une case fermée ou déjà vide n'a rien à effacer.
+        if (!module || !semaine?.disponible || !suivant?.[cle]?.[numero]) continue;
+        suivant = effacerAvecJumelles({ planning: suivant, modules, module, semaine }).planning;
+      }
+      setSelection(new Set());
+      if (suivant !== planning) onChanger(suivant);
+    };
+
+    /*
+     * ⚠️ COPIER RETIENT LA FORME : chaque case par son décalage (lignes,
+     *    semaines) depuis le coin haut-gauche de la sélection — c'est ce qui
+     *    permet de coller le même motif ailleurs, comme dans un tableur. Une
+     *    case sélectionnée VIDE est retenue aussi : coller la videra.
+     *    Le texte part aussi dans le presse-papiers du système (tabulations),
+     *    pour un collage dans Excel.
+     */
+    const copier = () => {
+      const cases = [...selection].map(lire).filter(({ cle }) => lignes.includes(cle));
+      if (cases.length === 0) return;
+      const haut = Math.min(...cases.map(({ cle }) => lignes.indexOf(cle)));
+      const gauche = Math.min(...cases.map(({ numero }) => numero));
+      pressePapiers = cases.map(({ cle, numero }) => ({
+        dl: lignes.indexOf(cle) - haut,
+        dw: numero - gauche,
+        cellule: planning?.[cle]?.[numero] ?? null,
+      }));
+
+      const bas = Math.max(...pressePapiers.map((c) => c.dl));
+      const droite = Math.max(...pressePapiers.map((c) => c.dw));
+      const texte = Array.from({ length: bas + 1 }, (_, dl) =>
+        Array.from({ length: droite + 1 }, (_, dw) => {
+          const trouvee = pressePapiers.find((c) => c.dl === dl && c.dw === dw);
+          return trouvee?.cellule ? String(trouvee.cellule.heures).replace('.', ',') : '';
+        }).join('\t')
+      ).join('\n');
+      navigator.clipboard?.writeText(texte).catch(() => {});
+
+      toast.success(`${cases.length} case(s) copiée(s)`, {
+        description: 'Sélectionnez la case de destination, puis Ctrl+V.',
+      });
+    };
+
+    /*
+     * ⚠️ COLLER REPASSE PAR LES CONTRÔLES DE LA SAISIE (`essayerPose`) :
+     *    vacances, plafond, masse horaire, cours du soir. Ce qui ne passe pas
+     *    est COMPTÉ et dit — comme la recopie par glissement. Le point de
+     *    collage : le coin haut-gauche de la sélection, sinon la dernière case
+     *    cliquée.
+     */
+    const coller = () => {
+      if (!pressePapiers?.length) return;
+      const choisies = [...selection].map(lire).filter(({ cle }) => lignes.includes(cle));
+      const ancre = choisies.length
+        ? {
+            rang: Math.min(...choisies.map(({ cle }) => lignes.indexOf(cle))),
+            numero: Math.min(...choisies.map(({ numero }) => numero)),
+          }
+        : (() => {
+            const derniere = souris.ancreActuelle();
+            return derniere && lignes.includes(derniere.cle)
+              ? { rang: lignes.indexOf(derniere.cle), numero: derniere.numero }
+              : null;
+          })();
+      if (!ancre) return;
+
+      let suivant = planning;
+      let collees = 0;
+      let refusees = 0;
+      for (const { dl, dw, cellule } of pressePapiers) {
+        const cle = lignes[ancre.rang + dl];
+        const module = cle && modules.find((candidat) => cleLigne(candidat) === cle);
+        const semaine = module && semaineDe(module, ancre.numero + dw);
+        if (!module || !semaine) {
+          refusees += 1;
+          continue;
+        }
+        if (!cellule) {
+          if (suivant?.[cle]?.[semaine.numero] && semaine.disponible) {
+            suivant = effacerAvecJumelles({ planning: suivant, modules, module, semaine }).planning;
+          }
+          continue;
+        }
+        const groupeCase = module.groupe ?? groupe ?? null;
+        const parts = partsDeCellule(cellule);
+        let essai = { planning: suivant };
+        if (parts.P > 0) {
+          essai = essayerPose({ planning: essai.planning, modules, module, semaine, heures: parts.P, type: TYPES.PRESENTIEL, groupe: groupeCase, semainesParDefaut: semaines });
+        }
+        if (!essai.motif && parts.S > 0) {
+          essai = essayerPose({ planning: essai.planning, modules, module, semaine, heures: parts.S, type: TYPES.SYNCHRONE, groupe: groupeCase, semainesParDefaut: semaines, partSeule: parts.P > 0 });
+        }
+        if (essai.motif) {
+          refusees += 1;
+          continue;
+        }
+        suivant = essai.planning;
+        collees += 1;
+      }
+
+      setSelection(new Set());
+      if (suivant !== planning) onChanger(suivant);
+      if (refusees > 0) {
+        toast.warning(`${collees} case(s) collée(s), ${refusees} refusée(s)`, {
+          description: 'Hors de la grille, semaine fermée, plafond, masse horaire ou valeur non permise.',
+        });
+      } else if (collees > 0) {
+        toast.success(`${collees} case(s) collée(s)`);
+      }
+    };
+
+    const auClavier = (evenement) => {
+      if (grilleActive !== identiteGrille.current) return;
+      // Une saisie en cours (liste ouverte, champ) garde ses touches.
+      if (evenement.target?.closest?.('input, textarea, select, [role="listbox"], [contenteditable="true"]')) {
+        return;
+      }
+      const ctrl = evenement.ctrlKey || evenement.metaKey;
+      const touche = evenement.key.toLowerCase();
+
+      if (evenement.key === 'Escape' && selection.size > 0) {
+        setSelection(new Set());
+      } else if (evenement.key === 'Delete' && selection.size > 0) {
+        evenement.preventDefault();
+        effacer();
+      } else if (ctrl && touche === 'c' && selection.size > 0) {
+        evenement.preventDefault();
+        copier();
+      } else if (ctrl && touche === 'v' && pressePapiers?.length) {
+        evenement.preventDefault();
+        coller();
+      }
+    };
+
+    window.addEventListener('keydown', auClavier);
+    return () => window.removeEventListener('keydown', auClavier);
+  }, [selection, lectureSeule, onClicDirect, planning, modules, affichees, semaines, onChanger, groupe, souris]);
 
   // ⚠️ STABLE, pour le `memo` des cellules : la dernière version est lue par `ref`.
   const clicDirect = useRef(onClicDirect);
@@ -554,6 +971,7 @@ export default function GrilleChronogramme({
         // capacité de la semaine.
         posesSemaine: totalSemaineFusionnee(sansCetteCase, semaine.numero, modules),
         autrePart: autrePartDe(modules, suivant, cible, semaine.numero),
+        groupe: cible?.groupe ?? groupe ?? null,
       });
 
       if (!controle.possible) {
@@ -583,7 +1001,7 @@ export default function GrilleChronogramme({
         `${refusees} semaine(s) non remplie(s) : vacances, stage, plafond ou masse horaire atteinte.`
       );
     }
-  }, [remplissage, modules, semaines, planning, onChanger]);
+  }, [remplissage, modules, semaines, planning, onChanger, groupe]);
 
   /*
    * ⚠️ UN SEUL ÉCOUTEUR SUR LA FENÊTRE, et non un `onPointerEnter` par cellule.
@@ -691,26 +1109,62 @@ export default function GrilleChronogramme({
               style={{ left: rem(GAUCHE.module), width: rem(LARGEURS.module) }}
               className={cn(COLLANTE_ENTETE, 'border-b px-3 py-2 text-left')}
             >
-              Module
+              <span className="flex items-center justify-between gap-1">
+                Module
+                <FiltreColonne
+                  titre={'Module'}
+                  valeurs={optionsFiltres.module}
+                  choisies={filtres.module}
+                  onChanger={(choisies) => filtrer('module', choisies)}
+                  recherche
+                />
+              </span>
             </th>
             <th
               style={{ left: rem(GAUCHE.regional), width: rem(LARGEURS.regional) }}
               className={cn(COLLANTE_ENTETE, 'border-b px-1 py-2 text-center text-xs font-normal')}
               title="EFM régional"
             >
-              EFM
+              <span className="flex items-center justify-center gap-1">
+                EFM
+                <FiltreColonne
+                  titre={'EFM'}
+                  valeurs={optionsFiltres.efm}
+                  choisies={filtres.efm}
+                  onChanger={(choisies) => filtrer('efm', choisies)}
+                  
+                />
+              </span>
             </th>
             <th
               style={{ left: rem(GAUCHE.semestre), width: rem(LARGEURS.semestre) }}
               className={cn(COLLANTE_ENTETE, 'border-b px-1 py-2 text-center text-xs font-normal')}
             >
-              Sem.
+              <span className="flex items-center justify-center gap-1">
+                Sem.
+                <FiltreColonne
+                  titre={'Sem.'}
+                  valeurs={optionsFiltres.semestre}
+                  choisies={filtres.semestre}
+                  onChanger={(choisies) => filtrer('semestre', choisies)}
+                  
+                />
+              </span>
             </th>
             <th
               style={{ left: rem(GAUCHE.formateur), width: rem(LARGEURS.formateur) }}
               className={cn(COLLANTE_ENTETE, 'border-b border-r px-3 py-2 text-left font-normal')}
             >
-              {colonne.titre}
+              <span className="flex items-center justify-between gap-1">
+                {colonne.titre}
+                <FiltreColonne
+                  titre={colonne.titre}
+                  valeurs={optionsFiltres.colonne}
+                  choisies={filtres.colonne}
+                  onChanger={(choisies) => filtrer('colonne', choisies)}
+                  recherche
+                />
+              </span>
             </th>
 
             {semaines.map((semaine) => (
@@ -727,10 +1181,27 @@ export default function GrilleChronogramme({
           seconde fois — conflit de version. La case ouverte, la recopie et le dépliage
           passent par l'état partagé (plus haut) ; les heures, par l'annonce temps réel.
         */}
-        <tbody data-guidage-edition>
-          {modules.map((module) => (
+        <tbody data-guidage-edition className="select-none">
+          {affichees.length === 0 && filtreActif && (
+            <tr>
+              <td colSpan={4} className="sticky left-0 border-b px-3 py-3 text-sm text-muted-foreground">
+                Aucune ligne ne correspond aux filtres.{' '}
+                <button
+                  type="button"
+                  className="text-primary hover:underline"
+                  onClick={() => setFiltres({ module: null, efm: null, semestre: null, colonne: null })}
+                >
+                  Retirer les filtres
+                </button>
+              </td>
+            </tr>
+          )}
+          {affichees.map((module, rang) => (
             <LigneModule
               key={cleDe(module)}
+              // Les lignes voisines : le cadre de sélection s'arrête où elles ne le sont pas.
+              clePrecedente={rang > 0 ? cleDe(affichees[rang - 1]) : null}
+              cleSuivante={rang < affichees.length - 1 ? cleDe(affichees[rang + 1]) : null}
               module={module}
               colonne={colonne}
               /*
@@ -744,6 +1215,7 @@ export default function GrilleChronogramme({
                */
               semaines={module.semaines ?? semaines}
               identite={`${module.groupe ?? groupe}||${module.code}`}
+              groupe={module.groupe ?? groupe}
               // ⚠️ L'objet de la LIGNE, stable d'un rendu à l'autre : la cellule
               // mémoïsée n'en reçoit que sa semaine.
               marquesLigne={marques?.[`${module.groupe ?? groupe}||${module.code}`.toUpperCase()]}
@@ -757,6 +1229,9 @@ export default function GrilleChronogramme({
               lectureSeule={lectureSeule}
               onClicDirect={onClicDirect ? surClicDirect : null}
               onBasculer={basculerDepli}
+              selection={selection}
+              onSelectionner={onClicDirect ? null : onSelectionner}
+              souris={onClicDirect || lectureSeule ? null : souris}
             />
           ))}
         </tbody>
@@ -1032,7 +1507,21 @@ function Badges({ semaine }) {
   );
 }
 
-function LigneModule({ module, colonne, semaines, identite, marquesLigne, planning, realise, ouverte, onOuvrir, onPoser, remplissage, onDemarrerRemplissage, lectureSeule, onClicDirect, onBasculer }) {
+/** Le masque de sélection d'une case — voir `CADRES_SELECTION`. */
+function masqueSelection(selection, cle, clePrecedente, cleSuivante, numero) {
+  if (!selection || selection.size === 0) return 0;
+  const choisie = (ligne, semaine) => ligne !== null && selection.has(`${ligne}||${semaine}`);
+  if (!choisie(cle, numero)) return 0;
+  return (
+    1 |
+    (choisie(clePrecedente, numero) ? 0 : BORD_HAUT) |
+    (choisie(cleSuivante, numero) ? 0 : BORD_BAS) |
+    (choisie(cle, numero - 1) ? 0 : BORD_GAUCHE) |
+    (choisie(cle, numero + 1) ? 0 : BORD_DROIT)
+  );
+}
+
+function LigneModule({ clePrecedente, cleSuivante, selection, onSelectionner, souris, module, colonne, semaines, identite, groupe, marquesLigne, planning, realise, ouverte, onOuvrir, onPoser, remplissage, onDemarrerRemplissage, lectureSeule, onClicDirect, onBasculer }) {
   const cle = cleDe(module);
   const depliable = estDepliable(module);
   // Le bouton vit sur la ligne repliée, puis sur la PREMIÈRE des deux lignes.
@@ -1160,6 +1649,7 @@ function LigneModule({ module, colonne, semaines, identite, marquesLigne, planni
           semaine={semaine}
           module={module}
           identite={identite}
+          groupe={groupe}
           /*
            * ⚠⚠ SA VALEUR, PAS LE PLANNING ENTIER. Passer `planning` donnait à
            * chaque cellule une prop qui change dès qu'UNE case bouge : les 765
@@ -1176,6 +1666,9 @@ function LigneModule({ module, colonne, semaines, identite, marquesLigne, planni
           onClicDirect={onClicDirect}
           depliable={depliable}
           onBasculer={onBasculer}
+          bordsSelection={masqueSelection(selection, cle, clePrecedente, cleSuivante, semaine.numero)}
+          onSelectionner={onSelectionner}
+          souris={souris}
           survole={estDansLeGlissement(remplissage, cle, semaine.numero)}
           /*
            * ⚠️ Module COMPLET : on ferme les cellules encore VIDES, pas toutes.
@@ -1292,7 +1785,7 @@ function ColonnesStats({ entete, module, poses, ecart }) {
  * obtient le style complet — panneau, groupes, coche, navigation clavier — avec
  * UNE SEULE instance montée à la fois, celle qu'on manipule.
  */
-function CelluleBrute({ semaine, module, identite, cellule, marque, ouverte, onOuvrir, onPoser, complet, survole, onDemarrerRemplissage, lectureSeule, onClicDirect, depliable, onBasculer }) {
+function CelluleBrute({ bordsSelection = 0, onSelectionner = null, souris = null, semaine, module, identite, groupe, cellule, marque, ouverte, onOuvrir, onPoser, complet, survole, onDemarrerRemplissage, lectureSeule, onClicDirect, depliable, onBasculer }) {
   const cle = cleDe(module);
   /*
    * ⚠️ UNE CASE MIXTE NE S'ÉDITE PAS SUR UNE SEULE LIGNE (2026-10-01) : la
@@ -1351,6 +1844,8 @@ function CelluleBrute({ semaine, module, identite, cellule, marque, ouverte, onO
         (finDeSemestre(semaine) ? ' ' + FIN_SEMESTRE : '')
       }
       data-semaine={semaine.numero}
+      // La ligne, pour la sélection par glissement (elle lit la case sous le curseur).
+      data-ligne={cle}
       /*
        * L'identité de la case pour le temps réel : `groupe||module||semaine`, la
        * même en vue groupe et en vue formateur — un curseur posé d'un côté se
@@ -1363,6 +1858,7 @@ function CelluleBrute({ semaine, module, identite, cellule, marque, ouverte, onO
           valeur={valeur}
           cellule={cellule}
           module={module}
+          groupe={groupe}
           apparence={apparence}
           plafond={plafondSemaine(semaine)}
           onChoisir={choisir}
@@ -1397,13 +1893,28 @@ function CelluleBrute({ semaine, module, identite, cellule, marque, ouverte, onO
            * chez l'autre, qui vient d'être ouverte par l'état.
            */
           data-guidage-ignorer={!mixte && !onClicDirect ? '' : undefined}
-          onClick={() =>
-            mixte
-              ? onBasculer?.(cle)
-              : onClicDirect
-                ? onClicDirect(module, semaine)
-                : onOuvrir({ module: cle, semaine: semaine.numero })
-          }
+          onPointerDown={souris ? (evenement) => souris.debut(cle, semaine.numero, evenement) : undefined}
+          onClick={(evenement) => {
+            // Le clic qui termine un glissement de sélection n'ouvre rien.
+            if (souris?.consommer()) return;
+            // Maj+clic : étendre la sélection depuis la dernière case cliquée.
+            if (souris && evenement.shiftKey) {
+              evenement.preventDefault();
+              souris.etendre(cle, semaine.numero, evenement.ctrlKey || evenement.metaKey);
+              return;
+            }
+            // Ctrl+clic (⌘ sur Mac) : sélectionner, sans ouvrir (2026-10-09).
+            if (onSelectionner && (evenement.ctrlKey || evenement.metaKey)) {
+              evenement.preventDefault();
+              onSelectionner(cle, semaine.numero);
+              souris?.ancrer(cle, semaine.numero);
+              return;
+            }
+            onSelectionner?.(null);
+            if (mixte) onBasculer?.(cle);
+            else if (onClicDirect) onClicDirect(module, semaine);
+            else onOuvrir({ module: cle, semaine: semaine.numero });
+          }}
           title={titreMixte}
           className={apparence + ' mx-auto disabled:cursor-not-allowed disabled:opacity-40'}
         >
@@ -1422,6 +1933,8 @@ function CelluleBrute({ semaine, module, identite, cellule, marque, ouverte, onO
       )}
 
       <MarqueCellule marque={marque} />
+
+      {bordsSelection > 0 && <span aria-hidden="true" className={CADRES_SELECTION[bordsSelection]} />}
 
       {/*
         La poignée n'apparaît que sur une cellule REMPLIE, et au survol de la
@@ -1513,11 +2026,17 @@ function fondDeLaCellule(cellule, semaine) {
 /**
  * La liste des heures, montée UNIQUEMENT pour la cellule ouverte.
  *
- * ⚠️ `HEURES.filter()` et le calcul du plafond vivaient dans CHAQUE cellule :
- * 765 tableaux alloués par rendu pour une liste qu'on n'ouvre qu'une à la fois.
+ * ⚠️ La liste et le calcul du plafond vivaient dans CHAQUE cellule : 765
+ * tableaux alloués par rendu pour une liste qu'on n'ouvre qu'une à la fois.
+ *
+ * ⚠️ ELLE VIENT DU DOMAINE (`heuresProposees`), qui connaît le cours du soir
+ *    (2026-10-09) : 2 ; 2,5 ; 4 ; 5 ; 6 ; 7,5 ; 8 ; 10 ; 12 h en présentiel,
+ *    aucun synchrone. Le contrôle de la saisie (`verifierCellule`) applique la
+ *    même règle — une liste écrite ici l'aurait fait diverger.
  */
-function ListeHeures({ valeur, cellule, module, apparence, plafond, onChoisir, onFermer }) {
-  const disponibles = HEURES.filter((heures) => heures <= plafond);
+function ListeHeures({ valeur, cellule, module, groupe, apparence, plafond, onChoisir, onFermer }) {
+  const presentiel = heuresProposees({ groupe, type: TYPES.PRESENTIEL, plafond });
+  const synchrone = heuresProposees({ groupe, type: TYPES.SYNCHRONE, plafond });
 
   return (
     <Select
@@ -1543,7 +2062,7 @@ function ListeHeures({ valeur, cellule, module, apparence, plafond, onChoisir, o
         {module.typeSeul !== TYPES.SYNCHRONE && (
           <SelectGroup>
             <SelectLabel>Présentiel</SelectLabel>
-            {disponibles.map((heures) => (
+            {presentiel.map((heures) => (
               <SelectItem key={`${heures}P`} value={`${heures}|P`}>
                 {heures}
               </SelectItem>
@@ -1556,10 +2075,10 @@ function ListeHeures({ valeur, cellule, module, apparence, plafond, onChoisir, o
           synchrones : en proposer sur un module qui n'en a pas invite à poser
           des heures que la masse refusera ensuite.
         */}
-        {module.masses.synchrone > 0 && module.typeSeul !== TYPES.PRESENTIEL && (
+        {module.masses.synchrone > 0 && module.typeSeul !== TYPES.PRESENTIEL && synchrone.length > 0 && (
           <SelectGroup>
             <SelectLabel className="text-accent-purple-deep">Synchrone</SelectLabel>
-            {disponibles.map((heures) => (
+            {synchrone.map((heures) => (
               <SelectItem key={`${heures}S`} value={`${heures}|S`}>
                 {heures} (S)
               </SelectItem>
@@ -1574,7 +2093,8 @@ function ListeHeures({ valeur, cellule, module, apparence, plafond, onChoisir, o
           le déclencheur retomberait sur du vide, donnant une cellule vide alors
           qu'elle porte des heures.
         */}
-        {cellule && !disponibles.some((h) => `${h}|${cellule.type}` === valeur) && (
+        {cellule &&
+          ![...presentiel.map((h) => `${h}|P`), ...synchrone.map((h) => `${h}|S`)].includes(valeur) && (
           <SelectItem value={valeur}>{cellule.heures} !</SelectItem>
         )}
       </SelectContent>

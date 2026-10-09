@@ -17,9 +17,12 @@ export {
 export {
   TYPES,
   TYPE_MIXTE,
+  VALEURS_PRESENTIEL_CDS,
   capaciteSemaine,
   celluleDepuisParts,
+  estGroupeDuSoir,
   estMixte,
+  heuresProposees,
   partsDeCellule,
   poserCellule,
   resteAPlanifier,
@@ -42,10 +45,12 @@ export {
   ENTETES_MASSES,
   FEUILLES_TECHNIQUES,
   VALEURS_AUTORISEES,
+  VALEURS_AUTORISEES_CDS,
   entetes,
   fusionnerCellules,
   lignesClasseur,
   lireFeuilleChronogramme,
+  refusDeValeur,
 } from './classeur.js';
 
 export { SEUIL_HEBDOMADAIRE, chargesHebdomadaires } from './charge.js';

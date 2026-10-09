@@ -8,6 +8,7 @@ import {
   SEMAINES_METIER_FORMATION,
   bornerALaFinDeFormation,
   derniereSemaineDuGroupe,
+  estGroupeDuSoir,
   estGroupePIE,
   estModuleMetierFormation,
   ferieSurJourDisponible,
@@ -189,18 +190,29 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
 
   // ─── 1. Les tâches, tirées des affectations ───
   const taches = new Map();
+  const groupesCds = new Set();
   for (const affectation of base?.affectations ?? []) {
     const formateur = String(affectation.formateur ?? '').trim();
     const module = String(affectation.module ?? '').trim();
     if (formateur === '' || module === '') continue;
 
-    const membres = [
+    const tous = [
       ...new Set(
         separerFusion(affectation.groupe)
           .map((nom) => canonique.get(String(nom).trim().toUpperCase()))
           .filter(Boolean)
       ),
     ].sort();
+    /*
+     * ═══ ⚠️ LES GROUPES DU COURS DU SOIR NE SONT PAS GÉNÉRÉS (2026-10-09) ═══
+     * Demande du porteur : « exclure les groupes CDS de la génération
+     * automatique — veuillez les planifier manuellement ». Leur chronogramme
+     * n'est jamais touché, et leurs heures ne pèsent pas dans la cible du
+     * formateur : la génération ne planifie que la journée. Une séance
+     * mutualisée avec un groupe du soir est générée pour les autres seulement.
+     */
+    for (const groupe of tous) if (estGroupeDuSoir(groupe)) groupesCds.add(groupe);
+    const membres = tous.filter((groupe) => !estGroupeDuSoir(groupe));
     if (membres.length === 0) continue;
 
     const synchrone = affectation.type === TYPES_COURS.SYNCHRONE;
@@ -603,6 +615,7 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
     groupesVides,
     reserveRegionale: arrondir(reserveRegionale),
     partsRemplacees,
+    groupesCds: [...groupesCds].sort((a, b) => a.localeCompare(b, 'fr')),
     semainesDe,
   };
 }
@@ -815,6 +828,8 @@ function bilan(construit, solution, plannings, base) {
       0
     ),
     partsRemplacees: construit.partsRemplacees,
+    // Les groupes du soir, exclus : à planifier à la main (2026-10-09).
+    groupesCds: construit.groupesCds,
     heuresDemandees: arrondir(heuresDemandees),
     reserveRegionale: construit.reserveRegionale,
     heuresPlanifiees: arrondir((solution.poses ?? []).reduce((s, p) => s + p.heures, 0)),

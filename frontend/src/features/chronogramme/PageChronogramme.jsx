@@ -60,11 +60,13 @@ import {
   groupesModifies,
   integrerPlanning,
   omettreGroupes,
+  reporterSaisie,
 } from './etatPlannings';
 import { estVersionPerimee } from '@/lib/useBrouillonVersionne';
 import BarreClasseur from './BarreClasseur';
 import BoutonCharge from './BoutonCharge';
 import BoutonGenerer from './BoutonGenerer';
+import BoutonReinitialiserTout from './BoutonReinitialiserTout';
 import BoutonLiaison from './BoutonLiaison';
 import { useEtatPartage } from '@/features/guidage/useEtatPartage';
 
@@ -107,6 +109,12 @@ const VUE_CHRONOGRAMME = {};
  * attendre, et l'écriture d'un groupe est légère.
  */
 const REPOS_CHRONOGRAMME = 300;
+
+/**
+ * Combien de fois une saisie refusée pour « modifié entre-temps » est reportée
+ * sur la version à jour et renvoyée, avant d'être abandonnée (2026-10-09).
+ */
+const ESSAIS_REPORT = 3;
 
 export default function PageChronogramme() {
   const cache = useQueryClient();
@@ -469,6 +477,12 @@ export default function PageChronogramme() {
   const versionsBase = useRef({});
   const aAdopter = useRef(new Set());
   const [adoptions, setAdoptions] = useState(0);
+  /*
+   * Les cases saisies ICI et changées AUTREMENT par un collègue (2026-10-09) :
+   * la valeur enregistrée l'emporte, et on le dit. Une Map à clé, remplie par
+   * l'amorçage — que React peut rejouer —, vidée par l'effet qui l'annonce.
+   */
+  const conflitsCases = useRef(new Map());
 
   useEffect(() => {
     const avant = precedents.current;
@@ -482,11 +496,34 @@ export default function PageChronogramme() {
     for (const groupe of forces) aAdopter.current.delete(groupe);
 
     setPlannings((courants) => {
-      const suivants = amorcerPlannings(omettreGroupes(courants, forces), initiaux, avant);
-      versionsBase.current = amorcerVersions(versionsBase.current, suivants, initiaux, versionsInitiales);
+      const suivants = amorcerPlannings(omettreGroupes(courants, forces), initiaux, avant, conflitsCases.current);
+      /*
+       * ⚠️ `avant` : la saisie vient d'être REPORTÉE sur ce que rend le serveur —
+       *    elle repose donc sur SA version (2026-10-09). Sans cela, un formateur
+       *    qui saisissait pendant qu'un collègue du même groupe enregistrait était
+       *    refusé en 409, et sa saisie abandonnée — voir `amorcerVersions`.
+       */
+      versionsBase.current = amorcerVersions(versionsBase.current, suivants, initiaux, versionsInitiales, avant);
       return suivants;
     });
   }, [initiaux, versionsInitiales, adoptions]);
+
+  // Les vrais conflits de case, dits une fois : la saisie d'ici n'a pas été gardée.
+  useEffect(() => {
+    if (conflitsCases.current.size === 0) return;
+    const cases = [...conflitsCases.current.values()];
+    conflitsCases.current.clear();
+    const libelle = cases
+      .slice(0, 4)
+      .map(({ groupe, module, semaine }) => `${groupe} · ${module} · S${semaine}`)
+      .join(', ');
+    toast.warning(
+      cases.length === 1 ? 'Une case modifiée par un collègue en même temps' : `${cases.length} cases modifiées par un collègue en même temps`,
+      {
+        description: `${libelle}${cases.length > 4 ? '…' : ''} : sa valeur, déjà enregistrée, a été conservée. Le reste de votre saisie est gardé.`,
+      }
+    );
+  }, [plannings]);
 
   const modifies = groupesModifies(plannings, initiaux);
 
@@ -503,11 +540,29 @@ export default function PageChronogramme() {
        */
       const issues = await Promise.allSettled(
         modifies.map(async (groupe) => {
-          const reponse = await enregistrerChronogramme(
-            groupe,
-            plannings[groupe],
-            versionsBase.current[groupe] ?? 0
-          );
+          /*
+           * ═══ ⚠️ UN REFUS DE VERSION N'ABANDONNE PLUS LA SAISIE (2026-10-09) ═══
+           * (Signalé par le porteur : des formateurs perdaient leur saisie.) Deux
+           * personnes du même groupe qui enregistrent au même instant : la seconde
+           * est refusée (409). On relit le groupe, on reporte la saisie dessus case
+           * par case (`reporterSaisie`) et on renvoie — la saisie n'est abandonnée
+           * qu'après plusieurs refus d'affilée.
+           */
+          let socle = initiaux[groupe] ?? {};
+          let envoye = plannings[groupe];
+          let version = versionsBase.current[groupe] ?? 0;
+          let reponse;
+          for (let essai = 0; !reponse; essai += 1) {
+            try {
+              reponse = await enregistrerChronogramme(groupe, envoye, version);
+            } catch (erreur) {
+              if (!estVersionPerimee(erreur) || essai >= ESSAIS_REPORT) throw erreur;
+              const actuel = await chargerChronogramme(groupe);
+              envoye = reporterSaisie(socle, envoye, actuel.planning ?? {}).planning;
+              socle = actuel.planning ?? {};
+              version = actuel.version ?? 0;
+            }
+          }
           // Tout de suite : une seconde saisie doit partir avec la NOUVELLE version.
           versionsBase.current = { ...versionsBase.current, [groupe]: reponse.version };
           /*
@@ -1036,6 +1091,8 @@ export default function PageChronogramme() {
               de classeur, et le serveur la refuse aux autres rôles.
             */}
             {role === ROLES.DIRECTEUR && <BoutonGenerer lectureSeule={lectureSeule} />}
+            {/* Vider l'année entière (2026-10-09) — au directeur seul, comme générer. */}
+            {role === ROLES.DIRECTEUR && <BoutonReinitialiserTout lectureSeule={lectureSeule} />}
 
             {/*
               ⚠️ AU DIRECTEUR SEUL, ET EN MODE FORMATEUR SEULEMENT — même règle que le bouton

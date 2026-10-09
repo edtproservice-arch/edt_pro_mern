@@ -18,6 +18,8 @@ import { JOURS, MOTIFS_INTERDICTION, PERIODES, SEANCES, TYPES_COURS } from 'shar
 import {
   anneeDuNomGroupe,
   creneauAEviter,
+  DUREE_SOIR,
+  SEANCE_SOIR,
   groupesSeCroisent,
   indexerContraintes,
   SALLE_DISTANCIEL,
@@ -34,6 +36,23 @@ import {
  *    de jour.
  */
 export const CRENEAUX_GENERES = SEANCES.slice(0, 4);
+
+/*
+ * ═══ ⚠️ SAUF POUR LE COURS DU SOIR (CDS), DEPUIS LE 2026-10-09 ═══
+ * Une tâche CDS de 2 h (`periode: soir`, voir `taches.js`) se pose sur la
+ * grille du SOIR : un créneau par jour ouvert, de 2 h. Ces créneaux n'existent
+ * dans le problème que si une telle tâche existe — sans elle, le problème est
+ * celui d'avant, au caractère près.
+ *
+ * ⚠️ RANG 5, PAS 4 : le solveur tient pour voisins deux rangs qui se suivent,
+ *    et il donnerait un bonus d'enchaînement à S4 + soir, qui ne se touchent pas.
+ */
+const RANG_SOIR = 5;
+const SAMEDI = 'Samedi';
+const cleSoir = (jour) => `${jour}||${SEANCE_SOIR}||${PERIODES.SOIR}`;
+/** La clé d'une séance existante dans `cleVersId` : le soir a la sienne. */
+const cleDeSeance = (seance) =>
+  seance.periode === PERIODES.SOIR ? cleSoir(seance.jour) : `${seance.jour}||${seance.seance}`;
 
 const normaliser = (valeur) => String(valeur ?? '').trim().toUpperCase();
 
@@ -222,6 +241,14 @@ export function construireProbleme({
     }
   }
 
+  if (taches.some((tache) => tache.periode === PERIODES.SOIR)) {
+    for (const jour of ouverts) {
+      const id = creneaux.length;
+      creneaux.push({ id, jour: jour.jour, rang: RANG_SOIR, duree: DUREE_SOIR, periode: PERIODES.SOIR });
+      cleVersId.set(cleSoir(jour.jour), id);
+    }
+  }
+
   const sallesReelles = salles.filter((salle) => !SALLES_SANS_CONFLIT.includes(salle));
   const declarees = [
     ...sallesReelles.map((nom) => ({ nom, reelle: true })),
@@ -289,6 +316,14 @@ export function construireProbleme({
      *    n'a rien d'autre (`_Palmares` côté glouton, pénalité côté CP-SAT).
      */
     const aEviter = [];
+    /*
+     * ═══ CRÉNEAUX DE SECOURS (2026-10-09, demande du porteur) ═══
+     * Employés seulement à défaut de mieux, SANS être une indisponibilité :
+     *  · cours du soir : le samedi soir, « en dernier recours » ;
+     *  · cours de jour d'un groupe CDS : tout sauf le samedi, qu'il préfère.
+     */
+    const secours = [];
+    const auSoir = tache.periode === PERIODES.SOIR;
 
     for (const jour of ouverts) {
       /*
@@ -307,12 +342,29 @@ export function construireProbleme({
             ? MOTIFS_INTERDICTION.FORMATION
             : null;
 
+      const samedi = jour.jour === SAMEDI;
+
+      // Le créneau du soir de ce jour, s'il existe : à la seule tâche du soir.
+      const idSoir = cleVersId.get(cleSoir(jour.jour));
+      if (idSoir !== undefined) {
+        if (motifDuJour) interdire(idSoir, motifDuJour);
+        // ⚠️ SANS MOTIF : ce n'est pas une cause, c'est une autre période — le
+        //    diagnostic l'écarte sur `periode`, comme ci-dessous pour le jour.
+        else if (!auSoir) interdits.push(idSoir);
+        else if (samedi) secours.push(idSoir);
+      }
+
       for (const seance of CRENEAUX_GENERES) {
         const id = cleVersId.get(`${jour.jour}||${seance}`);
         if (motifDuJour) {
           interdire(id, motifDuJour);
           continue;
         }
+        if (auSoir) {
+          interdits.push(id);
+          continue;
+        }
+        if (tache.cds && !samedi) secours.push(id);
         /*
          * ═══ ⚠️ UN CRÉNEAU « À ÉVITER » EST INTERDIT ICI, ALORS QU'IL NE L'EST
          *     PAS À LA SAISIE ═══ (2026-09-17 : « en saisie manuelle un créneau
@@ -368,7 +420,7 @@ export function construireProbleme({
        */
       difficulte:
         tache.seancesRequises /
-        Math.max(1, creneaux.length - interdits.length - aEviter.length),
+        Math.max(1, creneaux.length - interdits.length - aEviter.length - secours.length),
       creneauxInterdits: interdits,
       /** Les mêmes identifiants, rangés par origine — pour le seul diagnostic. */
       motifsInterdiction: Object.fromEntries(parMotif),
@@ -377,6 +429,8 @@ export function construireProbleme({
       sallesPossibles: salles.possibles,
       /** Les salles du module : imposées, donc égales à `sallesPossibles` — voir `sallesDe`. */
       sallesPreferees: salles.preferees,
+      periode: tache.periode ?? PERIODES.JOUR,
+      creneauxSecours: secours,
     });
 
     parId.set(tache.id, tache);
@@ -413,8 +467,9 @@ export function construireProbleme({
    */
   const occupation = [];
   for (const seance of aPreserver) {
-    const id = cleVersId.get(`${seance.jour}||${seance.seance}`);
-    if (id === undefined) continue; // créneau du soir, ou jour fermé
+    const id = cleVersId.get(cleDeSeance(seance));
+    // Jour fermé, S5 de jour, ou soir sans tâche du soir cette semaine.
+    if (id === undefined) continue;
     occupation.push({
       creneauId: id,
       formateur: seance.formateurMatricule,
@@ -438,7 +493,9 @@ export function construireProbleme({
     creneauVersCase: new Map(
       creneaux.map((creneau) => [
         creneau.id,
-        { jour: creneau.jour, seance: CRENEAUX_GENERES[creneau.rang], periode: PERIODES.JOUR },
+        creneau.periode === PERIODES.SOIR
+          ? { jour: creneau.jour, seance: SEANCE_SOIR, periode: PERIODES.SOIR }
+          : { jour: creneau.jour, seance: CRENEAUX_GENERES[creneau.rang], periode: PERIODES.JOUR },
       ])
     ),
   };

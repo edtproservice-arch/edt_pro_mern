@@ -16,8 +16,11 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import Alerte from '@/components/common/Alerte';
 import { usePartagesAvecMoi } from '@/features/partages/usePartagesAvecMoi';
 import { estVersionPerimee } from '@/lib/useBrouillonVersionne';
-import { enregistrerChronogramme, renvoyerChronogrammeFormateur } from './api';
-import { groupesModifies } from './etatPlannings';
+import { chargerChronogramme, enregistrerChronogramme, renvoyerChronogrammeFormateur } from './api';
+import { groupesModifies, reporterSaisie } from './etatPlannings';
+
+/** Reports successifs d'une saisie refusée pour « modifié entre-temps », avant d'abandonner. */
+const ESSAIS_REPORT = 3;
 import VueFormateur from './VueFormateur';
 
 /**
@@ -93,26 +96,78 @@ export default function CarteChronogrammeFormateur({ message }) {
      * Les groupes modifiés partent EN PARALLÈLE, comme sur la page Chronogramme : un refus sur
      * l'un n'empêche pas les autres d'être écrits.
      */
+    /*
+     * ═══ ⚠️ LA GRILLE D'UN MESSAGE EST UN INSTANTANÉ — LA SAISIE SE REPORTE SUR
+     * LA VERSION À JOUR (2026-10-09, signalé par le porteur : des formateurs
+     * perdaient leur saisie) ═══
+     * Plannings et versions datent de l'ENVOI du message. Le directeur l'envoie
+     * à tous les formateurs d'un coup, et chacun remplit SES modules des mêmes
+     * groupes : dès que le premier avait validé, la version de ces groupes
+     * avançait, et « Valider » était refusé à tous les autres — saisie perdue,
+     * avec pour seul conseil de tout refaire depuis la page.
+     *
+     * Sur ce refus, on relit le groupe et on y reporte, case par case, ce que
+     * CETTE personne a saisi par rapport à l'instantané (`reporterSaisie`) : les
+     * cases des collègues restent les leurs, les siennes passent.
+     */
     mutationFn: async () => {
       const issues = await Promise.allSettled(
         modifies.map(async (groupe) => {
-          const reponse = await enregistrerChronogramme(groupe, plannings[groupe], versions.current[groupe] ?? 0);
+          const socleDepart = baseline[groupe] ?? {};
+          let socle = socleDepart;
+          let envoye = plannings[groupe];
+          let version = versions.current[groupe] ?? 0;
+          let reponse;
+          for (let essai = 0; !reponse; essai += 1) {
+            try {
+              reponse = await enregistrerChronogramme(groupe, envoye, version);
+            } catch (erreur) {
+              if (!estVersionPerimee(erreur) || essai >= ESSAIS_REPORT) throw erreur;
+              const actuel = await chargerChronogramme(groupe);
+              envoye = reporterSaisie(socle, envoye, actuel.planning ?? {}).planning;
+              socle = actuel.planning ?? {};
+              version = actuel.version ?? 0;
+            }
+          }
           versions.current = { ...versions.current, [groupe]: reponse.version };
-          return groupe;
+          return { groupe, socle: socleDepart, planning: reponse.planning ?? {} };
         })
       );
       const echec = issues.find((issue) => issue.status === 'rejected');
       if (echec) throw echec.reason;
       return issues.filter((issue) => issue.status === 'fulfilled').map((issue) => issue.value);
     },
-    onSuccess: (groupesEcrits) => {
+    onSuccess: (ecrits) => {
+      /*
+       * La grille prend ce qui est ENREGISTRÉ — cases des collègues comprises —, en
+       * gardant ce qu'on a pu saisir pendant l'envoi. Une case changée des deux
+       * côtés garde la valeur enregistrée, et on le dit.
+       */
+      setPlannings((precedent) => {
+        const suivant = { ...precedent };
+        for (const { groupe, socle, planning } of ecrits) {
+          suivant[groupe] = reporterSaisie(socle, precedent[groupe], planning).planning;
+        }
+        return suivant;
+      });
       setBaseline((precedent) => {
         const suivant = { ...precedent };
-        for (const groupe of groupesEcrits) suivant[groupe] = plannings[groupe];
+        for (const { groupe, planning } of ecrits) suivant[groupe] = planning;
         return suivant;
       });
       setUnEnregistrementReussi(true);
       toast.success('Chronogramme enregistré');
+      // Calculés à part de `setPlannings` : son rappel peut être rejoué, la liste serait doublée.
+      const enConflit = ecrits.flatMap(({ groupe, socle, planning }) =>
+        reporterSaisie(socle, plannings[groupe], planning).conflits.map(
+          (c) => `${groupe} · ${c.module} · S${c.semaine}`
+        )
+      );
+      if (enConflit.length > 0) {
+        toast.warning('Des cases ont été modifiées par un collègue en même temps', {
+          description: `${enConflit.slice(0, 4).join(', ')}${enConflit.length > 4 ? '…' : ''} : sa valeur, déjà enregistrée, a été conservée.`,
+        });
+      }
       cache.invalidateQueries({ queryKey: ['chronogrammes'] });
       cache.invalidateQueries({ queryKey: ['chronogramme-formateur'] });
     },

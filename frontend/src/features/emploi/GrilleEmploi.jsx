@@ -31,6 +31,7 @@ import { cn } from '@/lib/utils';
 import CaseEmploi from './CaseEmploi';
 import { cleCase } from './selection';
 import { ABREGES, BORD_PLEIN, BORD_TABLEAU, SEPARATION_JOUR } from './styles';
+import FiltreColonne from '@/components/common/FiltreColonne';
 
 /**
  * La grille d'une semaine : sujets en lignes, jours × créneaux en colonnes.
@@ -49,6 +50,11 @@ import { ABREGES, BORD_PLEIN, BORD_TABLEAU, SEPARATION_JOUR } from './styles';
 function GrilleEmploi({
   zoom = 100,
   sujets,
+  /*
+   * Le filtre de la première colonne (2026-10-09) : `{ valeurs, choisies,
+   * onChanger }`, tenu par la page — c'est elle qui filtre `sujets`.
+   */
+  filtreLignes = null,
   seances,
   jours,
   axe = 'formateur',
@@ -419,7 +425,54 @@ function GrilleEmploi({
         formateurMatricule: seanceEnDeplacement.formateurMatricule,
         salle: seanceEnDeplacement.salle,
       };
-      const conflits = detecterConflits(candidat, surLeCreneau, { groupesFq: contexte.groupesFq ?? VIDE });
+      const regles = { groupesFq: contexte.groupesFq ?? VIDE };
+
+      /*
+       * ═══ UNE CASE OCCUPÉE SE PROPOSE À L'ÉCHANGE (2026-10-09, demande du
+       * porteur) ═══ Déposer sur elle permute les deux séances. On la signale
+       * seulement si l'échange passe DANS LES DEUX SENS — la séance glissée à
+       * l'arrivée sans l'occupante, l'occupante au départ sans la glissée —,
+       * avec la même règle que le serveur : seules les personnes bloquent, la
+       * salle se retire.
+       */
+      const occupante = surLeCreneau.find(
+        (s) =>
+          s.id !== seanceEnDeplacement.id &&
+          (axe === 'groupe' ? s.groupe === sujetOrigine : s.formateurMatricule === sujetOrigine)
+      );
+      if (occupante) {
+        const auDepart =
+          parCreneau.get(`${seanceEnDeplacement.jour}||${seanceEnDeplacement.seance}||${periode}`) ?? VIDE;
+        const personnesBloquent = (conflits) => conflits.some((c) => c.type === 'formateur' || c.type === 'groupe');
+        const salleBloque = (conflits) => conflits.some((c) => c.type === 'salle');
+        const aLArrivee = detecterConflits(candidat, surLeCreneau.filter((s) => s.id !== occupante.id), regles);
+        const auRetour = detecterConflits(
+          {
+            id: occupante.id,
+            groupe: occupante.groupe,
+            formateurMatricule: occupante.formateurMatricule,
+            salle: occupante.salle,
+          },
+          auDepart.filter((s) => s.id !== seanceEnDeplacement.id),
+          regles
+        );
+        if (!personnesBloquent(aLArrivee) && !personnesBloquent(auRetour)) {
+          /*
+           * ⚠️ LA LIGNE ESPACE DIT SI CHACUNE GARDE SA SALLE (2026-10-09, demande
+           * du porteur) — le cas net étant deux séances de la MÊME salle : chacune
+           * libère le créneau que l'autre prend. Sinon, la ligne reste sans
+           * signal : l'échange passe quand même, mais une séance prendra la salle
+           * que l'autre laisse (`poserSalleCedante`).
+           */
+          disponibilite.set(cleCase(sujetOrigine, jour, creneau, periode), {
+            permutable: true,
+            salleLibre: !salleBloque(aLArrivee) && !salleBloque(auRetour),
+          });
+        }
+        continue;
+      }
+
+      const conflits = detecterConflits(candidat, surLeCreneau, regles);
 
       const personnesLibres = !conflits.some((c) => c.type === 'formateur' || c.type === 'groupe');
       const salleLibre = !conflits.some((c) => c.type === 'salle');
@@ -656,7 +709,18 @@ function GrilleEmploi({
               rowSpan={2}
               className="border-b border-r bg-tableau-tete px-2 py-2 text-left text-foreground"
             >
-              {axe === 'groupe' ? 'Groupe' : 'Formateur'}
+              <span className="flex items-center justify-between gap-1">
+                {axe === 'groupe' ? 'Groupe' : 'Formateur'}
+                {filtreLignes && (
+                  <FiltreColonne
+                    titre={axe === 'groupe' ? 'Groupe' : 'Formateur'}
+                    valeurs={filtreLignes.valeurs}
+                    choisies={filtreLignes.choisies}
+                    onChanger={filtreLignes.onChanger}
+                    recherche
+                  />
+                )}
+              </span>
             </th>
             <th rowSpan={2} className={cn('border-b bg-tableau-tete', BORD_TABLEAU)} />
 
@@ -701,6 +765,20 @@ function GrilleEmploi({
         </thead>
 
         <tbody>
+          {lignes.length === 0 && filtreLignes?.choisies && (
+            <tr>
+              <td colSpan={2 + JOURS.length * creneaux.length} className="border-b px-3 py-3 text-sm text-muted-foreground">
+                Aucune ligne ne correspond au filtre.{' '}
+                <button
+                  type="button"
+                  className="text-primary hover:underline"
+                  onClick={() => filtreLignes.onChanger(null)}
+                >
+                  Retirer le filtre
+                </button>
+              </td>
+            </tr>
+          )}
           {lignes.map((ligne, iLigne) =>
             intitules.map((intitule, rang) => (
               <tr key={`${ligne.sujet}-${intitule}`}>
@@ -826,6 +904,7 @@ function GrilleEmploi({
                       survolee={survolDepot === cle}
                       personnesLibresDeplacement={dispoDeplacement?.personnesLibres ?? false}
                       salleLibreDeplacement={dispoDeplacement?.salleLibre ?? false}
+                      permutableDeplacement={dispoDeplacement?.permutable ?? false}
                       absence={p.absence}
                       occupation={p.occupation}
                       aEviter={p.aEviter}

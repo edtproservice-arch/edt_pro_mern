@@ -6,6 +6,8 @@ import { largeurExcel, libelleSituation, nomFichierAchevement } from './exportAc
  * puis le tableau de la fenêtre — en-tête figé et filtre automatique, pour
  * retravailler la liste sans la recopier.
  */
+/** Les semaines et les dates, courtes, se lisent mieux centrées. */
+const CENTREES = new Set(['semestre', 'regional', 'semaineDebut', 'dateDebut', 'semaineFin', 'dateFin']);
 const GRIS_ENTETE = 'FFF2F2F2';
 const bordureFine = { style: 'thin', color: { argb: 'FF000000' } };
 const bordureTout = { top: bordureFine, left: bordureFine, bottom: bordureFine, right: bordureFine };
@@ -59,7 +61,11 @@ export async function construireXlsxAchevement(donnees) {
       const cellule = rangee.getCell(rang + 1);
       cellule.value = ligne[rang] ?? '';
       cellule.border = bordureTout;
-      cellule.alignment = { vertical: 'middle', wrapText: colonne.id === 'intitule' || colonne.id === 'formateur' };
+      cellule.alignment = {
+        vertical: 'middle',
+        horizontal: CENTREES.has(colonne.id) ? 'center' : undefined,
+        wrapText: colonne.id === 'intitule' || colonne.id === 'formateur',
+      };
     });
   });
 

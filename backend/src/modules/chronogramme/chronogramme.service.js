@@ -1144,6 +1144,38 @@ export async function exporter(etablissementId, anneeScolaire, { mode, sujets })
  * moyen de savoir lesquels. Le tri de ce qui est acceptable, lui, a déjà eu lieu
  * dans le domaine.
  */
+/**
+ * Vide les chronogrammes de TOUS les groupes de l'année (2026-10-09, demande du
+ * porteur : « un bouton pour réinitialiser tous les chronogrammes »).
+ *
+ * ⚠️ `simulation` PAR DÉFAUT, comme la génération : l'écran montre d'abord ce
+ *    qui sera vidé — groupes et cases — et ne vide qu'après confirmation.
+ *
+ * ⚠️ SEULS LES PLANNINGS NON VIDES BOUGENT, et leur version avance : une grille
+ *    ouverte ailleurs voit son prochain enregistrement refusé (409) au lieu de
+ *    réécrire par-dessus ce qui vient d'être vidé. Un planning déjà vide ne
+ *    change pas de version — rien à périmer.
+ *
+ * ⚠️ LES DOCUMENTS RESTENT : on vide leur planning, on ne les supprime pas.
+ *    C'est ce que fait la réinitialisation d'un groupe à l'écran.
+ */
+export async function reinitialiserTout(etablissementId, anneeScolaire, { simulation = true } = {}) {
+  const chronos = await Chronogramme.find({ etablissementId, anneeScolaire }).select('groupe planning');
+  const remplis = chronos.filter((chrono) => compterCellules(chrono.planning) > 0);
+  const bilan = {
+    simulation,
+    groupes: remplis.map((chrono) => chrono.groupe).sort((a, b) => a.localeCompare(b, 'fr')),
+    cellules: remplis.reduce((somme, chrono) => somme + compterCellules(chrono.planning), 0),
+  };
+  if (simulation || remplis.length === 0) return bilan;
+
+  await Chronogramme.updateMany(
+    { _id: { $in: remplis.map((chrono) => chrono._id) } },
+    { $set: { planning: {} }, $inc: { version: 1 } }
+  );
+  return bilan;
+}
+
 export async function importer(etablissementId, anneeScolaire, tampon, nomFichier) {
   const base = await Base.findOne({ etablissementId, anneeScolaire });
   if (!base) {

@@ -2,25 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
-import {
-  DEPASSEMENT_GROUPE,
-  DERNIERES_SEMAINES,
-  ECART_MAX_MODULE_ANNUEL,
-  FIN_SEMESTRE_1,
-  HEURES_PAR_JOUR_CIBLE,
-  PAS,
-  PLAFOND_HEBDOMADAIRE_PIE,
-  PREMIERE_SEMAINE_PIE,
-  PLAFOND_MODULE_SEMAINE,
-  POSE_MIN_MODULE_LONG,
-  PLANCHER_HEBDOMADAIRE,
-  PLANCHER_MASSE_MOYENNE,
-  RESERVE_REGIONALE,
-  SEANCE_SYNCHRONE,
-  SEUIL_MODULE_LONG,
-  SEUIL_PETITE_MASSE,
-  SEUIL_PLANCHER_ABSOLU,
-} from 'shared/domain';
+import { FIN_SEMESTRE_1 } from 'shared/domain';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -66,6 +48,10 @@ const MODES = [
       'Rien n’est effacé : seules les heures qui manquent encore sont réparties, autour de ce qui est déjà saisi.',
   },
 ];
+
+/** Le message qu'on ne doit pas manquer avant de générer (2026-10-09). */
+const MESSAGE_CDS =
+  'Les chronogrammes des groupes CDS ne seront pas générés : veuillez les planifier manuellement.';
 
 export default function BoutonGenerer({ lectureSeule = false }) {
   const [ouvert, setOuvert] = useState(false);
@@ -125,62 +111,23 @@ export default function BoutonGenerer({ lectureSeule = false }) {
         <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Générer le chronogramme</DialogTitle>
-            <DialogDescription asChild>
-              <div className="space-y-1 text-sm text-muted-foreground">
-                <span className="block">
-                  Les modules sont planifiés dans l’ordre : régional S1, régional annuel, régional
-                  S2, puis normal S1, annuel, S2.
-                </span>
-                <span className="block">
-                  Chaque formateur vise sa masse affectée / 35 par semaine, jamais moins de{' '}
-                  {PLANCHER_HEBDOMADAIRE} h au-delà de {SEUIL_PETITE_MASSE} h affectées — moins{' '}
-                  {HEURES_PAR_JOUR_CIBLE} h par jour férié, de stage partiel, de formation ou
-                  avant la rentrée.
-                </span>
-                <span className="block">
-                  Cette charge n’est dépassée — de {2 * PAS} h au plus — que pour un formateur en
-                  retard sur l’année : les heures du S1 qui
-                  n’y tiennent pas passent après la S{FIN_SEMESTRE_1}, et la fin d’année peut
-                  être plus légère.
-                </span>
-                <span className="block">
-                  Minimum par semaine, fériés compris : {PLANCHER_HEBDOMADAIRE} h au-delà de{' '}
-                  {SEUIL_PLANCHER_ABSOLU} h affectées, {PLANCHER_MASSE_MOYENNE} h en deçà — sauf, à{' '}
-                  {SEUIL_PETITE_MASSE} h ou moins, quand un férié tombe un jour où le formateur est
-                  disponible. Aucun formateur ne reste sans heure une semaine où il a cours. Un
-                  groupe peut dépasser 30 h en cas de besoin, jusqu’à {30 + DEPASSEMENT_GROUPE} h. Un module ne prend pas plus
-                  de {PLAFOND_MODULE_SEMAINE} h par semaine pour un groupe, sauf si sa masse
-                  l’exige pour tenir dans son semestre.
-                </span>
-                <span className="block">
-                  Un module commencé reçoit au moins un créneau chaque semaine jusqu’à sa fin ; un
-                  module annuel{' '}
-                  {ECART_MAX_MODULE_ANNUEL === 0
-                    ? 'enchaîne ses deux semestres sans arrêt.'
-                    : `ne s’arrête pas plus de ${ECART_MAX_MODULE_ANNUEL} semaines entre ses deux semestres.`} Chaque
-                  module régional garde {RESERVE_REGIONALE} h non planifiées par groupe.
-                </span>
-                <span className="block">
-                  Un module de {SEUIL_MODULE_LONG} h ou plus reçoit de {POSE_MIN_MODULE_LONG} h à{' '}
-                  {PLAFOND_MODULE_SEMAINE} h les semaines où il a cours (sauf les modules « EG… »). Dans
-                  les groupes PIE : {PLAFOND_HEBDOMADAIRE_PIE} h au total par semaine, à partir de la S
-                  {PREMIERE_SEMAINE_PIE}.
-                </span>
-                <span className="block">
-                  Le module « Métier et formation » est planifié en S1, au plus tard en S2.
-                </span>
-                <span className="block">
-                  Le synchrone se planifie par séances de {SEANCE_SYNCHRONE} h, une par semaine ; il ne
-                  tombe ni sur la première ni sur la dernière semaine de présentiel du module.
-                </span>
-                <span className="block">
-                  Fin de planification : S{DERNIERES_SEMAINES.PREMIERE} en 1ʳᵉ année, S
-                  {DERNIERES_SEMAINES.DEUXIEME} en 2ᵉ année, S{DERNIERES_SEMAINES.TROISIEME_CDJ} en
-                  3ᵉ année cours du jour.
-                </span>
-              </div>
-            </DialogDescription>
+            {/*
+              ⚠️ LA DESCRIPTION DES RÈGLES A ÉTÉ RETIRÉE (2026-10-09, demande du
+              porteur) : la fenêtre ne garde que ce qu'il faut savoir avant de
+              lancer — les groupes du cours du soir ne sont pas générés.
+            */}
+            {/*
+              ⚠️ EN ÉVIDENCE (2026-10-09, demande du porteur) : un encart
+              d'avertissement plutôt qu'une ligne grise. `DialogDescription` rend
+              un <p>, qui ne peut pas contenir l'encart (un <div>) : la
+              description reste donc pour les lecteurs d'écran, l'encart pour l'œil.
+            */}
+            <DialogDescription className="sr-only">{MESSAGE_CDS}</DialogDescription>
           </DialogHeader>
+
+          <Alerte type="avertissement" titre="Groupes du cours du soir (CDS)" className="border-warning/50 bg-warning/10">
+            <span className="font-medium">{MESSAGE_CDS}</span>
+          </Alerte>
 
           <RadioGroup value={mode} onValueChange={changerMode} className="gap-3" disabled={occupe}>
             {MODES.map((option) => (
@@ -243,6 +190,13 @@ function Bilan({ bilan }) {
           ` ${bilan.reserveRegionale} h laissées en réserve sur les modules régionaux.`}
         {!complet && ` ${bilan.heuresNonPlanifiees} h ne trouvent pas de place.`}
       </Alerte>
+
+      {bilan.groupesCds?.length > 0 && (
+        <Alerte type="info">
+          {bilan.groupesCds.length} groupe(s) CDS non générés, à planifier manuellement :{' '}
+          {bilan.groupesCds.join(', ')}.
+        </Alerte>
+      )}
 
       {bilan.mode === 'remplacer' && bilan.partsRemplacees > 0 && (
         <Alerte type="avertissement">

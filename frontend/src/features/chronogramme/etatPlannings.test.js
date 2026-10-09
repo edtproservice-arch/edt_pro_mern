@@ -6,6 +6,7 @@ import {
   groupesModifies,
   integrerPlanning,
   omettreGroupes,
+  reporterSaisie,
 } from './etatPlannings.js';
 
 const planning = (module, semaine, heures) => ({ [module]: { [semaine]: { heures, type: 'P' } } });
@@ -342,5 +343,83 @@ describe('case MIXTE — présentiel et synchrone la même semaine (2026-10-01)'
 
   it('ne voit rien quand les deux parts sont identiques', () => {
     expect(groupesModifies(mixte(5, 2.5), mixte(5, 2.5))).toEqual([]);
+  });
+});
+
+/*
+ * ═══ PERTE DE SAISIE SUR LE CHRONOGRAMME PARTAGÉ (2026-10-09, signalé par le porteur) ═══
+ * Plusieurs formateurs remplissent le MÊME groupe, chacun ses modules. Quand l'un
+ * enregistrait, la saisie de l'autre — reportée case par case sur la nouvelle
+ * version — gardait l'ANCIENNE version : refusée en 409, puis abandonnée.
+ */
+describe('saisie partagée d’un même groupe — rien ne se perd (2026-10-09)', () => {
+  const socle = { GM101: { M1: { 1: { heures: 5, type: 'P' } } } };
+  // Le collègue a enregistré M2, semaine 1 → version 4.
+  const serveur = { GM101: { M1: { 1: { heures: 5, type: 'P' } }, M2: { 1: { heures: 2.5, type: 'P' } } } };
+  // Ici, on saisit M1, semaine 2.
+  const saisie = { GM101: { M1: { 1: { heures: 5, type: 'P' }, 2: { heures: 2.5, type: 'P' } } } };
+
+  it('la saisie reportée sur la version du collègue repose sur SA version — plus de 409', () => {
+    const suivants = amorcerPlannings(saisie, serveur, socle);
+    expect(suivants.GM101).toEqual({
+      M1: { 1: { heures: 5, type: 'P' }, 2: { heures: 2.5, type: 'P' } },
+      M2: { 1: { heures: 2.5, type: 'P' } },
+    });
+    expect(amorcerVersions({ GM101: 3 }, suivants, serveur, { GM101: 4 }, socle)).toEqual({ GM101: 4 });
+  });
+
+  it('⚠️ une MÊME case changée des deux côtés garde la valeur enregistrée, et le signale', () => {
+    const serveurConflit = { GM101: { M1: { 1: { heures: 2.5, type: 'P' } } } };
+    const saisieConflit = { GM101: { M1: { 1: { heures: 10, type: 'P' } } } };
+    const conflits = new Map();
+
+    const suivants = amorcerPlannings(saisieConflit, serveurConflit, socle, conflits);
+
+    expect(suivants.GM101.M1[1]).toEqual({ heures: 2.5, type: 'P' });
+    expect([...conflits.values()]).toEqual([{ groupe: 'GM101', module: 'M1', semaine: '1' }]);
+  });
+
+  it('une case changée des deux côtés À L’IDENTIQUE n’est pas un conflit', () => {
+    const identique = { GM101: { M1: { 1: { heures: 10, type: 'P' } } } };
+    const conflits = new Map();
+    amorcerPlannings(identique, identique, socle, conflits);
+    expect(conflits.size).toBe(0);
+  });
+
+  it('jamais en arrière : une relecture plus ancienne ne fait pas reculer la version', () => {
+    expect(amorcerVersions({ GM101: 6 }, saisie, serveur, { GM101: 4 }, socle)).toEqual({ GM101: 6 });
+  });
+});
+
+describe('reporterSaisie — le refus de version reporte au lieu d’abandonner (2026-10-09)', () => {
+  const socle = { M1: { 1: { heures: 5, type: 'P' } } };
+
+  it('passe les cases saisies ici sur la version à jour, sans toucher celles du collègue', () => {
+    const local = { M1: { 1: { heures: 5, type: 'P' }, 2: { heures: 2.5, type: 'P' } } };
+    const serveur = { M1: { 1: { heures: 5, type: 'P' } }, M2: { 3: { heures: 5, type: 'P' } } };
+
+    const { planning, conflits } = reporterSaisie(socle, local, serveur);
+
+    expect(planning).toEqual({
+      M1: { 1: { heures: 5, type: 'P' }, 2: { heures: 2.5, type: 'P' } },
+      M2: { 3: { heures: 5, type: 'P' } },
+    });
+    expect(conflits).toEqual([]);
+  });
+
+  it('reporte aussi un VIDAGE fait ici', () => {
+    const local = { M1: {} };
+    const serveur = { M1: { 1: { heures: 5, type: 'P' } }, M2: { 3: { heures: 5, type: 'P' } } };
+    expect(reporterSaisie(socle, local, serveur).planning).toEqual({ M2: { 3: { heures: 5, type: 'P' } } });
+  });
+
+  it('une même case changée des deux côtés : la valeur enregistrée reste, et elle est nommée', () => {
+    const local = { M1: { 1: { heures: 10, type: 'P' } } };
+    const serveur = { M1: { 1: { heures: 2.5, type: 'P' } } };
+
+    const { planning, conflits } = reporterSaisie(socle, local, serveur);
+
+    expect(planning.M1[1]).toEqual({ heures: 2.5, type: 'P' });
+    expect(conflits).toEqual([{ module: 'M1', semaine: '1' }]);
   });
 });

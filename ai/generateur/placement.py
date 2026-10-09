@@ -142,7 +142,10 @@ def meilleurs_blocs(
 
             # ⚠️ UN BLOC SE RÉSIGNE DÈS QU'UNE DE SES DEUX HEURES EST « À
             #    ÉVITER » : le formateur subirait la demi-journée entière.
-            creneau_subi = any(c.id in tache.creneaux_a_eviter for c in paire)
+            #    Un créneau de secours se résigne de la même façon (2026-10-09).
+            creneau_subi = any(
+                c.id in tache.creneaux_a_eviter or c.id in tache.creneaux_secours for c in paire
+            )
 
             for salle in salles_candidates(tache, rng):
                 if not _salle_libre_sur(etat, contexte, paire, salle):
@@ -210,7 +213,9 @@ def meilleurs_simples(
             if jour_entame:
                 score += BONUS_JOUR_ENTAME
 
-            creneau_subi = creneau.id in tache.creneaux_a_eviter
+            creneau_subi = (
+                creneau.id in tache.creneaux_a_eviter or creneau.id in tache.creneaux_secours
+            )
 
             for salle in salles:
                 if not _salle_libre_sur(etat, contexte, (creneau,), salle):

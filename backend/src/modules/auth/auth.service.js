@@ -145,12 +145,19 @@ export async function connecter({ identifiant, motDePasse, appareil, ip }) {
   return { action: 'connecte', ...(await ouvrirSession(utilisateur, appareil, ip)) };
 }
 
+/*
+ * Les sessions RÉVOQUÉES par une déconnexion comptent : l'appareil a bien été
+ * utilisé (voir `deconnecter`). Celles qu'un administrateur a ouvertes À LA
+ * PLACE de l'utilisateur, non : c'est l'appareil de l'administrateur, et sa
+ * seule présence faisait redemander un code au directeur sur son propre PC.
+ */
 async function estAppareilConnu(utilisateur, appareil) {
-  const nombreAppareils = await RefreshToken.countDocuments({ utilisateurId: utilisateur.id });
+  const sesSessions = { utilisateurId: utilisateur.id, impersonateurId: null };
+  const nombreAppareils = await RefreshToken.countDocuments(sesSessions);
   if (nombreAppareils === 0) return true;
 
   const connu = await RefreshToken.findOne({
-    utilisateurId: utilisateur.id,
+    ...sesSessions,
     'appareil.nom': appareil.nom,
     'appareil.navigateur': appareil.navigateur,
     'appareil.os': appareil.os,
@@ -368,9 +375,21 @@ export async function collaborationPresentee(utilisateur) {
   return etablissement ? { etablissementId: id, nom: etablissement.nomAbrege || etablissement.nom } : null;
 }
 
+/*
+ * ⚠️ LA DÉCONNEXION RÉVOQUE LA SESSION, ELLE NE L'EFFACE PAS (2026-10-09,
+ * réclamation d'un directeur : « un code à chaque reconnexion, sur le même
+ * appareil »). La ligne est ce qui fait reconnaître l'appareil
+ * (`estAppareilConnu`) : effacée, le PC habituel redevenait inconnu dès qu'une
+ * autre session existait ailleurs (téléphone, autre navigateur). Révoquée, elle
+ * ne peut plus rien ouvrir (`estValide`) mais garde la mémoire de l'appareil
+ * jusqu'à son expiration — l'index TTL la purge alors.
+ *
+ * Les révocations de SÉCURITÉ (révoquer un appareil, blocage, nouveau mot de
+ * passe…) continuent d'effacer : là, oublier l'appareil est voulu.
+ */
 export async function deconnecter(jeton) {
   if (!jeton) return;
-  await RefreshToken.deleteOne({ empreinte: empreinte(jeton) });
+  await RefreshToken.updateOne({ empreinte: empreinte(jeton) }, { revoqueLe: new Date() });
 }
 
 /**
@@ -467,7 +486,10 @@ export async function demanderEssai(utilisateur) {
 
 export async function listerAppareils(utilisateurId, jetonCourant) {
   const empreinteCourante = jetonCourant ? empreinte(jetonCourant) : null;
-  const appareils = await RefreshToken.find({ utilisateurId }).sort({ derniereActivite: -1 });
+  // Les sessions fermées par une déconnexion ne sont plus des appareils connectés.
+  const appareils = await RefreshToken.find({ utilisateurId, revoqueLe: null }).sort({
+    derniereActivite: -1,
+  });
 
   return appareils.map((a) => ({
     id: a.id,

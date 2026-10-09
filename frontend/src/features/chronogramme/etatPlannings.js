@@ -62,10 +62,14 @@ import { partsDeCellule } from 'shared/domain';
  * @param {object} charges     plannings REÇUS du serveur — un groupe absent de
  *                             cet objet n'a pas encore répondu
  * @param {object} [precedents] ce que le serveur rendait AU TOUR D'AVANT
+ * @param {Map<string, object>} [conflits] reçoit les cases touchées ICI ET
+ *                             changées autrement par un collègue — voir
+ *                             `fusionnerCellules`. Une Map à clé, pas un
+ *                             tableau : React peut rejouer l'amorçage.
  * @returns {object} le MÊME objet `courants` si rien ne change, pour que React
  *                   n'ait pas de rendu à faire
  */
-export function amorcerPlannings(courants, charges, precedents = {}) {
+export function amorcerPlannings(courants, charges, precedents = {}, conflits = null) {
   const suivants = {};
   let change = false;
 
@@ -82,7 +86,9 @@ export function amorcerPlannings(courants, charges, precedents = {}) {
         suivants[groupe] = charges[groupe];
         change = true;
       } else if (enBaseline && !sansSaisie && nouvelleVersion) {
-        suivants[groupe] = fusionnerCellules(courants[groupe], precedents[groupe], charges[groupe]);
+        suivants[groupe] = fusionnerCellules(courants[groupe], precedents[groupe], charges[groupe], (module, semaine) =>
+          conflits?.set(`${groupe}||${module}||${semaine}`, { groupe, module, semaine })
+        );
         change = true;
       } else {
         suivants[groupe] = courants[groupe];
@@ -104,8 +110,14 @@ export function amorcerPlannings(courants, charges, precedents = {}) {
  * Le planning d'UN groupe, case par case : ce qu'on a touché ici reste tel
  * quel, ce qu'on n'a pas touché suit le serveur — voir le commentaire de
  * `amorcerPlannings`, ci-dessus, pour le défaut que cette fonction corrige.
+ *
+ * ⚠️ UNE MÊME CASE CHANGÉE DES DEUX CÔTÉS, ET DIFFÉREMMENT (2026-10-09) : c'est
+ *    le seul vrai conflit. La règle du porteur s'y applique — « refus si
+ *    modifiée entre-temps » : la valeur déjà ENREGISTRÉE l'emporte, et
+ *    `signaler` le dit. Avant, la saisie locale l'emportait en silence, et
+ *    écrasait la case du collègue au prochain enregistrement.
  */
-function fusionnerCellules(courant, precedent, charge) {
+function fusionnerCellules(courant, precedent, charge, signaler = null) {
   const modules = new Set([
     ...Object.keys(precedent ?? {}),
     ...Object.keys(charge ?? {}),
@@ -127,8 +139,13 @@ function fusionnerCellules(courant, precedent, charge) {
 
     const cellulesResultat = {};
     for (const semaine of semaines) {
-      const toucheeIci = empreinteCellule(cellulesCourant[semaine]) !== empreinteCellule(cellulesPrecedent[semaine]);
-      const valeur = toucheeIci ? cellulesCourant[semaine] : cellulesCharge[semaine];
+      const ici = empreinteCellule(cellulesCourant[semaine]);
+      const avant = empreinteCellule(cellulesPrecedent[semaine]);
+      const enBase = empreinteCellule(cellulesCharge[semaine]);
+      const toucheeIci = ici !== avant;
+      const conflit = toucheeIci && enBase !== avant && enBase !== ici;
+      if (conflit) signaler?.(module, semaine);
+      const valeur = toucheeIci && !conflit ? cellulesCourant[semaine] : cellulesCharge[semaine];
       if (valeur !== undefined) cellulesResultat[semaine] = valeur;
     }
 
@@ -136,6 +153,30 @@ function fusionnerCellules(courant, precedent, charge) {
   }
 
   return resultat;
+}
+
+/**
+ * ═══ REPORTER UNE SAISIE SUR LA VERSION À JOUR (2026-10-09, signalé par le
+ * porteur : des formateurs perdaient leur saisie sur le chronogramme partagé) ═══
+ * Plusieurs formateurs remplissent le MÊME groupe — chacun ses modules. Quand
+ * l'un enregistre, la version du groupe avance, et l'écriture d'un autre,
+ * partie de la version d'avant, est refusée (409). L'écran ABANDONNAIT alors la
+ * saisie refusée : c'était la perte constatée.
+ *
+ * On la reporte à la place, case par case, sur ce que le serveur porte
+ * maintenant : `socle` est ce que la saisie avait sous les yeux, `local` la
+ * saisie, `serveur` la version à jour. Ce qui a été touché ici passe, le reste
+ * suit le serveur — et une même case changée des deux côtés garde la valeur
+ * enregistrée (voir `fusionnerCellules`).
+ *
+ * @returns {{ planning: object, conflits: Array<{module: string, semaine: string}> }}
+ */
+export function reporterSaisie(socle, local, serveur) {
+  const conflits = [];
+  const planning = fusionnerCellules(local ?? {}, socle ?? {}, serveur ?? {}, (module, semaine) =>
+    conflits.push({ module, semaine })
+  );
+  return { planning, conflits };
 }
 
 /** Même filtre qu'`empreinte`, mais pour UNE case : sert à savoir si elle a été touchée. */
@@ -178,20 +219,39 @@ function formeCellule(cellule) {
  * ⚠️ PAR CONTENU, PAS PAR RÉFÉRENCE : un collègue qui enregistre la même chose
  * que nous nous remet d'accord avec le serveur, alors que les objets diffèrent.
  *
+ * ═══ ⚠️⚠️ UNE SAISIE REPORTÉE SUR LE SERVEUR REPOSE SUR SA VERSION (2026-10-09) ═══
+ * (Signalé par le porteur : des formateurs perdaient leur saisie.) Quand
+ * `precedents` est fourni, `amorcerPlannings` vient de reporter la saisie,
+ * case par case, sur ce que le serveur rend (`fusionnerCellules`) : elle part
+ * DÉJÀ de la version à jour. Lui laisser l'ancienne version la faisait refuser
+ * au prochain enregistrement — puis ABANDONNER, alors qu'elle ne touchait que
+ * ses propres cases. C'est ce qui arrivait à un formateur qui saisissait
+ * pendant qu'un collègue du même groupe enregistrait les siennes.
+ *
+ * Le seul vrai conflit — la même case, changée des deux côtés — est déjà
+ * tranché par la fusion, au profit de la valeur enregistrée.
+ *
  * @param {Record<string, number>} versions  les versions retenues au tour d'avant
  * @param {Record<string, object>} plannings les copies locales, APRÈS amorçage
  * @param {Record<string, object>} charges   les plannings rendus par le serveur
  * @param {Record<string, number>} versionsServeur
+ * @param {Record<string, object>} [precedents] ce que le serveur rendait au tour
+ *   d'avant — ceux qui y figurent ont été reportés sur `charges`
  */
-export function amorcerVersions(versions, plannings, charges, versionsServeur) {
+export function amorcerVersions(versions, plannings, charges, versionsServeur, precedents = null) {
   const suivantes = {};
 
   for (const groupe of Object.keys(plannings)) {
     if (!(groupe in charges)) continue;
-    suivantes[groupe] =
-      empreinte(plannings[groupe]) === empreinte(charges[groupe])
-        ? (versionsServeur[groupe] ?? 0)
-        : (versions[groupe] ?? versionsServeur[groupe] ?? 0);
+    const serveur = versionsServeur[groupe] ?? 0;
+    if (empreinte(plannings[groupe]) === empreinte(charges[groupe])) {
+      suivantes[groupe] = serveur;
+    } else if (precedents && groupe in precedents) {
+      // Jamais en arrière : une relecture lente ne fait pas reculer ce qu'on vient d'écrire.
+      suivantes[groupe] = Math.max(serveur, versions[groupe] ?? 0);
+    } else {
+      suivantes[groupe] = versions[groupe] ?? serveur;
+    }
   }
 
   return suivantes;

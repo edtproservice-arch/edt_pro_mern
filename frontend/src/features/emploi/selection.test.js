@@ -201,6 +201,39 @@ describe('deplacement', () => {
     expect(deplacement(depuis, vers, undefined)).toEqual([]);
     expect(deplacement(depuis, depuis, seance)).toEqual([]);
   });
+  describe('⚠️ sur une case OCCUPÉE : les deux séances s’échangent (2026-10-09)', () => {
+    const occupante = { id: 'sea2', formateurMatricule: '18494', groupe: 'GM102', module: 'M102', salle: 'B02' };
+    const versAutre = cleCase('18494', 'Mardi', 'S3');
+    const sujetDe = (cle) => ({ formateurMatricule: cle.split('||')[0] });
+
+    it('rend UNE permutation, chacune avec le sujet de sa NOUVELLE ligne', () => {
+      const operations = deplacement(depuis, versAutre, seance, { sujetDe, occupante });
+
+      expect(operations).toHaveLength(1);
+      const [operation] = operations;
+      expect(operation).toMatchObject({ type: 'permuter', cle: versAutre, cleSource: depuis });
+      expect(operation.seance).toMatchObject({
+        id: 'sea1',
+        jour: 'Mardi',
+        seance: 'S3',
+        formateurMatricule: '18494',
+        module: 'M101',
+      });
+      expect(operation.autre).toMatchObject({
+        id: 'sea2',
+        jour: 'Lundi',
+        seance: 'S1',
+        formateurMatricule: '15688',
+        module: 'M102',
+        salle: 'B02',
+      });
+    });
+
+    it('en COPIE, reste une pose — que le serveur refusera comme un chevauchement', () => {
+      const [operation] = deplacement(depuis, versAutre, seance, { sujetDe, occupante, copie: true });
+      expect(operation.type).toBe('poser');
+    });
+  });
 });
 
 describe('historique', () => {

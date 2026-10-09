@@ -118,13 +118,14 @@ router.get(
          de modules achevés vivent dans le même bloc de l'écran, et deux dates
          différentes s'y contrediraient sans que rien ne le dise. */
       /* `rentrees` repart avec les plages : l'écran en tire la date d'une
-         semaine estimée, sur la MÊME origine que les plages (2026-10-07). */
-      const { plages, rentrees } = await service.achevementDesModules(
+         semaine estimée, sur la MÊME origine que les plages (2026-10-07).
+         `feries` aussi : l'export Excel en retire ses dates prévisionnelles. */
+      const { plages, rentrees, feries } = await service.achevementDesModules(
         req.etablissementId,
         req.anneeScolaire,
         dateObservee(req)
       );
-      res.json({ plages, rentrees });
+      res.json({ plages, rentrees, feries });
     } catch (erreur) {
       next(erreur);
     }

@@ -99,6 +99,13 @@ class Creneau:
     #: l'ancien, `getSeanceDuration()` rendait 2 h pour S5 et 2,5 h ailleurs,
     #: et le générateur l'ignorait — il comptait 2,5 h partout.
     duree: float = 2.5
+    #: ═══ PÉRIODE — ÉTIQUETTE OPAQUE ═══ (2026-10-09, cours du soir)
+    #: « jour » ou « soir » pour Node ; pour Python, une simple étiquette.
+    #: Une tâche ne se pose que sur les créneaux de SA période : Node met les
+    #: autres dans `creneaux_interdits`. Python ne la lit que pour le
+    #: diagnostic, qui ne doit pas expliquer une séance du soir non placée par
+    #: les 24 créneaux de jour qu'elle n'a jamais pu prendre.
+    periode: str = "jour"
 
 
 @dataclass(frozen=True)
@@ -181,6 +188,15 @@ class Tache:
     #:    existantes, qui n'en déclarent aucune. C'est ce qui rend l'ajout
     #:    vérifiable sur les grilles déjà produites.
     salles_preferees: frozenset[str] = field(default_factory=frozenset)
+    #: La période des créneaux où cette tâche peut aller — voir `Creneau.periode`.
+    periode: str = "jour"
+    #: ═══ CRÉNEAUX DE SECOURS ═══ (2026-10-09, cours du soir)
+    #: Employés seulement à défaut de mieux, comme `creneaux_a_eviter`, mais
+    #: SANS en être un : ce n'est pas une consigne du formateur, et la séance
+    #: n'est donc pas comptée « déconseillée ». Ex. : le samedi soir pour un
+    #: cours du soir, la semaine pour un cours de jour du soir (CDS), qui se
+    #: donne de préférence le samedi.
+    creneaux_secours: frozenset[int] = field(default_factory=frozenset)
 
 
 def hors_salle(tache: Tache, salle: str) -> bool:

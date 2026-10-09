@@ -466,3 +466,41 @@ describe('aller-retour export → import', () => {
     expect(plannings.GM101).toEqual(planning);
   });
 });
+
+describe('import — les valeurs de la grille (2026-10-09)', () => {
+  const referentielSoir = {
+    groupes: new Map([['GM101', 'GM101'], ['GM101 (CDS)', 'GM101 (CDS)']]),
+    modulesParGroupe: new Map([
+      ['GM101', new Map([['M101', 'M101']])],
+      ['GM101 (CDS)', new Map([['M101', 'M101']])],
+    ]),
+  };
+  const lire = (sujet, type, heuresParSemaine) =>
+    lireFeuilleChronogramme(
+      feuille({ sujet, corps: [ligne(['M101', '', '1', '', '', type], heuresParSemaine)] }),
+      referentielSoir
+    );
+
+  it('accepte 2, 4, 6, 8 et 12 h en présentiel pour un groupe du soir', () => {
+    const resultat = lire('GM101 (CDS)', 'P', { 3: 2, 4: 4, 5: 12, 6: 7.5 });
+    expect(resultat.refus).toEqual([]);
+    expect(remplies(resultat.cellules).map((c) => c.heures)).toEqual([2, 4, 12, 7.5]);
+  });
+
+  it('refuse le synchrone d’un groupe du soir', () => {
+    const resultat = lire('GM101 (CDS)', 'S', { 3: 5 });
+    expect(remplies(resultat.cellules)).toEqual([]);
+    expect(resultat.refus[0]).toMatch(/S3 : pas de synchrone/);
+  });
+
+  it('refuse une valeur hors liste, et la nomme', () => {
+    expect(lire('GM101 (CDS)', 'P', { 3: 3 }).refus[0]).toMatch(/S3 : 3 h refusé/);
+    expect(lire('GM101', 'P', { 3: 2 }).refus[0]).toMatch(/S3 : 2 h refusé — par pas de 2.5 h/);
+  });
+
+  it('un autre groupe garde ses pas de 2,5 h, synchrone compris', () => {
+    const resultat = lire('GM101', 'S', { 3: 5 });
+    expect(resultat.refus).toEqual([]);
+    expect(remplies(resultat.cellules)).toHaveLength(1);
+  });
+});

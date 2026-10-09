@@ -489,15 +489,20 @@ router.delete(
  */
 const operationLotSchema = z
   .object({
-    type: z.enum(['poser', 'vider', 'deplacer']),
+    type: z.enum(['poser', 'vider', 'deplacer', 'permuter']),
     cle: z.string().max(200).optional(),
     seance: seanceSchema.optional(),
     creneau: creneauSchema.optional(),
     source: creneauSchema.optional(),
+    // `permuter` (2026-10-09) : la séance chassée de la case d'arrivée, à sa nouvelle place.
+    autre: seanceSchema.optional(),
   })
   .refine(
-    (op) =>
-      op.type === 'vider' ? Boolean(op.creneau) : Boolean(op.seance) && (op.type !== 'deplacer' || Boolean(op.source)),
+    (op) => {
+      if (op.type === 'vider') return Boolean(op.creneau);
+      if (op.type === 'permuter') return Boolean(op.seance?.id) && Boolean(op.autre?.id);
+      return Boolean(op.seance) && (op.type !== 'deplacer' || Boolean(op.source));
+    },
     { message: 'Opération incomplète' }
   );
 

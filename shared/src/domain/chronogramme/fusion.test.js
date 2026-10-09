@@ -219,6 +219,22 @@ describe('poserAvecJumelles — le report sur les groupes fusionnés', () => {
     expect(planning['SMP202||EGQ202'][10]).toMatchObject({ heures: 5, type: TYPES.SYNCHRONE });
   });
 
+  it('ne reporte pas le synchrone sur une jumelle du cours du soir (2026-10-09)', () => {
+    const avecSoir = [lignes[0], { ...lignes[1], cle: 'SMP202 (CDS)||EGQ202', groupe: 'SMP202 (CDS)' }];
+    const { planning, reportees } = poserAvecJumelles({
+      planning: {},
+      modules: avecSoir,
+      module: avecSoir[0],
+      semaine: semaines[0],
+      heures: 5,
+      type: TYPES.SYNCHRONE,
+      semainesParDefaut: semaines,
+    });
+
+    expect(reportees).toBe(0);
+    expect(planning['SMP202 (CDS)||EGQ202']).toBeUndefined();
+  });
+
   /*
    * ⚠️ LE PRÉSENTIEL NE SE REPORTE JAMAIS : deux groupes en salle, ce sont deux
    * cours distincts, donnés à deux moments.

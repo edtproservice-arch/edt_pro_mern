@@ -1,4 +1,32 @@
-import { HEURES_PAR_JOUR, JOURS_PAR_SEMAINE, PAS, plafondSemaine } from './semaines.js';
+import { groupesDuSoir } from '../emploi/grille.js';
+import { HEURES_PAR_JOUR, JOURS_PAR_SEMAINE, PAS, PLAFOND_CELLULE, plafondSemaine } from './semaines.js';
+
+/**
+ * ═══ LES GROUPES DU COURS DU SOIR (CDS), À LA SAISIE (2026-10-09) ═══
+ * Demande du porteur : « supprime la planification synchrone des groupes CDS
+ * et ajoute à la planification du présentiel 2 h, 4 h, 6 h, 8 h, 12 h » —
+ * précisée ensuite : 2 ; 2,5 ; 4 ; 5 ; 6 ; 7,5 ; 8 ; 10 ; 12 h.
+ *
+ * ⚠️ LA GRILLE SEULE : la génération automatique garde ses pas de 2,5 h (choix
+ *    du porteur). Le groupe se reconnaît au suffixe « (CDS) » de son nom —
+ *    `groupesDuSoir`, la règle de l'emploi du temps.
+ */
+export const VALEURS_PRESENTIEL_CDS = [2, 2.5, 4, 5, 6, 7.5, 8, 10, 12];
+
+export const estGroupeDuSoir = (groupe) => Boolean(groupe) && groupesDuSoir([groupe]).length > 0;
+
+/**
+ * Les heures qu'une case propose pour un type, sous son plafond.
+ *
+ * @returns {number[]} vide quand ce type n'est pas permis (synchrone en CDS)
+ */
+export function heuresProposees({ groupe = null, type = TYPES.PRESENTIEL, plafond = PLAFOND_CELLULE } = {}) {
+  if (estGroupeDuSoir(groupe)) {
+    if (type === TYPES.SYNCHRONE) return [];
+    return VALEURS_PRESENTIEL_CDS.filter((heures) => heures <= plafond);
+  }
+  return Array.from({ length: Math.floor(plafond / PAS) }, (_, rang) => (rang + 1) * PAS);
+}
 
 /**
  * Le planning d'un groupe : module → semaine → heures, par type.
@@ -157,6 +185,12 @@ export function verifierCellule({
    * prend pas plus de 20 h par semaine) porte sur le total des deux.
    */
   autrePart = 0,
+  /**
+   * Le groupe de la case. Facultatif : sans lui, les règles ordinaires
+   * s'appliquent. Avec un groupe du cours du soir, la saisie suit
+   * `VALEURS_PRESENTIEL_CDS` et refuse le synchrone (2026-10-09).
+   */
+  groupe = null,
 }) {
   const valeur = nombre(heures);
 
@@ -164,7 +198,17 @@ export function verifierCellule({
     return { possible: false, motif: motifDeRefus(semaine) };
   }
 
-  if (valeur % PAS !== 0) {
+  if (estGroupeDuSoir(groupe)) {
+    if (type === TYPES.SYNCHRONE) {
+      return { possible: false, motif: 'Pas de synchrone pour un groupe du cours du soir.' };
+    }
+    if (!VALEURS_PRESENTIEL_CDS.includes(valeur)) {
+      return {
+        possible: false,
+        motif: `Cours du soir : ${VALEURS_PRESENTIEL_CDS.join(' ; ')} h.`,
+      };
+    }
+  } else if (valeur % PAS !== 0) {
     return { possible: false, motif: `Les heures se saisissent par pas de ${PAS} h.` };
   }
 

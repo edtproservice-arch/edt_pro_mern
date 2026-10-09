@@ -16,6 +16,7 @@ import {
   SEUIL_ACHEVEMENT,
   completionModules,
   datesDeLaPlage,
+  datesOuvrablesDeLaPlage,
   facettesAvancement,
   filtrerAvancement,
 } from 'shared/domain';
@@ -283,6 +284,7 @@ function useLignesTableau({ details, ouvert, anneeScolaire, dateObservee, face, 
             anneeScolaire,
             dateObservee,
             rentrees: plages.data?.rentrees ?? [],
+            feries: plages.data?.feries ?? [],
           })
         : {}),
     }));
@@ -346,7 +348,7 @@ function Tableau({ lignes, face, chargement }) {
 function Telecharger({ face, lignes, resume, dateObservee }) {
   const telechargement = useMutation({
     mutationFn: (format) => {
-      const colonnes = face === 'edtpro' ? EXPORT_DATES : EXPORT_HEURES;
+      const colonnes = face !== 'edtpro' ? EXPORT_HEURES : format === 'xlsx' ? EXPORT_EXCEL : EXPORT_DATES;
       return exporterAchevement({
         format,
         resume,
@@ -412,6 +414,18 @@ const EXPORT_DATES = [
   { id: 'debut', entete: 'Début', valeur: (l) => l.debut },
   { id: 'fin', entete: 'Fin', valeur: (l) => l.finTexte },
   { id: 'source', entete: 'Source', valeur: (l) => l.source },
+];
+/*
+ * ⚠️ L'EXCEL N'A NI « EN COURS » NI SOURCE (2026-10-09, demande du porteur) :
+ * une semaine et une date prévisionnelle de début, puis de fin, jours fériés
+ * exclus — des valeurs à retravailler dans le tableur, pas un libellé d'écran.
+ */
+const EXPORT_EXCEL = [
+  ...EXPORT_COMMUNES,
+  { id: 'semaineDebut', entete: 'Semaine début', valeur: (l) => l.prevision?.semaineDebut },
+  { id: 'dateDebut', entete: 'Date début', valeur: (l) => l.prevision?.dateDebut },
+  { id: 'semaineFin', entete: 'Semaine fin', valeur: (l) => l.prevision?.semaineFin },
+  { id: 'dateFin', entete: 'Date fin', valeur: (l) => l.prevision?.dateFin },
 ];
 const EXPORT_HEURES = [
   ...EXPORT_COMMUNES,
@@ -628,7 +642,36 @@ function datesDuModule(detail, plage, contexte = {}) {
     semaineFin = plage.posee.fin;
   }
 
-  return { debut, fin, finTexte: finTexte ?? fin, source, semaineDebut, semaineFin };
+  return {
+    debut,
+    fin,
+    finTexte: finTexte ?? fin,
+    source,
+    semaineDebut,
+    semaineFin,
+    prevision: previsionExport(semaineDebut, semaineFin, contexte),
+  };
+}
+
+/**
+ * Semaines et dates prévisionnelles de début et de fin, pour l'export Excel :
+ * les MÊMES semaines que la fenêtre (posée, sinon prévue ; fin attendue pour un
+ * module en cours), datées du premier et du dernier jour ouvrable, fériés exclus.
+ */
+function previsionExport(semaineDebut, semaineFin, { anneeScolaire, rentrees = [], feries = [] } = {}) {
+  const dater = (semaine) =>
+    Number.isFinite(semaine)
+      ? datesOuvrablesDeLaPlage(Number(anneeScolaire), { debut: semaine, fin: semaine }, rentrees, feries)
+      : null;
+  const debut = dater(semaineDebut);
+  const fin = dater(semaineFin);
+
+  return {
+    semaineDebut: Number.isFinite(semaineDebut) ? `S${semaineDebut}` : '',
+    dateDebut: debut ? enDate(debut.debut) : '',
+    semaineFin: Number.isFinite(semaineFin) ? `S${semaineFin}` : '',
+    dateFin: fin ? enDate(fin.fin) : '',
+  };
 }
 
 /**

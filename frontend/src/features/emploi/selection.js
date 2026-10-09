@@ -129,17 +129,52 @@ export function cible(presse, ancre, { sujets, creneaux, periode = 'jour' }) {
  * @param {string} depuis clé de la case d'origine
  * @param {string} vers clé de la case d'arrivée
  * @param {object|undefined} seance ce qui est posé à l'origine
- * @param {{copie?: boolean, sujetDe?: (cle: string) => object}} options
+ * @param {{copie?: boolean, sujetDe?: (cle: string) => object, occupante?: object}} options
  *   `copie` — avec Ctrl, l'origine est conservée.
- *   `sujetDe` — ce que le sujet de la case d'arrivée impose (le formateur en vue
- *   par formateur, le groupe en vue par groupe). Sans lui, déposer sur une autre
+ *   `sujetDe` — ce que le sujet d'une case impose (le formateur en vue par
+ *   formateur, le groupe en vue par groupe). Sans lui, déposer sur une autre
  *   ligne garderait le formateur de départ et la séance n'irait nulle part.
+ *   `occupante` — la séance déjà posée sur la case d'arrivée, s'il y en a une.
  */
-export function deplacement(depuis, vers, seance, { copie = false, sujetDe } = {}) {
+export function deplacement(depuis, vers, seance, { copie = false, sujetDe, occupante } = {}) {
   if (!seance || !depuis || !vers || depuis === vers) return [];
 
   const arrivee = lireCle(vers);
   const origine = lireCle(depuis);
+
+  /*
+   * ═══ UNE CASE OCCUPÉE : LES DEUX SÉANCES S'ÉCHANGENT (2026-10-09, demande du
+   * porteur) ═══ La séance glissée prend la place de l'occupante, l'occupante
+   * celle qu'elle quitte — chacune avec le sujet de sa NOUVELLE ligne. Le
+   * serveur vérifie les deux sens et n'écrit rien si l'un échoue.
+   *
+   * ⚠️ PAS EN COPIE : Ctrl + glisser sur une case prise reste une pose, que le
+   *    serveur refuse comme un chevauchement — dupliquer en échangeant n'aurait
+   *    pas de sens.
+   */
+  if (!copie && occupante?.id && seance.id && occupante.id !== seance.id) {
+    const placer = (s, creneau, cle) => ({
+      id: s.id,
+      jour: creneau.jour,
+      seance: creneau.creneau,
+      periode: creneau.periode,
+      formateurMatricule: s.formateurMatricule,
+      groupe: s.groupe,
+      module: s.module,
+      salle: s.salle ?? '',
+      statut: s.statut ?? 'planifie',
+      ...(sujetDe?.(cle) ?? {}),
+    });
+    return [
+      {
+        type: 'permuter',
+        cle: vers,
+        cleSource: depuis,
+        seance: placer(seance, arrivee, vers),
+        autre: placer(occupante, origine, depuis),
+      },
+    ];
+  }
 
   return [
     {

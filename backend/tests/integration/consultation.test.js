@@ -7,6 +7,7 @@ import { Base } from '../../src/models/Base.js';
 import { Seance } from '../../src/models/Seance.js';
 import { Stagiaire } from '../../src/models/Stagiaire.js';
 import { Repartition } from '../../src/models/Repartition.js';
+import { RefreshToken } from '../../src/models/RefreshToken.js';
 import { ROLES, STATUTS_COMPTE, TYPES_COURS } from 'shared/constants';
 
 vi.mock('../../src/config/mailer.js', () => ({
@@ -614,5 +615,38 @@ describe('POST /auth/connexion — vérification d’appareil selon le rôle', (
     expect(depuisTelephone.status).toBe(200);
     expect(depuisTelephone.body.action).toBe('verification_appareil');
     expect(depuisTelephone.headers['set-cookie']?.join(';') ?? '').not.toMatch(/edt_access=/);
+  });
+
+  /*
+   * ⚠️ RÉCLAMATION D'UN DIRECTEUR (2026-10-09) : « un code à chaque reconnexion,
+   * sur le même appareil ». La déconnexion effaçait la session qui faisait
+   * reconnaître le PC ; une autre session ouverte ailleurs suffisait alors à
+   * le rendre inconnu.
+   */
+  it('un directeur qui se déconnecte puis se reconnecte sur le même appareil n’a pas de code', async () => {
+    // Le PC est son premier appareil : accepté d'office.
+    const directeur = await User.findOne({ email: 'directeur@edtpro.ma' });
+    await RefreshToken.deleteMany({ utilisateurId: directeur._id });
+    const surPc = await connecter('directeur@edtpro.ma', PC);
+    expect(surPc.body.action).toBe('connecte');
+
+    // Une autre session reste ouverte sur son téléphone.
+    await RefreshToken.create({
+      utilisateurId: directeur._id,
+      empreinte: 'session-telephone',
+      appareil: TELEPHONE,
+      expireLe: new Date(Date.now() + 86_400_000),
+    });
+
+    await request(app).post('/api/v2/auth/deconnexion').set('Cookie', surPc.headers['set-cookie']);
+
+    const retour = await connecter('directeur@edtpro.ma', PC);
+    expect(retour.body.action).toBe('connecte');
+
+    // La session fermée ne peut plus rien rouvrir.
+    const rafraichi = await request(app)
+      .post('/api/v2/auth/rafraichir')
+      .set('Cookie', surPc.headers['set-cookie']);
+    expect(rafraichi.status).toBe(401);
   });
 });

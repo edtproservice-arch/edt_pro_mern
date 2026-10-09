@@ -33,7 +33,8 @@ const TITRE_SESSION = {
   [ROLES.ADMIN]: 'Collaboration',
 };
 
-const DELAI_INACTIVITE_MS = 5 * 60 * 1000; // 5 minutes d'inactivité
+// 15 minutes d'inactivité (2026-10-09, demande du porteur — 5 auparavant).
+const DELAI_INACTIVITE_MS = 15 * 60 * 1000;
 
 /*
  * Ce qui compte comme « quelqu'un travaille » — TOUT geste, y compris le
@@ -60,7 +61,7 @@ const EVENEMENTS_ACTIVITE = [
 const VERIFICATION_INACTIVITE_MS = 10_000;
 
 /**
- * Déconnexion automatique si l'utilisateur ne fait aucune action pendant 5
+ * Déconnexion automatique si l'utilisateur ne fait aucune action pendant 15
  * minutes.
  *
  * ═══ ⚠️ UN HORODATAGE, PAS UN MINUTEUR RELANCÉ (2026-09-19, signalé par le
@@ -134,7 +135,7 @@ export default function CoquilleApp() {
    */
   const ancre = useAncreRentrees(Boolean(utilisateur));
 
-  // Déconnexion automatique après 5 minutes d'inactivité
+  // Déconnexion automatique après 15 minutes d'inactivité
   useGestionInactivite(Boolean(utilisateur));
 
   // Redirection automatique si la session est expirée

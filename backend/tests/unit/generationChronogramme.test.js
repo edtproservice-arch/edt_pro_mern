@@ -264,6 +264,29 @@ describe('les groupes PIE : 5 h au total par semaine, à partir de S3', () => {
   });
 });
 
+describe('les groupes du cours du soir ne sont pas générés (2026-10-09)', () => {
+  it('aucune tâche pour un groupe CDS, qui est nommé dans le résultat', () => {
+    const construit = construireProblemeChronogramme(ANNEE, {
+      base: base(
+        [affectation('100', 'GM101 (CDS)', 'M101', P, 60), affectation('100', 'GM101', 'M102', P, 60)],
+        ['GM101 (CDS)', 'GM101']
+      ),
+    });
+    expect(construit.probleme.taches.map((t) => t.groupes)).toEqual([['GM101']]);
+    expect(construit.groupesCds).toEqual(['GM101 (CDS)']);
+    expect(construit.groupesTouches).toEqual(['GM101']);
+    // Ses heures ne pèsent pas dans la cible du formateur.
+    expect(construit.cibles.get('100').masseAffectee).toBe(60);
+  });
+
+  it('une séance mutualisée avec un groupe du soir n’est générée que pour les autres', () => {
+    const { probleme } = construireProblemeChronogramme(ANNEE, {
+      base: base([affectation('200', 'GM101 GM102 (CDS)', 'M101', S, 20)], ['GM101', 'GM102 (CDS)']),
+    });
+    expect(probleme.taches[0].groupes).toEqual(['GM101']);
+  });
+});
+
 describe('les lots et leurs fenêtres', () => {
   it('un module annuel : son S1 enchaîne sur son S2, sans arrêt', () => {
     const { probleme } = construire([affectation('100', 'GM101', 'M101', P, 40, 60)]);
@@ -317,7 +340,7 @@ describe('fin de formation (2026-10-04)', () => {
     expect(derniere(deuxieme)).toBe(41);
   });
 
-  it('rien après la S18 en 3ᵉ année cours du jour — mais pas de borne en cours du soir', () => {
+  it('rien après la S18 en 3ᵉ année cours du jour — le cours du soir, lui, n’est pas généré', () => {
     const cdj = construireProblemeChronogramme(ANNEE, {
       base: base([affectation('100', 'GM301', 'M101', P, 60)], ['GM301']),
     });
@@ -325,10 +348,11 @@ describe('fin de formation (2026-10-04)', () => {
     // Au-delà, le groupe ne compte plus dans la cible du formateur.
     expect(cdj.cibles.get('100').parSemaine[19]).toBeUndefined();
 
+    // Depuis le 2026-10-09, un groupe du soir n'a aucune tâche : il se planifie à la main.
     const cds = construireProblemeChronogramme(ANNEE, {
       base: base([affectation('100', 'GM301 (CDS)', 'M101', P, 60)], ['GM301 (CDS)']),
     });
-    expect(derniere(cds.probleme)).toBe(45);
+    expect(cds.probleme.taches).toEqual([]);
   });
 });
 

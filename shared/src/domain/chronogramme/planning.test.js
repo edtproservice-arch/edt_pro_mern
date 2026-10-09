@@ -10,6 +10,7 @@ import {
   totauxModule,
   verifierCellule,
 } from './planning.js';
+import { VALEURS_PRESENTIEL_CDS, estGroupeDuSoir, heuresProposees } from './planning.js';
 
 const pleine = (numero = 3) => ({ numero, disponible: true, joursDisponibles: 6, motif: null });
 const masses = { presentiel: 60, synchrone: 20 };
@@ -275,5 +276,39 @@ describe('case MIXTE — présentiel et synchrone la même semaine (2026-10-01)'
     });
     expect(verdict.possible).toBe(false);
     expect(verdict.motif).toContain('présentiel');
+  });
+});
+
+describe('groupes du cours du soir (2026-10-09)', () => {
+  const semaine = { numero: 5, disponible: true, joursDisponibles: 6 };
+  const verifier = (heures, type, groupe = 'DEV101 (CDS)') =>
+    verifierCellule({ planning: {}, module: 'M101', semaine, heures, type, masses: { presentiel: 60, synchrone: 20 }, groupe });
+
+  it('reconnaît un groupe CDS à son suffixe', () => {
+    expect(estGroupeDuSoir('DEV101 (CDS)')).toBe(true);
+    expect(estGroupeDuSoir('DEV101')).toBe(false);
+    expect(estGroupeDuSoir(null)).toBe(false);
+  });
+
+  it('propose 2 ; 2,5 ; 4 ; 5 ; 6 ; 7,5 ; 8 ; 10 ; 12 h en présentiel, et aucun synchrone', () => {
+    expect(heuresProposees({ groupe: 'DEV101 (CDS)', type: 'P' })).toEqual(VALEURS_PRESENTIEL_CDS);
+    expect(heuresProposees({ groupe: 'DEV101 (CDS)', type: 'S' })).toEqual([]);
+    expect(heuresProposees({ groupe: 'DEV101 (CDS)', type: 'P', plafond: 7.5 })).toEqual([2, 2.5, 4, 5, 6, 7.5]);
+  });
+
+  it('un autre groupe garde les pas de 2,5 h', () => {
+    expect(heuresProposees({ groupe: 'DEV101', type: 'S', plafond: 7.5 })).toEqual([2.5, 5, 7.5]);
+  });
+
+  it('accepte 2 h et 12 h en CDS, refuse 3 h et le synchrone', () => {
+    expect(verifier(2, 'P').possible).toBe(true);
+    expect(verifier(12, 'P').possible).toBe(true);
+    expect(verifier(3, 'P').possible).toBe(false);
+    expect(verifier(5, 'S')).toMatchObject({ possible: false, motif: expect.stringMatching(/synchrone/) });
+  });
+
+  it('hors CDS, 2 h reste refusé', () => {
+    expect(verifier(2, 'P', 'DEV101').possible).toBe(false);
+    expect(verifier(5, 'S', 'DEV101').possible).toBe(true);
   });
 });

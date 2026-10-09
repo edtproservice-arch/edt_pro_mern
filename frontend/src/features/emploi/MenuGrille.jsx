@@ -222,16 +222,15 @@ export default function MenuGrille({
           aria-pressed={modeSelection}
           title={
             modeSelection
-              ? 'Sélection active — glisser trace un rectangle. Cliquer, ou appuyer sur Ctrl, pour revenir au déplacement des séances.'
-              : 'Activer la sélection — glisser tracera un rectangle. Sans elle, glisser DÉPLACE une séance. Un appui sur Ctrl fait la même chose.'
+              ? 'Sélection active — glisser trace un rectangle. Cliquer (ou lâcher Ctrl) pour revenir au déplacement des séances.'
+              : 'Activer la sélection — glisser tracera un rectangle. Sans elle, glisser DÉPLACE une séance. Maintenir Ctrl l’active le temps de l’appui.'
           }
           className="h-8 gap-1.5 text-xs"
         >
           <MousePointerSquareDashed className="size-3.5" />
           Activer
-          {/* ⚠️ Ctrl BASCULE, il ne maintient plus : le rappeler ici est le seul
-              endroit qui l'apprenne. Le jeton ne s'allume donc plus tout seul —
-              c'est l'état du bouton qui dit où l'on en est. */}
+          {/* ⚠️ Ctrl MAINTENU active la sélection le temps de l'appui (2026-10-09) :
+              le bouton s'allume tant que la touche est enfoncée. */}
           <Kbd className={cn('transition-colors', modeSelection && 'bg-primary-foreground/20 text-primary-foreground')}>
             Ctrl
           </Kbd>

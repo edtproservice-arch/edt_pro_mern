@@ -89,6 +89,46 @@ beforeEach(async () => {
   cookies = await connecter('directeur@edtpro.ma');
 });
 
+describe('réinitialiser tous les chronogrammes (2026-10-09)', () => {
+  const reinitialiser = (corps, jar = cookies) =>
+    request(app).post('/api/v2/chronogrammes/reinitialiser').set('Cookie', jar).send(corps);
+
+  it('COMPTE par défaut, sans rien vider', async () => {
+    const reponse = await reinitialiser({});
+    expect(reponse.status).toBe(200);
+    expect(reponse.body).toMatchObject({ simulation: true, groupes: ['GM101'], cellules: 1 });
+    const gm101 = await Chronogramme.findOne({ groupe: 'GM101' });
+    expect([...gm101.planning.keys()]).toEqual(['M999']);
+  });
+
+  it('vide chaque planning et avance sa version', async () => {
+    const reponse = await reinitialiser({ simulation: false });
+    expect(reponse.status).toBe(200);
+    const gm101 = await Chronogramme.findOne({ groupe: 'GM101' });
+    expect(gm101.planning.size).toBe(0);
+    expect(gm101.version).toBe(1);
+
+    // Rien à vider : la version ne bouge plus.
+    const encore = await reinitialiser({ simulation: false });
+    expect(encore.body.groupes).toEqual([]);
+    expect((await Chronogramme.findOne({ groupe: 'GM101' })).version).toBe(1);
+  });
+
+  it('est réservée au directeur', async () => {
+    await User.create({
+      nomComplet: 'Brahim Lourid',
+      email: 'brahim.lourid@edtpro.ma',
+      motDePasse: MOT_DE_PASSE,
+      role: ROLES.FORMATEUR,
+      identifiant: '9863',
+      statut: STATUTS_COMPTE.APPROUVE,
+      estVerifie: true,
+      etablissementIds: [etablissement.id],
+    });
+    expect((await reinitialiser({}, await connecter('brahim.lourid@edtpro.ma'))).status).toBe(403);
+  });
+});
+
 (pythonDisponible ? describe : describe.skip)('génération du chronogramme', () => {
   it('SIMULE par défaut, sans rien écrire', async () => {
     const reponse = await generer({});

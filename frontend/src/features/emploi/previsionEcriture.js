@@ -57,6 +57,11 @@ export function appliquerOperations(seances, operations, regles = null) {
       continue;
     }
 
+    if (operation.type === 'permuter') {
+      etat = permuterDans(etat, operation, suivi);
+      continue;
+    }
+
     const nouvelle = operation.seance;
     const id = idServeur(nouvelle.id);
     const index = id
@@ -132,10 +137,18 @@ export function resoudreIdentifiants(operations, seances) {
     if (idServeur(s.id)) reels.set(idProvisoire(s), s.id);
   }
 
+  const resoudre = (seance) => {
+    const id = seance?.id;
+    if (!id || idServeur(id)) return seance;
+    return { ...seance, id: reels.get(id) };
+  };
+
   return operations.map((operation) => {
-    const id = operation.seance?.id;
-    if (!id || idServeur(id)) return operation;
-    return { ...operation, seance: { ...operation.seance, id: reels.get(id) } };
+    const seance = resoudre(operation.seance);
+    // Une permutation porte DEUX séances, et chacune peut venir d'être créée.
+    const autre = operation.autre && resoudre(operation.autre);
+    if (seance === operation.seance && autre === operation.autre) return operation;
+    return { ...operation, seance, ...(autre && { autre }) };
   });
 }
 
@@ -188,6 +201,68 @@ export function ajusterPosees(posees = {}, avant, apres) {
 }
 
 /* ─────────────────────────────── interne ─────────────────────────────── */
+
+/**
+ * Une permutation, rejouée comme le serveur la fait (`permuter`) : la séance
+ * chassée (`autre`) est jugée à sa nouvelle place SANS les deux partantes, puis
+ * la séance glissée l'est SANS son ancienne place, avec l'autre déjà arrivée.
+ *
+ * ⚠️ TOUT OU RIEN, comme au serveur : si l'une des deux est refusée, l'état
+ *    reste celui d'avant — un échange à moitié montré serait faux.
+ */
+function permuterDans(etat, operation, suivi) {
+  const a = etat.find((s) => s.id === idServeur(operation.seance.id));
+  const b = etat.find((s) => s.id === idServeur(operation.autre.id));
+  if (!a || !b) return etat;
+
+  let fusionB = { ...b, ...definies(operation.autre), id: b.id };
+  let fusionA = { ...a, ...definies(operation.seance), id: a.id };
+
+  if (suivi) {
+    const sansLesDeux = etat.filter((s) => s !== a && s !== b);
+
+    /*
+     * Jugée comme un déplacement : seule la salle peut céder. MAIS, comme au
+     * serveur (`poserSalleCedante`), elle essaie d'abord la salle que la
+     * partenaire LAISSE sur ce créneau, avant d'être posée sans salle.
+     */
+    const placer = (fusion, remplacee, donnees, salleLaissee, etatJuge) => {
+      const juger = (candidate) =>
+        suivi.juger({
+          etat: etatJuge,
+          remplacee,
+          fusion: candidate,
+          id: remplacee.id,
+          operation: { type: 'deplacer', seance: { ...donnees, salle: candidate.salle } },
+        });
+      const verdict = juger(fusion);
+      if (verdict !== 'sans-salle') return verdict === 'refus' ? null : fusion;
+      if (salleLaissee && salleLaissee !== fusion.salle) {
+        const reprise = { ...fusion, salle: salleLaissee };
+        if (juger(reprise) === 'accepte') return reprise;
+      }
+      return { ...fusion, salle: '' };
+    };
+
+    const posee = placer(fusionB, b, operation.autre, operation.seance.salle, sansLesDeux);
+    if (!posee) return etat;
+    fusionB = posee;
+    suivi.retirer([b]);
+    suivi.ajouter(fusionB);
+
+    const arrivee = placer(fusionA, a, operation.seance, operation.autre.salle, [...sansLesDeux, fusionB]);
+    if (!arrivee) {
+      suivi.retirer([fusionB]);
+      suivi.ajouter(b);
+      return etat;
+    }
+    fusionA = arrivee;
+    suivi.retirer([a]);
+    suivi.ajouter(fusionA);
+  }
+
+  return etat.map((s) => (s === a ? fusionA : s === b ? fusionB : s));
+}
 
 /** Un identifiant que le serveur a émis : 24 caractères hexadécimaux. */
 const ID_SERVEUR = /^[a-f0-9]{24}$/i;

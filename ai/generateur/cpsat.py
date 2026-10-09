@@ -72,6 +72,13 @@ PENALITE_A_EVITER = 500
 #:    devant une séance non placée, jamais l'inverse.
 PENALITE_HORS_SALLE = 500
 
+#: Coût d'un créneau de secours (samedi soir du cours du soir, semaine d'un
+#: cours de jour CDS). ← la classe de repli du glouton (2026-10-09).
+#: ⚠️ ASSEZ FORT POUR BATTRE LES BONUS DE FORME (bloc 100, jour 30), assez
+#:    faible pour ne jamais faire renoncer à une séance : voir le plancher du
+#:    gain dans l'objectif.
+PENALITE_SECOURS = 200
+
 #: Deux séances d'affilée pour la même tâche. ← `SCORE_BLOC` du glouton.
 BONUS_BLOC = 100
 
@@ -217,7 +224,12 @@ def resoudre(probleme: Probleme) -> Solution:
             #    plutôt que de rester non placée — la hiérarchie de l'en-tête.
             if hors_salle(tache, salle):
                 gain -= PENALITE_HORS_SALLE
-            termes.append(gain * variable)
+            if creneau_id in tache.creneaux_secours:
+                gain -= PENALITE_SECOURS
+            # ⚠️ PLANCHER : poser doit TOUJOURS valoir mieux que ne pas poser,
+            #    même quand toutes les pénalités s'additionnent sur une tâche de
+            #    priorité 7 (gain 1 000).
+            termes.append(max(1, gain) * variable)
 
     # Blocs : deux séances d'affilée pour la même tâche.
     for tache in probleme.taches:

@@ -375,3 +375,65 @@ describe('resoudreIdentifiants — la séance qui entrait en conflit avec elle-m
     expect(resoudreIdentifiants(operations, [seance()])).toEqual(operations);
   });
 });
+
+describe('appliquerOperations — permuter (2026-10-09)', () => {
+  // A : GM101 · M101 · Lundi S1 ; B : GM102 · M102 · Lundi S2 — même formateur.
+  const a = seance();
+  const b = seance({ id: ID_B, seance: 'S2', groupe: 'GM102', module: 'M102', salle: 'B02' });
+  const permutation = {
+    type: 'permuter',
+    cle: 'arrivee',
+    cleSource: 'depart',
+    seance: { ...a, seance: 'S2' },
+    autre: { ...b, seance: 'S1' },
+  };
+
+  it('échange les deux séances, identifiants conservés', () => {
+    const apres = appliquerOperations([a, b], [permutation], regles());
+
+    expect(apres.find((s) => s.id === ID_A).seance).toBe('S2');
+    expect(apres.find((s) => s.id === ID_B).seance).toBe('S1');
+    expect(apres).toHaveLength(2);
+  });
+
+  it('⚠️ ne montre RIEN si la séance chassée ne peut pas aller au départ', () => {
+    // GM102 a déjà cours Lundi S1 avec un autre formateur.
+    const occupe = seance({ id: 'cccccccccccccccccccccccc', formateurMatricule: '9999', groupe: 'GM102', salle: 'C01' });
+    const semaine = [a, b, occupe];
+
+    const apres = appliquerOperations(semaine, [permutation], regles());
+
+    expect(apres.find((s) => s.id === ID_A).seance).toBe('S1');
+    expect(apres.find((s) => s.id === ID_B).seance).toBe('S2');
+  });
+
+  it('⚠️ ne montre RIEN si la séance glissée ne peut pas aller à l’arrivée', () => {
+    // GM101 a déjà cours Lundi S2 avec un autre formateur.
+    const occupe = seance({ id: 'cccccccccccccccccccccccc', seance: 'S2', formateurMatricule: '9999', salle: 'C01' });
+
+    const apres = appliquerOperations([a, b, occupe], [permutation], regles());
+
+    expect(apres.find((s) => s.id === ID_A).seance).toBe('S1');
+    expect(apres.find((s) => s.id === ID_B).seance).toBe('S2');
+  });
+
+  it('⚠️ une salle prise à l’arrivée cède la place à celle que la partenaire LAISSE', () => {
+    // B part en B02 vers Lundi S1, déjà occupée par un autre cours ; A y libère A12.
+    const occupe = seance({ id: 'cccccccccccccccccccccccc', formateurMatricule: '9999', groupe: 'GM109', salle: 'B02' });
+
+    const apres = appliquerOperations([a, b, occupe], [permutation], regles());
+
+    expect(apres.find((s) => s.id === ID_B)).toMatchObject({ seance: 'S1', salle: 'A12' });
+    expect(apres.find((s) => s.id === ID_A)).toMatchObject({ seance: 'S2', salle: 'A12' });
+  });
+
+  it('résout les identifiants provisoires des DEUX séances', () => {
+    const provisoire = 'provisoire-Lundi-S2-jour-15688';
+    const [resolue] = resoudreIdentifiants(
+      [{ ...permutation, autre: { ...permutation.autre, id: provisoire } }],
+      [{ ...b, id: ID_B }]
+    );
+    expect(resolue.autre.id).toBe(ID_B);
+    expect(resolue.seance.id).toBe(ID_A);
+  });
+});

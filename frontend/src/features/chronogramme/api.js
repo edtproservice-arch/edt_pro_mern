@@ -176,3 +176,13 @@ export function reporterVersChronogramme(simulation = true) {
 export function genererChronogramme({ mode = 'remplacer', simulation = true } = {}) {
   return api.post('/api/v2/chronogrammes/generer', { mode, simulation });
 }
+
+/**
+ * Vide les chronogrammes de TOUS les groupes de l'année (2026-10-09).
+ *
+ * ⚠️ `simulation: true` PAR DÉFAUT, ici comme au serveur : on compte d'abord
+ *    ce qui sera vidé, et l'on ne vide qu'après confirmation.
+ */
+export function reinitialiserTousLesChronogrammes({ simulation = true } = {}) {
+  return api.post('/api/v2/chronogrammes/reinitialiser', { simulation });
+}

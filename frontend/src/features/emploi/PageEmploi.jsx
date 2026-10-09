@@ -126,9 +126,12 @@ export default function PageEmploi() {
    * ⚠️ LE MODE DÉCIDE DE CE QUE FAIT LE GLISSEMENT — rectangle de sélection, ou
    * déplacement d'une séance. Un même geste ne peut pas faire les deux, et
    * l'existant tranchait déjà par un bouton (`setupSelectionModeToggle`).
-   * Un appui sur Ctrl le bascule, exactement comme le bouton.
+   * Le bouton le bascule ; Ctrl maintenu l'active le temps de l'appui.
    */
   const [modeSelection, setModeSelection] = useState(false);
+  // Ctrl enfoncé : le mode sélection ne vaut que le temps de l'appui.
+  const [ctrlMaintenu, setCtrlMaintenu] = useState(false);
+  const selectionActive = modeSelection || ctrlMaintenu;
   /** La seule case dont le `Select` de shadcn est réellement monté. */
   const [caseEnEdition, setCaseEnEdition] = useState(null);
   const [depot, setDepot] = useState({ source: null, survol: null });
@@ -686,6 +689,8 @@ export default function PageEmploi() {
         }
         acceptees.push(operation);
         if (resultat.seance) confirmees.push(resultat.seance);
+        // Une permutation rend AUSSI la séance qu'elle a chassée, à sa nouvelle place.
+        if (resultat.autre) confirmees.push(resultat.autre);
         if (operation.type === 'vider') bilan.videes += 1;
         else bilan.posees += 1;
         if (resultat.salleRetiree) bilan.salleRetiree.push(operation.cle);
@@ -1010,7 +1015,42 @@ export default function PageEmploi() {
   // ⚠️ Le soir n'a qu'UN créneau : la sélection rectangulaire et le collage
   // doivent le savoir, sinon ils viseraient des colonnes qui n'existent pas.
   const creneaux = periode === 'soir' ? [SEANCE_SOIR] : SEANCES_JOUR;
-  const sujetsAffiches = periode === 'soir' ? groupesSoir : sujets;
+  const sujetsDeLaPeriode = periode === 'soir' ? groupesSoir : sujets;
+
+  /*
+   * ═══ FILTRE DE LA PREMIÈRE COLONNE (2026-10-09, demande du porteur) ═══
+   * Formateur ou groupe, comme le filtre automatique d'Excel — le même
+   * composant que le chronogramme. Il porte sur le NOM affiché.
+   *
+   * ⚠️ FILTRÉ ICI, À LA SOURCE, ET NON DANS LA GRILLE : la sélection
+   *    rectangulaire, le collage et le vidage parcourent `sujetsAffiches`. Une
+   *    ligne masquée n'existe donc plus pour eux — on ne peut pas vider une
+   *    séance qu'on ne voit pas.
+   * ⚠️ LE MÊME TABLEAU sans filtre : la grille se réassemble quand ses sujets
+   *    changent d'identité (voir `sujets` plus haut).
+   * ⚠️ REMIS À ZÉRO quand l'axe ou la période change : les valeurs ne sont
+   *    plus les mêmes (des formateurs, puis des groupes).
+   */
+  const nomDeLigne = axeGroupe ? IDENTITE : nomDuFormateur;
+  const [filtreLignes, setFiltreLignes] = useState(null);
+  useEffect(() => setFiltreLignes(null), [axeGroupe, periode]);
+  const valeursFiltreLignes = useMemo(
+    () => [...new Set(sujetsDeLaPeriode.map(nomDeLigne))].sort((a, b) => a.localeCompare(b, 'fr')),
+    [sujetsDeLaPeriode, nomDeLigne]
+  );
+  const sujetsAffiches = useMemo(
+    () =>
+      filtreLignes === null
+        ? sujetsDeLaPeriode
+        : sujetsDeLaPeriode.filter((sujet) => filtreLignes.has(nomDeLigne(sujet))),
+    [sujetsDeLaPeriode, filtreLignes, nomDeLigne]
+  );
+  const filtrerLignes = useCallback((choisies) => {
+    setFiltreLignes(choisies);
+    // Une sélection qui couvrirait une ligne masquée ne doit pas survivre.
+    setSelection(new Set());
+    setAncre(null);
+  }, []);
   const glisse = useRef(false);
 
   const debuter = useCallback(
@@ -1036,57 +1076,63 @@ export default function PageEmploi() {
    * suivant redessinerait la sélection.
    */
   useEffect(() => {
-    const finir = () => {
+    const finir = (evenement) => {
       glisse.current = false;
+      // Ctrl lâché PENDANT le tracé : le mode tenait jusqu'au relâchement du bouton.
+      if (!evenement.ctrlKey) setCtrlMaintenu(false);
     };
     window.addEventListener('mouseup', finir);
     return () => window.removeEventListener('mouseup', finir);
   }, []);
 
   /*
-   * ⚠️ CTRL BASCULE LE MODE — un appui l'active, le suivant le désactive.
-   * C'est ce que demande le porteur, et cela évite l'aller-retour vers le bouton
-   * pour deux cases. La version précédente n'activait la sélection QUE tant que
-   * la touche restait enfoncée : tracer un rectangle imposait alors de garder un
-   * doigt sur Ctrl pendant tout le glissement.
+   * ⚠️ CTRL MAINTENU = SÉLECTION (2026-10-09, demande du porteur) : la touche
+   * enfoncée active le mode, la relâcher le désactive. Le bouton, lui, reste une
+   * bascule durable. Remplace la version « un appui bascule » du 2026-09.
    *
-   * ⚠️⚠️ UN APPUI SEUL, JAMAIS UN RACCOURCI. Copier (Ctrl+C), coller, défaire —
-   * tous commencent par un `keydown` sur Control : basculer dès cet appui aurait
-   * changé de mode à chaque raccourci, en silence. On ne bascule donc qu'au
-   * RELÂCHEMENT, et seulement si rien d'autre n'a été pressé ni cliqué entre
-   * temps. `blur` annule aussi : un Alt+Tab n'est pas un appui sur Ctrl.
+   * ⚠️ LÂCHER CTRL EN PLEIN TRACÉ ne coupe pas le rectangle : on attend que le
+   * bouton de la souris soit relâché (voir `finir` ci-dessus).
+   * `blur` libère aussi : après un Alt+Tab, le `keyup` n'arrive jamais ici.
+   *
+   * Copier une séance (Ctrl + glisser) : commencer le glissement, PUIS appuyer
+   * sur Ctrl avant de déposer — Ctrl enfoncé d'abord trace une sélection.
    */
   useEffect(() => {
-    let seul = false;
-
     const appuyer = (evenement) => {
-      if (evenement.key === 'Control') {
-        if (!evenement.repeat) seul = true;
-        return;
-      }
-      seul = false;
+      if (evenement.key === 'Control' && !evenement.repeat) setCtrlMaintenu(true);
     };
     const relacher = (evenement) => {
-      if (evenement.key !== 'Control') return;
-      if (seul) basculerSelection();
-      seul = false;
+      if (evenement.key === 'Control' && !glisse.current) setCtrlMaintenu(false);
     };
-    const annuler = () => {
-      seul = false;
-    };
+    const liberer = () => setCtrlMaintenu(false);
 
     window.addEventListener('keydown', appuyer);
     window.addEventListener('keyup', relacher);
-    // Ctrl + glisser COPIE une séance : ce n'est pas un appui seul non plus.
-    window.addEventListener('mousedown', annuler);
-    window.addEventListener('blur', annuler);
+    window.addEventListener('blur', liberer);
     return () => {
       window.removeEventListener('keydown', appuyer);
       window.removeEventListener('keyup', relacher);
-      window.removeEventListener('mousedown', annuler);
-      window.removeEventListener('blur', annuler);
+      window.removeEventListener('blur', liberer);
     };
-  }, [basculerSelection]);
+  }, []);
+
+  /*
+   * ⚠️ LA SÉLECTION TRACÉE AU CTRL SURVIT AU RELÂCHEMENT : Suppr (sans Ctrl) et
+   * la barre flottante doivent encore la viser. Elle tombe au PROCHAIN CLIC,
+   * où qu'il soit (2026-10-09, demande du porteur) — sauf sur la barre
+   * flottante, dont les boutons agissent justement sur elle. Sans cela, le
+   * cadre bleu laisserait croire qu'il porte encore (cf. l'effacement au
+   * changement de mode plus haut).
+   */
+  useEffect(() => {
+    if (selectionActive) return undefined;
+    const relacherSelection = (evenement) => {
+      if (evenement.target.closest?.('[data-barre-selection]')) return;
+      setSelection((cases) => (cases.size > 0 ? new Set() : cases));
+    };
+    window.addEventListener('mousedown', relacherSelection);
+    return () => window.removeEventListener('mousedown', relacherSelection);
+  }, [selectionActive]);
 
   // ═══ Glisser-déposer ═══
   /**
@@ -1131,7 +1177,13 @@ export default function PageEmploi() {
       if (!source) return;
 
       appliquer(
-        deplacement(source, cle, seanceDe(source), { copie, sujetDe: () => imposerLeSujet(sujet) })
+        deplacement(source, cle, seanceDe(source), {
+          copie,
+          // Chaque case impose SON sujet : en permutation, l'occupante repart vers la ligne de départ.
+          sujetDe: (case_) => imposerLeSujet(case_ === cle ? sujet : lireCle(case_).sujet),
+          // Une case déjà prise ÉCHANGE les deux séances (2026-10-09) — voir `deplacement`.
+          occupante: seanceDe(cle),
+        })
           // La case QUITTÉE fait partie du geste : « défaire » doit la reremplir.
           .map((operation) => (operation.type === 'deplacer' ? { ...operation, cleSource: source } : operation))
       );
@@ -1251,8 +1303,50 @@ export default function PageEmploi() {
 
     const operations = [];
 
+    /*
+     * ═══ ⚠️ UN ÉCHANGE SE DÉFAIT PAR UN ÉCHANGE (2026-10-09) ═══
+     * Deux séances qui ont permuté ne se rétablissent pas case par case :
+     * reposer l'une à sa place d'avant la heurterait à l'autre, encore là — même
+     * formateur ou même groupe, refus garanti. On repère donc les paires dont
+     * chacune occupe la case de l'autre, et on les permute de nouveau, avec
+     * leur contenu d'avant (salle comprise, si l'échange l'avait retirée).
+     */
+    const parId = new Map([...maintenant].map(([cle, s]) => [s.id, cle]));
+    const traitees = new Set();
     for (const [cle, s] of avant) {
-      if (!dansLaPortee(cle)) continue;
+      if (!dansLaPortee(cle) || traitees.has(cle)) continue;
+      const actuelle = maintenant.get(cle);
+      const ailleurs = parId.get(s.id);
+      if (!actuelle || !s.id || actuelle.id === s.id || !ailleurs || traitees.has(ailleurs)) continue;
+      if (avant.get(ailleurs)?.id !== actuelle.id || !dansLaPortee(ailleurs)) continue;
+
+      const placer = (seance, case_) => {
+        const { jour, creneau, periode } = lireCle(case_);
+        return {
+          id: seance.id,
+          jour,
+          seance: creneau,
+          periode,
+          formateurMatricule: seance.formateurMatricule,
+          groupe: seance.groupe,
+          module: seance.module,
+          salle: seance.salle ?? '',
+          statut: seance.statut ?? 'planifie',
+        };
+      };
+      operations.push({
+        type: 'permuter',
+        cle,
+        cleSource: ailleurs,
+        seance: placer(s, cle),
+        autre: placer(avant.get(ailleurs), ailleurs),
+      });
+      traitees.add(cle);
+      traitees.add(ailleurs);
+    }
+
+    for (const [cle, s] of avant) {
+      if (!dansLaPortee(cle) || traitees.has(cle)) continue;
       const actuelle = maintenant.get(cle);
       if (actuelle && actuelle.module === s.module && actuelle.groupe === s.groupe && actuelle.salle === s.salle) {
         continue;
@@ -1276,7 +1370,7 @@ export default function PageEmploi() {
     }
 
     for (const [cle, s] of maintenant) {
-      if (avant.has(cle) || !dansLaPortee(cle)) continue;
+      if (avant.has(cle) || !dansLaPortee(cle) || traitees.has(cle)) continue;
       const { jour, creneau, periode } = lireCle(cle);
       operations.push({
         type: 'vider',
@@ -1508,7 +1602,7 @@ export default function PageEmploi() {
         <MenuGrille
           selection={selection}
           enCours={ecrire.isPending || outils.isPending}
-          modeSelection={modeSelection}
+          modeSelection={selectionActive}
           semainesDisponibles={semaines.data?.semaines ?? []}
           semaineCourante={semaine}
           onBasculerMode={basculerSelection}
@@ -1713,6 +1807,11 @@ export default function PageEmploi() {
                * appartient au groupe, pas au formateur.
                */
               sujets={sujetsAffiches}
+              filtreLignes={{
+                valeurs: valeursFiltreLignes,
+                choisies: filtreLignes,
+                onChanger: filtrerLignes,
+              }}
               seances={seances.filter((s) => s.periode === periode)}
               jours={jours}
               periode={periode}
@@ -1725,7 +1824,7 @@ export default function PageEmploi() {
               selection={selection}
               conflits={conflitsVus}
               brouillons={brouillons}
-              modeSelection={modeSelection}
+              modeSelection={selectionActive}
               caseEnEdition={caseEnEdition}
               survolDepot={depot.survol}
               seanceEnDeplacement={seanceEnDeplacement}

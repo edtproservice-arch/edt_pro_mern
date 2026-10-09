@@ -212,6 +212,8 @@ export function poserAvecJumelles({
       type,
       masses: jumelle.masses,
       autrePart: partsDeCellule(suivant?.[cleJumelle]?.[semaine.numero]).P,
+      // Une jumelle du cours du soir ne reçoit pas le synchrone (2026-10-09).
+      groupe: jumelle.groupe ?? null,
     });
     if (!verdict.possible) continue;
 

@@ -276,6 +276,31 @@ router.post(
  *    pouvoir constater l'écart sur ses groupes sans pouvoir toucher à la grille.
  */
 /*
+ * ═══ RÉINITIALISER TOUS LES CHRONOGRAMMES (2026-10-09, demande du porteur) ═══
+ * Vide le planning de chaque groupe de l'année — voir `reinitialiserTout`.
+ *
+ * ⚠️ AU DIRECTEUR SEUL, comme la génération : un clic efface l'année entière.
+ * ⚠️ `simulation` VAUT `true` PAR DÉFAUT : l'écran compte d'abord, puis confirme.
+ */
+router.post(
+  '/reinitialiser',
+  requireRole(ROLES.DIRECTEUR),
+  modifier,
+  validate({ body: z.object({ simulation: z.boolean().default(true) }) }),
+  async (req, res, next) => {
+    try {
+      const bilan = await service.reinitialiserTout(req.etablissementId, req.anneeScolaire, req.body);
+      if (!bilan.simulation && bilan.groupes.length > 0) {
+        annoncerModification(req, PAGES_DU_CHRONOGRAMME, { action: 'reinitialiser' });
+      }
+      res.json({ success: true, ...bilan });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/*
  * ═══ GÉNÉRATION AUTOMATIQUE DU CHRONOGRAMME (2026-10-04, demande du porteur) ═══
  * Répartit les heures de chaque module affecté sur les semaines de l'année, par
  * ordre de priorité (régional d'abord), en visant pour chaque formateur sa

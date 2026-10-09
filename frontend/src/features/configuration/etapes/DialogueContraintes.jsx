@@ -3,7 +3,7 @@ import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Lock } from 'lucide-react';
 import { JOURS } from 'shared/constants';
-import { CRENEAUX_CONTRAINTES, normaliserContraintes } from 'shared/domain';
+import { CRENEAUX_CONTRAINTES, dureeSeance, normaliserContraintes } from 'shared/domain';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -118,6 +118,17 @@ export default function DialogueContraintes({
   };
 
   const indisponible = new Set(brouillon.indisponibilites.map((c) => `${c.jour}|${c.seance}`));
+  // Masse horaire des créneaux restés libres — durée réelle de chaque séance.
+  const heuresLibres = JOURS.reduce(
+    (total, jour) =>
+      total +
+      CRENEAUX_CONTRAINTES.reduce(
+        (somme, seance) => somme + (indisponible.has(`${jour}|${seance}`) ? 0 : dureeSeance(seance)),
+        0
+      ),
+    0
+  );
+  const creneauxLibres = JOURS.length * CRENEAUX_CONTRAINTES.length - indisponible.size;
 
   const poserSalle = (salle, valeur) => {
     const actuel = courant.current;
@@ -265,16 +276,32 @@ export default function DialogueContraintes({
         </section>
 
         <section className="space-y-2">
-          <h3 className="text-sm font-semibold">Créneaux d&apos;indisponibilité</h3>
+          <div className="flex items-baseline justify-between gap-2">
+            <h3 className="text-sm font-semibold">Créneaux d&apos;indisponibilité</h3>
+            <p className="text-xs text-muted-foreground" aria-live="polite">
+              <span className="font-semibold tabular-nums text-success">
+                {heuresLibres.toLocaleString('fr-FR')} h
+              </span>{' '}
+              libres · {creneauxLibres} créneau(x)
+            </p>
+          </div>
           {!lectureSeule && (
             <p className="text-xs text-muted-foreground">
               Cliquez une case, ou glissez sur plusieurs pour les basculer d&apos;un coup.
             </p>
           )}
-          <table className="w-full border-separate border-spacing-1 text-xs">
+          {/* ⚠️ `table-fixed` + <colgroup> : sans eux, la largeur suit le texte
+              (« Indisponible » élargit sa colonne) et la grille se déforme à chaque clic. */}
+          <table className="w-full table-fixed border-separate border-spacing-1 text-xs">
+            <colgroup>
+              <col className="w-24" />
+              {CRENEAUX_CONTRAINTES.map((seance) => (
+                <col key={seance} />
+              ))}
+            </colgroup>
             <thead>
               <tr>
-                <th className="w-24" />
+                <th />
                 {CRENEAUX_CONTRAINTES.map((seance) => (
                   <th key={seance} className="font-medium text-muted-foreground">
                     {seance}

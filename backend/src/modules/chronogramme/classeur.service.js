@@ -5,6 +5,8 @@ import {
   JOURS_PAR_SEMAINE,
   NOMBRE_SEMAINES,
   VALEURS_AUTORISEES,
+  VALEURS_AUTORISEES_CDS,
+  estGroupeDuSoir,
   entetes,
   lignesClasseur,
 } from 'shared/domain';
@@ -140,7 +142,43 @@ function ajouterFeuilleValeurs(classeur) {
   VALEURS_AUTORISEES.forEach((valeur, rang) => {
     feuille.getCell(`A${rang + 1}`).value = valeur;
   });
+  // Colonne B : le présentiel des groupes du cours du soir (2026-10-09).
+  VALEURS_AUTORISEES_CDS.forEach((valeur, rang) => {
+    feuille.getCell(`B${rang + 1}`).value = valeur;
+  });
   feuille.state = 'veryHidden';
+}
+
+/**
+ * La validation d'une case de semaine, selon le groupe et le type de sa ligne.
+ *
+ * ⚠️ LES MÊMES VALEURS QUE LA GRILLE ET QUE L'IMPORT (`refusDeValeur`) : un
+ *    groupe du soir ne propose que ses valeurs en présentiel, et n'accepte
+ *    rien en synchrone — sinon on saisirait hors ligne ce que l'import
+ *    refusera ensuite, case par case.
+ */
+function validationDeCase(groupe, type) {
+  const soir = estGroupeDuSoir(groupe);
+  if (soir && type === 'S') {
+    return {
+      type: 'textLength',
+      operator: 'equal',
+      allowBlank: true,
+      formulae: [0],
+      showErrorMessage: true,
+      errorTitle: 'Valeur refusée',
+      error: 'Pas de synchrone pour un groupe du cours du soir.',
+    };
+  }
+  const [colonne, valeurs] = soir ? ['B', VALEURS_AUTORISEES_CDS] : ['A', VALEURS_AUTORISEES];
+  return {
+    type: 'list',
+    allowBlank: true,
+    formulae: [`${FEUILLE_VALEURS}!$${colonne}$1:$${colonne}$${valeurs.length}`],
+    showErrorMessage: true,
+    errorTitle: 'Valeur refusée',
+    error: `La grille n’accepte que ${valeurs.join(', ')}.`,
+  };
 }
 
 function ecrireFeuilleSujet(classeur, ctx) {
@@ -277,14 +315,10 @@ function ecrireFeuilleSujet(classeur, ctx) {
       } else {
         if (heures) remplir(cellule, ligne.type === 'S' ? TEINTES.synchrone : TEINTES.presentiel);
         cellule.protection = { locked: false };
-        cellule.dataValidation = {
-          type: 'list',
-          allowBlank: true,
-          formulae: [`${FEUILLE_VALEURS}!$A$1:$A$${VALEURS_AUTORISEES.length}`],
-          showErrorMessage: true,
-          errorTitle: 'Valeur refusée',
-          error: `La grille n’accepte que ${VALEURS_AUTORISEES.join(', ')}.`,
-        };
+        cellule.dataValidation = validationDeCase(
+          mode === 'groupe' ? sujet : ligne.groupe,
+          ligne.type
+        );
 
         /*
          * ═══ LA MÊME CELLULE ALIMENTE LES DEUX BILANS ═══

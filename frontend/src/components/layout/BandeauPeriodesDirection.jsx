@@ -92,7 +92,13 @@ export default function BandeauPeriodesDirection({ lien = true, session = null, 
       .map((p) => ({ ...p, type: 'stage', nom: session ? `Votre stage${p.groupe ? ` (${p.groupe})` : ''}` : p.groupe })),
     ...formations
       .filter(concerne)
-      .map((p) => ({ ...p, type: 'formation', nom: session ? 'Votre formation' : p.nomFormateur || p.matriculeFormateur })),
+      .map((p) => ({
+        ...p,
+        type: 'formation',
+        // Le motif (2026-10-11) : « Congé de paternité » se lit tel quel ; une période sans motif est une formation.
+        motif: p.motif || 'Formation',
+        nom: session ? `Votre ${(p.motif || 'formation').toLowerCase()}` : p.nomFormateur || p.matriculeFormateur,
+      })),
   ].sort((a, b) => a.debut.localeCompare(b.debut) || a.nom.localeCompare(b.nom, 'fr', { numeric: true }));
 
   const annonces = [...(recues.data?.annonces ?? [])].sort(
@@ -290,13 +296,13 @@ function phraseSession({ type, debut, fin }, aujourdhui) {
   return `commence ${dans === 1 ? 'demain' : `dans ${dans} j`} — ${suite}`;
 }
 
-function phrase({ type, debut, fin }, aujourdhui) {
-  if (debut <= aujourdhui) {
-    return type === 'stage' ? `en stage jusqu'au ${afficher(fin)}` : `en formation jusqu'au ${afficher(fin)}`;
-  }
+function phrase({ type, debut, fin, motif }, aujourdhui) {
+  // « en formation », « en congé de paternité » — le motif de la période, pas toujours une formation.
+  const absence = type === 'stage' ? 'en stage' : `en ${(motif || 'Formation').toLowerCase()}`;
+  if (debut <= aujourdhui) return `${absence} jusqu'au ${afficher(fin)}`;
   const dans = ecart(aujourdhui, debut);
   const quand = dans === 1 ? 'demain' : `dans ${dans} j`;
-  return type === 'stage' ? `part en stage ${quand}` : `part en formation ${quand}`;
+  return `part ${absence} ${quand}`;
 }
 
 /** « AAAA-MM-JJ » en heure LOCALE. */

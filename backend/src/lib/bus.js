@@ -30,4 +30,9 @@ export const EVENEMENTS = {
    * Charge : `{ etablissementId, anneeScolaire, page, utilisateurId | null }`.
    */
   PARTAGE_MODIFIE: 'partage:modifie',
+  /**
+   * Le référentiel national (répartition DRIF) a changé (2026-10-10). Charge :
+   * `{ codeModule }`. Toute session ouverte relit ce qu'elle en garde en cache.
+   */
+  REFERENTIEL_MODIFIE: 'referentiel:modifie',
 };

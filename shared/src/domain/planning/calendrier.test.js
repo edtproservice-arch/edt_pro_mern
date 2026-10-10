@@ -330,10 +330,21 @@ describe('absencesDuJour — qui manque ce jour-là', () => {
         matricule: '9863',
         nom: 'BRAHIM LOURID',
         libelle: 'Formation pédagogique',
+        // Sans motif enregistré : une période d'avant les motifs, donc une formation.
+        motif: 'Formation',
         debut: '2026-09-14',
         fin: '2026-09-16',
       },
     ]);
+  });
+
+  it('rend le motif de l’indisponibilité quand la période en porte un (2026-10-11)', () => {
+    const { formations } = absencesDuJour('2026-09-15', {
+      formations: [
+        { matriculeFormateur: '9863', motif: 'Congé de paternité', debut: '2026-09-14', fin: '2026-09-18' },
+      ],
+    });
+    expect(formations[0].motif).toBe('Congé de paternité');
   });
 
   /*

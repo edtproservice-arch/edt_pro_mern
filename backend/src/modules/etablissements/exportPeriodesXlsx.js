@@ -124,13 +124,17 @@ export async function construireXlsxPeriodes(donnees) {
       contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     };
   }
-  const feuille = classeur.addWorksheet(type === 'stages' ? 'Stages' : 'Formations', {
+  // Le motif de chaque période (congés et formations, 2026-10-11) : une colonne après le détail.
+  const avecMotif = Boolean(libelles.colonneMotif);
+  const nb = avecMotif ? 6 : 5;
+  const colDu = avecMotif ? 4 : 3;
+  const feuille = classeur.addWorksheet(type === 'stages' ? 'Stages' : 'Congés et formations', {
     pageSetup: { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
     views: [{ state: 'frozen', ySplit: 5 }],
   });
 
   const titre = (numero, texte, police) => {
-    feuille.mergeCells(numero, 1, numero, 5);
+    feuille.mergeCells(numero, 1, numero, nb);
     const cellule = feuille.getCell(numero, 1);
     cellule.value = texte;
     cellule.font = police;
@@ -143,7 +147,7 @@ export async function construireXlsxPeriodes(donnees) {
   }
 
   const entete = feuille.getRow(5);
-  [libelles.colonneSujet, libelles.colonneDetail, 'Du', 'Au', 'Jours'].forEach((texte, index) => {
+  [libelles.colonneSujet, libelles.colonneDetail, ...(avecMotif ? [libelles.colonneMotif] : []), 'Du', 'Au', 'Jours'].forEach((texte, index) => {
     const cellule = entete.getCell(index + 1);
     cellule.value = texte;
     cellule.font = { bold: true };
@@ -156,26 +160,35 @@ export async function construireXlsxPeriodes(donnees) {
   for (const sujet of sujets) {
     for (const periode of sujet.periodes) {
       const rangee = feuille.getRow(numero);
-      rangee.values = [sujet.sujet, sujet.detail, enDate(periode.debut), enDate(periode.fin), periode.jours];
-      rangee.getCell(3).numFmt = 'dd/mm/yyyy';
-      rangee.getCell(4).numFmt = 'dd/mm/yyyy';
-      for (let colonne = 1; colonne <= 5; colonne += 1) {
+      rangee.values = [
+        sujet.sujet,
+        sujet.detail,
+        ...(avecMotif ? [periode.motif || 'Formation'] : []),
+        enDate(periode.debut),
+        enDate(periode.fin),
+        periode.jours,
+      ];
+      rangee.getCell(colDu).numFmt = 'dd/mm/yyyy';
+      rangee.getCell(colDu + 1).numFmt = 'dd/mm/yyyy';
+      for (let colonne = 1; colonne <= nb; colonne += 1) {
         const cellule = rangee.getCell(colonne);
         cellule.border = bordureTout;
-        cellule.alignment = { horizontal: colonne === 1 ? 'left' : 'center', vertical: 'middle' };
+        const aGauche = colonne === 1 || (avecMotif && colonne === 3);
+        cellule.alignment = { horizontal: aGauche ? 'left' : 'center', vertical: 'middle' };
       }
       numero += 1;
     }
   }
 
-  if (numero > 6) feuille.autoFilter = { from: { row: 5, column: 1 }, to: { row: numero - 1, column: 5 } };
+  if (numero > 6) feuille.autoFilter = { from: { row: 5, column: 1 }, to: { row: numero - 1, column: nb } };
 
   // Le total en FORMULE : il suit les retouches faites dans le fichier.
   const total = feuille.getRow(numero);
   total.getCell(1).value = `Total : ${sujets.length} ${libelles.sujets}`;
-  total.getCell(3).value = `${donnees.totalPeriodes} période(s)`;
-  total.getCell(5).value = { formula: `SUM(E6:E${numero - 1})`, result: donnees.totalJours };
-  for (let colonne = 1; colonne <= 5; colonne += 1) {
+  total.getCell(colDu).value = `${donnees.totalPeriodes} période(s)`;
+  const lettreJours = avecMotif ? 'F' : 'E';
+  total.getCell(nb).value = { formula: `SUM(${lettreJours}6:${lettreJours}${numero - 1})`, result: donnees.totalJours };
+  for (let colonne = 1; colonne <= nb; colonne += 1) {
     const cellule = total.getCell(colonne);
     cellule.font = { bold: true };
     cellule.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRIS_ENTETE } };
@@ -183,7 +196,7 @@ export async function construireXlsxPeriodes(donnees) {
     cellule.alignment = { horizontal: colonne === 1 ? 'left' : 'center' };
   }
 
-  [26, 16, 14, 14, 10].forEach((largeur, index) => {
+  (avecMotif ? [26, 14, 28, 14, 14, 10] : [26, 16, 14, 14, 10]).forEach((largeur, index) => {
     feuille.getColumn(index + 1).width = largeur;
   });
 

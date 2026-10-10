@@ -172,7 +172,7 @@ export function formationDuFormateur(formateur, date, formations = []) {
  * revient demain ou dans trois semaines.
  *
  * @returns {{stages: Array<{groupe, libelle, debut, fin}>,
- *            formations: Array<{matricule, nom, libelle, debut, fin}>}}
+ *            formations: Array<{matricule, nom, libelle, motif, debut, fin}>}}
  */
 export function absencesDuJour(date, { stages = [], formations = [] } = {}) {
   const jour = enJour(date);
@@ -198,6 +198,8 @@ export function absencesDuJour(date, { stages = [], formations = [] } = {}) {
       matricule: String(formation?.matriculeFormateur ?? formation?.matricule_formateur ?? '').trim(),
       nom: String(formation?.nomFormateur ?? formation?.nom_formateur ?? '').trim(),
       libelle: String(formation?.libelle ?? formation?.nom ?? '').trim(),
+      // Le motif de l'indisponibilité (2026-10-11) — « Formation » pour une période d'avant les motifs.
+      motif: String(formation?.motif ?? '').trim() || 'Formation',
       ...bornes(formation),
     })),
   };

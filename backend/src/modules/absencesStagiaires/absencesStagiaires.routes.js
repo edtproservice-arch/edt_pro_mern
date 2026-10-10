@@ -12,6 +12,8 @@ import * as discipline from './discipline.service.js';
 import { construireExportFeuilleAbsence } from './exportFeuilleAbsence.service.js';
 import { construireBilletsAbsence, construireBilletsVierges } from './exportBilletAbsence.service.js';
 import { construireFeuillePresence } from './exportFeuillePresence.service.js';
+import { construireExportRegistreAbsences } from './exportRegistreAbsences.service.js';
+import { construireExportNotesDiscipline } from './exportNotesDiscipline.service.js';
 
 /**
  * Absences, retards et indisciplines des stagiaires — la note de discipline (F9).
@@ -265,6 +267,68 @@ router.delete(
     await discipline.supprimerIndiscipline(req.etablissementId, req.anneeScolaire, req.params.id);
     res.json({ success: true });
     annoncer(req, 'indiscipline');
+  })
+);
+
+/**
+ * Les notes de discipline des groupes choisis, en Word, PDF ou Excel
+ * (2026-10-11) — une page ou un onglet par groupe. Voir
+ * `exportNotesDiscipline.service.js`. Réservées à l'encadrement, comme `/notes`.
+ */
+router.post(
+  '/notes/export',
+  ENCADREMENT,
+  validate({
+    body: z.object({
+      format: z.enum(['docx', 'pdf', 'xlsx']),
+      groupes: z.array(z.string().trim().min(1).max(200)).min(1).max(300),
+    }),
+  }),
+  route(async (req, res) => {
+    const { tampon, nomFichier, contentType } = await construireExportNotesDiscipline(
+      req.etablissementId,
+      req.anneeScolaire,
+      req.body
+    );
+    res.setHeader('Content-Type', contentType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="export"; filename*=UTF-8''${encodeURIComponent(nomFichier)}`
+    );
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+    res.send(tampon);
+  })
+);
+
+/**
+ * Le registre des absences de l'année en Excel (2026-10-10) — une ligne par
+ * stagiaire, une colonne par jour, les heures non justifiées et justifiées en
+ * fin de ligne. Voir `exportRegistreAbsences.service.js`.
+ *
+ * ⚠️ RÉSERVÉ À L'ENCADREMENT : il porte tous les stagiaires de tous les
+ * groupes, et le motif des justifications.
+ */
+router.post(
+  '/registre/export',
+  ENCADREMENT,
+  validate({
+    body: z.object({
+      groupes: z.array(z.string().trim().min(1).max(200)).max(300).optional(),
+    }),
+  }),
+  route(async (req, res) => {
+    const { tampon, nomFichier, contentType } = await construireExportRegistreAbsences(
+      req.etablissementId,
+      req.anneeScolaire,
+      req.body
+    );
+    res.setHeader('Content-Type', contentType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="export"; filename*=UTF-8''${encodeURIComponent(nomFichier)}`
+    );
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+    res.send(tampon);
   })
 );
 

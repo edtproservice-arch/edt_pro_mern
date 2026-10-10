@@ -1001,3 +1001,202 @@ describe('POST /absences-stagiaires/billets — le(s) billet(s) d’excuse (2026
     expect((await demanderBillets(['000000000000000000000000'])).status).toBe(404);
   });
 });
+
+describe('POST /absences-stagiaires/registre/export — le registre de l’année en Excel (2026-10-10)', () => {
+  const exporter = (qui = 'directeur') =>
+    request(app)
+      .post('/api/v2/absences-stagiaires/registre/export')
+      .set('Cookie', cookies[qui])
+      .buffer(true)
+      .parse(bufferiserExport)
+      .send({});
+
+  const marquer = (champs) =>
+    AbsenceStagiaire.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      matricule: 'CEF001',
+      nomComplet: 'ALAOUI Yassine',
+      groupe: 'GM101',
+      date: LUNDI,
+      semaine: SEMAINE,
+      jour: 'Lundi',
+      typeAbsence: 'absence',
+      ...champs,
+    });
+
+  it('une ligne par stagiaire, les heures du jour dans sa colonne, le motif en commentaire, les deux totaux en fin de ligne', async () => {
+    await marquer({ seance: 'S1' });
+    await marquer({ seance: 'S2', justifiee: true, motif: 'Certificat médical' });
+    // Un RETARD n'est pas une heure manquée : il n'entre ni dans la case ni dans les totaux.
+    await marquer({ seance: 'S1', date: MARDI, jour: 'Mardi', typeAbsence: 'retard' });
+
+    const reponse = await exporter();
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-disposition']).toContain('.xlsx');
+
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(reponse.body);
+    const feuille = classeur.getWorksheet('Registre');
+
+    const entete = feuille.getRow(6);
+    expect(entete.getCell(1).value).toBe('Groupe');
+    expect(entete.getCell(2).value).toBe('Stagiaire');
+    const derniere = feuille.columnCount;
+    expect(entete.getCell(derniere - 6).value).toBe('Heures non justifiées');
+    expect(entete.getCell(derniere - 5).value).toBe('Heures justifiées');
+
+    // Groupes dans l'ordre, stagiaires dans l'ordre alphabétique.
+    const lignes = [7, 8, 9].map((n) => [feuille.getRow(n).getCell(1).value, feuille.getRow(n).getCell(2).value]);
+    expect(lignes).toEqual([
+      ['GM101', 'ALAOUI Yassine'],
+      ['GM101', 'BENANI Sara'],
+      ['GM102', 'CHAFIK Omar'],
+    ]);
+
+    // La colonne du lundi 14 septembre : 2 séances = 5 h, le motif de la justifiée en commentaire.
+    let colonneLundi = null;
+    entete.eachCell((cellule, colonne) => {
+      if (colonneLundi === null && cellule.value === 'L\n14') colonneLundi = colonne;
+    });
+    expect(colonneLundi).not.toBeNull();
+    const caseLundi = feuille.getRow(7).getCell(colonneLundi);
+    expect(caseLundi.value).toBe(5);
+    expect(JSON.stringify(caseLundi.note)).toContain('Certificat médical');
+    // Le mardi du retard reste vide.
+    expect(feuille.getRow(7).getCell(colonneLundi + 1).value).toBeNull();
+
+    expect(feuille.getRow(7).getCell(derniere - 6).value).toBe(2.5);
+    expect(feuille.getRow(7).getCell(derniere - 5).value).toBe(2.5);
+    expect(feuille.getRow(8).getCell(derniere - 6).value).toBe(0);
+
+    // Aucun dimanche parmi les colonnes de jours.
+    const dimanches = [];
+    entete.eachCell((cellule, colonne) => {
+      if (colonne > 2 && colonne < derniere - 6 && String(cellule.value).startsWith('D\n')) dimanches.push(colonne);
+    });
+    expect(dimanches).toEqual([]);
+  });
+
+  it('⚠️ le comportement en fin de ligne, une colonne par sanction : la n-ième indiscipline remplit la n-ième, date et motif', async () => {
+    const indiscipline = (date, motif, observation = '') =>
+      IndisciplineStagiaire.create({
+        etablissementId: etablissement.id,
+        anneeScolaire: ANNEE,
+        matricule: 'CEF001',
+        nomComplet: 'ALAOUI Yassine',
+        groupe: 'GM101',
+        date,
+        motif,
+        observation,
+      });
+    // Saisies dans le désordre : le rang suit la DATE, comme sur la fiche du stagiaire.
+    await indiscipline(MARDI, 'Téléphone en cours');
+    await indiscipline(LUNDI, 'Bavardage', 'Rappel à l’ordre');
+
+    const reponse = await exporter();
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(reponse.body);
+    const feuille = classeur.getWorksheet('Registre');
+
+    const derniere = feuille.columnCount;
+    const entete = feuille.getRow(6);
+    expect([1, 2, 3, 4, 5].map((n) => entete.getCell(derniere - 5 + n).value)).toEqual([
+      'Mise en garde (SG)',
+      'Avertissement (D)',
+      'Blâme (CD)',
+      'Exclusion de 2 jours (CD)',
+      'Exclusion définitive (CD)',
+    ]);
+    expect(entete.getCell(derniere - 5).value).toBe('Heures justifiées');
+
+    const alaoui = feuille.getRow(7);
+    expect(alaoui.getCell(derniere - 4).value).toBe('14/09/2026');
+    expect(JSON.stringify(alaoui.getCell(derniere - 4).note)).toContain('Bavardage');
+    expect(JSON.stringify(alaoui.getCell(derniere - 4).note)).toContain('Rappel à l’ordre');
+    expect(alaoui.getCell(derniere - 3).value).toBe('15/09/2026');
+    expect(alaoui.getCell(derniere - 2).value).toBeNull();
+    // BENANI n'a rien commis : ses colonnes de sanction restent vides.
+    expect(feuille.getRow(8).getCell(derniere - 4).value).toBeNull();
+  });
+
+  it('est réservé à l’encadrement', async () => {
+    expect((await exporter('formateur')).status).toBe(403);
+    expect((await exporter('gestionnaire')).status).toBe(200);
+  });
+});
+
+describe('POST /absences-stagiaires/notes/export — les notes de discipline par groupe (2026-10-11)', () => {
+  const exporter = (corps, qui = 'directeur') =>
+    request(app)
+      .post('/api/v2/absences-stagiaires/notes/export')
+      .set('Cookie', cookies[qui])
+      .buffer(true)
+      .parse(bufferiserExport)
+      .send(corps);
+
+  const marquer = (champs) =>
+    AbsenceStagiaire.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      matricule: 'CEF001',
+      nomComplet: 'ALAOUI Yassine',
+      groupe: 'GM101',
+      date: LUNDI,
+      semaine: SEMAINE,
+      jour: 'Lundi',
+      typeAbsence: 'absence',
+      ...champs,
+    });
+
+  it('un onglet par groupe, les notes de l’écran : assiduité, comportement, /15 et /20 en 1re année', async () => {
+    await marquer({ seance: 'S1' });
+    await marquer({ seance: 'S2' });
+    await marquer({ seance: 'S1', date: MARDI, jour: 'Mardi', typeAbsence: 'retard' });
+    // Justifiée : affichée, mais ne retire rien.
+    await marquer({ seance: 'S3', justifiee: true, motif: 'Certificat' });
+    await IndisciplineStagiaire.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      matricule: 'CEF001',
+      nomComplet: 'ALAOUI Yassine',
+      groupe: 'GM101',
+      date: LUNDI,
+      motif: 'Bavardage',
+    });
+
+    const reponse = await exporter({ format: 'xlsx', groupes: ['GM101', 'GM102'] });
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-disposition']).toContain('Notes_discipline_2_groupes.xlsx');
+
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(reponse.body);
+    expect(classeur.worksheets.map((f) => f.name)).toEqual(['GM101', 'GM102']);
+
+    const feuille = classeur.getWorksheet('GM101');
+    const entete = feuille.getRow(6).values.slice(1);
+    expect(entete.at(-1)).toBe('Note /20');
+    const alaoui = Object.fromEntries(entete.map((titre, i) => [titre, feuille.getRow(7).getCell(i + 1).value]));
+    expect(alaoui['Nom et prénom']).toBe('ALAOUI Yassine');
+    expect(alaoui['Absences non justifiées (séances)']).toBe(2);
+    expect(alaoui['Absences justifiées (séances)']).toBe(1);
+    expect(alaoui['Retards non justifiés']).toBe(1);
+    // 2 séances (−1) + 1 retard (−0,25) → 8,75 /10 et 1ʳᵉ mise en garde.
+    expect(alaoui['Assiduité /10']).toBe(8.75);
+    expect(alaoui['Sanction assiduité']).toBe('1ère mise en garde (SG)');
+    expect(alaoui['Comportement /5']).toBe(4);
+    expect(alaoui['Sanction comportement']).toBe('Mise en garde (SG)');
+    expect(alaoui['Note /15']).toBe(12.75);
+    expect(alaoui['Note /20']).toBe(17);
+    expect(feuille.getRow(8).getCell(3).value).toBe('BENANI Sara');
+  });
+
+  it('rend aussi un Word, et reste réservé à l’encadrement', async () => {
+    const word = await exporter({ format: 'docx', groupes: ['GM101'] });
+    expect(word.status).toBe(200);
+    expect(word.headers['content-disposition']).toContain('Notes_discipline_GM101.docx');
+    expect(word.body.subarray(0, 2).toString()).toBe('PK');
+
+    expect((await exporter({ format: 'xlsx', groupes: ['GM101'] }, 'formateur')).status).toBe(403);
+  });
+});

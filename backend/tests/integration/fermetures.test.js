@@ -237,6 +237,57 @@ describe('formation', () => {
     const restantes = await Seance.find().lean();
     expect(restantes.map((s) => s.formateurMatricule)).toEqual(['1111']);
   });
+
+  /*
+   * ═══ CONGÉS ET FORMATIONS (2026-10-11, demande du porteur) ═══ Une période
+   * porte son MOTIF — un congé de paternité ferme le formateur exactement comme
+   * une formation — et l'export l'écrit dans sa propre colonne.
+   */
+  it('garde le motif de chaque période — un congé bloque comme une formation — et l’export l’écrit', async () => {
+    await seance();
+
+    const formations = [
+      { matriculeFormateur: '9863', nomFormateur: 'BRAHIM LOURID', debut: jourDe('Lundi'), fin: jourDe('Lundi'), motif: 'Congé de paternité' },
+      { matriculeFormateur: '1111', nomFormateur: 'SALMA IDRISSI', debut: jourDe('Mardi'), fin: jourDe('Mardi') },
+    ];
+    const reponse = await request(app)
+      .put('/api/v2/etablissements/courant/formations')
+      .set('Cookie', cookies)
+      .send({ formations, confirmerSuppressions: true });
+    expect(reponse.status).toBe(200);
+
+    const enregistre = await Etablissement.findById(etablissement.id).lean();
+    expect(enregistre.formations.map((f) => f.motif)).toEqual(['Congé de paternité', '']);
+    // Le congé a fermé le lundi du formateur, comme l'aurait fait une formation.
+    expect(await Seance.countDocuments()).toBe(0);
+
+    const ExcelJS = (await import('exceljs')).default;
+    const fichier = await request(app)
+      .post('/api/v2/etablissements/courant/formations/export')
+      .set('Cookie', cookies)
+      .buffer(true)
+      .parse((res, rappel) => {
+        const morceaux = [];
+        res.on('data', (morceau) => morceaux.push(morceau));
+        res.on('end', () => rappel(null, Buffer.concat(morceaux)));
+      })
+      .send({
+        format: 'xlsx',
+        periodes: [
+          { sujet: 'BRAHIM LOURID', detail: '9863', motif: 'Congé de paternité', debut: jourDe('Lundi'), fin: jourDe('Lundi') },
+          { sujet: 'SALMA IDRISSI', detail: '1111', motif: 'Formation', debut: jourDe('Mardi'), fin: jourDe('Mardi') },
+        ],
+      });
+    expect(fichier.status).toBe(200);
+    expect(fichier.headers['content-disposition']).toContain('Conges_et_formations');
+
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(fichier.body);
+    const feuille = classeur.worksheets[0];
+    expect(feuille.getRow(5).values.slice(1)).toEqual(['Formateur', 'Matricule', 'Motif', 'Du', 'Au', 'Jours']);
+    expect(feuille.getRow(6).getCell(3).value).toBe('Congé de paternité');
+    expect(feuille.getRow(7).getCell(3).value).toBe('Formation');
+  });
 });
 
 describe('vacances', () => {

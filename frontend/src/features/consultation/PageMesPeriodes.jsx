@@ -24,7 +24,7 @@ export default function PageMesPeriodes() {
   const requete = useQuery({ queryKey: ['mes-periodes'], queryFn: chargerMesPeriodes, retry: false });
   const donnees = requete.data;
   const estStagiaire = donnees?.role === ROLES.STAGIAIRE;
-  const titre = donnees ? (estStagiaire ? 'Mes stages' : 'Mes formations') : 'Mes périodes';
+  const titre = donnees ? (estStagiaire ? 'Mes stages' : 'Mes congés et formations') : 'Mes périodes';
   const periodes = donnees?.periodes ?? [];
 
   const libelleDe = (periode) => (estStagiaire ? periode.groupe : periode.nomFormateur || periode.matriculeFormateur);
@@ -55,7 +55,7 @@ export default function PageMesPeriodes() {
           <span>
             {estStagiaire
               ? 'Aucun stage n’est déclaré pour votre groupe cette année.'
-              : 'Aucune formation n’est déclarée à votre nom cette année.'}
+              : 'Aucun congé ni aucune formation ne sont déclarés à votre nom cette année.'}
           </span>
         </div>
       )}
@@ -81,6 +81,8 @@ export default function PageMesPeriodes() {
             anneeScolaire={donnees.anneeScolaire}
             calendrierFourni={donnees.calendrier}
             feriesFournis={donnees.joursFeries}
+            // Le motif de chaque période du formateur (2026-10-11) — un stage n'en a pas.
+            motifDe={estStagiaire ? null : (periode) => periode.motif || 'Formation'}
           />
 
           <ul className="divide-y rounded-lg border">
@@ -94,6 +96,8 @@ export default function PageMesPeriodes() {
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {estStagiaire && groupes.length > 1 ? `${periode.groupe} · ` : ''}
+                      {/* Le motif de l'indisponibilité (2026-10-11) : formation, congé… */}
+                      {!estStagiaire && periode.motif ? `${periode.motif} · ` : ''}
                       {compter(periode)} jour(s)
                     </div>
                   </div>
@@ -116,7 +120,7 @@ export default function PageMesPeriodes() {
           <p className="text-xs text-muted-foreground">
             {estStagiaire
               ? 'Pendant un stage, aucune séance n’est placée à votre groupe. Ces dates sont fixées par la direction.'
-              : 'Pendant une formation, aucune séance ne vous est placée. Ces dates sont fixées par la direction.'}
+              : 'Pendant un congé ou une formation, aucune séance ne vous est placée. Ces dates sont fixées par la direction.'}
           </p>
         </div>
       )}

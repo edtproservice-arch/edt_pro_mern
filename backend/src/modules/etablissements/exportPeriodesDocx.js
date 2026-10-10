@@ -27,7 +27,9 @@ const EXEMPLE = {
 };
 
 // Largeur utile de la page du canevas : 11906 − 2 × 850 twips.
-const LARGEURS = [2700, 1800, 1900, 1900, 1906];
+const LARGEURS_SIMPLES = [2700, 1800, 1900, 1900, 1906];
+// Avec le motif (congés et formations, 2026-10-11) : la même largeur, une colonne de plus.
+const LARGEURS_AVEC_MOTIF = [2300, 1300, 2500, 1500, 1500, 1106];
 const GRIS = 'F2F2F2';
 
 const POLICE = '<w:rFonts w:ascii="Calibri" w:eastAsia="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>';
@@ -65,11 +67,20 @@ const ligne = (cellules, { entete = false } = {}) =>
   `<w:tr><w:trPr><w:cantSplit/>${entete ? '<w:tblHeader/>' : ''}</w:trPr>${cellules.join('')}</w:tr>`;
 
 function tableau({ libelles, sujets, totalPeriodes, totalJours }) {
+  const avecMotif = Boolean(libelles.colonneMotif);
+  const LARGEURS = avecMotif ? LARGEURS_AVEC_MOTIF : LARGEURS_SIMPLES;
+  // Les colonnes d'une période — après le sujet et son détail : (motif), du, au, jours.
+  const colonnesPeriode = (periode) => [
+    ...(avecMotif ? [periode.motif || 'Formation'] : []),
+    dateFr(periode.debut),
+    dateFr(periode.fin),
+    String(periode.jours),
+  ];
   const bord = '<w:{c} w:val="single" w:sz="4" w:space="0" w:color="auto"/>';
   const bordures = ['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map((c) => bord.replace('{c}', c)).join('');
 
   const entete = ligne(
-    [libelles.colonneSujet, libelles.colonneDetail, 'Du', 'Au', 'Jours'].map((texte, i) =>
+    [libelles.colonneSujet, libelles.colonneDetail, ...(avecMotif ? [libelles.colonneMotif] : []), 'Du', 'Au', 'Jours'].map((texte, i) =>
       cellule(texte, LARGEURS[i], { gras: true, fond: GRIS })
     ),
     { entete: true }
@@ -87,9 +98,7 @@ function tableau({ libelles, sujets, totalPeriodes, totalJours }) {
       return ligne([
         cellule(rang === 0 ? sujet.sujet : '', LARGEURS[0], { gras: true, fusion }),
         cellule(rang === 0 ? sujet.detail : '', LARGEURS[1], { fusion }),
-        cellule(dateFr(periode.debut), LARGEURS[2]),
-        cellule(dateFr(periode.fin), LARGEURS[3]),
-        cellule(String(periode.jours), LARGEURS[4]),
+        ...colonnesPeriode(periode).map((texte, i) => cellule(texte, LARGEURS[2 + i])),
       ]);
     })
   );
@@ -97,9 +106,10 @@ function tableau({ libelles, sujets, totalPeriodes, totalJours }) {
   const total = ligne([
     cellule(`Total : ${sujets.length} ${libelles.sujets}`, LARGEURS[0], { gras: true, fond: GRIS }),
     cellule('', LARGEURS[1], { fond: GRIS }),
-    cellule(`${totalPeriodes} période(s)`, LARGEURS[2], { gras: true, fond: GRIS }),
-    cellule('', LARGEURS[3], { fond: GRIS }),
-    cellule(String(totalJours), LARGEURS[4], { gras: true, fond: GRIS }),
+    ...(avecMotif ? [cellule('', LARGEURS[2], { fond: GRIS })] : []),
+    cellule(`${totalPeriodes} période(s)`, LARGEURS.at(-3), { gras: true, fond: GRIS }),
+    cellule('', LARGEURS.at(-2), { fond: GRIS }),
+    cellule(String(totalJours), LARGEURS.at(-1), { gras: true, fond: GRIS }),
   ]);
 
   return (

@@ -12,6 +12,7 @@ import { RefreshToken } from '../../src/models/RefreshToken.js';
 import { Message } from '../../src/models/Message.js';
 import { ROLES, STATUTS_COMPTE, TYPES_COURS } from 'shared/constants';
 import { FERMETURES_TEMPS_REEL } from 'shared/schemas';
+import { bus, EVENEMENTS } from '../../src/lib/bus.js';
 
 vi.mock('../../src/config/mailer.js', () => ({
   envoyerEmail: vi.fn(async () => ({ envoye: true })),
@@ -911,5 +912,24 @@ describe('guidage', () => {
     const admin = await adminEnCollaboration();
     admin.envoyer({ type: 'guide-nav', chemin: 'https://ailleurs.example/app' });
     expect((await admin.attendre(type('erreur'))).code).toBe('MESSAGE_INVALIDE');
+  });
+});
+
+/*
+ * ═══ LE RÉFÉRENTIEL NATIONAL (2026-10-10) ═══ Une masse changée dans la
+ * répartition DRIF est annoncée à TOUTES les sessions ouvertes, de tous les
+ * établissements : chacune relit ce qu'elle en garde en cache.
+ */
+describe('référentiel', () => {
+  it('annonce un changement de la répartition à toutes les sessions ouvertes', async () => {
+    const directeur = ouvrir({ cookies: await seConnecter('directeur@edtpro.ma') });
+    await directeur.attendre(type('bienvenue'));
+    const formateur = ouvrir({ cookies: await seConnecter('formateur@edtpro.ma') });
+    await formateur.attendre(type('bienvenue'));
+
+    bus.emit(EVENEMENTS.REFERENTIEL_MODIFIE, { codeModule: 'M101' });
+
+    expect(await directeur.attendre(type('referentiel'))).toEqual({ type: 'referentiel', codeModule: 'M101' });
+    expect((await formateur.attendre(type('referentiel'))).codeModule).toBe('M101');
   });
 });

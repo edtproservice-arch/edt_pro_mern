@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import Alerte from '@/components/common/Alerte';
+import { avecTotauxRepartition, totauxRepartition } from 'shared/domain';
 
 /**
  * Saisie manuelle d'une ligne de répartition — création et modification.
@@ -44,8 +45,13 @@ const MASSES = [
   { nom: 'mhpS2', libelle: 'MHP S2' },
   { nom: 'mhsynS2', libelle: 'MHSYN S2' },
   { nom: 'mhasynS2', libelle: 'MHASYN S2' },
-  { nom: 'mhpTotale', libelle: 'MHP totale' },
-  { nom: 'mhdTotale', libelle: 'MHD totale' },
+  /*
+   * ═══ LES TOTAUX SE CALCULENT (2026-10-10, demande du porteur) ═══ MHP = S1 + S2 ;
+   * MHD = synchrone + asynchrone des deux semestres. Saisissables seulement quand
+   * aucune masse semestrielle ne les détaille — voir `totauxRepartition`.
+   */
+  { nom: 'mhpTotale', libelle: 'MHP totale', calculee: 'mhpCalculee', formule: 'MHP S1 + MHP S2' },
+  { nom: 'mhdTotale', libelle: 'MHD totale', calculee: 'mhdCalculee', formule: 'synchrone + asynchrone, S1 et S2' },
 ];
 
 const VIDE = {
@@ -86,6 +92,7 @@ export default function FormulaireLigne({ ouvert, ligne, defauts, enCours, erreu
   }, [ouvert, ligne, defauts]);
 
   const modifier = (nom, valeur) => setValeurs((actuelles) => ({ ...actuelles, [nom]: valeur }));
+  const totaux = totauxRepartition(valeurs);
 
   const complet =
     valeurs.secteur.trim() !== '' &&
@@ -164,19 +171,32 @@ export default function FormulaireLigne({ ouvert, ligne, defauts, enCours, erreu
             titre="Masses horaires"
             aide="En heures. Le présentiel et le synchrone se comptent séparément — l'emploi du temps les mesure chacun à sa propre masse."
           >
-            {MASSES.map((masse) => (
-              <div key={masse.nom} className="space-y-1.5">
-                <Label htmlFor={masse.nom}>{masse.libelle}</Label>
-                <Input
-                  id={masse.nom}
-                  type="number"
-                  min={0}
-                  step="0.5"
-                  value={valeurs[masse.nom] ?? 0}
-                  onChange={(e) => modifier(masse.nom, Number(e.target.value) || 0)}
-                />
-              </div>
-            ))}
+            {MASSES.map((masse) => {
+              const calculee = masse.calculee ? totaux[masse.calculee] : false;
+              return (
+                <div key={masse.nom} className="space-y-1.5">
+                  <Label htmlFor={masse.nom}>{masse.libelle}</Label>
+                  <Input
+                    id={masse.nom}
+                    type="number"
+                    min={0}
+                    step="0.5"
+                    // Calculée : la valeur suit les semestres, et ne se saisit pas.
+                    value={calculee ? totaux[masse.nom] : (valeurs[masse.nom] ?? 0)}
+                    readOnly={calculee}
+                    tabIndex={calculee ? -1 : undefined}
+                    title={calculee ? `Calculée : ${masse.formule}` : undefined}
+                    className={calculee ? 'cursor-default bg-muted/60 text-muted-foreground focus-visible:ring-0' : undefined}
+                    onChange={(e) => modifier(masse.nom, Number(e.target.value) || 0)}
+                  />
+                  {masse.calculee && (
+                    <p className="text-[11px] text-muted-foreground">
+                      {calculee ? 'Calculée automatiquement' : 'Sans détail par semestre : à saisir'}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </Section>
 
           <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
@@ -200,7 +220,7 @@ export default function FormulaireLigne({ ouvert, ligne, defauts, enCours, erreu
           <Button variant="outline" onClick={onFermer} disabled={enCours}>
             Annuler
           </Button>
-          <Button onClick={() => onEnregistrer(valeurs)} disabled={!complet || enCours}>
+          <Button onClick={() => onEnregistrer(avecTotauxRepartition(valeurs))} disabled={!complet || enCours}>
             {enCours ? 'Enregistrement…' : 'Enregistrer'}
           </Button>
         </DialogFooter>

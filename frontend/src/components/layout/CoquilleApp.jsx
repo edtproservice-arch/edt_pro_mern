@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ROLES } from 'shared/constants';
 import { Separator } from '@/components/ui/separator';
 import FilAriane from './FilAriane';
@@ -23,6 +23,7 @@ import { useEpinglage } from '@/lib/epinglageBarre';
 import BandeauPeriodesDirection from './BandeauPeriodesDirection';
 import { cn } from '@/lib/utils';
 import { gererExpirationsession } from '@/lib/apiClient';
+import { ecouterReferentiel } from '@/lib/tempsReel';
 import { useAncreRentrees } from '@/lib/useAncreRentrees';
 import { definirEtablissementActif, lireEtablissementActif } from '@/lib/etablissementActif';
 
@@ -138,6 +139,18 @@ export default function CoquilleApp() {
 
   // Déconnexion automatique après 15 minutes d'inactivité
   useGestionInactivite(Boolean(utilisateur));
+
+  /*
+   * ═══ UNE MASSE CHANGÉE DANS LA RÉPARTITION DRIF (2026-10-10) ═══ Le serveur l'a
+   * déjà reportée dans les bases ; tout ce que l'écran affiche est relu — la
+   * carte, le chronogramme, les quotas, l'avancement. Seules les requêtes
+   * ACTIVES repartent : le reste sera relu quand on y reviendra.
+   */
+  const cacheRequetes = useQueryClient();
+  useEffect(
+    () => ecouterReferentiel(() => cacheRequetes.invalidateQueries({ refetchType: 'active' })),
+    [cacheRequetes]
+  );
 
   // Redirection automatique si la session est expirée
   useEffect(() => {

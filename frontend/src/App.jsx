@@ -224,7 +224,7 @@ export default function App() {
               path="parametres/formations"
               element={
                 <GardePage page="formations" requis="consulter">
-                  <GardeEtapes titre="Les formations"><PageFormations /></GardeEtapes>
+                  <GardeEtapes titre="Les congés et formations"><PageFormations /></GardeEtapes>
                 </GardePage>
               }
             />

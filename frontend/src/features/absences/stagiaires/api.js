@@ -20,6 +20,14 @@ export const exporterFeuilleAbsence = ({ format, groupes, semaine }) =>
     nomParDefaut: `feuille-absence.${format}`,
   });
 
+/** Les notes de discipline des groupes choisis, en Word, PDF ou Excel (2026-10-11) — une page par groupe. */
+export const exporterNotes = ({ format, groupes }) =>
+  api.telecharger(`${RACINE}/notes/export`, { format, groupes }, { nomParDefaut: `notes-discipline.${format}` });
+
+/** Le registre des absences de l'année en Excel (2026-10-10) — une colonne par jour. */
+export const exporterRegistre = () =>
+  api.telecharger(`${RACINE}/registre/export`, {}, { nomParDefaut: 'registre-absences.xlsx' });
+
 /**
  * Une feuille de présence d'épreuve d'un ou plusieurs groupes, en Word ou PDF
  * (2026-10-02) — `modele` : `eff` ou `cc-efm`. Une page par groupe.

@@ -92,7 +92,7 @@ const MOTIFS = {
   formation: {
     icone: GraduationCap,
     fond: FOND_FORMATION,
-    titre: 'Formateur en formation toute la semaine',
+    titre: 'Formateur en congé ou en formation toute la semaine',
     phrase: 'La personne est absente les six jours.',
   },
   masse: {

@@ -28,3 +28,5 @@ export {
   cleLigne as cleLigneRepartition,
   lireLignes as lireLignesRepartition,
 } from './import.js';
+
+export { avecTotauxRepartition, totauxRepartition } from './totaux.js';

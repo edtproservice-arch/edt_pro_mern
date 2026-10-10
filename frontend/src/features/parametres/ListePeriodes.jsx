@@ -30,6 +30,7 @@ import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import CalendrierPeriode, { enTexte } from './CalendrierPeriode';
+import ChoixMotif, { motifRetenu } from './ChoixMotif';
 import ChoixMultiple from './ChoixMultiple';
 import FrisePeriodes from './FrisePeriodes';
 import BoutonTelecharger from '@/components/common/BoutonTelecharger';
@@ -76,8 +77,16 @@ export default function ListePeriodes({
   exportation,
   // Groupe → identité (filière, niveau, année) : le filtre d'Édition dans la liste des groupes (2026-10-10).
   identites = null,
+  /*
+   * Le MOTIF de chaque période (2026-10-11, congés et formations) : les
+   * propositions, et le motif d'une période qui n'en porte pas. Sans `motifs`
+   * (les stages), rien ne change.
+   */
+  motifs = null,
+  motifParDefaut = '',
 }) {
   const [selection, setSelection] = useState([]);
+  const [motif, setMotif] = useState(motifs?.[0] ?? '');
   // Les périodes tracées, et le début posé d'une période pas encore refermée.
   const [saisie, setSaisie] = useState(SAISIE_VIDE);
   const [ouvert, setOuvert] = useState(false);
@@ -113,7 +122,11 @@ export default function ListePeriodes({
 
     const ajouts = selection.flatMap((valeur) => {
       const sujet = sujets.find((candidat) => candidat.valeur === valeur);
-      return nouvelles.map((periode) => ({ ...cle(sujet), ...periode }));
+      return nouvelles.map((periode) => ({
+        ...cle(sujet),
+        ...periode,
+        ...(motifs ? { motif: motifRetenu(motif, motifParDefaut) } : {}),
+      }));
     });
 
     onChange(
@@ -124,10 +137,15 @@ export default function ListePeriodes({
 
     setSelection([]);
     setSaisie(SAISIE_VIDE);
+    setMotif(motifs?.[0] ?? '');
     setOuvert(false);
   };
 
   const retirer = (index) => onChange(periodes.filter((_, rang) => rang !== index));
+  // Le motif d'une période déjà déclarée se corrige sur place, sans la retracer.
+  const changerMotif = (index, valeur) =>
+    onChange(periodes.map((periode, rang) => (rang === index ? { ...periode, motif: valeur } : periode)));
+  const motifDe = (periode) => periode.motif || motifParDefaut;
 
   /*
    * ═══ FILTRE PAR SUJET, DANS LES DEUX AFFICHAGES (2026-10-10, demande du
@@ -256,6 +274,12 @@ export default function ListePeriodes({
                   libelle={libelleSujet}
                   identites={identites}
                 />
+                {motifs && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Motif</Label>
+                    <ChoixMotif motifs={motifs} valeur={motif} onChange={setMotif} />
+                  </div>
+                )}
                 <Button className="w-full" onClick={ajouter} disabled={!complet}>
                   <Plus className="h-4 w-4" />
                   Ajouter
@@ -336,7 +360,14 @@ export default function ListePeriodes({
               </Button>
             )}
             {/* L'export suit le filtre : il imprime ce qui est affiché. */}
-            {exportation && <BoutonExporter periodes={visibles} exportation={exportation} affichage={affichage} />}
+            {exportation && (
+              <BoutonExporter
+                periodes={visibles}
+                exportation={exportation}
+                affichage={affichage}
+                motifDe={motifs ? motifDe : null}
+              />
+            )}
           </div>
         </div>
       )}
@@ -347,6 +378,7 @@ export default function ListePeriodes({
           anneeScolaire={anneeScolaire}
           onRetirer={lectureSeule ? undefined : retirer}
           onDeplacer={lectureSeule ? undefined : deplacer}
+          motifDe={motifs ? motifDe : null}
         />
       ) : periodes.length === 0 ? (
         <div className="flex items-center gap-2 rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
@@ -384,6 +416,14 @@ export default function ListePeriodes({
                       {afficher(periode.debut)} → {afficher(periode.fin)}
                     </span>
                     <span className="text-muted-foreground">· {compter(periode)} j</span>
+                    {motifs && (
+                      <MotifDePeriode
+                        motif={motifDe(periode)}
+                        motifs={motifs}
+                        lectureSeule={lectureSeule}
+                        onChange={(valeur) => changerMotif(index, valeur)}
+                      />
+                    )}
                     {lectureSeule ? (
                       <span className="w-1.5" />
                     ) : (
@@ -414,7 +454,7 @@ export default function ListePeriodes({
  * Télécharger les périodes en Word, PDF ou Excel — la liste de l'ÉCRAN, ajouts
  * pas encore enregistrés compris (voir `exportPeriodes.service.js`).
  */
-function BoutonExporter({ periodes, exportation, affichage }) {
+function BoutonExporter({ periodes, exportation, affichage, motifDe }) {
   const telechargement = useMutation({
     mutationFn: (format) =>
       exporterPeriodes(exportation.type, {
@@ -424,6 +464,7 @@ function BoutonExporter({ periodes, exportation, affichage }) {
         periodes: periodes.map((periode) => ({
           sujet: libelleDe(periode),
           detail: exportation.detailDe?.(periode) ?? '',
+          ...(motifDe ? { motif: motifDe(periode) } : {}),
           debut: periode.debut,
           fin: periode.fin,
         })),
@@ -432,6 +473,40 @@ function BoutonExporter({ periodes, exportation, affichage }) {
   });
 
   return <BoutonTelecharger enCours={telechargement.isPending} onChoisir={(format) => telechargement.mutate(format)} />;
+}
+
+/**
+ * Le motif d'une période, sur sa pastille : un clic le corrige (2026-10-11).
+ * En lecture seule, il se lit seulement.
+ */
+function MotifDePeriode({ motif, motifs, lectureSeule, onChange }) {
+  /*
+   * ⚠️ UN BROUILLON LOCAL : « Autre… » choisi sans texte n'est pas encore un
+   * motif. L'écrire tout de suite le ramènerait au motif par défaut, et le
+   * champ libre se refermerait avant qu'on y tape quoi que ce soit.
+   */
+  const [brouillon, setBrouillon] = useState(motif);
+  const choisir = (valeur) => {
+    setBrouillon(valeur);
+    const retenu = motifRetenu(valeur, '');
+    if (retenu) onChange(retenu);
+  };
+
+  const pastille = 'rounded bg-background px-1.5 py-px text-[0.7rem] font-medium text-foreground';
+  if (lectureSeule) return <span className={pastille}>{motif}</span>;
+  return (
+    <Popover onOpenChange={(ouvert) => ouvert && setBrouillon(motif)}>
+      <PopoverTrigger asChild>
+        <button type="button" className={cn(pastille, 'border hover:border-primary')} title="Changer le motif">
+          {motif}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72 space-y-1.5 p-3">
+        <Label className="text-xs">Motif de la période</Label>
+        <ChoixMotif motifs={motifs} valeur={brouillon} onChange={choisir} />
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 /**

@@ -122,6 +122,40 @@ export async function notes(etablissementId, anneeScolaire, groupe) {
 }
 
 /**
+ * Les notes de PLUSIEURS groupes d'un coup — pour l'export (2026-10-11).
+ * ⚠️ UNE SEULE LECTURE DES FAITS pour tous les stagiaires, pas `notes()` groupe
+ * par groupe : trente groupes feraient soixante requêtes. Même calcul que
+ * `notes()` : la note d'un stagiaire compte toutes ses absences de l'année.
+ * Un groupe sans stagiaire n'apparaît pas.
+ */
+export async function notesDesGroupes(etablissementId, anneeScolaire, groupesDemandes) {
+  const stagiaires = await Stagiaire.find({ etablissementId, anneeScolaire, groupes: { $in: groupesDemandes } })
+    .select('matricule nom prenom groupes')
+    .sort({ nom: 1, prenom: 1 })
+    .lean();
+  const faits = await faitsParStagiaire(
+    etablissementId,
+    anneeScolaire,
+    [...new Set(stagiaires.map((s) => s.matricule))]
+  );
+
+  return groupesDemandes
+    .map((groupe) => {
+      const membres = stagiaires.filter((s) => (s.groupes ?? []).includes(groupe));
+      if (membres.length === 0) return null;
+      return {
+        groupe,
+        examen: examenDiscipline(anneeDuNomGroupe(groupe)),
+        stagiaires: membres.map((s) => {
+          const f = faits.get(s.matricule);
+          return { matricule: s.matricule, nom: nomDuStagiaire(s), ...f, note: noter(f, groupe) };
+        }),
+      };
+    })
+    .filter(Boolean);
+}
+
+/**
  * ═══ LE TABLEAU DE BORD DU GESTIONNAIRE (2026-09-29, demande du porteur :
  * « une page d'accueil pour gestionnaire … avec des statistiques sur
  * l'absence et la discipline des stagiaires ») ═══

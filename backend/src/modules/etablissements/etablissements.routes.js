@@ -219,6 +219,8 @@ const formationsSchema = z.object({
           nomFormateur: z.string().trim().max(150).default(''),
           debut: jour,
           fin: jour,
+          // Le motif de l'indisponibilité (2026-10-11) : une proposition de la liste, ou un texte libre.
+          motif: z.string().trim().max(100).default(''),
         })
         .strict()
         .transform(remettreEnOrdre)
@@ -271,6 +273,8 @@ const exportPeriodesSchema = z.object({
         .object({
           sujet: z.string().trim().min(1).max(150),
           detail: z.string().trim().max(150).default(''),
+          // Les congés et formations : le motif de chaque période (2026-10-11).
+          motif: z.string().trim().max(100).default(''),
           debut: jour,
           fin: jour,
         })

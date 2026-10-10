@@ -570,6 +570,16 @@ export function attacherTempsReel(serveurHttp) {
   }
 
   /**
+   * ═══ LE RÉFÉRENTIEL NATIONAL A CHANGÉ (2026-10-10) ═══ Une masse de la
+   * répartition DRIF : TOUTES les sessions ouvertes, de tous les établissements,
+   * relisent ce qu'elles en gardent en cache. Le message ne porte que le code du
+   * module — rien d'un établissement ne voyage vers un autre.
+   */
+  function surReferentiel({ codeModule }) {
+    for (const connexion of connexions) envoyer(connexion.ws, { type: 'referentiel', codeModule: codeModule ?? null });
+  }
+
+  /**
    * Un droit a changé : on le relit pour chaque membre concerné de la salle.
    *
    * ═══ ⚠️ RETIRER UNE INVITATION FERME LA PAGE SUR-LE-CHAMP ═══
@@ -608,6 +618,7 @@ export function attacherTempsReel(serveurHttp) {
   bus.on(EVENEMENTS.MODIFICATION, surModification);
   bus.on(EVENEMENTS.SESSIONS_REVOQUEES, surRevocation);
   bus.on(EVENEMENTS.PARTAGE_MODIFIE, surPartage);
+  bus.on(EVENEMENTS.REFERENTIEL_MODIFIE, surReferentiel);
 
   /*
    * ⚠️ LE PING DÉTECTE LES CONNEXIONS MORTES. Un portable qui se met en veille
@@ -632,6 +643,7 @@ export function attacherTempsReel(serveurHttp) {
     bus.off(EVENEMENTS.MODIFICATION, surModification);
     bus.off(EVENEMENTS.SESSIONS_REVOQUEES, surRevocation);
     bus.off(EVENEMENTS.PARTAGE_MODIFIE, surPartage);
+    bus.off(EVENEMENTS.REFERENTIEL_MODIFIE, surReferentiel);
     serveurHttp.off('upgrade', surUpgrade);
     for (const connexion of connexions) connexion.ws.terminate();
     return new Promise((resoudre) => wss.close(() => resoudre()));

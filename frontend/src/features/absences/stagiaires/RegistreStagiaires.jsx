@@ -16,7 +16,7 @@ import TableauTriable from '@/components/common/TableauTriable';
 import { MARGE_PAGE } from '@/components/common/apparenceGrille';
 import { cn } from '@/lib/utils';
 import ListeRepliable from '../ListeRepliable';
-import { chargerRegistre, justifierAbsence, supprimerAbsence, telechargerBillets } from './api';
+import { chargerRegistre, exporterRegistre, justifierAbsence, supprimerAbsence, telechargerBillets } from './api';
 import ListeGroupes from './ListeGroupes';
 import { grouperParGroupe } from './regroupementStagiaires';
 
@@ -38,13 +38,48 @@ export default function RegistreStagiaires({ encadrement, matricule = null, comp
   if (compact) return <TableauRegistre filtre={{ matricule }} encadrement={encadrement} compact />;
   if (encadrement) {
     return (
-      <ListeGroupes
-        detail={(groupe) => <TableauRegistre filtre={{ groupe }} encadrement />}
-        groupeInitial={groupeInitial}
-      />
+      <div className="space-y-3">
+        <div className="flex justify-end">
+          <ExporterRegistre />
+        </div>
+        <ListeGroupes
+          detail={(groupe) => <TableauRegistre filtre={{ groupe }} encadrement />}
+          groupeInitial={groupeInitial}
+        />
+      </div>
     );
   }
   return <RegistreDuFormateur />;
+}
+
+/**
+ * Le registre de l'année en Excel (2026-10-10, demande du porteur) : groupe,
+ * stagiaire, une colonne par jour — heures d'absence, motif en commentaire —,
+ * vacances et fériés marqués, puis les heures non justifiées et justifiées.
+ * Tous les groupes : le filtre automatique du fichier isole celui qu'on cherche.
+ */
+function ExporterRegistre() {
+  const telechargement = useMutation({
+    mutationFn: exporterRegistre,
+    onError: (erreur) => toast.error('Téléchargement impossible', { description: erreur.message }),
+  });
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="h-9 gap-1.5"
+      disabled={telechargement.isPending}
+      onClick={() => telechargement.mutate()}
+    >
+      {telechargement.isPending ? (
+        <Loader2 className="size-4 animate-spin" />
+      ) : (
+        <FileSpreadsheet className="size-4 text-green-600" />
+      )}
+      {telechargement.isPending ? 'Préparation…' : 'Exporter le registre (Excel)'}
+    </Button>
+  );
 }
 
 /**

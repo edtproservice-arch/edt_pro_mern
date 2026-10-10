@@ -116,7 +116,11 @@ const etablissementSchema = new mongoose.Schema(
       },
     ],
 
-    /** Formations suivies par un formateur (il est alors indisponible). ← table `formations` */
+    /**
+     * Périodes où un formateur est indisponible — page « Congés et formations ».
+     * ← table `formations`. Le nom du champ reste `formations` (aucune migration),
+     * mais une période peut aussi être un congé : `motif` le dit (2026-10-11).
+     */
     formations: [
       {
         _id: false,
@@ -124,6 +128,8 @@ const etablissementSchema = new mongoose.Schema(
         nomFormateur: { type: String, trim: true },
         debut: jour,
         fin: jour,
+        /** « Formation », « Congé de paternité »… — vide pour une période d'avant les motifs (= formation). */
+        motif: { type: String, trim: true, default: '' },
       },
     ],
 

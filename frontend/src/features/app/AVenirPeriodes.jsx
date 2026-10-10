@@ -65,14 +65,16 @@ export default function AVenirPeriodes({ liens = true }) {
           aujourdhui={aujourdhui}
         />
         <Bloc
-          titre="Formations des formateurs"
+          titre="Congés et formations"
           icone={GraduationCap}
-          vide="Aucun formateur ne part en formation cette semaine."
+          vide="Aucun formateur ne part en congé ni en formation cette semaine."
           vers={liens ? '/app/parametres/formations' : null}
           lignes={formations.map((formation) => ({
             cle: `${formation.matriculeFormateur}-${formation.debut}`,
             nom: formation.nomFormateur || formation.matriculeFormateur,
             ...formation,
+            // Le motif (2026-10-11) : formation, congé de paternité…
+            detail: formation.motif || 'Formation',
           }))}
           aujourdhui={aujourdhui}
         />
@@ -116,6 +118,7 @@ function Bloc({ titre, icone: Icone, vide, vers, lignes, aujourdhui }) {
                 <div className="min-w-0">
                   <div className="truncate text-sm font-medium">{ligne.nom}</div>
                   <div className="text-xs tabular-nums text-muted-foreground">
+                    {ligne.detail && `${ligne.detail} · `}
                     {afficher(ligne.debut)} → {afficher(ligne.fin)} · {ecart(ligne.debut, ligne.fin) + 1} j
                   </div>
                 </div>

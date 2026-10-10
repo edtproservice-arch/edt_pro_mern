@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { Download, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Alerte from '@/components/common/Alerte';
 import TableauTriable from '@/components/common/TableauTriable';
 import { MARGE_PAGE } from '@/components/common/apparenceGrille';
 import { nombre } from '@/lib/nombres';
-import { chargerNotes } from './api';
+import DialogueChoixGroupes from '@/features/documents/DialogueChoixGroupes';
+import { chargerNotes, exporterNotes } from './api';
 import BadgeSanction from './BadgeSanction';
 import FicheStagiaire from './FicheStagiaire';
 import { DialogueComportement } from './SaisieComportement';
@@ -28,9 +29,30 @@ import ListeGroupes from './ListeGroupes';
 export default function NotesDiscipline({ groupeInitial = null }) {
   const [fiche, setFiche] = useState(null);
   const [comportement, setComportement] = useState(null);
+  const [telechargement, setTelechargement] = useState(false);
 
   return (
     <div className="space-y-3">
+      {/*
+        Le téléchargement des notes (2026-10-11, demande du porteur) : le même
+        choix de groupes et de format que les documents de la page Documents —
+        une page (ou un onglet Excel) par groupe.
+      */}
+      <div className="flex justify-end">
+        <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={() => setTelechargement(true)}>
+          <Download className="size-4" />
+          Télécharger les notes
+        </Button>
+      </div>
+      <DialogueChoixGroupes
+        ouvert={telechargement}
+        onFermer={() => setTelechargement(false)}
+        titre="Notes de discipline"
+        description="La liste des stagiaires de chaque groupe avec leur note de discipline — une page par groupe en Word et PDF, un onglet par groupe en Excel."
+        formats={['docx', 'pdf', 'xlsx']}
+        telecharger={exporterNotes}
+      />
+
       <p className="text-xs text-muted-foreground">
         Assiduité sur 10 : −0,5 par séance d’absence, −0,25 par retard — seuls les non justifiés comptent. Comportement
         sur 5 : la n-ième indiscipline porte le retrait à n (mise en garde, avertissement, blâme, exclusion de 2 jours,

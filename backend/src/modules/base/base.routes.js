@@ -165,6 +165,8 @@ router.post('/import', directeur, televersement.single('fichier'), async (req, r
       remplacer: req.body?.remplacer === 'true',
       // Même précaution : une chaîne « true », jamais un booléen.
       confirmerSuppressions: req.body?.confirmerSuppressions === 'true',
+      // L'import hebdomadaire de l'« Avancement » garde la base en place (2026-10-10).
+      conserver: req.body?.conserver === 'true',
     });
 
     res.status(201).json({ success: true, ...resultat });

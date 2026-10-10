@@ -176,3 +176,28 @@ export const MOTIFS_IGNOREE = {
    */
   MODULE_NON_AFFECTE: 'module_non_affecte',
 };
+
+/**
+ * ═══ LES MOTIFS D'INDISPONIBILITÉ D'UN FORMATEUR (2026-10-11, demande du
+ * porteur) ═══ La page « Congés et formations » ne déclare plus seulement des
+ * formations : un formateur s'absente aussi pour un congé de paternité, le
+ * décès d'un proche… Chaque période porte son motif. Ces valeurs sont des
+ * PROPOSITIONS : un motif libre reste accepté (« Autre » à l'écran).
+ *
+ * ⚠️ L'effet est le même quel que soit le motif : aucune séance n'est placée
+ * au formateur sur la période. Le motif renseigne, il ne change pas la règle.
+ */
+export const MOTIFS_INDISPONIBILITE = [
+  'Formation',
+  'Congé administratif',
+  'Congé de maladie',
+  'Congé de maternité',
+  'Congé de paternité',
+  'Congé pour décès d’un proche',
+  'Congé de mariage',
+  'Congé exceptionnel',
+  'Mission',
+];
+
+/** Une période enregistrée avant les motifs était une formation : c'était le seul cas. */
+export const MOTIF_INDISPONIBILITE_PAR_DEFAUT = 'Formation';

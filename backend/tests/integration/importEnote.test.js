@@ -167,6 +167,37 @@ describe('Import e-note', () => {
     expect(base.formateurs[0].masseHoraire).toBe(720);
   });
 
+  /*
+   * ═══ L'IMPORT DE L'« AVANCEMENT » GARDE LES CHANGEMENTS (2026-10-10) ═══ En mode
+   * `conserver`, la base en place fait foi : un groupe absent du fichier reste, une
+   * masse modifiée dans eDTpro aussi ; le fichier n'ajoute que le nouveau.
+   */
+  it('garde la base en place en mode « conserver », le fichier n’ajoutant que le nouveau', async () => {
+    await request(app)
+      .post('/api/v2/base/import')
+      .set('Cookie', cookies)
+      .attach('fichier', await classeurEnote([ligneEnote()]), 'base.xlsx');
+
+    // Un changement fait dans eDTpro : 45 h au lieu de 30 au S1.
+    const base = await Base.findOne({ etablissementId: etablissement.id, anneeScolaire: 2026 });
+    base.affectations[0].s1Heures = 45;
+    await base.save();
+
+    const reponse = await request(app)
+      .post('/api/v2/base/import')
+      .set('Cookie', cookies)
+      .field('remplacer', 'true')
+      .field('conserver', 'true')
+      .attach('fichier', await classeurEnote([ligneEnote({ groupe: 'GE201' })]), 'base.xlsx');
+
+    expect(reponse.status).toBe(201);
+    expect(reponse.body.ajouts).toMatchObject({ groupes: 1, affectations: 1 });
+    const apres = await Base.findOne({ etablissementId: etablissement.id, anneeScolaire: 2026 }).lean();
+    expect(apres.groupes).toEqual(['DEV101', 'GE201']);
+    expect(apres.affectations.find((a) => a.groupe === 'DEV101').s1Heures).toBe(45);
+    expect(await EnoteImport.countDocuments()).toBe(1);
+  });
+
   it('remplace la base au réimport, sans accumuler', async () => {
     await request(app)
       .post('/api/v2/base/import')

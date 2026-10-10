@@ -9,6 +9,7 @@ import {
   Plus,
   RotateCcw,
   Presentation,
+  Sigma,
   Trash2,
 } from 'lucide-react';
 import {
@@ -986,20 +987,54 @@ function ResumeSalles({ salles }) {
   );
 }
 
+/*
+ * ═══ PRÉSENTIEL, SYNCHRONE, GLOBALE (2026-10-10, demande du porteur) ═══
+ * « Remplace total par MH Présentiel, donne la masse S1, S2 pour le synchrone et
+ * ajoute MH Globale. » Chaque nature d'heures a sa ligne, avec son détail par
+ * semestre ; la masse GLOBALE les réunit — présentiel, synchrone et asynchrone,
+ * comme MHP totale + MHD totale dans la répartition DRIF.
+ */
+const centieme = (valeur) => Math.round(Number(valeur ?? 0) * 100) / 100;
+
 function Heures({ module }) {
+  const presentiel = heuresPresentiel(module);
   const synchrone = heuresSynchrone(module);
+  const asynchrone = centieme(Number(module.mhasynS1 ?? 0) + Number(module.mhasynS2 ?? 0));
+  const globale = centieme(presentiel + synchrone + asynchrone);
 
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-      <Semestre libelle="S1" heures={module.mhpS1 ?? 0} classe="text-accent-sky" />
-      <Semestre libelle="S2" heures={module.mhpS2 ?? 0} classe="text-accent-green" />
-      <span className="text-muted-foreground">total {heuresPresentiel(module)} h</span>
+    <div className="mt-1 space-y-1 text-xs">
+      {/* En tête de ligne, en badge comme le synchrone (2026-10-10, demande du porteur). */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <BadgePresentiel heures={presentiel} />
+        <Semestre libelle="S1" heures={module.mhpS1 ?? 0} classe="text-accent-sky" />
+        <Semestre libelle="S2" heures={module.mhpS2 ?? 0} classe="text-accent-green" />
+      </div>
+
       {/*
         Même badge que dans l'onglet Synchrone : le directeur doit reconnaître
         au premier regard, depuis la matrice présentielle, quels modules
-        appellent en plus une séance à distance.
+        appellent en plus une séance à distance — et, depuis le 2026-10-10, à
+        quel semestre.
       */}
-      {synchrone > 0 && <BadgeSynchrone heures={synchrone} />}
+      {(synchrone > 0 || asynchrone > 0) && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          {synchrone > 0 && (
+            <>
+              <BadgeSynchrone heures={synchrone} />
+              <Semestre libelle="S1" heures={module.mhsynS1 ?? 0} classe="text-accent-sky" />
+              <Semestre libelle="S2" heures={module.mhsynS2 ?? 0} classe="text-accent-green" />
+            </>
+          )}
+          {/* L'asynchrone n'a pas de séance à planifier, mais compte dans la masse globale :
+              sans lui, le total ne se vérifierait pas à l'œil. */}
+          {asynchrone > 0 && <span className="text-muted-foreground">Asynchrone {asynchrone} h</span>}
+        </div>
+      )}
+
+      <div>
+        <BadgeGlobale heures={globale} />
+      </div>
     </div>
   );
 }
@@ -1023,6 +1058,34 @@ function BadgeSemestre({ module }) {
    * parlant qu'un « 1 » isolé au milieu de masses horaires.
    */
   return <BadgeSemestreCommun semestre={semestreModule(module)} long className="px-1.5 py-0.5" />;
+}
+
+/**
+ * Badge « MH Présentiel — N h », le pendant du badge synchrone : même forme,
+ * l'icône de la séance en salle (celle du chronogramme), et le VERT des heures
+ * présentielles — la teinte que leur donnent déjà les légendes de l'application.
+ */
+function BadgePresentiel({ heures }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-md bg-accent-green/15 px-2 py-0.5">
+      <Presentation className="h-3.5 w-3.5 text-accent-green-deep" />
+      <span className="font-medium tabular-nums text-accent-green-deep">MH Présentiel {heures} h</span>
+    </span>
+  );
+}
+
+/**
+ * Badge « MH Globale — N h » (2026-10-10, demande du porteur) : même forme que
+ * les deux autres. Le Σ dit la SOMME ; le bleu profond la distingue du vert du
+ * présentiel, du violet du synchrone et de l'orange du module annuel.
+ */
+function BadgeGlobale({ heures }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-md bg-accent-sky/15 px-2 py-0.5">
+      <Sigma className="h-3.5 w-3.5 text-accent-sky-deep" />
+      <span className="font-semibold tabular-nums text-accent-sky-deep">MH Globale {heures} h</span>
+    </span>
+  );
 }
 
 /** Badge « Teams — N h », identique dans les deux onglets. */

@@ -1483,7 +1483,7 @@ function EnTeteSemaine({ semaine }) {
         )}
         {semaine.motif === 'formation' && (
           <p className="mt-1 text-sm text-muted-foreground">
-            Le formateur est en formation — saisie bloquée.
+            Le formateur est en congé ou en formation — saisie bloquée.
           </p>
         )}
 

@@ -359,7 +359,7 @@ const aDesHeures = (planning, numero) =>
 function titre(semaine, rempli) {
   if (semaine.motif === 'vacances') return `S${semaine.numero} — vacances`;
   if (semaine.motif === 'stage') return `S${semaine.numero} — stage du groupe`;
-  if (semaine.motif === 'formation') return `S${semaine.numero} — formateur en formation`;
+  if (semaine.motif === 'formation') return `S${semaine.numero} — formateur en congé ou en formation`;
   if (semaine.joursDisponibles < 6) {
     return `S${semaine.numero} — ${semaine.joursDisponibles} jour(s) ouvré(s)`;
   }

@@ -278,7 +278,14 @@ router.get('/periodes', async (req, res, next) => {
     } else {
       periodes = (etablissement?.formations ?? [])
         .filter((formation) => formation.matriculeFormateur === identifiant)
-        .map(({ matriculeFormateur, nomFormateur, debut, fin }) => ({ matriculeFormateur, nomFormateur, debut, fin }));
+        // Le motif (2026-10-11) : le formateur lit pourquoi il est indisponible — une période sans motif est une formation.
+        .map(({ matriculeFormateur, nomFormateur, debut, fin, motif }) => ({
+          matriculeFormateur,
+          nomFormateur,
+          debut,
+          fin,
+          motif: motif || 'Formation',
+        }));
     }
 
     res.json({

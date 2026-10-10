@@ -45,9 +45,9 @@ function run(texte, { gras = false, taille = 16 } = {}) {
   );
 }
 
-function paragraphe(texte, { gras = false, taille = 18, centre = false, apres = 80 } = {}) {
+export function paragraphe(texte, { gras = false, taille = 18, centre = false, avant = 0, apres = 80 } = {}) {
   return (
-    `<w:p><w:pPr><w:spacing w:before="0" w:after="${apres}"/>${centre ? '<w:jc w:val="center"/>' : ''}</w:pPr>` +
+    `<w:p><w:pPr><w:spacing w:before="${avant}" w:after="${apres}"/>${centre ? '<w:jc w:val="center"/>' : ''}</w:pPr>` +
     run(texte, { gras, taille }) +
     '</w:p>'
   );
@@ -64,10 +64,18 @@ function cellule(texte, largeur, { entete = false, centre = false } = {}) {
   );
 }
 
-function tableau(colonnes, lignes) {
-  const largeurs = largeursColonnes(colonnes, LARGEUR_UTILE);
-  const centrees = new Set(['semestre', 'regional', 'debut', 'fin', 'source', 'affecte', 'realise', 'taux', 'statut']);
+const CENTREES_ACHEVEMENT = new Set(['semestre', 'regional', 'debut', 'fin', 'source', 'affecte', 'realise', 'taux', 'statut']);
 
+/**
+ * Un tableau à la largeur de la page paysage, ligne d'en-tête répétée.
+ * `largeurs` et `centrees` : par défaut ceux de l'achèvement — un autre
+ * document (les notes de discipline) passe les siens.
+ */
+export function tableau(
+  colonnes,
+  lignes,
+  { largeurs = largeursColonnes(colonnes, LARGEUR_UTILE), centrees = CENTREES_ACHEVEMENT } = {}
+) {
   const grille = largeurs.map((largeur) => `<w:gridCol w:w="${largeur}"/>`).join('');
   // `tblHeader` : la ligne d'en-tête se répète en haut de chaque page.
   const entete =
@@ -93,7 +101,7 @@ function tableau(colonnes, lignes) {
 }
 
 /** L'en-tête du canevas, élargi à la page paysage et retitré. */
-function entetePaysage(xml, etablissement) {
+function entetePaysage(xml, etablissement, titre) {
   const portrait = 10206;
   const celluleTitre = 8706;
   const elargi = LARGEUR_UTILE - portrait;
@@ -103,13 +111,26 @@ function entetePaysage(xml, etablissement) {
     .replace(`<w:tblW w:w="${portrait}"`, `<w:tblW w:w="${LARGEUR_UTILE}"`)
     .replace(`<w:gridCol w:w="${celluleTitre}"/>`, `<w:gridCol w:w="${celluleTitre + elargi}"/>`)
     .replace(`<w:tcW w:w="${celluleTitre}"`, `<w:tcW w:w="${celluleTitre + elargi}"`);
-  resultat = remplacerBalise(resultat, TITRE_CANEVAS, 'Achèvement des modules');
+  resultat = remplacerBalise(resultat, TITRE_CANEVAS, echapperXml(titre));
   return remplacerBalise(resultat, ETABLISSEMENT_CANEVAS, echapperXml(etablissement?.nom ?? ''));
 }
 
-export async function construireDocxAchevement(donnees) {
-  const { etablissement, anneeScolaire, resume, dateObservee, colonnes, lignes } = donnees;
+/** La largeur utile de la page paysage, en twips — pour qui compose son propre tableau. */
+export const LARGEUR_UTILE_PAYSAGE = LARGEUR_UTILE;
 
+export const SAUT_DE_PAGE = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+
+/**
+ * Un Word paysage à l'en-tête officiel (logo OFPPT, `titre`, établissement),
+ * dont le corps est `corps` — du XML déjà composé (`paragraphe`, `tableau`).
+ * Partagé par l'achèvement des modules et les notes de discipline.
+ *
+ * `enteteCompact` (2026-10-11, demande du porteur, notes de discipline :
+ * « diminuer l'espace entre l'entête et Année de Formation ») : le paragraphe
+ * vide qui clôt l'en-tête du canevas, sous son tableau, tombe à 1 pt, et
+ * l'en-tête remonte à 0,5 cm du bord — le corps commence juste sous le trait.
+ */
+export async function construireDocxPaysage({ etablissement, titre, corps, enteteCompact = false }) {
   const zip = await JSZip.loadAsync(await chargerCanevasTampon(CHEMIN_CANEVAS_AFFECTATION));
   const fichierDocument = zip.file('word/document.xml');
   const fichierEntete = zip.file('word/header1.xml');
@@ -117,7 +138,16 @@ export async function construireDocxAchevement(donnees) {
     throw new Error('Canevas Word illisible : document.xml ou header1.xml absent du modèle');
   }
 
-  zip.file('word/header1.xml', entetePaysage(await fichierEntete.async('string'), etablissement));
+  let entete = entetePaysage(await fichierEntete.async('string'), etablissement, titre);
+  if (enteteCompact) {
+    const finTableau = entete.lastIndexOf('</w:tbl>') + '</w:tbl>'.length;
+    // ⚠️ Word exige un paragraphe après un tableau : il reste, réduit à 1 pt.
+    entete =
+      entete.slice(0, finTableau) +
+      '<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/>' +
+      '<w:rPr><w:sz w:val="2"/><w:szCs w:val="2"/></w:rPr></w:pPr></w:p></w:hdr>';
+  }
+  zip.file('word/header1.xml', entete);
   const fichierStyles = zip.file('word/styles.xml');
   if (fichierStyles) {
     zip.file('word/styles.xml', (await fichierStyles.async('string')).replaceAll('Aptos', 'Calibri'));
@@ -128,9 +158,18 @@ export async function construireDocxAchevement(donnees) {
   const debutSectPr = xml.lastIndexOf('<w:sectPr');
   if (debutSectPr <= debutCorps) throw new Error('Canevas Word illisible : la mise en page (sectPr) est absente');
 
-  const sectPr = xml
+  let sectPr = xml
     .slice(debutSectPr, xml.indexOf('</w:body>'))
     .replace(/<w:pgSz\b[^>]*\/>/, `<w:pgSz w:w="${LARGEUR_PAGE}" w:h="${HAUTEUR_PAGE}" w:orient="landscape"/>`);
+  // 284 twips = 0,5 cm du bord, au lieu des 1,25 cm du canevas.
+  if (enteteCompact) sectPr = sectPr.replace(/w:header="\d+"/, 'w:header="284"');
+
+  zip.file('word/document.xml', xml.slice(0, debutCorps) + corps + sectPr + '</w:body></w:document>');
+  return zip.generateAsync({ type: 'nodebuffer' });
+}
+
+export async function construireDocxAchevement(donnees) {
+  const { etablissement, anneeScolaire, resume, dateObservee, colonnes, lignes } = donnees;
 
   const informations = [
     `Année de Formation : ${anneeScolaire}-${anneeScolaire + 1}`,
@@ -145,10 +184,8 @@ export async function construireDocxAchevement(donnees) {
     tableau(colonnes, lignes) +
     '<w:p/>';
 
-  zip.file('word/document.xml', xml.slice(0, debutCorps) + corps + sectPr + '</w:body></w:document>');
-
   return {
-    tampon: await zip.generateAsync({ type: 'nodebuffer' }),
+    tampon: await construireDocxPaysage({ etablissement, titre: 'Achèvement des modules', corps }),
     nomFichier: nomFichierAchevement('docx'),
     contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   };

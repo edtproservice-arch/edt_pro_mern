@@ -33,7 +33,7 @@ export async function construireExportPeriodes({ etablissementId, anneeScolaire,
     if (!parSujet.has(periode.sujet)) parSujet.set(periode.sujet, { sujet: periode.sujet, detail: '', periodes: [] });
     const entree = parSujet.get(periode.sujet);
     entree.detail ||= periode.detail ?? '';
-    entree.periodes.push({ debut: periode.debut, fin: periode.fin, jours: nombreJours(periode) });
+    entree.periodes.push({ debut: periode.debut, fin: periode.fin, motif: periode.motif ?? '', jours: nombreJours(periode) });
   }
 
   const sujets = [...parSujet.values()]

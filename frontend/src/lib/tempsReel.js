@@ -229,6 +229,12 @@ function recevoir(message) {
     return;
   }
 
+  // Le référentiel national a changé (2026-10-10) : chaque écran relit ce qu'il en garde.
+  if (message.type === 'referentiel') {
+    for (const ecouteur of ecouteursReferentiel) ecouteur(message);
+    return;
+  }
+
   if (message.type?.startsWith('guide')) {
     for (const ecouteur of ecouteursGuidage) ecouteur(message);
     return;
@@ -405,6 +411,19 @@ export function ecouterGuidage(rappel) {
     ecouteursGuidage.delete(rappel);
     fermerSiInutile();
   };
+}
+
+/*
+ * ═══ LE RÉFÉRENTIEL NATIONAL (2026-10-10) ═══ Une masse changée dans la
+ * répartition DRIF est annoncée à TOUTES les sockets ouvertes. ⚠️ S'y abonner
+ * n'OUVRE PAS de socket : une session sans page collaborative ni guidage n'a
+ * rien d'ouvert, et la relira à sa prochaine requête.
+ */
+const ecouteursReferentiel = new Set();
+
+export function ecouterReferentiel(rappel) {
+  ecouteursReferentiel.add(rappel);
+  return () => ecouteursReferentiel.delete(rappel);
 }
 
 /** Envoie un message de guidage — perdu en silence si la socket est fermée. */

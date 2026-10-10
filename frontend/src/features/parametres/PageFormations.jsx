@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { MOTIFS_INDISPONIBILITE, MOTIF_INDISPONIBILITE_PAR_DEFAUT } from 'shared/constants';
 import { toast } from 'sonner';
 import Alerte from '@/components/common/Alerte';
 import { chargerBase, enregistrerFormations } from '@/features/configuration/api';
@@ -13,11 +14,18 @@ import ListePeriodes from './ListePeriodes';
 import { useListeEtablissement } from './useListeEtablissement';
 
 /**
- * Formations suivies par les formateurs.
+ * Congés et formations des formateurs.
  * ← table `formations` + le panneau « formations » de profile.html
  *
  * Un formateur en formation est indisponible : le générateur (Phase 6) ne doit
  * rien lui placer sur la période.
+ *
+ * ═══ « CONGÉS ET FORMATIONS » (2026-10-11, demande du porteur) ═══ Un
+ * formateur s'absente aussi pour un congé de paternité, le décès d'un proche…
+ * Chaque période porte désormais son MOTIF — l'effet reste le même : aucune
+ * séance sur la période. Le titre a suivi ; l'adresse
+ * (`/app/parametres/formations`) et le nom des données (`formations`) restent,
+ * pour ne casser ni un lien ni un document déjà enregistré.
  */
 export default function PageFormations() {
   /*
@@ -28,7 +36,7 @@ export default function PageFormations() {
   const { lectureSeule } = useDroitPage('formations');
   const liste = useListeEtablissement('formations', enregistrerFormations, {
     onSucces: (resultat) => {
-      toast.success('Formations enregistrées', { description: `${resultat.valeur.length} période(s).` });
+      toast.success('Congés et formations enregistrés', { description: `${resultat.valeur.length} période(s).` });
       annoncerCascade(resultat.cascade);
     },
   });
@@ -63,7 +71,7 @@ export default function PageFormations() {
     <>
     <EnTetePartage page="formations" clesARelire={[['etablissement-courant'], ['base']]} />
     <CadreReglage
-      titre="Formations"
+      titre="Congés et formations"
       chargement={contexte.isLoading || !liste.charge}
       erreur={contexte.isError ? contexte.error.message : null}
       {...proprietesEnregistrement(liste, lectureSeule)}
@@ -89,8 +97,10 @@ export default function PageFormations() {
         couleur="gris"
         anneeScolaire={annee}
         libelleSujet="Formateur"
-        libelleVide="Aucune formation déclarée."
+        libelleVide="Aucun congé ni aucune formation déclarés."
         aideVide="Tous les formateurs restent disponibles toute l'année."
+        motifs={MOTIFS_INDISPONIBILITE}
+        motifParDefaut={MOTIF_INDISPONIBILITE_PAR_DEFAUT}
         exportation={{ type: 'formations', detailDe: (periode) => periode.matriculeFormateur ?? '' }}
       />
     </CadreReglage>

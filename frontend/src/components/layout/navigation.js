@@ -115,7 +115,8 @@ export const NAVIGATION = [
       { titre: 'Affectations', url: '/app/parametres/affectations', icone: Network, phase: 4, resume: 'Qui enseigne quoi, module par module' },
       { titre: 'Calendrier', url: '/app/parametres/calendrier', icone: CalendarDays, phase: 4, resume: 'Jours fériés et périodes de vacances' },
       { titre: 'Stages', url: '/app/parametres/stages', icone: Briefcase, phase: 4, resume: 'Périodes en entreprise, par groupe' },
-      { titre: 'Formations', url: '/app/parametres/formations', icone: BookOpen, phase: 4, resume: 'Périodes de formation des formateurs' },
+      // « Congés et formations » (2026-10-11) : un formateur s'absente aussi pour un congé — chaque période a son motif.
+      { titre: 'Congés et formations', url: '/app/parametres/formations', icone: BookOpen, phase: 4, resume: 'Congés et formations des formateurs' },
       // Un diagramme de Gantt : c'est exactement ce qu'est un chronogramme.
       { titre: 'Chronogramme', url: '/app/parametres/chronogramme', icone: GanttChart, phase: 7, resume: 'Planning annuel par groupe' },
       { titre: 'Sessions', url: '/app/parametres/sessions', icone: GraduationCap, phase: 4, resume: 'Comptes formateurs, stagiaires et gestionnaires' },
@@ -174,7 +175,7 @@ export const NAVIGATION_FORMATEUR = [
   { titre: 'Affectations', titrePage: 'Mes affectations', url: '/app/mes-affectations', icone: Network, phase: 10 },
   { titre: 'Avancement', titrePage: "Suivi de l'avancement", url: '/app/mon-avancement', icone: TrendingUp, phase: 10 },
   // Ses formations déclarées par la direction (2026-10-10, demande du porteur).
-  { titre: 'Formations', titrePage: 'Mes formations', url: '/app/mes-formations', icone: GraduationCap, phase: 10 },
+  { titre: 'Congés et formations', titrePage: 'Mes congés et formations', url: '/app/mes-formations', icone: GraduationCap, phase: 10 },
   // Sa propre section de « Compte », déplacée dans une page à elle (2026-09-24, demande du porteur).
   { titre: 'Absences', titrePage: 'Mes absences', url: '/app/mes-absences', icone: UserX, phase: 10 },
 ];

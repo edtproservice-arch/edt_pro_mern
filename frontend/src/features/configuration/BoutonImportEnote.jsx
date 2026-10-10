@@ -28,6 +28,13 @@ export default function BoutonImportEnote({ libelle = 'Importer une base e-note'
   const cache = useQueryClient();
 
   const importation = useImportEnote({
+    /*
+     * ═══ L'IMPORT HEBDOMADAIRE GARDE CE QUI A ÉTÉ FAIT DANS eDTpro (2026-10-10, demande
+     * du porteur) ═══ Il ne sert qu'à suivre les heures déclarées dans e-note : la base
+     * en place fait foi, le fichier n'y ajoute que les groupes, affectations et
+     * formateurs qu'elle ne connaît pas. Voir `fusionnerAvecExistante` (serveur).
+     */
+    conserver: true,
     onImporte: (resultat) => {
       /*
        * ⚠️ TOUT EST INVALIDÉ, pas seulement l'avancement : un import réécrit la
@@ -39,7 +46,9 @@ export default function BoutonImportEnote({ libelle = 'Importer une base e-note'
 
       toast.success('Base e-note importée', {
         description: [
-          `${resultat.effectifs.formateurs} formateur(s), ${resultat.effectifs.groupes} groupe(s), ${resultat.effectifs.affectations} affectation(s).`,
+          resultat.ajouts
+            ? `Vos modifications sont conservées. Ajouté depuis le fichier : ${resultat.ajouts.groupes} groupe(s), ${resultat.ajouts.affectations} affectation(s), ${resultat.ajouts.formateurs} formateur(s).`
+            : `${resultat.effectifs.formateurs} formateur(s), ${resultat.effectifs.groupes} groupe(s), ${resultat.effectifs.affectations} affectation(s).`,
           /* Une suppression muette laisserait croire que les deux fichiers
              cohabitent dans la chronologie. */
           resultat.remplace ? `Remplace « ${resultat.remplace.nomFichier} ».` : null,

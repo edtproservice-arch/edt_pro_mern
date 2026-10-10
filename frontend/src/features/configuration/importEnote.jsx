@@ -43,7 +43,11 @@ import {
  *   reinitialiser: () => void,
  * }}
  */
-export function useImportEnote({ onImporte, onErreur } = {}) {
+/**
+ * `conserver` (2026-10-10) : la base en place fait foi, le fichier n'ajoute que le nouveau —
+ * l'import hebdomadaire de l'« Avancement ». L'assistant de configuration, lui, remplace.
+ */
+export function useImportEnote({ onImporte, onErreur, conserver = false } = {}) {
   /*
    * Le fichier en attente et la trace qu'il remplacerait. Tant que cet état est
    * posé, l'import n'a PAS eu lieu : c'est ce qui distingue « refusé, on
@@ -59,7 +63,7 @@ export function useImportEnote({ onImporte, onErreur } = {}) {
 
   const mutation = useMutation({
     mutationFn: ({ fichier, remplacer, confirmerSuppressions }) =>
-      importerBaseEnote(fichier, remplacer, confirmerSuppressions),
+      importerBaseEnote(fichier, remplacer, confirmerSuppressions, conserver),
     onSuccess: (resultat) => {
       setConflit(null);
       setSuppressions(null);

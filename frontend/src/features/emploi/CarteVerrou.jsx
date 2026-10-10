@@ -64,7 +64,8 @@ const MOTIFS = {
   formation: {
     icone: GraduationCap,
     fond: FOND_FORMATION,
-    titre: 'Formateur en formation',
+    // Une formation ou un congé (2026-10-11) : le motif précis s'affiche dessous.
+    titre: 'Formateur indisponible',
     phrase: "Ce formateur n'est pas dans l'établissement sur cette période.",
   },
   /*

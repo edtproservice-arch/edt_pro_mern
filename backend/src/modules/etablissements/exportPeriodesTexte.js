@@ -8,12 +8,14 @@ export const TYPES_PERIODES = {
     sujets: 'groupe(s)',
     fichier: 'Periodes_stage',
   },
+  // « Congés et formations » (2026-10-11) : chaque période porte son MOTIF, une colonne de plus.
   formations: {
-    titre: 'Périodes de formation',
+    titre: 'Congés et formations des formateurs',
     colonneSujet: 'Formateur',
     colonneDetail: 'Matricule',
+    colonneMotif: 'Motif',
     sujets: 'formateur(s)',
-    fichier: 'Periodes_formation',
+    fichier: 'Conges_et_formations',
   },
 };
 

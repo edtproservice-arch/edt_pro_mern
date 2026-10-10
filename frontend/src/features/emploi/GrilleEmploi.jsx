@@ -287,7 +287,8 @@ function GrilleEmploi({
       return formation
         ? {
             motif: 'formation',
-            libelle: formation.libelle,
+            // Le motif de l'indisponibilité (2026-10-11) : formation, congé de paternité…
+            libelle: [formation.motif, formation.libelle].filter(Boolean).join(' — '),
             debut: formation.debut,
             fin: formation.fin,
           }
@@ -1078,8 +1079,8 @@ function EnTeteJour({ jour, etat, colonnes, dernier }) {
         */}
         <ListeAbsents titre="En stage" entrees={stages.map((s) => s.groupe)} />
         <ListeAbsents
-          titre="En formation"
-          entrees={formations.map((f) => f.nom || f.matricule)}
+          titre="Formateurs en congé ou en formation"
+          entrees={formations.map((f) => `${f.nom || f.matricule}${f.motif ? ` — ${f.motif}` : ''}`)}
         />
       </HoverCardContent>
     </HoverCard>
@@ -1281,7 +1282,8 @@ function optionsDeLaCase({
        * formateur : sans ce contrôle, la vue par groupe laissait affecter
        * quelqu'un qui n'est pas dans l'établissement ce jour-là.
        */
-      const absent = (etatDuJour?.formations ?? []).some((f) => memeNom(f.matricule, option.valeur));
+      const indisponibilite = (etatDuJour?.formations ?? []).find((f) => memeNom(f.matricule, option.valeur));
+      const absent = Boolean(indisponibilite);
       // Un formateur mutualisé qui a cours dans un autre établissement à ce créneau (2026-09-21).
       const ailleurs =
         !absent &&
@@ -1296,7 +1298,12 @@ function optionsDeLaCase({
         meta: {
           heures: chargeFormateurs?.get(option.valeur) ?? 0,
           pris,
-          absence: absent ? 'en formation' : ailleurs ? 'occupé ailleurs' : null,
+          // « en formation », « en congé de paternité »… (2026-10-11)
+          absence: absent
+            ? `en ${(indisponibilite.motif || 'formation').toLowerCase()}`
+            : ailleurs
+              ? 'occupé ailleurs'
+              : null,
           // Signalé, jamais éteint : la décision reste au directeur.
           aEviter: creneauAEviter(contraintes, option.valeur, jour, creneau),
         },

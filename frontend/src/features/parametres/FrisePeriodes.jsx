@@ -160,8 +160,19 @@ const ecartJours = (a, b) => Math.round((b - a) / UN_JOUR);
  *   ⚠️ Pour les comptes formateur et stagiaire (« Mes stages », « Mes
  *   formations »), à qui `/calendrier` est fermé : la page les reçoit de
  *   `/consultation/periodes` et les passe ici — la frise n'interroge alors rien.
+ *
+ * `motifDe(periode)` (facultatif — congés et formations, 2026-10-11) : le motif
+ * de la période, écrit DANS la barre avant les dates, et repris au survol.
  */
-export default function FrisePeriodes({ groupes, anneeScolaire, onRetirer, onDeplacer, calendrierFourni, feriesFournis }) {
+export default function FrisePeriodes({
+  groupes,
+  anneeScolaire,
+  onRetirer,
+  onDeplacer,
+  calendrierFourni,
+  feriesFournis,
+  motifDe = null,
+}) {
   const calendrier = useQuery({
     queryKey: ['calendrier'],
     queryFn: chargerCalendrier,
@@ -509,12 +520,24 @@ export default function FrisePeriodes({ groupes, anneeScolaire, onRetirer, onDep
                     const gauche = position(debutBarre);
                     const largeur = Math.max(position(finBarre) + 100 / totalJours - gauche, 0.4);
                     const duree = ecartJours(debutBarre, finBarre) + 1;
-                    const texte = `${debutBarre.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })} → ${finBarre.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}`;
+                    const dates = `${debutBarre.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })} → ${finBarre.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}`;
+                    // Le motif d'abord (« Congé de paternité · 12 oct. → 14 oct. ») : c'est lui qu'on cherche dans la frise.
+                    const motif = motifDe?.(periode) ?? '';
+                    const texte = motif ? `${motif} · ${dates}` : dates;
                     const classes = cn(
                       'absolute inset-y-1.5 flex items-center overflow-hidden rounded px-1.5 text-left text-[0.65rem] font-medium shadow-sm',
                       TEINTES[rang % TEINTES.length]
                     );
-                    const contenu = <span className="truncate">{duree * pxParJour >= 70 ? texte : ''}</span>;
+                    /*
+                     * Ce qui tient dans la barre : motif ET dates si elle est large,
+                     * le motif seul si elle est courte — la date se lit au survol —,
+                     * rien sous 40 px. Sans motif, la règle d'avant (les dates dès 70 px).
+                     */
+                    const largeurPx = duree * pxParJour;
+                    const visible = motif
+                      ? largeurPx >= 170 ? texte : largeurPx >= 40 ? motif : ''
+                      : largeurPx >= 70 ? dates : '';
+                    const contenu = <span className="truncate">{visible}</span>;
                     const place = { left: `${gauche}%`, width: `${largeur}%` };
                     const cle = `${periode.debut}-${index}`;
 

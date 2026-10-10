@@ -16,12 +16,14 @@ import { api } from '@/lib/apiClient';
  *   Sans ce drapeau, le serveur refuse un second dépôt dans la même semaine
  *   scolaire (409 `IMPORT_HEBDOMADAIRE`) — une seule base e-note par semaine.
  */
-export function importerBaseEnote(fichier, remplacer = false, confirmerSuppressions = false) {
+export function importerBaseEnote(fichier, remplacer = false, confirmerSuppressions = false, conserver = false) {
   /* `confirmerSuppressions` n'est envoyé que s'il est vrai, comme pour la carte :
      409 `GROUPES_ENCORE_UTILISES` si des groupes absents du fichier portent des données. */
   return api.televerser('/api/v2/base/import', fichier, 'fichier', {
     remplacer,
     ...(confirmerSuppressions ? { confirmerSuppressions: true } : {}),
+    // Garder la base en place (2026-10-10) — envoyé seulement s'il est vrai.
+    ...(conserver ? { conserver: true } : {}),
   });
 }
 

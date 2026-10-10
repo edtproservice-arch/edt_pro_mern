@@ -536,7 +536,8 @@ function CaseEmploi({
  */
 const MOTIF = {
   stage: 'Groupe en stage',
-  formation: 'Formateur en formation',
+  // Une formation ou un congé (2026-10-11) : le motif précis suit, dans le libellé.
+  formation: 'Formateur indisponible',
   rentree: 'Pas encore la rentrée',
 };
 

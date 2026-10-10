@@ -1814,7 +1814,7 @@ function Legende({ parFormateur }) {
       */}
       <Pastille
         classe={FOND_FORMATION}
-        libelle={parFormateur ? 'Formateur en formation' : 'Formateur du module en formation'}
+        libelle={parFormateur ? 'Formateur en congé ou en formation' : 'Formateur du module en congé ou en formation'}
       />
       <Pastille classe="bg-warning/25" libelle="Semaine amputée d’un férié" />
       {/*

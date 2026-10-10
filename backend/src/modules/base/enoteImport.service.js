@@ -95,6 +95,72 @@ async function importDeLaSemaine(etablissementId, anneeScolaire, date, session) 
   );
 }
 
+/**
+ * ═══ GARDER CE QUI A ÉTÉ FAIT DANS eDTpro (2026-10-10, demande du porteur :
+ * « garde les changements après import avancement e-note ») ═══
+ *
+ * L'import hebdomadaire de l'« Avancement » ne sert qu'à suivre les heures
+ * déclarées dans e-note. Il REMPLAÇAIT pourtant toute la base par le fichier :
+ * un formateur réaffecté, une masse ajustée ou reportée de la répartition DRIF,
+ * un groupe créé dans eDTpro, les adresses des formateurs — tout repartait à
+ * l'état du fichier, chaque semaine.
+ *
+ * En mode « conserver », la base EXISTANTE fait foi, et le fichier n'AJOUTE que
+ * ce qu'elle ne connaît pas : un groupe, une affectation (groupe + module +
+ * type), un formateur nouveaux. Rien n'est retiré, rien n'est écrasé — donc
+ * aucun groupe ne disparaît, et aucune cascade de suppression n'est possible.
+ *
+ * ⚠️ L'assistant de configuration, lui, garde le REMPLACEMENT : c'est le premier
+ * import, celui qui crée la base.
+ */
+const cleAffectation = (affectation) =>
+  [affectation.groupe, affectation.module, affectation.type].map((v) => String(v ?? '').trim().toUpperCase()).join('||');
+
+const cleFormateur = (formateur) => {
+  const matricule = String(formateur.matricule ?? '').trim().toUpperCase();
+  return matricule !== '' ? `M:${matricule}` : `N:${String(formateur.nomComplet ?? '').trim().toUpperCase()}`;
+};
+
+const objetSimple = (valeur) =>
+  valeur instanceof Map ? Object.fromEntries(valeur) : { ...(valeur ?? {}) };
+
+export function fusionnerAvecExistante(existante, structure) {
+  if (!existante) return { structure, ajouts: null };
+
+  const affectationsConnues = new Set((existante.affectations ?? []).map(cleAffectation));
+  const nouvellesAffectations = structure.affectations.filter((a) => !affectationsConnues.has(cleAffectation(a)));
+
+  const formateursConnus = new Set((existante.formateurs ?? []).map(cleFormateur));
+  const nouveauxFormateurs = structure.formateursDetails.filter((f) => !formateursConnus.has(cleFormateur(f)));
+
+  const groupesConnus = new Set(existante.groupes ?? []);
+  const nouveauxGroupes = structure.groupes.filter((g) => !groupesConnus.has(g));
+
+  const enChaine = (valeur) => String(valeur ?? '').trim();
+  return {
+    structure: {
+      ...structure,
+      formateursDetails: [
+        ...(existante.formateurs ?? []).map((f) => (typeof f.toObject === 'function' ? f.toObject() : f)),
+        ...nouveauxFormateurs,
+      ].sort((a, b) => enChaine(a.nomComplet).localeCompare(enChaine(b.nomComplet))),
+      groupes: [...groupesConnus, ...nouveauxGroupes].sort(),
+      fusionGroupes: [...new Set([...(existante.fusionGroupes ?? []), ...structure.fusionGroupes])].sort(),
+      affectations: [
+        ...(existante.affectations ?? []).map((a) => (typeof a.toObject === 'function' ? a.toObject() : a)),
+        ...nouvellesAffectations,
+      ],
+      // Le mode d'un groupe déjà connu (alterné, résidentiel) est celui choisi ici.
+      groupeModes: { ...structure.groupeModes, ...objetSimple(existante.groupeModes) },
+    },
+    ajouts: {
+      groupes: nouveauxGroupes.length,
+      affectations: nouvellesAffectations.length,
+      formateurs: nouveauxFormateurs.length,
+    },
+  };
+}
+
 export async function importer({
   etablissementId,
   anneeScolaire,
@@ -108,6 +174,8 @@ export async function importer({
    * chiffre, on refuse en 409, et on attend un oui explicite.
    */
   confirmerSuppressions = false,
+  // Garder la base en place, le fichier n'ajoutant que le nouveau — voir `fusionnerAvecExistante`.
+  conserver = false,
 }) {
   // Le nom du fichier voyage jusqu'ici : c'est lui qui dit le format.
   const { entete, lignes } = await lireClasseur(tampon, nomFichier);
@@ -123,9 +191,9 @@ export async function importer({
     massesConnues.set(formateur.nomComplet, formateur.masseHoraire);
   }
 
-  const structure = construireBase(lignes, { entete, massesConnues });
+  const lue = construireBase(lignes, { entete, massesConnues });
 
-  if (structure.formateurs.length === 0 && structure.groupes.length === 0) {
+  if (lue.formateurs.length === 0 && lue.groupes.length === 0) {
     throw badRequest(
       "Aucun formateur ni groupe trouvé. Vérifiez qu'il s'agit bien d'un export « AvancementProgramme ».",
       { code: 'FICHIER_NON_RECONNU' }
@@ -148,6 +216,10 @@ export async function importer({
    * du fichier en place), et l'appelant peut REMPLACER explicitement. Après
    * remplacement il n'y a toujours qu'une base pour la semaine : la règle tient.
    */
+  const { structure, ajouts } = conserver
+    ? fusionnerAvecExistante(existante, lue)
+    : { structure: lue, ajouts: null };
+
   const maintenant = new Date();
   const dejaCetteSemaine = await importDeLaSemaine(etablissementId, anneeScolaire, maintenant);
 
@@ -256,6 +328,8 @@ export async function importer({
         ? { nomFichier: dejaCetteSemaine.nomFichier, importeLe: dejaCetteSemaine.importeLe }
         : null,
       cascade,
+      // Mode « conserver » : ce que le fichier a AJOUTÉ à la base en place (null sinon).
+      ajouts,
       lignesLues: lignes.length,
       effectifs: {
         formateurs: structure.formateurs.length,

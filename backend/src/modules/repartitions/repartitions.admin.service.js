@@ -1,9 +1,12 @@
+import { propagerMasses, propagerPlusieurs } from './propagation.service.js';
 import mongoose from 'mongoose';
 import {
   analyserRepartition,
   choisirFeuilleRepartition,
   dedoublonnerRepartition,
   lireLignesRepartition,
+  avecTotauxRepartition,
+  totauxRepartition,
 } from 'shared/domain';
 import { Repartition } from '../../models/Repartition.js';
 import { lireToutesLesFeuilles } from '../../lib/classeur.js';
@@ -183,7 +186,9 @@ export async function filieres(filtres) {
   return [...parCode.values()];
 }
 
-export async function creer(donnees) {
+export async function creer(donneesRecues) {
+  // Les totaux suivent les semestres (2026-10-10) — la même règle que le formulaire.
+  const donnees = avecTotauxRepartition(donneesRecues);
   await refuserDoublon(donnees);
   const ligne = await Repartition.create(donnees);
   return presenter(ligne);
@@ -202,9 +207,18 @@ export async function modifier(id, donnees) {
   const futur = { ...ligne.toObject(), ...donnees };
   await refuserDoublon(futur, ligne.id);
 
-  Object.assign(ligne, donnees);
+  const avant = ligne.toObject();
+  /*
+   * ⚠️ SUR LA LIGNE FUSIONNÉE : la modification peut ne porter qu'un semestre, et
+   * le total doit tenir compte de l'autre, déjà en base.
+   */
+  const { mhpTotale, mhdTotale } = totauxRepartition(futur);
+  Object.assign(ligne, donnees, { mhpTotale, mhdTotale });
   await ligne.save();
-  return presenter(ligne);
+
+  // Les masses changées gagnent les bases des établissements (2026-10-10) — voir le service.
+  const propagation = await propagerMasses(avant, ligne.toObject());
+  return { ...presenter(ligne), propagation };
 }
 
 async function refuserDoublon(donnees, sauf = null) {
@@ -371,6 +385,8 @@ export async function importer(fichier, { mode, corrections }) {
    *      relèverait.
    */
   if (mode === 'remplacer') {
+    // L'état d'avant, pour reporter les masses changées dans les bases (2026-10-10).
+    const anciennes = await Repartition.find({}).lean();
     const session = await mongoose.startSession();
 
     try {
@@ -384,9 +400,15 @@ export async function importer(fichier, { mode, corrections }) {
       await session.endSession();
     }
 
+    const parCle = new Map(anciennes.map((l) => [cleLigne(l), l]));
+    const propagation = await propagerPlusieurs(
+      uniques.map((apres) => ({ avant: parCle.get(cleLigne(apres)), apres })).filter(({ avant }) => avant)
+    );
+
     return {
       applique: true,
       remplace: true,
+      propagation,
       ...resume,
       supprimees: resume.supprimeesSiRemplacement,
       total: await Repartition.estimatedDocumentCount(),
@@ -418,6 +440,11 @@ export async function importer(fichier, { mode, corrections }) {
     await Repartition.bulkWrite(operations, { ordered: false });
   }
 
+  // Les corrections de masses gagnent les bases des établissements (2026-10-10).
+  const propagation = corrections
+    ? await propagerPlusieurs(bilan.corrections.map(({ ancienne, nouvelle }) => ({ avant: ancienne, apres: { ...ancienne, ...nouvelle } })))
+    : null;
+
   return {
     applique: true,
     ...resume,
@@ -425,9 +452,13 @@ export async function importer(fichier, { mode, corrections }) {
        dans le résumé mais ne sont pas appliquées — le dire évite de croire à
        une mise à jour qui n'a pas eu lieu. */
     correctionsAppliquees: corrections ? bilan.corrections.length : 0,
+    propagation,
     total: await Repartition.estimatedDocumentCount(),
   };
 }
+
+/** L'identité d'une ligne : celle de l'index unique (filière DRIF, année, module). */
+const cleLigne = (ligne) => `${ligne.codeFiliereDrif}||${ligne.anneeFormation}||${ligne.codeModule}`;
 
 function presenter(ligne) {
   return {

@@ -175,6 +175,13 @@ const DOCUMENTS = [
     titre: 'Attestation de poursuite de formation',
     resume: 'Pour le stagiaire',
     icone: FileCheck2,
+    // Canevas transmis (2026-10-10) : les groupes se choisissent d'abord.
+    choixGroupes: {
+      description:
+        'Une attestation par stagiaire, datée du jour ; le numéro de référence et la ville se remplissent à la main.',
+      formats: ['docx', 'pdf'],
+      telecharger: exporterFeuillePresence('attestation-poursuite'),
+    },
   },
   {
     cle: 'retrait-definitif',
@@ -207,6 +214,13 @@ const DOCUMENTS = [
     titre: 'Convention de stage',
     resume: 'Entre l’établissement et l’entreprise',
     icone: FileSignature,
+    // Canevas transmis (2026-10-10) : les groupes se choisissent d'abord.
+    choixGroupes: {
+      description:
+        'Une convention par stagiaire, avec la période de stage de son groupe ; l’entreprise, son représentant, le lieu et la date se remplissent à la main.',
+      formats: ['docx', 'pdf'],
+      telecharger: exporterFeuillePresence('convention'),
+    },
   },
   {
     cle: 'transfert',

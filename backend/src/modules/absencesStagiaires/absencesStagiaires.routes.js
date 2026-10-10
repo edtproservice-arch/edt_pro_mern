@@ -137,7 +137,7 @@ router.post(
   '/presence/:modele',
   ENCADREMENT,
   validate({
-    params: z.object({ modele: z.enum(['eff', 'cc-efm', 'liste', 'badges-sans', 'badges-infos', 'checklist', 'verification', 'retrait-definitif', 'retrait-provisoire']) }),
+    params: z.object({ modele: z.enum(['eff', 'cc-efm', 'liste', 'badges-sans', 'badges-infos', 'checklist', 'verification', 'retrait-definitif', 'retrait-provisoire', 'attestation-poursuite', 'convention']) }),
     body: z.object({
       format: z.enum(['docx', 'pdf']),
       groupes: z.array(z.string().trim().min(1).max(200)).min(1).max(100),

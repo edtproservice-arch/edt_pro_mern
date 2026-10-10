@@ -3,6 +3,7 @@ import {
   NOMBRE_SEMAINES,
   cleSemaineChronogramme,
   completudeSemaine,
+  modulesAffectes,
   analyserSemaine,
   reporterVersChronogramme,
   fichesModules,
@@ -87,7 +88,14 @@ async function chargerCommun(etablissementId, anneeScolaire) {
     formateurParModule.set(cle, nomsFormateurs.get(identifiant) ?? identifiant);
   }
 
-  return { chronogrammes, groupesConnus, formateurParModule, nomsFormateurs };
+  /*
+   * ⚠️ LES MODULES AFFECTÉS : un module que le chronogramme planifie mais que
+   *    personne n'enseigne n'est ni prévu ni affiché (2026-10-10, demande du
+   *    porteur) — voir `completudeSemaine`.
+   */
+  const affectes = modulesAffectes(base.affectations ?? []);
+
+  return { chronogrammes, groupesConnus, formateurParModule, nomsFormateurs, modulesAffectes: affectes };
 }
 
 /** Les séances d'une semaine, réduites à ce que le calcul consomme. */

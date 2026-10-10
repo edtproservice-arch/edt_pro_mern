@@ -4,6 +4,7 @@ import JSZip from 'jszip';
 import { echapperXml } from '../seances/xmlCellules.js';
 import { chargerCanevasTampon } from '../seances/canevasCache.js';
 import { convertirDocxEnPdf, prechaufferLibreOffice } from '../seances/libreOffice.js';
+import { LIBELLES_NIVEAUX } from 'shared/domain';
 import { corpsBadgesNumeros } from './exportBadgesNumeros.js';
 
 /**
@@ -141,6 +142,75 @@ export const MODELES = {
       '2006113000155': 'matricule',
     }),
   },
+  /* L'attestation de poursuite de formation (2026-10-10,
+     `Attestation_Poursuite_Formation.docx`) : une page par stagiaire. Identité,
+     niveau, spécialité, année, mode et date d'inscription viennent de Konosys
+     et de la carte ; le numéro de référence et la ville (« Fait à ») restent en
+     pointillés — aucune fiche ne les porte. Dans la copie de `canevas/`, la
+     naissance et le nom de l'établissement, coupés en plusieurs runs, sont
+     réunis en un seul ; Aptos passe en Calibri et le logo est celui des autres. */
+  'attestation-poursuite': {
+    chemin: canevas('attestationPoursuiteFormation.docx'),
+    nomFichier: 'Attestation_Poursuite_Formation',
+    construireCorps: corpsParStagiaire(
+      {
+        'Réf : 049/2024': 'reference',
+        'CENTRE DE FORMATION PROFESSIONNELLE HASSANIA DANS LES METIERS DE GESTION ET DU DIGITAL CASABLANCA':
+          'etablissement',
+        'NOUZRI MOUAD': 'nomComplet',
+        '29/04/2006 à Casablanca': 'naissance',
+        'Technicien spécialisé': 'niveauLibelle',
+        'Développement Digital (1A)': 'specialite',
+        '1ère année': 'anneeLibelle',
+        'Résidentielle': 'typeFormation',
+        'Diplômante': 'modeFormation',
+        '2006042900082': 'matricule',
+        '2024/2025': 'anneeFormation',
+        '06/09/2024': 'depuis',
+        Casablanca: 'faitA',
+        '17/10/2024': 'faitLe',
+      },
+      valeursAttestation
+    ),
+    remplacementsDocument: { 'CFP MGD HASSANIA': 'efp' },
+  },
+  /* La convention de stage de fin de formation (2026-10-10,
+     `Convention_Stage_NOUZRI_MOUAD (1).docx`) : une par stagiaire. Le stagiaire,
+     le groupe, l'établissement, son directeur et la période de stage du groupe
+     (Paramètres → Stages) sont remplis ; l'entreprise, son représentant et le
+     lieu et la date de signature restent en pointillés, pour l'entreprise.
+     Dans la copie de `canevas/` : le « du du » de l'article 3 est corrigé,
+     Aptos passe en Calibri et le logo est celui des autres. */
+  convention: {
+    chemin: canevas('conventionStage.docx'),
+    nomFichier: 'Convention_Stage',
+    construireCorps: corpsParStagiaire(
+      {
+        'CFP MGD HASSANIA': 'efp',
+        'Année de formation 2025 /2026': 'anneeFormation',
+        '2ème ANNEE': 'anneeLibelle',
+        'Le CENTRE DE FORMATION PROFESSIONNELLE HASSANIA DANS LES METIERS DE GESTION ET DU DIGITAL CASABLANCA':
+          'etablissement',
+        'Mme HILAL FATIMAZAHRAA': 'directeur',
+        'NOUZRI MOUAD': 'nomComplet',
+        BM54946: 'cin',
+        'De la filière : Développement digital option Web Full Stack': 'filiere',
+        201: 'numero',
+        '02 Mars 2026 au 11 Avril 2026': 'periodeStage',
+        'A Casablanca, le ....................................................................................................':
+          'faitA',
+      },
+      valeursConvention,
+      // Le nom abrégé revient au milieu des articles 3, 5, 6, 7 et de la note « Important ».
+      { 'CFP MGD HASSANIA': 'efp' }
+    ),
+    remplacementsDocument: {
+      'DRCasa-settat': 'drRegion',
+      'Complexe de Formation BEN MSICK': 'complexe',
+      'CENTRE DE FORMATION PROFESSIONNELLE HASSANIA DANS LES METIERS DE GESTION ET DU DIGITAL': 'etablissement',
+      CASABLANCA: 'vide',
+    },
+  },
   /* Les mêmes badges, AVEC les informations du stagiaire (2026-10-02). */
   'badges-infos': {
     chemin: canevas('badgesNumerosAvecInfos.docx'),
@@ -260,16 +330,109 @@ function corpsFormulaire(champs) {
 }
 
 // ⚠️ UNE DÉCLARATION DE FONCTION, hissée : `MODELES`, plus haut, l'appelle à son chargement.
-function corpsParStagiaire(remplacements) {
+/**
+ * `completer` (facultatif) : les champs CALCULÉS d'un modèle, à partir des valeurs de base.
+ * `partiels` (facultatif) : un texte remplacé PARTOUT où il apparaît, même au
+ * milieu d'une phrase — le nom de l'établissement dans les articles d'une convention.
+ */
+function corpsParStagiaire(remplacements, completer = (valeurs) => valeurs, partiels = {}) {
   return (gabarit, feuilles, sautDePage) =>
     feuilles
       .flatMap((feuille) =>
         feuille.stagiaires.map((stagiaire) => {
-          const valeurs = { ...feuille, ...stagiaire, nomComplet: `${stagiaire.nom} ${stagiaire.prenom}`.trim() };
-          return remplacerTextes(gabarit, remplacements, valeurs);
+          const valeurs = completer({
+            ...feuille,
+            ...stagiaire,
+            nomComplet: `${stagiaire.nom} ${stagiaire.prenom}`.trim(),
+          });
+          return remplacerPartiels(remplacerTextes(gabarit, remplacements, valeurs), partiels, valeurs);
         })
       )
       .join(sautDePage);
+}
+
+/** Chaque clé de `partiels`, remplacée dans le texte des `<w:t>` — le XML autour ne bouge pas. */
+function remplacerPartiels(xml, partiels, valeurs) {
+  const cles = Object.keys(partiels);
+  if (cles.length === 0) return xml;
+  return xml.replace(/(<w:t(?:\s[^>]*)?>)([^<]*)(<\/w:t>)/g, (tout, ouverture, texte, fermeture) => {
+    let nouveau = texte;
+    for (const cle of cles) nouveau = nouveau.replaceAll(echapperXml(cle), echapperXml(valeurs[partiels[cle]] ?? ''));
+    return nouveau === texte ? tout : `${ouverture}${nouveau}${fermeture}`;
+  });
+}
+
+const POINTILLES = '……………………';
+
+/** « 1A » → « 1ère année », « 2A » → « 2ème année » ; une autre écriture reste telle quelle. */
+function libelleAnnee(annee) {
+  const numero = /^(\d+)\s*A$/i.exec(String(annee ?? '').trim());
+  if (!numero) return String(annee ?? '');
+  return numero[1] === '1' ? '1ère année' : `${numero[1]}ème année`;
+}
+
+const MOIS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+
+/** « 2026-03-02 » → « 02 Mars 2026 », l'écriture du canevas. */
+function dateEnLettres(iso) {
+  const [annee, mois, jour] = String(iso ?? '').split('-');
+  return jour && MOIS[Number(mois) - 1] ? `${jour} ${MOIS[Number(mois) - 1]} ${annee}` : '';
+}
+
+/**
+ * Les champs de la convention de stage. ⚠️ Une période de stage absente garde
+ * des pointillés : elle se planifie dans Paramètres → Stages, et une date
+ * inventée engagerait l'entreprise sur une période fausse.
+ */
+function valeursConvention(v) {
+  const ouPointilles = (texte) => (String(texte ?? '').trim() ? texte : POINTILLES);
+  const annee = /^(\d+)\s*A$/i.exec(String(v.annee ?? '').trim());
+  return {
+    ...v,
+    anneeFormation: `Année de formation ${v.anneeScolaire} /${v.anneeScolaire + 1}`,
+    anneeLibelle: annee ? `${annee[1]}${annee[1] === '1' ? 'ère' : 'ème'} ANNEE` : POINTILLES,
+    directeur: ouPointilles(v.directeur),
+    cin: ouPointilles(v.cin),
+    filiere: `De la filière : ${ouPointilles(v.filiereLibelle)}`,
+    periodeStage: v.stage
+      ? `${dateEnLettres(v.stage.debut)} au ${dateEnLettres(v.stage.fin)}`
+      : `${POINTILLES} au ${POINTILLES}`,
+    faitA: `A ${POINTILLES}, le ${POINTILLES}`,
+  };
+}
+
+/** « 14/10/2026 » — la date de délivrance. */
+function dateDuJour() {
+  const maintenant = new Date();
+  const jour = String(maintenant.getDate()).padStart(2, '0');
+  const mois = String(maintenant.getMonth() + 1).padStart(2, '0');
+  return `${jour}/${mois}/${maintenant.getFullYear()}`;
+}
+
+/**
+ * Les champs de l'attestation de poursuite. ⚠️ « Type Formation » et « Mode »
+ * se disent au FÉMININ (« la formation ») : « Résidentielle », « Alternée » ;
+ * un groupe FQ est « Qualifiante », les autres « Diplômante ».
+ * ⚠️ Une donnée absente garde des pointillés : la case se remplit à la main,
+ * jamais avec la valeur d'exemple du canevas.
+ */
+function valeursAttestation(v) {
+  const ouPointilles = (texte) => (String(texte ?? '').trim() ? texte : POINTILLES);
+  const aujourdhui = dateDuJour();
+  return {
+    ...v,
+    reference: `Réf : ${POINTILLES}/${aujourdhui.slice(-4)}`,
+    naissance: ouPointilles([v.dateNaissance, v.lieuNaissance].filter(Boolean).join(' à ')),
+    niveauLibelle: ouPointilles(LIBELLES_NIVEAUX[v.niveau] ?? v.niveau),
+    specialite: ouPointilles([v.filiereLibelle, v.annee && `(${v.annee})`].filter(Boolean).join(' ')),
+    anneeLibelle: ouPointilles(libelleAnnee(v.annee)),
+    typeFormation: /alt/i.test(v.mode ?? '') ? 'Alternée' : 'Résidentielle',
+    modeFormation: String(v.niveau).toUpperCase() === 'FQ' ? 'Qualifiante' : 'Diplômante',
+    anneeFormation: `${v.anneeScolaire}/${v.anneeScolaire + 1}`,
+    depuis: ouPointilles(v.dateInscription),
+    faitA: POINTILLES,
+    faitLe: aujourdhui,
+  };
 }
 
 const tables = (xml) => [...xml.matchAll(/<w:tbl>[\s\S]*?<\/w:tbl>/g)];

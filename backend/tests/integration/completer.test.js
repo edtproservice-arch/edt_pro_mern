@@ -204,15 +204,20 @@ describe('Placer les séances manquantes (2026-09-27)', () => {
     expect(await Seance.countDocuments({ groupe: 'GM101' })).toBe(0);
   });
 
-  it('un module planifié sans affectation est rendu, jamais inventé', async () => {
+  it('un module planifié sans affectation n’est ni inventé ni affiché', async () => {
+    /*
+     * ⚠️ DEPUIS LE 2026-10-10 (demande du porteur : « les modules non affectés
+     *    ne doivent pas être affichés »), un tel module sort de la complétude :
+     *    il n'y a plus de manque à placer, ni de ligne « sans affectation ».
+     *    Toujours rien d'inventé : aucune séance n'est posée.
+     */
     await planifier('GM101', 'M109', 2.5);
 
     const reponse = await placer({ simulation: false });
 
     expect(reponse.body.placees).toEqual([]);
-    expect(reponse.body.nonPlacees).toEqual([
-      expect.objectContaining({ groupe: 'GM101', module: 'M109', raison: 'sans_affectation' }),
-    ]);
+    expect(reponse.body.nonPlacees).toEqual([]);
+    expect(await Seance.countDocuments()).toBe(0);
   });
 
   it('refuse quand l’emploi du temps est dissocié du chronogramme', async () => {

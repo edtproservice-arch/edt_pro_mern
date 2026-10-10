@@ -113,6 +113,7 @@ export {
 export {
   cleSemaineChronogramme,
   completudeSemaine,
+  modulesAffectes,
   poseDeLaSemaine,
   prevuDeLaSemaine,
   retraitRapprocheDuPlan,

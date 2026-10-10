@@ -217,6 +217,24 @@ function natureDeLEcart(prevu, pose) {
  * @param {Map}    entrees.formateurParModule  `GROUPE||MODULE||type` → nom affecté
  * @param {Map}    entrees.nomsFormateurs      matricule → nom
  */
+/**
+ * Les modules réellement AFFECTÉS : `GROUPE||MODULE||type`, un formateur nommé.
+ *
+ * ⚠️ UNE FUSION COMPTE POUR CHACUN DE SES MEMBRES (« GM101 GM102 ») : le
+ *    chronogramme, lui, est tenu groupe par groupe.
+ */
+export function modulesAffectes(affectations = []) {
+  const affectes = new Set();
+  for (const affectation of affectations ?? []) {
+    if (String(affectation?.formateur ?? '').trim() === '') continue;
+    const type = affectation.type ?? TYPES_COURS.PRESENTIEL;
+    for (const membre of separerFusion(affectation.groupe)) {
+      affectes.add(cle(membre, affectation.module, type));
+    }
+  }
+  return affectes;
+}
+
 export function completudeSemaine({
   chronogrammes = [],
   seances = [],
@@ -224,8 +242,28 @@ export function completudeSemaine({
   groupesConnus = new Set(),
   formateurParModule = new Map(),
   nomsFormateurs = new Map(),
+  /**
+   * ═══ ⚠️ UN MODULE NON AFFECTÉ N'EST NI PRÉVU NI AFFICHÉ ═══ (2026-10-10,
+   * demande du porteur : « les modules non affectés ne doivent pas être
+   * affichés ».) Le chronogramme ne montre que les modules affectés ; une
+   * cellule restée sur un module sans formateur y est INVISIBLE, et pourtant
+   * elle comptait ici — un manque que personne ne voit ni ne peut combler, qui
+   * bloquait la publication à 99 %.
+   *
+   * ⚠️ FACULTATIF (`null` = tout compter, le comportement d'avant) : seul
+   *    l'appelant qui a lu la carte peut dire ce qui est affecté.
+   */
+  modulesAffectes: affectes = null,
 } = {}) {
   const { prevu, noms: nomsPrevus } = prevuDeLaSemaine(chronogrammes, semaineChrono);
+  if (affectes) {
+    for (const k of [...prevu.keys()]) {
+      // ⚠️ UN GROUPE ABSENT DE LA CARTE RESTE NOMMÉ (`inconnus`, plus bas) :
+      //    ce n'est pas un module non affecté, c'est un chronogramme fantôme.
+      const [groupeMaj] = k.split('||');
+      if (groupesConnus.has(groupeMaj) && !affectes.has(k)) prevu.delete(k);
+    }
+  }
   const { pose, absences, porteurs, positions, noms: nomsPoses, comptees } =
     poseDeLaSemaine(seances);
 

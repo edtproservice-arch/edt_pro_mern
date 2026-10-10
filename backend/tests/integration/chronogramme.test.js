@@ -1351,12 +1351,12 @@ describe('Complétude — l’emploi du temps face au chronogramme (2026-09-27)'
    */
   const SEMAINE = `${ANNEE}-W9`;
 
-  const planifier = (groupe, cellules) =>
+  const planifier = (groupe, cellules, module = 'M101') =>
     Chronogramme.create({
       etablissementId: etablissement.id,
       anneeScolaire: ANNEE,
       groupe,
-      planning: new Map([['M101', cellules]]),
+      planning: new Map([[module, cellules]]),
     });
 
   const poser = (extra = {}) =>
@@ -1486,7 +1486,21 @@ describe('Complétude — l’emploi du temps face au chronogramme (2026-09-27)'
     const reponse = await bilan();
 
     expect(reponse.body.inconnus).toEqual([]);
-    expect(reponse.body.groupes.map((g) => g.groupe)).toContain('GM103');
+    /*
+     * ⚠️ ET SES MODULES NON AFFECTÉS NE SONT NI PRÉVUS NI AFFICHÉS (2026-10-10,
+     *    demande du porteur) : le chronogramme ne les montre pas, le bilan non
+     *    plus — et ils ne font plus baisser le taux.
+     */
+    expect(reponse.body.groupes.map((g) => g.groupe)).not.toContain('GM103');
+    expect(reponse.body.total.prevu).toBe(0);
+  });
+
+  it('⚠️ un module planifié SANS affectation ne compte pas dans le taux', async () => {
+    // GM101 est affecté en M101 (voir la fixture) ; « M999 » ne l'est à personne.
+    await planifier('GM101', [{ semaine: 'S9', heures: 5, type: 'P' }], 'M999');
+    const reponse = await bilan();
+    expect(reponse.body.ecarts.some((e) => e.module === 'M999')).toBe(false);
+    expect(reponse.body.total.prevu).toBe(0);
   });
 
   it('⚠️ dit si un chronogramme est PLANIFIÉ — l’écran cache son indicateur sinon', async () => {

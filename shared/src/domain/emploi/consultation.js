@@ -189,8 +189,9 @@ export function filtrerGroupes(groupes = [], identites = new Map(), facettes = {
   const filieres = jeu(facettes.filieres);
   const niveaux = jeu(facettes.niveaux);
   const annees = jeu(facettes.annees);
+  const modes = jeu(facettes.modes);
 
-  if (filieres.size === 0 && niveaux.size === 0 && annees.size === 0) return [...groupes];
+  if (filieres.size === 0 && niveaux.size === 0 && annees.size === 0 && modes.size === 0) return [...groupes];
 
   const lire = (groupe) =>
     identites instanceof Map ? identites.get(groupe) : identites?.[groupe];
@@ -202,7 +203,8 @@ export function filtrerGroupes(groupes = [], identites = new Map(), facettes = {
     return (
       (filieres.size === 0 || filieres.has(valeur('filiere'))) &&
       (niveaux.size === 0 || niveaux.has(valeur('niveau'))) &&
-      (annees.size === 0 || annees.has(valeur('annee')))
+      (annees.size === 0 || annees.has(valeur('annee'))) &&
+      (modes.size === 0 || modes.has(valeur('mode')))
     );
   });
 }
@@ -227,6 +229,7 @@ export function facettesDesGroupes(groupes = [], identites = new Map()) {
   const filieres = new Map();
   const niveaux = new Set();
   const annees = new Set();
+  const modes = new Set();
 
   for (const groupe of groupes) {
     const identite = lire(groupe);
@@ -239,6 +242,8 @@ export function facettesDesGroupes(groupes = [], identites = new Map()) {
     }
     if (niveau !== '') niveaux.add(niveau);
     if (annee !== '') annees.add(annee);
+    const mode = String(identite.mode ?? '').trim();
+    if (mode !== '') modes.add(mode);
   }
 
   return {
@@ -249,6 +254,8 @@ export function facettesDesGroupes(groupes = [], identites = new Map()) {
       [...niveaux].filter((niveau) => !ORDRE_NIVEAUX.includes(niveau)).sort()
     ),
     annees: [...annees].sort((a, b) => Number(a) - Number(b)),
+    // Alterné / Résidentiel (2026-10-10) — proposés dès qu'un groupe en porte un.
+    modes: [...modes].sort((a, b) => a.localeCompare(b, 'fr')),
   };
 }
 

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { recupererSession } from '@/features/auth/api';
 import { Etat, LiensRapides, Salutation } from './AccueilApp';
 import StatistiquesAbsencesDiscipline from './StatistiquesAbsencesDiscipline';
+import AVenirPeriodes from './AVenirPeriodes';
 
 /**
  * ═══ L'ACCUEIL DU GESTIONNAIRE ═══ (2026-09-29, demande du porteur : « une
@@ -45,6 +46,10 @@ export default function AccueilGestionnaire() {
     <div className="mx-auto max-w-4xl space-y-10 py-4">
       <Salutation nom={session.data.utilisateur.nomComplet} />
       <StatistiquesAbsencesDiscipline />
+      {/* Sous ses statistiques (2026-10-10, demande du porteur), comme « À venir »
+          sous les tuiles du directeur. ⚠️ Sans lien : Stages et Formations ne
+          sont pas des pages du gestionnaire. */}
+      <AVenirPeriodes liens={false} />
       <LiensRapides />
     </div>
   );

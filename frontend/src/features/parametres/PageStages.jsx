@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import Alerte from '@/components/common/Alerte';
 import { chargerBase, enregistrerStages } from '@/features/configuration/api';
+import { chargerContexte } from '@/features/emploi/api';
 import EnTetePartage from '@/features/partages/EnTetePartage';
 import { useDroitPage } from '@/features/partages/useDroitPage';
 import { proprietesEnregistrement } from '@/lib/useBrouillonVersionne';
@@ -40,6 +41,8 @@ export default function PageStages() {
   // Les groupes viennent de la base : un stage se déclare sur un groupe qui
   // existe, sous son nom exact.
   const base = useQuery({ queryKey: ['base'], queryFn: chargerBase, retry: false });
+  // L'identité des groupes (filière, niveau, année) pour filtrer la liste à cocher.
+  const contexteEmploi = useQuery({ queryKey: ['emploi', 'contexte'], queryFn: chargerContexte, retry: false });
 
 
   const annee = choisie ?? contexte.data?.anneeScolaire ?? null;
@@ -48,7 +51,16 @@ export default function PageStages() {
   const initiaux = contexte.data?.etablissement?.stages ?? [];
   const modifie = stages !== null && JSON.stringify(stages) !== JSON.stringify(initiaux);
 
-  const groupes = (base.data?.base?.groupes ?? []).map((nom) => ({ valeur: nom, libelle: nom }));
+  /* `mode` (Alterné, Résidentiel) nourrit le filtre de la liste à cocher.
+     ⚠️ UN GROUPE SANS MODE EST RÉSIDENTIEL — la règle de `reconstruction.js` :
+     une carte construite à la main n'écrit que les alternés dans `groupeModes`,
+     et sans ce défaut le filtre ne trouvait rien à proposer. */
+  const modes = base.data?.base?.groupeModes ?? {};
+  const groupes = (base.data?.base?.groupes ?? []).map((nom) => ({
+    valeur: nom,
+    libelle: nom,
+    mode: modes[nom] || 'Résidentiel',
+  }));
 
   return (
     <>
@@ -86,6 +98,8 @@ export default function PageStages() {
         libelleSujet="Groupe"
         libelleVide="Aucune période de stage déclarée."
         aideVide="Tous les groupes restent disponibles toute l'année."
+        identites={contexteEmploi.data?.groupesIdentites ?? null}
+        exportation={{ type: 'stages', detailDe: (periode) => modes[periode.groupe] || 'Résidentiel' }}
       />
     </CadreReglage>
     {/* ⚠️ Une période nouvelle peut supprimer des séances : jamais sans ce oui (2026-09-23). */}

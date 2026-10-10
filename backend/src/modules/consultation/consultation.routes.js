@@ -11,6 +11,8 @@ import * as service from './consultation.service.js';
 import * as ressources from './ressources.service.js';
 import * as absencesFormateurs from '../absences/absences.service.js';
 import * as discipline from '../absencesStagiaires/discipline.service.js';
+import * as calendrierService from '../calendrier/calendrier.service.js';
+import { Etablissement } from '../../models/Etablissement.js';
 
 /**
  * Sessions consultatives — formateur & stagiaire (F14).
@@ -239,6 +241,61 @@ router.get('/fiche', async (req, res, next) => {
       monIdentite(req)
     );
     res.json({ success: true, fiche });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * « Mes stages » (stagiaire) et « Mes formations » (formateur) — 2026-10-10,
+ * demande du porteur. Les périodes déclarées par la direction, restreintes au
+ * compte connecté :
+ *   - stagiaire : les stages de SES groupes (`groupesDuStagiaire`) ;
+ *   - formateur : ses formations, appariées sur son MATRICULE.
+ *
+ * ⚠️ LE CALENDRIER VOYAGE AVEC LES PÉRIODES : `/calendrier` et ses jours fériés
+ * sont réservés à la direction. Sans eux ici, la frise de ces comptes
+ * s'afficherait sans vacances ni fériés.
+ */
+router.get('/periodes', async (req, res, next) => {
+  try {
+    const identifiant = monIdentite(req);
+    const estStagiaire = req.utilisateur.role === ROLES.STAGIAIRE;
+
+    const [etablissement, calendrier, feries] = await Promise.all([
+      Etablissement.findById(req.etablissementId).select('stages formations').lean(),
+      calendrierService.obtenir(req.etablissementId, req.anneeScolaire).catch(() => null),
+      calendrierService.joursFeries(req.etablissementId, req.anneeScolaire).catch(() => null),
+    ]);
+
+    let periodes;
+    let groupes = [];
+    if (estStagiaire) {
+      ({ groupes } = await service.groupesDuStagiaire(req.etablissementId, req.anneeScolaire, identifiant));
+      periodes = (etablissement?.stages ?? [])
+        .filter((stage) => groupes.includes(stage.groupe))
+        .map(({ groupe, debut, fin }) => ({ groupe, debut, fin }));
+    } else {
+      periodes = (etablissement?.formations ?? [])
+        .filter((formation) => formation.matriculeFormateur === identifiant)
+        .map(({ matriculeFormateur, nomFormateur, debut, fin }) => ({ matriculeFormateur, nomFormateur, debut, fin }));
+    }
+
+    res.json({
+      success: true,
+      role: req.utilisateur.role,
+      anneeScolaire: req.anneeScolaire,
+      groupes,
+      periodes: periodes.sort((a, b) => a.debut.localeCompare(b.debut)),
+      // Ce qu'il faut à la frise, rien de plus.
+      calendrier: {
+        nationales: calendrier?.nationales ?? [],
+        vacances: calendrier?.vacances ?? [],
+        ecartees: calendrier?.ecartees ?? [],
+        rentrees: calendrier?.rentrees ?? [],
+      },
+      joursFeries: feries?.joursFeries ?? [],
+    });
   } catch (error) {
     next(error);
   }

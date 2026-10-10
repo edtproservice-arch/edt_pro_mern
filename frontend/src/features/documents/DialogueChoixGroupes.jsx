@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { File, FileSpreadsheet, FileText } from 'lucide-react';
+import { File, FileSpreadsheet, FileText, Loader2 } from 'lucide-react';
 import { facettesDesGroupes, filtrerGroupes, semaineAOuvrir } from 'shared/domain';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -147,7 +147,11 @@ export default function DialogueChoixGroupes({
                     disabled={!pret}
                     onClick={() => telechargement.mutate(format)}
                   >
-                    <Icone className={`size-3.5 ${couleur}`} />
+                    {telechargement.isPending && telechargement.variables === format ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Icone className={`size-3.5 ${couleur}`} />
+                    )}
                     {libelle}
                   </Button>
                 );

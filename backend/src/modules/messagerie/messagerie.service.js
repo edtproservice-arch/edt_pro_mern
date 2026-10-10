@@ -58,6 +58,10 @@ function presenter(message, correspondant, recu) {
     chronogrammeFormateur: message.chronogrammeFormateur ?? null,
     /* L'état d'écart de saisie e-note, quand le message en porte un (2026-10-01). */
     ecartSaisie: message.ecartSaisie ?? null,
+    /* L'avis automatique d'un stage ou d'une formation (2026-10-10) — sans réponse possible. */
+    avisPeriode: message.avisPeriode ?? null,
+    /* La copie d'une annonce du bandeau (2026-10-10) : son degré d'importance s'affiche dans le fil. */
+    annonce: message.annonce ?? null,
     /*
      * La proposition d'emploi du temps (Phase 9 b). ⚠️ Ni l'établissement ni les
      * séances sauvegardées ne repartent : le serveur les relit au moment d'agir.
@@ -334,6 +338,8 @@ export async function envoyer(
     chronogrammeFormateur = null,
     proposition = null,
     ecartSaisie = null,
+    avisPeriode = null,
+    annonce = null,
   }
 ) {
   const expediteur = await User.findById(expediteurId).select('role etablissementIds').lean();
@@ -367,12 +373,29 @@ export async function envoyer(
       continue;
     }
 
-    const aEcritAvant = Boolean(original) && String(original.expediteurId) === String(cible._id);
-    const autorise = peutRepondre(
-      { id: expediteurId, role: expediteur.role, etablissementIds: expediteur.etablissementIds },
-      { id: cible._id, role: cible.role, etablissementIds: cible.etablissementIds },
-      { aEcritAvant }
+    /*
+     * ⚠️ UN AVIS AUTOMATIQUE N'OUVRE PAS DE DROIT DE RÉPONSE : sans cette garde,
+     * le stagiaire qui reçoit l'avis de stage du directeur pourrait lui répondre
+     * (« répondre est toujours permis à qui vous a écrit »), ce que la matrice
+     * lui refuse par ailleurs.
+     */
+    const aEcritAvant =
+      Boolean(original) && !original.avisPeriode && String(original.expediteurId) === String(cible._id);
+    /*
+     * ⚠️ L'AVIS DE PÉRIODE PASSE OUTRE LA MATRICE DES RÔLES (le directeur n'écrit
+     * pas aux stagiaires), JAMAIS OUTRE L'ÉTABLISSEMENT : son destinataire doit
+     * en être. Seul le service des avis le pose — la route ne le connaît pas.
+     */
+    const memeEtablissement = (cible.etablissementIds ?? []).some((id) =>
+      (expediteur.etablissementIds ?? []).some((sien) => String(sien) === String(id))
     );
+    const autorise = avisPeriode
+      ? memeEtablissement
+      : peutRepondre(
+          { id: expediteurId, role: expediteur.role, etablissementIds: expediteur.etablissementIds },
+          { id: cible._id, role: cible.role, etablissementIds: cible.etablissementIds },
+          { aEcritAvant }
+        );
 
     if (!autorise) {
       refuses.push({ id: String(cible._id), nom: cible.nomComplet, motif: 'Destinataire non autorisé' });
@@ -389,6 +412,8 @@ export async function envoyer(
       chronogrammeFormateur,
       proposition,
       ecartSaisie,
+      avisPeriode,
+      annonce,
     });
   }
 

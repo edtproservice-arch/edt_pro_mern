@@ -632,7 +632,7 @@ export default function CarteEtablissement({
           ) : (
             <FileSpreadsheet className="h-4 w-4 text-success" />
           )}
-          {exportation.isPending ? 'Export…' : 'Exporter la carte'}
+          Télécharger la carte
         </Button>
 
         {/*

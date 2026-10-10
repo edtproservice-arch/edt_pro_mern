@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { File, FileSpreadsheet, FileText, Ticket, Trash2 } from 'lucide-react';
+import { File, FileSpreadsheet, FileText, Ticket, Trash2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -127,7 +127,8 @@ function MenuBillet({ ids, libelle, children = null }) {
           aria-label={libelle}
           title={libelle}
         >
-          <Ticket className="size-3.5" />
+          {/* Pendant la préparation, l'indicateur prend la place du ticket (2026-10-10). */}
+          {telechargement.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Ticket className="size-3.5" />}
           {children}
         </Button>
       </DropdownMenuTrigger>

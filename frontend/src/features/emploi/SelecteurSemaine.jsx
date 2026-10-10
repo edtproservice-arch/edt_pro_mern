@@ -17,6 +17,7 @@ import { chargerCalendrier, chargerJoursFeries } from '@/features/configuration/
 import { bornesCalendrier } from '@/lib/bornesCalendrier';
 import { nombre } from '@/lib/nombres';
 import { cn } from '@/lib/utils';
+import { vacancesEffectives } from '@/lib/vacancesEffectives';
 
 /**
  * Le libellé de la semaine courante, qui OUVRE le calendrier.
@@ -105,7 +106,8 @@ export default function SelecteurSemaine({
 
   const datesVacances = useMemo(
     () =>
-      (calendrier.data?.vacances ?? []).map((periode) => ({
+      // ⚠️ Établissement ET réseau — voir `vacancesEffectives`.
+      vacancesEffectives(calendrier.data).map((periode) => ({
         from: new Date(`${periode.debut}T00:00:00`),
         to: new Date(`${periode.fin}T00:00:00`),
       })),

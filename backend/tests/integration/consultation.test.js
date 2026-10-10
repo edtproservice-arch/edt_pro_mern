@@ -298,6 +298,56 @@ describe('GET /consultation/groupes', () => {
   });
 });
 
+describe('GET /consultation/periodes — « Mes stages » / « Mes formations »', () => {
+  beforeEach(async () => {
+    await Etablissement.updateOne(
+      { _id: etablissement.id },
+      {
+        $set: {
+          stages: [
+            { groupe: 'GM101', debut: '2026-12-01', fin: '2026-12-31' },
+            { groupe: 'GM102', debut: '2027-01-04', fin: '2027-01-31' },
+            { groupe: 'GM101', debut: '2026-10-05', fin: '2026-10-16' },
+          ],
+          formations: [
+            { matriculeFormateur: '9863', nomFormateur: 'BRAHIM LOURID', debut: '2026-11-02', fin: '2026-11-04' },
+            { matriculeFormateur: '4211', nomFormateur: 'AHMED CHERKAOUI', debut: '2026-11-09', fin: '2026-11-10' },
+          ],
+        },
+      }
+    );
+  });
+
+  it('rend au stagiaire les stages de SES groupes seulement, dans l’ordre des dates', async () => {
+    const reponse = await request(app).get('/api/v2/consultation/periodes').set('Cookie', cookiesStagiaire);
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.role).toBe(ROLES.STAGIAIRE);
+    expect(reponse.body.periodes).toEqual([
+      { groupe: 'GM101', debut: '2026-10-05', fin: '2026-10-16' },
+      { groupe: 'GM101', debut: '2026-12-01', fin: '2026-12-31' },
+    ]);
+    // La frise de ces comptes n'a pas accès à `/calendrier` : il voyage avec.
+    expect(reponse.body.calendrier).toHaveProperty('nationales');
+    expect(Array.isArray(reponse.body.joursFeries)).toBe(true);
+  });
+
+  it('rend au formateur ses formations seulement — appariées sur son matricule', async () => {
+    const reponse = await request(app).get('/api/v2/consultation/periodes').set('Cookie', cookiesFormateur);
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.role).toBe(ROLES.FORMATEUR);
+    expect(reponse.body.periodes).toEqual([
+      { matriculeFormateur: '9863', nomFormateur: 'BRAHIM LOURID', debut: '2026-11-02', fin: '2026-11-04' },
+    ]);
+  });
+
+  it('refuse un directeur (403)', async () => {
+    const reponse = await request(app).get('/api/v2/consultation/periodes').set('Cookie', cookiesDirecteur);
+    expect(reponse.status).toBe(403);
+  });
+});
+
 describe('GET /consultation/affectations — formateur seul', () => {
   it('rend SES affectations, avec l’intitulé résolu', async () => {
     const reponse = await request(app)

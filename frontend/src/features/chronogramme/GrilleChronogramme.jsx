@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Presentation, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import Teams from '@/components/icons/Teams';
@@ -39,6 +39,8 @@ import {
 import BadgeSemestre from '@/components/common/BadgeSemestre';
 import { cn } from '@/lib/utils';
 import CarteCellule from './CarteCellule';
+import ConfirmationAction from '@/components/common/ConfirmationAction';
+import { GardeSemaines, semainesTouchees, useSemainesProtegees } from './semainesProtegees';
 import FiltreColonne from '@/components/common/FiltreColonne';
 import NavigationSemaines from './NavigationSemaines';
 import { empreinte, useEtatPartage } from '@/features/guidage/useEtatPartage';
@@ -470,12 +472,52 @@ export default function GrilleChronogramme({
   const planning = useMemo(() => planningDeplie(planningRecu, modules), [planningRecu, modules]);
   const modulesGrille = useRef(modules);
   modulesGrille.current = modules;
+  /*
+   * ═══ SEMAINES PUBLIÉES OU PASSÉES : CONFIRMER D'ABORD (2026-10-10) ═══
+   * Demande du porteur : une fenêtre de confirmation, appuyée, avant de
+   * sélectionner ou de modifier une semaine déjà réalisée — à la place du
+   * bandeau d'avertissement. Rien n'est interdit : confirmer une semaine la
+   * libère pour le reste de la visite, sans redemander à chaque case.
+   *
+   * ⚠️ DEUX POINTS DE CONTRÔLE : le clic sur une case (ouvrir, sélectionner),
+   *    et TOUTE écriture — recopie à la poignée, collage, suppression d'une
+   *    sélection tirée jusque dans une semaine protégée passent par `onChanger`.
+   */
+  const protegees = useSemainesProtegees(semaines);
+  const protegeesRef = useRef(protegees);
+  protegeesRef.current = protegees;
+  const acquittees = useRef(new Set());
+  const [demande, setDemande] = useState(null);
+  const garde = useMemo(() => {
+    const aConfirmer = (numeros) =>
+      [...new Set(numeros)]
+        .filter((numero) => protegeesRef.current.has(numero) && !acquittees.current.has(numero))
+        .sort((a, b) => a - b);
+    return {
+      bloquee: (numero) => aConfirmer([numero]).length > 0,
+      demander(numeros, poursuivre) {
+        const restantes = aConfirmer(numeros);
+        if (restantes.length === 0) {
+          poursuivre?.();
+          return;
+        }
+        setDemande({ numeros: restantes, poursuivre });
+      },
+    };
+  }, []);
+
+  const planningCourant = useRef(planning);
+  planningCourant.current = planning;
   const onChanger = useCallback(
-    (nouveau, motif) =>
-      nouveau === null
-        ? onChangerRecu(null, motif)
-        : onChangerRecu(planningReplie(nouveau, modulesGrille.current)),
-    [onChangerRecu]
+    (nouveau, motif) => {
+      if (nouveau === null) {
+        onChangerRecu(null, motif);
+        return;
+      }
+      const ecrire = () => onChangerRecu(planningReplie(nouveau, modulesGrille.current));
+      garde.demander([...semainesTouchees(planningCourant.current, nouveau)], ecrire);
+    },
+    [onChangerRecu, garde]
   );
 
   /*
@@ -1084,6 +1126,29 @@ export default function GrilleChronogramme({
   }, [modules, realise]);
 
   return (
+    <GardeSemaines.Provider value={garde}>
+    <ConfirmationAction
+      ouvert={demande !== null}
+      onOpenChange={(ouvert) => !ouvert && setDemande(null)}
+      destructive
+      titre="Attention : semaine déjà réalisée"
+      description={
+        demande
+          ? `${demande.numeros
+              .map((numero) => `S${numero} (${protegees.get(numero)})`)
+              .join(', ')} : ${
+              demande.numeros.length > 1 ? 'ces semaines sont publiées ou passées' : 'cette semaine est publiée ou passée'
+            }. Son emploi du temps a été réalisé d’après ce chronogramme : modifier sa planification le désaligne, et les heures réellement faites ne correspondront plus. Reportez plutôt les heures sur les semaines à venir. Voulez-vous vraiment la modifier ?`
+          : ''
+      }
+      libelleConfirmation="Modifier quand même"
+      onConfirmer={() => {
+        const { numeros, poursuivre } = demande;
+        for (const numero of numeros) acquittees.current.add(numero);
+        setDemande(null);
+        poursuivre?.();
+      }}
+    />
     <div className="space-y-2">
       <NavigationSemaines
         semaines={semaines}
@@ -1287,6 +1352,7 @@ export default function GrilleChronogramme({
       </table>
       </div>
     </div>
+    </GardeSemaines.Provider>
   );
 }
 
@@ -1818,6 +1884,8 @@ function CelluleBrute({ bordsSelection = 0, onSelectionner = null, souris = null
     onOuvrir(null);
     onPoser(cle, semaine, brut, module.masses);
   };
+  // Semaine publiée ou passée : confirmer avant d'ouvrir ou de sélectionner (2026-10-10).
+  const garde = useContext(GardeSemaines);
 
   /*
    * ⚠️ TROIS VARIANTES PRÉCALCULÉES, PAS UN `cn()` PAR CELLULE. Voir
@@ -1893,10 +1961,31 @@ function CelluleBrute({ bordsSelection = 0, onSelectionner = null, souris = null
            * chez l'autre, qui vient d'être ouverte par l'état.
            */
           data-guidage-ignorer={!mixte && !onClicDirect ? '' : undefined}
-          onPointerDown={souris ? (evenement) => souris.debut(cle, semaine.numero, evenement) : undefined}
+          onPointerDown={
+            souris
+              ? (evenement) => {
+                  // Pas de sélection par glissement depuis une semaine à confirmer.
+                  if (garde?.bloquee(semaine.numero)) return;
+                  souris.debut(cle, semaine.numero, evenement);
+                }
+              : undefined
+          }
           onClick={(evenement) => {
             // Le clic qui termine un glissement de sélection n'ouvre rien.
             if (souris?.consommer()) return;
+            if (garde?.bloquee(semaine.numero)) {
+              evenement.preventDefault();
+              // Confirmé, le clic simple reprend son cours ; Maj/Ctrl+clic se refont.
+              const simple = !evenement.shiftKey && !evenement.ctrlKey && !evenement.metaKey;
+              garde.demander([semaine.numero], () => {
+                if (!simple) return;
+                onSelectionner?.(null);
+                if (mixte) onBasculer?.(cle);
+                else if (onClicDirect) onClicDirect(module, semaine);
+                else onOuvrir({ module: cle, semaine: semaine.numero });
+              });
+              return;
+            }
             // Maj+clic : étendre la sélection depuis la dernière case cliquée.
             if (souris && evenement.shiftKey) {
               evenement.preventDefault();

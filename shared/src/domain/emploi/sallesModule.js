@@ -1,12 +1,12 @@
 /**
  * La salle déclarée pour un module dans la carte (`Base.sallesAffectations`).
  *
- * ═══ ⚠️ ELLE EST IMPOSÉE, À LA GÉNÉRATION COMME À LA SAISIE ═══
- * (décision du porteur, 2026-10-03.) Un atelier de soudure est imposé par la
- * MATIÈRE : un cours posé ailleurs n'est pas le cours prévu. Une seule
- * définition ici, lue par `poser()` côté serveur et par la grille pour
- * pré-remplir la salle — deux règles pour une même question feraient proposer
- * à l'écran une salle que le serveur refuse.
+ * ═══ ⚠️ IMPOSÉE À LA GÉNÉRATION, PROPOSÉE À LA SAISIE ═══
+ * (décisions du porteur, 2026-10-03 puis 2026-10-10.) Un atelier de soudure est
+ * imposé par la MATIÈRE : la génération ne pose jamais le cours ailleurs. À la
+ * main, la grille propose cette salle d'office, mais le directeur peut en
+ * choisir une autre (« permet le changement de l'espace même s'il est attribué
+ * dans l'affectation »).
  */
 
 import { separerFusion } from '../carte/reconstruction.js';

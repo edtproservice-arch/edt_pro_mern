@@ -51,6 +51,7 @@ import CarteChronogrammeFormateur from '@/features/chronogramme/CarteChronogramm
 import CarteEcartSaisie from './CarteEcartSaisie';
 import BoutonProposer from '@/features/propositions/BoutonProposer';
 import CarteProposition from '@/features/propositions/CarteProposition';
+import { IMPORTANCES as IMPORTANCES_ANNONCE } from '@/features/annonces/PageAnnonces';
 
 /**
  * Messagerie interne (F10) — sous-livraison (a).
@@ -694,8 +695,12 @@ function Liste({ messages, vide, boite, chargement, ouvert, onOuvrir }) {
 
             {/* ⚠️ Un brouillon sans sujet est NOMMÉ : une ligne vide laisserait
                 croire à un défaut, alors que c'est son état normal. */}
-            <span className="block truncate text-xs font-medium">
-              {message.sujet || <span className="italic text-muted-foreground">Sans sujet</span>}
+            <span className="flex min-w-0 items-center gap-1 text-xs font-medium">
+              {/* L'importance d'une annonce, en icône devant le sujet (2026-10-10). */}
+              {message.annonce && <IconeAnnonce importance={message.annonce.importance} />}
+              <span className="truncate">
+                {message.sujet || <span className="italic text-muted-foreground">Sans sujet</span>}
+              </span>
             </span>
 
             <span className="line-clamp-2 block text-xs text-muted-foreground">
@@ -757,7 +762,8 @@ function Lecture({
   }
 
   const message = requete.data.message;
-  const repondable = Boolean(message.correspondant.id) && boite !== 'corbeille';
+  // ⚠️ Un avis automatique de stage / formation (2026-10-10) n'appelle pas de réponse — le serveur la refuserait.
+  const repondable = Boolean(message.correspondant.id) && boite !== 'corbeille' && !message.avisPeriode;
 
   /*
    * ⚠️ REPLIÉE PAR DÉFAUT (2026-09-22, demande du porteur : « libérer l'espace » — la grille
@@ -857,7 +863,12 @@ function Lecture({
 
         <div className="min-w-0">
           <p className="text-sm font-semibold">{message.correspondant.nom}</p>
-          <p className="truncate text-sm">{message.sujet}</p>
+          <p className="flex min-w-0 items-center gap-1.5 text-sm">
+            {message.annonce && <IconeAnnonce importance={message.annonce.importance} grande />}
+            <span className="truncate">{message.sujet}</span>
+          </p>
+          {/* La copie d'une annonce du bandeau (2026-10-10) : son degré d'importance, en clair. */}
+          {message.annonce && <BadgeAnnonce importance={message.annonce.importance} />}
           {/*
             ⚠️ « REÇU OU ENVOYÉ » VIENT DU SERVEUR, PAS DE LA BOÎTE. La règle
             précédente — `boite === 'envoyes'` — se trompait dans l'archive et
@@ -1027,3 +1038,30 @@ function Initiales({ nom }) {
     </Avatar>
   );
 }
+
+/**
+ * L'icône d'importance d'une annonce, devant son sujet — sirène rouge pour une
+ * urgente, triangle ambre pour une importante, « i » bleu pour une information.
+ * L'infobulle dit le mot, pour qui ne lit pas les couleurs.
+ */
+function IconeAnnonce({ importance, grande = false }) {
+  const { libelle, icone: Icone } = IMPORTANCES_ANNONCE[importance] ?? IMPORTANCES_ANNONCE.info;
+  const teinte = { urgente: 'text-destructive', importante: 'text-warning', info: 'text-primary' }[importance] ?? 'text-primary';
+  return (
+    <span title={`Annonce — ${libelle}`} className="inline-flex shrink-0">
+      <Icone className={cn(grande ? 'size-4' : 'size-3.5', teinte)} aria-label={`Annonce ${libelle.toLowerCase()}`} />
+    </span>
+  );
+}
+
+/** Le degré d'importance d'une annonce reçue — les teintes de la page Annonces et du bandeau. */
+function BadgeAnnonce({ importance }) {
+  const { libelle, icone: Icone, classes } = IMPORTANCES_ANNONCE[importance] ?? IMPORTANCES_ANNONCE.info;
+  return (
+    <span className={cn('mt-1 inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs font-medium', classes)}>
+      <Icone className="size-3" />
+      Annonce · {libelle}
+    </span>
+  );
+}
+

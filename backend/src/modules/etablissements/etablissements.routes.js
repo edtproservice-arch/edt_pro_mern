@@ -12,6 +12,7 @@ import { annoncerModification } from '../tempsReel/annonces.js';
 import * as service from './etablissements.service.js';
 import { enregistrerAvecCascade } from '../fermetures/fermetures.service.js';
 import { nomCourt, renommerLibelles } from '../espaces/espaces.service.js';
+import { construireExportPeriodes } from './exportPeriodes.service.js';
 
 /**
  * Établissements et année scolaire (F2).
@@ -254,6 +255,60 @@ router.put(
     'avancement',
   ])
 );
+
+/**
+ * Les périodes de stage ou de formation en Word, PDF ou Excel (2026-10-10,
+ * demande du porteur). La liste vient de l'ÉCRAN — voir
+ * `exportPeriodes.service.js`. Lire la page suffit : exporter n'écrit rien.
+ */
+const exportPeriodesSchema = z.object({
+  format: z.enum(['docx', 'pdf', 'xlsx']),
+  // « calendrier » : l'écran montrait la frise — le document ajoute le Gantt.
+  affichage: z.enum(['liste', 'calendrier']).default('liste'),
+  periodes: z
+    .array(
+      z
+        .object({
+          sujet: z.string().trim().min(1).max(150),
+          detail: z.string().trim().max(150).default(''),
+          debut: jour,
+          fin: jour,
+        })
+        .strict()
+        .transform(remettreEnOrdre)
+    )
+    .max(2000),
+});
+
+for (const type of ['stages', 'formations']) {
+  router.post(
+    `/courant/${type}/export`,
+    resolveTenant,
+    exigerDroitPage(type, 'consulter'),
+    validate({ body: exportPeriodesSchema }),
+    async (req, res, next) => {
+      try {
+        const { tampon, nomFichier, contentType } = await construireExportPeriodes({
+          etablissementId: req.etablissementId,
+          anneeScolaire: req.anneeScolaire,
+          type,
+          format: req.body.format,
+          affichage: req.body.affichage,
+          periodes: req.body.periodes,
+        });
+        res.setHeader('Content-Type', contentType);
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="export"; filename*=UTF-8''${encodeURIComponent(nomFichier)}`
+        );
+        res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+        res.send(tampon);
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
+}
 
 /*
  * ⚠️ UN COUPLE NE FIGURE QU'UNE FOIS. La table d'origine portait une clé unique

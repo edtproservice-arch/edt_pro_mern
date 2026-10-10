@@ -621,7 +621,12 @@ function GrilleEmploi({
     ]
   );
 
-  if (sujets.length === 0) return null;
+  /*
+   * ⚠️ SAUF SI C'EST LE FILTRE QUI A TOUT MASQUÉ (2026-10-10, signalé par le
+   *    porteur) : la grille disparaissait avec son en-tête — donc avec le
+   *    bouton du filtre, seul moyen de faire revenir les lignes.
+   */
+  if (sujets.length === 0 && !filtreLignes?.choisies) return null;
 
   return (
     /*

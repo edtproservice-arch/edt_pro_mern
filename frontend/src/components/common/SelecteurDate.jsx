@@ -31,6 +31,8 @@ export default function SelecteurDate({
   placeholder = 'Choisir une date…',
   effacable = true,
   disabled = false,
+  // Les jours non sélectionnables (matcher react-day-picker), ex. `{ before: new Date() }`.
+  joursDesactives,
   'aria-label': libelle,
   className,
 }) {
@@ -64,6 +66,7 @@ export default function SelecteurDate({
           locale={fr}
           selected={date}
           defaultMonth={date ?? moisParDefaut}
+          disabled={joursDesactives}
           onSelect={(choix) => {
             // Recliquer sur la date choisie la désélectionne : on n'en fait pas un effacement.
             if (!choix) return;

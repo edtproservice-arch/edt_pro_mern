@@ -20,6 +20,7 @@ import SectionsConsultation from '@/features/consultation/SectionsConsultation';
 import { recupererSession, seDeconnecter } from '@/features/auth/api';
 import { classesAffichage, useAffichage } from '@/lib/preferencesAffichage';
 import { useEpinglage } from '@/lib/epinglageBarre';
+import BandeauPeriodesDirection from './BandeauPeriodesDirection';
 import { cn } from '@/lib/utils';
 import { gererExpirationsession } from '@/lib/apiClient';
 import { useAncreRentrees } from '@/lib/useAncreRentrees';
@@ -306,6 +307,10 @@ export default function CoquilleApp() {
             profilUrl={collaboration ? undefined : '/app/profil'}
           />
 
+          {/* Stage ou formation dans la semaine (2026-10-10) : le pendant à l'écran de l'avis en
+              messagerie — le MÊME bandeau passant que la direction, restreint à ses périodes. */}
+          {!collaboration && <BandeauPeriodesDirection session={role} annonces />}
+
           {/*
             ⚠️ LES MÊMES CLASSES QUE `ContenuPage`, PAS UNE APPROXIMATION —
             c'est la combinaison éprouvée par `PageMessagerieAdmin`, qui
@@ -392,6 +397,11 @@ export default function CoquilleApp() {
           <FilAriane courante={courante} />
           <BarreOutilsPage />
         </header>
+
+        {/* Stages et formations de la semaine, en bandeau passant (2026-10-10) — directeur et gestionnaire.
+            Le gestionnaire sans lien : Stages n'est pas l'une de ses pages. */}
+        {role === ROLES.DIRECTEUR && <BandeauPeriodesDirection annonces />}
+        {role === ROLES.GESTIONNAIRE && <BandeauPeriodesDirection lien={false} />}
 
         {/*
           Un `div`, pas un `main` : `SidebarInset` EST déjà le `<main>` de la

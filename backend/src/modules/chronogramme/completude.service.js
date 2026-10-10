@@ -12,7 +12,7 @@ import { AutoGenConfig } from '../../models/AutoGenConfig.js';
 import { Base } from '../../models/Base.js';
 import { Chronogramme } from '../../models/Chronogramme.js';
 import { Seance } from '../../models/Seance.js';
-import { notFound } from '../../lib/httpError.js';
+import { conflict, notFound } from '../../lib/httpError.js';
 import { nomsDeLaCarte } from '../base/cascadeGroupes.js';
 
 /**
@@ -265,6 +265,50 @@ export async function etatLiaison(etablissementId, anneeScolaire) {
  * ⚠️ IDEMPOTENT : `upsert` sur la clé unique (établissement, année). Renvoyer
  *    le même état ne crée pas un second document.
  */
+/**
+ * La semaine peut-elle être publiée et éditée ?
+ *
+ * ═══ ⚠️ 100 % OU RIEN, TANT QUE L'EMPLOI EST LIÉ ═══ (2026-10-10, demande du
+ * porteur : « ne permet pas de publier et l'édition d'une semaine n'atteignant
+ * pas 100 % sauf si l'emploi est délié ».) Le taux est celui du badge de la
+ * grille (`completudeDUneSemaine`) : une seule lecture, pour que le bouton et
+ * le serveur ne se contredisent jamais.
+ *
+ * ⚠️ DÉLIÉ, OU RIEN DE PLANIFIÉ, RIEN N'EST EXIGÉ : c'est `verrouActif`, la
+ *    même condition que le verrou du chronogramme. Une semaine que le
+ *    chronogramme ne remplit pas (rien de prévu) n'a pas de taux non plus.
+ *
+ * @returns {Promise<{exigee: boolean, taux: number|null, bloquee: boolean}>}
+ */
+export async function conformiteDeLaSemaine(etablissementId, anneeScolaire, valeurSemaine) {
+  if (!analyserSemaine(valeurSemaine)) return { exigee: false, taux: null, bloquee: false };
+  const liaison = await etatLiaison(etablissementId, anneeScolaire);
+  if (!liaison.verrouActif) return { exigee: false, taux: null, bloquee: false };
+
+  const bilan = await completudeDUneSemaine(etablissementId, anneeScolaire, valeurSemaine);
+  const taux = bilan.total?.taux ?? null;
+  return { exigee: true, taux, bloquee: taux !== null && taux < 100 };
+}
+
+/** La même règle, en refus : pour la publication et les trois éditions. */
+export async function exigerSemaineComplete(etablissementId, anneeScolaire, valeurSemaine, action) {
+  const { taux, bloquee } = await conformiteDeLaSemaine(etablissementId, anneeScolaire, valeurSemaine);
+  if (!bloquee) return;
+
+  throw conflict(`${action} impossible : la semaine n’atteint que ${taux} % du chronogramme`, {
+    code: 'SEMAINE_INCOMPLETE',
+    details: [
+      {
+        type: 'completude',
+        taux,
+        message:
+          'Complétez les séances manquantes (ou retirez celles en trop) pour atteindre 100 %, ' +
+          'ou déliez l’emploi du temps du chronogramme.',
+      },
+    ],
+  });
+}
+
 export async function definirLiaison(etablissementId, anneeScolaire, liee) {
   await AutoGenConfig.updateOne(
     { etablissementId, anneeScolaire },

@@ -91,6 +91,7 @@ export default function PageFormations() {
         libelleSujet="Formateur"
         libelleVide="Aucune formation déclarée."
         aideVide="Tous les formateurs restent disponibles toute l'année."
+        exportation={{ type: 'formations', detailDe: (periode) => periode.matriculeFormateur ?? '' }}
       />
     </CadreReglage>
     {/* ⚠️ Une période nouvelle peut supprimer des séances : jamais sans ce oui (2026-09-23). */}

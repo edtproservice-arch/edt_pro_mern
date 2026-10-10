@@ -243,6 +243,25 @@ const messageSchema = new mongoose.Schema(
      * service de l'avancement le pose.
      */
     ecartSaisie: { type: mongoose.Schema.Types.Mixed, default: null },
+
+    /**
+     * L'AVIS DE PÉRIODE — stage d'un groupe ou formation d'un formateur — posé
+     * automatiquement une semaine avant son début (2026-10-10, demande du porteur).
+     * `{type: 'stage'|'formation', cle, sujet, debut, fin}`. `cle` sert de garde
+     * anti-doublon : un même avis n'est jamais remis deux fois à la même personne.
+     *
+     * ⚠️ AUCUNE ROUTE PUBLIQUE NE L'ÉCRIT : seul `avisPeriodes.service.js` le pose.
+     * C'est aussi lui qui ouvre l'exception à la matrice de la messagerie (un
+     * directeur n'écrit pas aux stagiaires) — d'où ce marqueur, qui interdit en
+     * retour d'y RÉPONDRE.
+     */
+    avisPeriode: { type: mongoose.Schema.Types.Mixed, default: null },
+
+    /**
+     * La copie en messagerie d'une ANNONCE du bandeau (2026-10-10) : `{id, importance}`.
+     * ⚠️ Posée seulement par `annonces.service.js` — la route ne la connaît pas.
+     */
+    annonce: { type: mongoose.Schema.Types.Mixed, default: null },
   },
   /*
    * ⚠️ `minimize: false` (2026-09-22) : par défaut, Mongoose SUPPRIME un objet imbriqué vide à

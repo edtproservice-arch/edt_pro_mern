@@ -59,6 +59,8 @@ import { cn } from '@/lib/utils';
 import GrilleConsultation from './GrilleConsultation';
 import GrilleDetaillee from './GrilleDetaillee';
 import { ChoixSujets, FiltreGroupes, FiltreSeances } from './FiltresDetaillee';
+import BoutonTelecharger from '@/components/common/BoutonTelecharger';
+import { raisonBlocage, useConformite } from '@/features/emploi/useConformite';
 
 /**
  * Consultation et impression d'une semaine (F5).
@@ -106,7 +108,7 @@ export default function PageEdition() {
    * cours lundi »), l'autre la carte (« quels groupes sont en TS 2e année »). Un
    * groupe sans une séance de la semaine reste trouvable par le second.
    */
-  const [filtreGroupes, setFiltreGroupes] = useState({ filieres: [], niveaux: [], annees: [] });
+  const [filtreGroupes, setFiltreGroupes] = useState({ filieres: [], niveaux: [], annees: [], modes: [] });
   /*
    * Le zoom des grilles — même échelle et mêmes commandes que « Emploi » et le
    * chronogramme (demande du porteur, 2026-08-26). Préférence de LECTURE : elle
@@ -275,6 +277,14 @@ export default function PageEdition() {
    * filtres de cet écran — l'émargement est TOUJOURS par formateur, pour UN
    * jour choisi dans le menu, quelle que soit la vue affichée à l'écran.
    */
+  /*
+   * ═══ 100 % DU CHRONOGRAMME POUR ÉDITER (2026-10-10, demande du porteur) ═══
+   * Sauf emploi délié. Le serveur refuse de toute façon ; on le dit d'avance.
+   * Un bouton désactivé n'affiche pas d'info-bulle : l'enveloppe la porte.
+   */
+  const conformite = useConformite(semaine);
+  const blocageEdition = raisonBlocage(conformite.data, 'Édition');
+
   const telechargementEmargement = useMutation({
     mutationFn: ({ jour, format }) => exporterEmargement(semaine, { jour, format }),
     onError: (erreur) => toast.error('Téléchargement impossible', { description: erreur.message }),
@@ -287,7 +297,7 @@ export default function PageEdition() {
        plus ce qu'il retient. */
     setChoisis([]);
     setFiltre({ jours: [], creneaux: [] });
-    setFiltreGroupes({ filieres: [], niveaux: [], annees: [] });
+    setFiltreGroupes({ filieres: [], niveaux: [], annees: [], modes: [] });
     // Le soir n'existe que sur l'axe groupe : y rester ailleurs afficherait une
     // grille d'une colonne, toujours vide.
     if (valeur !== 'groupe') setPeriode('jour');
@@ -496,35 +506,16 @@ export default function PageEdition() {
             l'établissement — reste proposé sous ce bouton.
           */}
           {!grille.isError && !nonPubliee && sujets.length > 0 && affiches.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 gap-1.5 text-xs"
-                  disabled={telechargement.isPending}
-                >
-                  <Printer className="size-3.5" />
-                  Imprimer
-                  <ChevronDown className="size-3.5 opacity-60" />
-                </Button>
-              </DropdownMenuTrigger>
-
-              <DropdownMenuContent align="end" className="w-52">
-                <DropdownMenuItem onSelect={() => telechargement.mutate('docx')}>
-                  <FileText className="size-3.5 text-blue-600" />
-                  Télécharger en Word
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => telechargement.mutate('pdf')}>
-                  <File className="size-3.5 text-red-600" />
-                  Télécharger en PDF
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => telechargement.mutate('xlsx')}>
-                  <FileSpreadsheet className="size-3.5 text-green-600" />
-                  Télécharger en Excel
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <span title={blocageEdition} className="inline-flex">
+              <BoutonTelecharger
+                libelle="Imprimer"
+                icone={Printer}
+                enCours={telechargement.isPending}
+                disabled={Boolean(blocageEdition)}
+                title={blocageEdition}
+                onChoisir={(format) => telechargement.mutate(format)}
+              />
+            </span>
           )}
 
           {/*
@@ -535,18 +526,20 @@ export default function PageEdition() {
           */}
           {!grille.isError && !nonPubliee && Boolean(semaine) && (
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 gap-1.5 text-xs"
-                  disabled={telechargementEmargement.isPending}
-                >
-                  <ClipboardCheck className="size-3.5" />
-                  Journalier
-                  <ChevronDown className="size-3.5 opacity-60" />
-                </Button>
-              </DropdownMenuTrigger>
+              <span title={blocageEdition} className="inline-flex">
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1.5 text-xs"
+                    disabled={telechargementEmargement.isPending || Boolean(blocageEdition)}
+                  >
+                    <ClipboardCheck className="size-3.5" />
+                    Journalier
+                    <ChevronDown className="size-3.5 opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </span>
 
               <DropdownMenuContent align="end" className="w-52">
                 {JOURS.map((jour) => (

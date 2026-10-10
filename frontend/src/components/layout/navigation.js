@@ -11,6 +11,7 @@ import {
   House,
   Layers,
   Mail,
+  Megaphone,
   Map as IconeCarte,
   Network,
   PencilRuler,
@@ -46,6 +47,8 @@ import { PAGES_PARTAGEABLES, libellePage, urlDePage } from 'shared/domain';
 export const RACCOURCIS = [
   { titre: 'Accueil', url: '/app', icone: House },
   { titre: 'Messagerie', url: '/app/messagerie', icone: Mail },
+  // Écrire dans le bandeau passant (2026-10-10) — directeur et gestionnaire seulement.
+  { titre: 'Annonces', url: '/app/annonces', icone: Megaphone },
 ];
 
 export const NAVIGATION = [
@@ -170,6 +173,8 @@ export const NAVIGATION_FORMATEUR = [
   { titre: 'Emploi', titrePage: 'Mon emploi du temps', url: '/app/mon-emploi', icone: CalendarRange, phase: 10 },
   { titre: 'Affectations', titrePage: 'Mes affectations', url: '/app/mes-affectations', icone: Network, phase: 10 },
   { titre: 'Avancement', titrePage: "Suivi de l'avancement", url: '/app/mon-avancement', icone: TrendingUp, phase: 10 },
+  // Ses formations déclarées par la direction (2026-10-10, demande du porteur).
+  { titre: 'Formations', titrePage: 'Mes formations', url: '/app/mes-formations', icone: GraduationCap, phase: 10 },
   // Sa propre section de « Compte », déplacée dans une page à elle (2026-09-24, demande du porteur).
   { titre: 'Absences', titrePage: 'Mes absences', url: '/app/mes-absences', icone: UserX, phase: 10 },
 ];
@@ -190,6 +195,8 @@ export const NAVIGATION_STAGIAIRE = [
   { titre: 'Emploi', titrePage: 'Mon emploi du temps', url: '/app/mon-emploi', icone: CalendarRange, phase: 10 },
   { titre: 'Programme', titrePage: 'Table des matières', url: '/app/mon-programme', icone: BookOpen, phase: 10 },
   { titre: 'Avancement', titrePage: "Suivi de l'avancement", url: '/app/mon-avancement', icone: TrendingUp, phase: 10 },
+  // Les stages de ses groupes, déclarés par la direction (2026-10-10, demande du porteur).
+  { titre: 'Stages', titrePage: 'Mes stages', url: '/app/mes-stages', icone: Briefcase, phase: 10 },
   // Sa note de discipline et ses absences, déplacées de « Compte » (2026-09-24, demande du porteur).
   { titre: 'Absences', titrePage: 'Mes absences', url: '/app/mes-absences', icone: UserX, phase: 10 },
 ];
@@ -227,8 +234,10 @@ const URLS_GESTIONNAIRE = ['/app/edition', '/app/documents', '/app/absences'];
  * pour lui (`AccueilGestionnaire`), centré sur ce qu'il gère : l'absence et la
  * discipline des stagiaires. Le lien redevient donc pertinent.
  */
-export function raccourcisPourRole() {
-  return RACCOURCIS;
+export function raccourcisPourRole(role) {
+  // « Annonces » : seuls le directeur et le gestionnaire en publient sous /app.
+  if (role === ROLES.DIRECTEUR || role === ROLES.GESTIONNAIRE) return RACCOURCIS;
+  return RACCOURCIS.filter((entree) => entree.url !== '/app/annonces');
 }
 
 /**

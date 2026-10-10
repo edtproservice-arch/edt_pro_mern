@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Download, Upload } from 'lucide-react';
+import { Download, Upload, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Alerte from '@/components/common/Alerte';
 import { exporterChronogramme, importerChronogramme } from './api';
@@ -80,9 +80,14 @@ export default function BarreClasseur({ mode, sujets, peutImporter = true }) {
           }
           onClick={() => exportation.mutate()}
         >
-          {/* Le vert est la couleur d'Excel dans toute l'application. */}
-          <Download className="size-3.5 text-success" />
-          Exporter
+          {/* Le vert est la couleur d'Excel dans toute l'application. « Télécharger », comme
+              partout ailleurs (2026-10-10) ; l'indicateur tourne pendant la préparation. */}
+          {exportation.isPending ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Download className="size-3.5 text-success" />
+          )}
+          Télécharger
           {sujets.length > 0 && <span className="text-muted-foreground">({sujets.length})</span>}
         </Button>
 

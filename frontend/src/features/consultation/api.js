@@ -45,3 +45,10 @@ export const chargerRessourcesModule = ({ intitule, code = '', groupe = '' }) =>
  * formateur ; CEF, filière, niveau et groupes pour un stagiaire.
  */
 export const chargerFicheCompte = () => api.get('/api/v2/consultation/fiche');
+
+/**
+ * « Mes stages » (stagiaire) ou « Mes formations » (formateur) : les périodes
+ * déclarées par la direction pour le compte connecté, avec le calendrier
+ * (vacances, fériés) dont la frise a besoin.
+ */
+export const chargerMesPeriodes = () => api.get('/api/v2/consultation/periodes');

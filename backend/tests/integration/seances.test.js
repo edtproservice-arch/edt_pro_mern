@@ -166,6 +166,8 @@ describe('GET /seances/contexte', () => {
       filiereLibelle: 'Génie Mécanique',
       niveau: 'TS',
       annee: 1,
+      // Sans mode déclaré dans la base : résidentiel, la règle de la carte (2026-10-10).
+      mode: 'Résidentiel',
     });
   });
 
@@ -2864,11 +2866,11 @@ describe('Verrou du chronogramme (2026-09-27)', () => {
   });
 });
 
-describe('Salle imposée par le module — en saisie manuelle (2026-10-03)', () => {
+describe('Salle du module — LIBRE en saisie manuelle (2026-10-10)', () => {
   /*
-   * ⚠️ DÉCISION DU PORTEUR : la salle déclarée pour le module dans la carte est
-   *    IMPOSÉE à la saisie comme à la génération. Même règle des deux côtés
-   *    (`sallesImposees`), sinon l'écran proposerait ce que le serveur refuse.
+   * ⚠️ DEMANDE DU PORTEUR (2026-10-10) : « permet le changement de l'espace même
+   *    s'il est attribué dans l'affectation ». Imposée à la génération,
+   *    proposée d'office par la grille, mais jamais refusée à la main.
    */
   const poserPar = (corps) =>
     request(app)
@@ -2888,37 +2890,65 @@ describe('Salle imposée par le module — en saisie manuelle (2026-10-03)', () 
     await Base.updateOne({}, { $set: { sallesAffectations: { 'GM101||M101': ['B02'] } } });
   });
 
-  it('REFUSE une autre salle que celle du module', async () => {
+  it('ACCEPTE une autre salle que celle du module', async () => {
     const reponse = await poserPar({ salle: 'A12' });
-    expect(reponse.status).toBe(400);
-    expect(reponse.body.error?.code ?? reponse.body.code).toBe('SALLE_MODULE_IMPOSEE');
-    expect(await Seance.countDocuments({})).toBe(0);
-  });
-
-  it('accepte la salle du module, sans salle, ou à distance', async () => {
-    expect((await poserPar({ salle: 'B02' })).status).toBe(200);
-    expect((await poserPar({ seance: 'S2', salle: '' })).status).toBe(200);
-    expect((await poserPar({ seance: 'S3', salle: 'TEAMS' })).status).toBe(200);
-  });
-
-  it('n’impose rien aux autres modules', async () => {
-    const reponse = await poserPar({ groupe: 'GM102', module: 'M102', salle: 'A12' });
     expect(reponse.status).toBe(200);
+    expect(reponse.body.seance.salle).toBe('A12');
   });
 
-  it('ignore une salle déclarée qui n’existe plus dans l’établissement', async () => {
-    await Base.updateOne({}, { $set: { sallesAffectations: { 'GM101||M101': ['Atelier disparu'] } } });
-    expect((await poserPar({ salle: 'A12' })).status).toBe(200);
-  });
-
-  it('⚠️ laisse modifier le STATUT d’une séance posée avant la règle, sans la déménager', async () => {
-    const ancienne = await poser({ salle: 'A12' });
-    const reponse = await poserPar({ id: ancienne.id, salle: 'A12', statut: 'absent' });
+  it('laisse changer la salle d’une séance posée dans celle du module', async () => {
+    const posee = (await poserPar({ salle: 'B02' })).body.seance;
+    const reponse = await poserPar({ id: posee.id, salle: 'A12' });
     expect(reponse.status).toBe(200);
   });
 
   it('rend la table au contexte, pour que la grille pré-remplisse la salle', async () => {
     const reponse = await request(app).get('/api/v2/seances/contexte').set('Cookie', cookies);
     expect(reponse.body.sallesAffectations).toEqual({ 'GM101||M101': ['B02'] });
+  });
+});
+
+describe('Publication et édition — 100 % du chronogramme, sauf emploi délié (2026-10-10)', () => {
+  beforeEach(async () => {
+    // S3 : le chronogramme demande 2,5 h de M101 à GM101.
+    await Chronogramme.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      groupe: 'GM101',
+      planning: new Map([['M101', [{ semaine: 'S3', heures: 2.5, type: 'P' }]]]),
+    });
+  });
+
+  const publier = () =>
+    request(app).put('/api/v2/seances/publication').set('Cookie', cookies).send({ semaine: SEMAINE });
+  const exporter = () =>
+    request(app)
+      .post(`/api/v2/seances/${SEMAINE}/export`)
+      .set('Cookie', cookies)
+      .send({ format: 'xlsx' });
+
+  it('REFUSE de publier une semaine incomplète', async () => {
+    const reponse = await publier();
+    expect(reponse.status).toBe(409);
+    expect(reponse.body.error?.code ?? reponse.body.code).toBe('SEMAINE_INCOMPLETE');
+  });
+
+  it('REFUSE d’éditer une semaine incomplète', async () => {
+    const reponse = await exporter();
+    expect(reponse.status).toBe(409);
+  });
+
+  it('publie une semaine à 100 %', async () => {
+    await poser({ salle: 'A12' });
+    expect((await publier()).status).toBe(200);
+  });
+
+  it('laisse tout faire quand l’emploi est délié du chronogramme', async () => {
+    await AutoGenConfig.updateOne(
+      { etablissementId: etablissement.id, anneeScolaire: ANNEE },
+      { $set: { chronogrammeLie: false } },
+      { upsert: true }
+    );
+    expect((await publier()).status).toBe(200);
   });
 });

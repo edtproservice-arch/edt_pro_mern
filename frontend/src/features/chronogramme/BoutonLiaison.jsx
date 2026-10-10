@@ -7,7 +7,9 @@ import { Button } from '@/components/ui/button';
 import ConfirmationAction from '@/components/common/ConfirmationAction';
 import { cn } from '@/lib/utils';
 
-import { chargerLiaison, definirLiaison, reporterVersChronogramme } from './api';
+import { libelleSemaine } from 'shared/domain';
+
+import { chargerCompletude, chargerLiaison, definirLiaison } from './api';
 
 /**
  * Associer ou dissocier l'emploi du temps et le chronogramme.
@@ -31,12 +33,32 @@ import { chargerLiaison, definirLiaison, reporterVersChronogramme } from './api'
  * lu, mais **ne refuse rien pour l'instant**. Le dire vaut mieux que de laisser
  * croire à une protection absente.
  */
+/**
+ * Les semaines dont la grille ne couvre pas exactement le chronogramme.
+ * ← `completudeDeLAnnee` : seules les semaines où quelque chose est prévu ou posé.
+ */
+function semainesIncompletes(completude) {
+  return (completude?.semaines ?? []).filter((semaine) => semaine.taux !== null && semaine.taux < 100);
+}
+
+/** « S7 (82 %, manque 17,5 h), S9 (95 %, 2,5 h en trop)… » — les six premières. */
+function resumer(semaines) {
+  const parties = semaines.slice(0, 6).map((semaine) => {
+    const ecarts = [
+      semaine.manquant > 0 ? `manque ${semaine.manquant} h` : null,
+      semaine.enTrop > 0 ? `${semaine.enTrop} h en trop` : null,
+    ].filter(Boolean);
+    return `${libelleSemaine(semaine.semaine, { court: true })} (${semaine.taux} %${ecarts.length ? `, ${ecarts.join(', ')}` : ''})`;
+  });
+  return parties.join(', ') + (semaines.length > 6 ? ` et ${semaines.length - 6} autre(s)` : '');
+}
+
 export default function BoutonLiaison({ lectureSeule = false, className }) {
   const [ouvert, setOuvert] = useState(false);
   /*
-   * ⚠️ CE QUE LA RÉ-ASSOCIATION VA REPORTER, COMPTÉ AVANT DE DEMANDER.
-   *    « Des séances vont être reportées » ferait confirmer à l'aveugle ; le
-   *    chiffre est ce sur quoi le directeur décide réellement.
+   * ⚠️ CE QUE LA RÉ-ASSOCIATION LAISSERA SOUS 100 %, COMPTÉ AVANT DE DEMANDER
+   *    (2026-10-10) : les semaines dont la grille ne couvre pas exactement le
+   *    chronogramme — c'est sur ce chiffre que le directeur décide.
    */
   const [apercu, setApercu] = useState(null);
   const clientRequetes = useQueryClient();
@@ -50,7 +72,7 @@ export default function BoutonLiaison({ lectureSeule = false, className }) {
     setOuvert(true);
     if (etat.data?.liee) return;
     try {
-      setApercu(await reporterVersChronogramme(true));
+      setApercu(semainesIncompletes(await chargerCompletude()));
     } catch {
       /* ⚠️ UN APERÇU INDISPONIBLE N'EMPÊCHE PAS DE DÉCIDER : la fenêtre
          s'ouvre sans chiffre plutôt que de refuser le geste. */
@@ -60,20 +82,20 @@ export default function BoutonLiaison({ lectureSeule = false, className }) {
 
   const basculer = useMutation({
     /*
-     * ═══ ⚠️ RÉASSOCIER REPORTE D'ABORD ═══
-     * Sans cela, réassocier laisserait deux vérités côte à côte : des séances
-     * placées dans la grille que le chronogramme ignore. Le rapport de
-     * complétude accuserait un manque là où le cours a bien lieu, et les taux
-     * d'avancement seraient faux.
-     *
-     * ⚠️ LE REPORT AVANT LA LIAISON, et pas l'inverse : lier d'abord ferait
-     *    mordre le verrou, et le report — qui écrit dans le CHRONOGRAMME, pas
-     *    dans la grille — se ferait sur un état déjà annoncé comme conforme.
+     * ═══ ⚠️ RÉASSOCIER NE TOUCHE PLUS AU CHRONOGRAMME ═══ (2026-10-10, demande
+     * du porteur : « ne touche pas à la masse horaire planifiée du chronogramme
+     * en aucun cas ».) Le report grille → chronogramme qui précédait la
+     * liaison RÉÉCRIVAIT la planification d'après la grille : une semaine
+     * importée ou retouchée pendant la dissociation devenait la nouvelle
+     * référence. Désormais le chronogramme reste tel qu'il a été planifié, et
+     * c'est la GRILLE qui doit le rejoindre : les semaines sous 100 % sont
+     * détectées et annoncées (`semainesIncompletes`), et leurs séances
+     * manquantes se placent depuis la fenêtre Conformité de chaque semaine.
      */
     mutationFn: async (liee) => {
-      const rapport = liee ? await reporterVersChronogramme(false) : null;
       const reponse = await definirLiaison(liee);
-      return { ...reponse, rapport };
+      const incompletes = liee ? semainesIncompletes(await chargerCompletude()) : null;
+      return { ...reponse, incompletes };
     },
     onSuccess: (reponse) => {
       clientRequetes.setQueryData(['chronogramme-liaison'], reponse);
@@ -84,30 +106,22 @@ export default function BoutonLiaison({ lectureSeule = false, className }) {
         return;
       }
 
-      const r = reponse.rapport;
-      toast.success('Emploi du temps de nouveau lié au chronogramme.', {
-        description:
-          r && r.cellulesEcrites > 0
-            ? `${r.cellulesEcrites} cellule(s) reportées depuis la grille` +
-              ` (${r.heures} h)` +
-              (r.groupesCrees.length > 0
-                ? ` · ${r.groupesCrees.length} chronogramme(s) créé(s)`
-                : '') +
-              /*
-               * ⚠️ LES CELLULES MIXTES SONT DITES. Un module qui a du
-               *    présentiel ET du distanciel la même semaine ne tient pas
-               *    dans une cellule : le volume total est gardé, le type
-               *    dominant retenu — et il faut le savoir pour corriger.
-               */
-              (r.mixtes.length > 0
-                ? ` · ⚠️ ${r.mixtes.length} cellule(s) mixtes, type dominant retenu`
-                : '') +
-              (r.depassements?.length > 0
-                ? ` · ⚠️ ${r.depassements.length} non reportée(s) : masse horaire atteinte`
-                : '')
-            : r?.depassements?.length > 0
-              ? `${r.depassements.length} cellule(s) non reportée(s) : masse horaire atteinte.`
-              : 'Le chronogramme portait déjà tout ce que la grille contient.',
+      const incompletes = reponse.incompletes ?? [];
+      if (incompletes.length === 0) {
+        toast.success('Emploi du temps de nouveau lié au chronogramme.', {
+          description: 'Toutes les semaines planifiées sont à 100 % du chronogramme.',
+        });
+        return;
+      }
+      /*
+       * ⚠️ UN AVERTISSEMENT QUI RESTE, PAS UN TOAST QUI FILE : c'est la liste de
+       *    travail du directeur — les semaines à compléter avant de pouvoir les
+       *    publier (100 % exigés tant que l'emploi est lié).
+       */
+      toast.warning(`Emploi lié : ${incompletes.length} semaine(s) sous 100 % du chronogramme`, {
+        duration: Infinity,
+        closeButton: true,
+        description: `${resumer(incompletes)}. Le chronogramme n’a pas été modifié : ouvrez le taux de chaque semaine (Conformité) pour placer les séances manquantes.`,
       });
     },
     onError: (erreur) => toast.error(erreur?.message ?? 'Enregistrement impossible.'),
@@ -179,63 +193,26 @@ export default function BoutonLiaison({ lectureSeule = false, className }) {
                 Le chronogramme redeviendra la référence : il fixera le volume d’heures de
                 chaque module, semaine par semaine.
               </span>
+              <span className="mt-2 block">
+                <strong>Le chronogramme ne sera pas modifié</strong> : sa planification reste la
+                référence, et c’est l’emploi du temps qui doit la rejoindre.
+              </span>
               {apercu && (
                 <span className="mt-2 block">
-                  {apercu.cellulesEcrites > 0 ? (
-                    <>
-                      <strong>{apercu.cellulesEcrites} cellule(s)</strong> seront d’abord
-                      reportées depuis la grille ({apercu.heures} h)
-                      {apercu.groupesCrees.length > 0 &&
-                        ` — dont ${apercu.groupesCrees.length} chronogramme(s) à créer`}
-                      .
-                    </>
+                  {apercu.length === 0 ? (
+                    'Toutes les semaines planifiées sont déjà à 100 % : rien à compléter.'
                   ) : (
-                    'Le chronogramme porte déjà tout ce que la grille contient : rien ne sera reporté.'
+                    <>
+                      <strong>{apercu.length} semaine(s) resteront sous 100 %</strong> :{' '}
+                      {resumer(apercu)}. Leurs séances manquantes se placeront depuis la
+                      fenêtre Conformité de chaque semaine ; d’ici là, elles ne pourront être
+                      ni publiées ni éditées.
+                    </>
                   )}
                 </span>
               )}
-              {/*
-                ⚠️ LA MASSE HORAIRE N'EST JAMAIS DÉPASSÉE (2026-09-27) : ces
-                cellules ne seront PAS reportées. Leurs séances ressortiront en
-                écart dans la fenêtre Conformité de leur semaine, d'où elles se
-                suppriment. Les annoncer ICI, avant de confirmer, évite de les
-                découvrir en consultant le rapport.
-              */}
-              {apercu?.depassements?.length > 0 && (
-                <span className="mt-2 block text-warning">
-                  <strong>{apercu.depassements.length} cellule(s) ne seront pas reportées</strong>{' '}
-                  — elles dépasseraient la masse horaire du module :
-                  {apercu.depassements.slice(0, 5).map((d) => (
-                    <span key={`${d.groupe}|${d.module}|${d.semaine}`} className="block">
-                      {d.groupe} · {d.module} · {d.semaine} : {d.heures} h posées, {d.dejaPlanifie} h
-                      déjà planifiées pour {d.masse} h
-                    </span>
-                  ))}
-                  {apercu.depassements.length > 5 && (
-                    <span className="block">… et {apercu.depassements.length - 5} autre(s).</span>
-                  )}
-                  <span className="block text-muted-foreground">
-                    Leurs séances apparaîtront dans la fenêtre Conformité de la semaine, à supprimer.
-                  </span>
-                </span>
-              )}
-              {/*
-                ⚠️ CE QUE LA RÉ-ASSOCIATION NE FAIT PAS ENCORE. Dans l'ancien,
-                elle reporte d'abord dans le chronogramme les séances posées à
-                la main pendant la dissociation — c'est la livraison (d). Sans
-                elle, deux vérités coexistent : des séances placées que le
-                chronogramme ignore, donc un rapport qui accuse un manque là où
-                le cours a bien lieu. Le taire serait pire que de le dire.
-              */}
-              {/*
-                ⚠️ CE QUE LE REPORT NE FAIT PAS. Il n'efface RIEN : une semaine
-                que la grille ne couvre pas garde sa prévision, et un module
-                prévu mais pas posé aussi. C'est le rapport de complétude qui
-                montre l'écart — ce n'est pas au report de trancher.
-              */}
               <span className="mt-2 block text-muted-foreground">
-                Rien n’est effacé : les semaines que la grille ne couvre pas gardent leur
-                prévision.
+                Rien n’est effacé ni réécrit, ni dans la grille, ni dans le chronogramme.
               </span>
             </>
           )

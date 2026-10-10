@@ -26,6 +26,7 @@ import { COULEURS_PROGRESSION } from '@/features/avancement/GrapheProgression';
 import { nombre } from '@/lib/nombres';
 import { cn } from '@/lib/utils';
 import ATraiter from './ATraiter';
+import AVenirPeriodes from './AVenirPeriodes';
 import EcartsSaisie, { enManqueAuDernierDepot, useEcartsSaisie } from './EcartsSaisie';
 import {
   SectionDiscipline,
@@ -420,6 +421,9 @@ export default function TableauDeBordAccueil() {
         />
       </section>
 
+      {/* Stages et formations de la semaine, JUSTE AU-DESSUS de « À traiter »
+          (2026-10-10, demande du porteur) — et non plus en tête de l'accueil. */}
+      <AVenirPeriodes />
       <ATraiter />
     </>
   );

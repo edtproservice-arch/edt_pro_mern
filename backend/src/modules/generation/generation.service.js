@@ -439,7 +439,7 @@ export async function exigerChronogrammeLie(etablissementId, anneeScolaire) {
             type: 'liaison',
             message:
               'Réassociez l’emploi du temps au chronogramme pour la relancer. ' +
-              'La réassociation reporte d’abord les séances déjà posées.',
+              'Le chronogramme n’est pas modifié : les semaines sous 100 % vous seront signalées.',
           },
         ],
       }

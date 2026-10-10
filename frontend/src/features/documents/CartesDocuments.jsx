@@ -18,8 +18,7 @@ import {
   IdCard,
   Mail,
   Ticket,
-  Users,
-} from 'lucide-react';
+  Users, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
@@ -491,7 +490,16 @@ function DocumentTelechargeable({ document }) {
         >
           <FeuilleDocument
             document={document}
-            pied={telechargement.isPending ? 'Préparation…' : 'Word · PDF'}
+            pied={
+              telechargement.isPending ? (
+                <span className="inline-flex items-center gap-1">
+                  <Loader2 className="size-3 animate-spin" />
+                  Préparation…
+                </span>
+              ) : (
+                'Word · PDF'
+              )
+            }
             className="cursor-pointer hover:border-border-strong"
           />
         </button>

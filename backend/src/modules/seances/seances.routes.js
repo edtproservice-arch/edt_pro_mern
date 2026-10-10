@@ -15,6 +15,10 @@ import { construireExportEmargement } from './exportEmargement.service.js';
 import { construireExportIndividuel } from './exportIndividuel.service.js';
 import { annoncerModification } from '../tempsReel/annonces.js';
 import { exigerDroitPage } from '../partages/exigerDroitPage.js';
+import {
+  conformiteDeLaSemaine,
+  exigerSemaineComplete,
+} from '../chronogramme/completude.service.js';
 
 /**
  * Emploi du temps hebdomadaire (F5, F8).
@@ -119,6 +123,8 @@ router.get('/contexte', lireEmploiOuEfm, async (req, res, next) => {
  */
 router.put('/publication', directeurSeul, async (req, res, next) => {
   try {
+    // ⚠️ 100 % DU CHRONOGRAMME, SAUF EMPLOI DÉLIÉ (2026-10-10) — `exigerSemaineComplete`.
+    await exigerSemaineComplete(req.etablissementId, req.anneeScolaire, req.body?.semaine ?? '', 'Publication');
     const resultat = await service.publier(
       req.etablissementId,
       req.anneeScolaire,
@@ -282,6 +288,8 @@ const filtreGroupesExportSchema = z.object({
   filieres: z.array(z.string()).default([]),
   niveaux: z.array(z.string()).default([]),
   annees: z.array(z.string()).default([]),
+  // Alterné / Résidentiel (2026-10-10).
+  modes: z.array(z.string()).default([]),
 });
 
 /** La réponse d'un export (emploi global, émargement…) : mêmes en-têtes pour tous. */
@@ -294,6 +302,24 @@ function repondreFichier(res, { tampon, nomFichier, contentType }) {
   res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
   res.send(tampon);
 }
+
+/**
+ * La semaine peut-elle être publiée et éditée ? (2026-10-10) — la règle de
+ * `exigerSemaineComplete`, lue d'avance pour griser les boutons. Ouverte à qui
+ * lit l'emploi du temps : le gestionnaire n'a pas forcément le chronogramme.
+ */
+router.get(
+  '/:semaine/conformite',
+  lireEmploiOuEfm,
+  validate({ params: z.object({ semaine: z.string().trim().regex(/^\d{4}-W\d{1,3}$/i) }) }),
+  async (req, res, next) => {
+    try {
+      res.json(await conformiteDeLaSemaine(req.etablissementId, req.anneeScolaire, req.params.semaine));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 router.post(
   '/:semaine/export',
@@ -312,6 +338,7 @@ router.post(
   async (req, res, next) => {
     try {
       await exigerSemaineVisible(req);
+      await exigerSemaineComplete(req.etablissementId, req.anneeScolaire, req.params.semaine, 'Édition');
       repondreFichier(res, await construireExport(req.etablissementId, req.anneeScolaire, req.params.semaine, req.body));
     } catch (error) {
       next(error);
@@ -338,6 +365,7 @@ router.post(
   async (req, res, next) => {
     try {
       await exigerSemaineVisible(req);
+      await exigerSemaineComplete(req.etablissementId, req.anneeScolaire, req.params.semaine, 'Édition');
       repondreFichier(
         res,
         await construireExportEmargement(req.etablissementId, req.anneeScolaire, req.params.semaine, req.body)
@@ -371,6 +399,7 @@ router.post(
   async (req, res, next) => {
     try {
       await exigerSemaineVisible(req);
+      await exigerSemaineComplete(req.etablissementId, req.anneeScolaire, req.params.semaine, 'Édition');
       repondreFichier(
         res,
         await construireExportIndividuel(req.etablissementId, req.anneeScolaire, req.params.semaine, req.body)

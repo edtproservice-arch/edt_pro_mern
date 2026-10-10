@@ -174,3 +174,11 @@ export function publierSemaine(semaine) {
 export function depublierSemaine(semaine) {
   return api.delete(`/api/v2/seances/publication?${new URLSearchParams({ semaine })}`);
 }
+
+/**
+ * La semaine peut-elle être publiée et éditée ? (2026-10-10) — `{exigee, taux,
+ * bloquee}` : bloquée sous 100 % du chronogramme, sauf emploi délié.
+ */
+export function chargerConformite(semaine) {
+  return api.get(`/api/v2/seances/${encodeURIComponent(semaine)}/conformite`);
+}

@@ -283,6 +283,21 @@ export function chargerContexte() {
  * Remplacement complet : l'écran envoie la liste telle qu'affichée, une période
  * retirée doit disparaître.
  */
+/**
+ * Les périodes de stage ou de formation en Word, PDF ou Excel (2026-10-10).
+ * ⚠️ LA LISTE DE L'ÉCRAN : ajouts non enregistrés compris.
+ *
+ * @param {'stages' | 'formations'} type
+ * @param {Array<{sujet: string, detail?: string, debut: string, fin: string}>} periodes
+ */
+export function exporterPeriodes(type, { periodes, format, affichage = 'liste' }) {
+  return api.telecharger(
+    `/api/v2/etablissements/courant/${type}/export`,
+    { periodes, format, affichage },
+    { nomParDefaut: `periodes.${format}` }
+  );
+}
+
 export function enregistrerStages(stages, version, options) {
   return api.put('/api/v2/etablissements/courant/stages', {
     stages,

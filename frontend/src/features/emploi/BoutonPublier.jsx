@@ -6,6 +6,7 @@ import { libelleSemaine } from 'shared/domain';
 import { Button } from '@/components/ui/button';
 import ConfirmationAction from '@/components/common/ConfirmationAction';
 import { depublierSemaine, publierSemaine } from './api';
+import { raisonBlocage, useConformite } from './useConformite';
 
 const court = (valeur) => libelleSemaine(valeur, { court: true });
 
@@ -27,6 +28,7 @@ const court = (valeur) => libelleSemaine(valeur, { court: true });
 export default function BoutonPublier({ semaine, publications = [] }) {
   const cache = useQueryClient();
   const [confirmation, setConfirmation] = useState(null);
+  const conformite = useConformite(semaine);
 
   const rafraichir = () => {
     cache.invalidateQueries({ queryKey: ['emploi', 'semaines'] });
@@ -59,29 +61,38 @@ export default function BoutonPublier({ semaine, publications = [] }) {
 
   const estPubliee = publications.includes(semaine);
   const enCours = publier.isPending || depublier.isPending;
+  /*
+   * ⚠️ SEULE LA PUBLICATION SE BLOQUE (2026-10-10) : une semaine incomplète
+   *    doit pouvoir être DÉpubliée, c'est même la réaction attendue.
+   */
+  const bloque = !estPubliee ? raisonBlocage(conformite.data, 'Publication') : undefined;
 
   return (
     <>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={enCours}
-        onClick={() => setConfirmation(estPubliee ? 'depublier' : 'publier')}
-        title={
-          estPubliee
-            ? 'Visible du gestionnaire, des formateurs et des stagiaires'
-            : 'Masquée au gestionnaire, aux formateurs et aux stagiaires tant qu’elle n’est pas publiée'
-        }
-        className={
-          estPubliee
-            ? 'h-8 gap-1.5 border-success/40 bg-success/10 text-xs text-success hover:bg-success/20 hover:text-success'
-            : 'h-8 gap-1.5 text-xs'
-        }
-      >
-        {estPubliee ? <Check className="size-3.5" /> : <Send className="size-3.5" />}
-        {estPubliee ? 'Publiée' : 'Publier'}
-      </Button>
+      {/* Un bouton désactivé n'affiche pas d'info-bulle : l'enveloppe la porte. */}
+      <span title={bloque} className="inline-flex">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={enCours || Boolean(bloque)}
+          onClick={() => setConfirmation(estPubliee ? 'depublier' : 'publier')}
+          title={
+            bloque ??
+            (estPubliee
+              ? 'Visible du gestionnaire, des formateurs et des stagiaires'
+              : 'Masquée au gestionnaire, aux formateurs et aux stagiaires tant qu’elle n’est pas publiée')
+          }
+          className={
+            estPubliee
+              ? 'h-8 gap-1.5 border-success/40 bg-success/10 text-xs text-success hover:bg-success/20 hover:text-success'
+              : 'h-8 gap-1.5 text-xs'
+          }
+        >
+          {estPubliee ? <Check className="size-3.5" /> : <Send className="size-3.5" />}
+          {estPubliee ? 'Publiée' : 'Publier'}
+        </Button>
+      </span>
 
       <ConfirmationAction
         ouvert={confirmation === 'publier'}

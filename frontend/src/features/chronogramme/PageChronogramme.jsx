@@ -27,6 +27,9 @@ import {
   scinderParType,
   semainesDeLaLigne,
 } from 'shared/domain';
+import { facettesDesGroupes, filtrerGroupes } from 'shared/domain';
+import { FiltreGroupes } from '@/features/edition/FiltresDetaillee';
+import { chargerContexte } from '@/features/emploi/api';
 import { cn } from '@/lib/utils';
 import { recupererSession } from '@/features/auth/api';
 import CadreReglage from '@/features/parametres/CadreReglage';
@@ -1447,9 +1450,30 @@ function changementsCellules(ancien = {}, nouveau = {}) {
  */
 function ChoixGroupes({ liste, selection, onChange }) {
   const [filtre, setFiltre] = useState('');
+  /*
+   * ═══ LE FILTRE MODE / NIVEAU / ANNÉE / FILIÈRE D'ÉDITION (2026-10-10, demande
+   * du porteur : « ajoute le filtre en chronogramme ») ═══ La même carte
+   * « Filière », nourrie par la même identité des groupes (`groupesIdentites`
+   * du contexte de l'emploi). Elle RÉDUIT la liste à cocher ; « Tout cocher »
+   * porte alors sur ce qu'elle laisse — retenir d'un coup les TS de 2e année.
+   */
+  const [identite, setIdentite] = useState({ filieres: [], niveaux: [], annees: [], modes: [] });
+  const contexte = useQuery({ queryKey: ['emploi', 'contexte'], queryFn: chargerContexte, retry: false });
+  const identites = contexte.data?.groupesIdentites ?? null;
+  const tousLesGroupes = useMemo(() => liste.map((entree) => entree.groupe), [liste]);
+  const facettes = useMemo(
+    () => (identites ? facettesDesGroupes(tousLesGroupes, identites) : null),
+    [identites, tousLesGroupes]
+  );
+  const retenusParIdentite = useMemo(
+    () => (identites ? new Set(filtrerGroupes(tousLesGroupes, identites, identite)) : null),
+    [identites, tousLesGroupes, identite]
+  );
 
-  const visibles = liste.filter((entree) =>
-    entree.groupe.toLowerCase().includes(filtre.trim().toLowerCase())
+  const visibles = liste.filter(
+    (entree) =>
+      (!retenusParIdentite || retenusParIdentite.has(entree.groupe)) &&
+      entree.groupe.toLowerCase().includes(filtre.trim().toLowerCase())
   );
 
   const basculer = (groupe) =>
@@ -1487,6 +1511,15 @@ function ChoixGroupes({ liste, selection, onChange }) {
                 onChange={onChange}
                 cle={(entree) => entree.groupe}
               />
+
+              {facettes && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <FiltreGroupes facettes={facettes} valeurs={identite} onChanger={setIdentite} />
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {visibles.length} sur {liste.length}
+                  </span>
+                </div>
+              )}
 
               {liste.length > 12 && (
                 <div className="relative">

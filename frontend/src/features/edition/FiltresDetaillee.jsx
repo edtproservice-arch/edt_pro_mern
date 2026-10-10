@@ -133,12 +133,28 @@ export function ChoixSujets({ sujets, choisis, libelle, entete, onChanger }) {
  *
  * ⚠️ IL N'EXISTE QUE SUR L'AXE GROUPE : un formateur n'a ni filière ni année, et
  * une salle encore moins.
+ *
+ * @param {string[]} [modes] — les modes de formation (Alterné, Résidentiel) :
+ *   fournis, une section « Mode de formation » s'ajoute EN TÊTE de la carte
+ *   (2026-10-10, demande du porteur : « le mode dans la carte Filière ») — un
+ *   seul endroit pour toute l'identité du groupe. `mode` vaut null pour « Tous ».
  */
-export function FiltreGroupes({ facettes, valeurs, onChanger }) {
-  const actifs = valeurs.filieres.length + valeurs.niveaux.length + valeurs.annees.length;
+export function FiltreGroupes({ facettes, valeurs, onChanger, modes = [], mode = null, onMode }) {
+  const avecModes = modes.length > 0 && typeof onMode === 'function';
+  /* Le mode comme FACETTE (Édition, Appel, Documents) : `valeurs.modes`, à côté
+     des autres. Le chemin `modes`/`onMode` ci-dessus (liste à cocher des stages
+     et des annonces) garde la priorité quand il est fourni. */
+  const modesFacette = !avecModes ? facettes.modes ?? [] : [];
+  const modesChoisis = valeurs.modes ?? [];
+  const actifs =
+    valeurs.filieres.length +
+    valeurs.niveaux.length +
+    valeurs.annees.length +
+    modesChoisis.length +
+    (avecModes && mode ? 1 : 0);
 
   const basculer = (cle, valeur) => {
-    const liste = valeurs[cle];
+    const liste = valeurs[cle] ?? [];
     onChanger({
       ...valeurs,
       [cle]: liste.includes(valeur) ? liste.filter((v) => v !== valeur) : [...liste, valeur],
@@ -148,7 +164,7 @@ export function FiltreGroupes({ facettes, valeurs, onChanger }) {
   /* ⚠️ AUCUNE FACETTE À PROPOSER = PAS DE BOUTON. Un panneau qui s'ouvre sur
      trois sections vides fait douter du filtre, alors que ce sont les cartes des
      groupes qui n'ont pas encore de filière. */
-  if (facettes.filieres.length === 0 && facettes.niveaux.length === 0) return null;
+  if (facettes.filieres.length === 0 && facettes.niveaux.length === 0 && !avecModes && modesFacette.length === 0) return null;
 
   return (
     <Popover>
@@ -165,6 +181,52 @@ export function FiltreGroupes({ facettes, valeurs, onChanger }) {
       </PopoverTrigger>
 
       <PopoverContent className="w-72 p-3" align="start">
+        {avecModes && (
+          <>
+            <p className="mb-2 text-xs font-semibold">Mode de formation</p>
+            <div className="flex flex-wrap gap-1" role="group" aria-label="Mode de formation">
+              {[null, ...modes].map((valeur) => (
+                <Button
+                  key={valeur ?? 'tous'}
+                  variant={mode === valeur ? 'default' : 'outline'}
+                  size="sm"
+                  aria-pressed={mode === valeur}
+                  className="h-7 px-2 text-[0.7rem]"
+                  onClick={() => onMode(valeur)}
+                >
+                  {valeur ?? 'Tous'}
+                </Button>
+              ))}
+            </div>
+            {(facettes.niveaux.length > 0 || facettes.annees.length > 0 || facettes.filieres.length > 0) && (
+              <Separator className="my-3" />
+            )}
+          </>
+        )}
+
+        {modesFacette.length > 0 && (
+          <>
+            <p className="mb-2 text-xs font-semibold">Mode de formation</p>
+            <div className="flex flex-wrap gap-1" role="group" aria-label="Mode de formation">
+              {modesFacette.map((valeur) => (
+                <Button
+                  key={valeur}
+                  variant={modesChoisis.includes(valeur) ? 'default' : 'outline'}
+                  size="sm"
+                  aria-pressed={modesChoisis.includes(valeur)}
+                  className="h-7 px-2 text-[0.7rem]"
+                  onClick={() => basculer('modes', valeur)}
+                >
+                  {valeur}
+                </Button>
+              ))}
+            </div>
+            {(facettes.niveaux.length > 0 || facettes.annees.length > 0 || facettes.filieres.length > 0) && (
+              <Separator className="my-3" />
+            )}
+          </>
+        )}
+
         {facettes.niveaux.length > 0 && (
           <>
             <p className="mb-2 text-xs font-semibold">Niveau</p>
@@ -190,7 +252,7 @@ export function FiltreGroupes({ facettes, valeurs, onChanger }) {
 
         {facettes.annees.length > 0 && (
           <>
-            <Separator className="my-3" />
+            {facettes.niveaux.length > 0 && <Separator className="my-3" />}
             <p className="mb-2 text-xs font-semibold">Année de formation</p>
             <div className="flex flex-wrap gap-1">
               {facettes.annees.map((annee) => (
@@ -211,7 +273,7 @@ export function FiltreGroupes({ facettes, valeurs, onChanger }) {
 
         {facettes.filieres.length > 0 && (
           <>
-            <Separator className="my-3" />
+            {(facettes.niveaux.length > 0 || facettes.annees.length > 0) && <Separator className="my-3" />}
             <p className="mb-2 text-xs font-semibold">Filière</p>
             {/* ⚠️ EN LISTE VERTICALE, pas en jetons : les libellés DRIF montent à
                 60 caractères (« Génie Mécanique option Etudes et Méthodes… ») et
@@ -238,7 +300,10 @@ export function FiltreGroupes({ facettes, valeurs, onChanger }) {
             variant="ghost"
             size="sm"
             className="mt-2 h-7 w-full text-xs text-muted-foreground"
-            onClick={() => onChanger({ filieres: [], niveaux: [], annees: [] })}
+            onClick={() => {
+              onChanger({ filieres: [], niveaux: [], annees: [], modes: [] });
+              if (avecModes) onMode(null);
+            }}
           >
             Effacer le filtre
           </Button>

@@ -137,7 +137,7 @@ export default function BilanCharge({ bilan, statistiques, carte }) {
                 ) : (
                   <FileSpreadsheet className="h-4 w-4 text-success" />
                 )}
-                Exporter en Excel
+                Télécharger en Excel
               </Button>
             </div>
           </DialogHeader>

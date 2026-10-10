@@ -59,22 +59,42 @@ import {
  */
 const TEINTES = {
   // Le stage — magenta, comme la ligne verrouillée de la grille.
+  // ⚠️ `!` : la classe des vacances, posée sur la même cellule, ne doit pas
+  // recouvrir la période — c'est la confusion que la teinte veut éviter.
   pink: {
-    selected:
-      'data-[selected-single=true]:bg-accent-pink/70 data-[selected-single=true]:text-foreground data-[range-start=true]:bg-accent-pink/70 data-[range-start=true]:text-foreground data-[range-end=true]:bg-accent-pink/70 data-[range-end=true]:text-foreground',
-    middle: 'data-[range-middle=true]:bg-accent-pink/35 data-[range-middle=true]:text-foreground',
+    plage: '!bg-accent-pink/35 !rounded-none',
+    bord: '!bg-accent-pink/70',
+    attente: '!bg-accent-pink/70 !rounded-md ring-2 ring-inset ring-accent-pink',
     pastille: 'bg-accent-pink/70',
   },
   // La formation — gris, comme la ligne éteinte de la grille.
   gris: {
-    selected:
-      'data-[selected-single=true]:bg-zinc-400 data-[selected-single=true]:text-foreground data-[range-start=true]:bg-zinc-400 data-[range-start=true]:text-foreground data-[range-end=true]:bg-zinc-400 data-[range-end=true]:text-foreground',
-    middle: 'data-[range-middle=true]:bg-zinc-300/70 data-[range-middle=true]:text-foreground',
+    plage: '!bg-zinc-300/70 !rounded-none',
+    bord: '!bg-zinc-400',
+    attente: '!bg-zinc-400 !rounded-md ring-2 ring-inset ring-zinc-500',
     pastille: 'bg-zinc-400',
   },
 };
 
-export default function CalendrierPeriode({ valeur, onChange, anneeScolaire, couleur }) {
+/**
+ * ═══ PLUSIEURS PÉRIODES D'UN COUP (2026-10-10, demande du porteur) ═══
+ * Un groupe part souvent deux ou trois fois dans l'année : les saisir une par
+ * une obligeait à rouvrir le calendrier et à recocher les mêmes groupes.
+ *
+ * ⚠️ PLUS DE `mode="range"` : react-day-picker n'y tient qu'UNE plage. Les clics
+ * sont donc arbitrés ici :
+ *   - un premier clic pose le DÉBUT (case cerclée) ;
+ *   - le suivant pose la FIN — dans un sens comme dans l'autre ; recliquer le
+ *     même jour fait une période d'un jour ;
+ *   - cliquer DANS une période déjà tracée la retire.
+ * Deux périodes qui se chevauchent sont fusionnées : un même jour n'a pas à
+ * être compté deux fois.
+ *
+ * @param {{plages: Array<{from: Date, to: Date}>, debut?: Date}} valeur
+ */
+export default function CalendrierPeriode({ valeur, onChange, anneeScolaire, couleur, existantes = [] }) {
+  const plages = valeur?.plages ?? [];
+  const debut = valeur?.debut;
   /*
    * ⚠️ Le défaut suit le MODE, comme avant : la sélection par SEMAINES est celle
    * des stages, la plage libre celle des formations. Un appelant qui ne dit rien
@@ -94,9 +114,47 @@ export default function CalendrierPeriode({ valeur, onChange, anneeScolaire, cou
     décoration commune transmet à son bouton de jour.
   */
   const communs = {
-    numberOfMonths: 2,
+    // Trois mois (2026-10-10, demande du porteur) : un trimestre d'un regard.
+    numberOfMonths: 3,
     defaultMonth: anneeScolaire ? new Date(anneeScolaire, 8, 1) : undefined,
     ...decoration,
+    modifiers: {
+      ...decoration.modifiers,
+      plage: plages,
+      plage_debut: plages.map((p) => p.from),
+      plage_fin: plages.map((p) => p.to),
+      attente: debut ? [debut] : [],
+      existante: existantes,
+    },
+    modifiersClassNames: {
+      ...decoration.modifiersClassNames,
+      plage: classesCouleur.plage,
+      plage_debut: cn(classesCouleur.bord, '!rounded-l-md'),
+      plage_fin: cn(classesCouleur.bord, '!rounded-r-md'),
+      attente: classesCouleur.attente,
+      /* Déjà enregistrée pour un sujet retenu : un CADRE en pointillés, pas un
+         fond — le fond reste celui de la saisie en cours, qu'il ne faut pas
+         confondre avec une donnée déjà en base. */
+      existante: 'outline-dashed outline-2 -outline-offset-2 outline-destructive/60 rounded-md',
+    },
+  };
+
+  const cliquer = (jour, modificateurs) => {
+    if (modificateurs.disabled || modificateurs.hidden) return;
+
+    if (debut) {
+      const [from, to] = debut <= jour ? [debut, jour] : [jour, debut];
+      onChange({ plages: fusionner([...plages, { from, to }]) });
+      return;
+    }
+
+    const touchee = plages.find((p) => jour >= p.from && jour <= p.to);
+    if (touchee) {
+      onChange({ plages: plages.filter((p) => p !== touchee) });
+      return;
+    }
+
+    onChange({ plages, debut: jour });
   };
 
   return (
@@ -123,19 +181,47 @@ export default function CalendrierPeriode({ valeur, onChange, anneeScolaire, cou
         */}
         <Calendar
           {...communs}
-          mode="range"
-          selected={valeur}
-          onSelect={onChange}
+          onDayClick={cliquer}
           showWeekNumber
           {...colonneSemaine(communs.components, communs.rentrees, anneeScolaire)}
         />
       </div>
 
+      <p className="px-1 text-xs text-muted-foreground">
+        {debut
+          ? 'Cliquez le dernier jour de cette période.'
+          : 'Cliquez le premier puis le dernier jour de chaque période — autant de périodes que nécessaire. Cliquer une période la retire.'}
+      </p>
+
       <LegendeCalendrier>
         <Pastille classe={classesCouleur.pastille} libelle="Période sélectionnée" />
+        {existantes.length > 0 && (
+          <Pastille
+            classe="border-0 outline-dashed outline-2 -outline-offset-2 outline-destructive/60"
+            libelle="Déjà déclarée pour les sujets retenus"
+          />
+        )}
       </LegendeCalendrier>
     </div>
   );
+}
+
+/**
+ * Range les plages et fond celles qui se CHEVAUCHENT. Deux périodes bout à bout
+ * restent deux : octobre puis novembre peuvent être deux stages distincts.
+ */
+function fusionner(plages) {
+  const rangees = [...plages].sort((a, b) => a.from - b.from);
+  const fusion = [];
+  for (const plage of rangees) {
+    const derniere = fusion[fusion.length - 1];
+    if (derniere && plage.from <= derniere.to) {
+      if (plage.to > derniere.to) derniere.to = plage.to;
+    } else {
+      fusion.push({ ...plage });
+    }
+  }
+  return fusion;
 }
 
 /** « AAAA-MM-JJ » en heure LOCALE — `toISOString()` décalerait d'un jour. */

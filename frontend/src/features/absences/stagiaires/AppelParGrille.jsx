@@ -32,6 +32,7 @@ import { useAnneeActive } from '@/lib/anneeActive';
 import { chargerValidationsAppel, exporterFeuilleAbsence } from './api';
 import PanneauAppel from './PanneauAppel';
 import { useEtatPartage } from '@/features/guidage/useEtatPartage';
+import BoutonTelecharger from '@/components/common/BoutonTelecharger';
 
 /** La clé qui désigne UN cours dans le signe « validé » — voir `AppelValidation` côté serveur. */
 const cleValidation = ({ date, seance, periode, groupe }) => `${date}|${seance}|${periode}|${groupe}`;
@@ -320,34 +321,11 @@ export default function AppelParGrille({ encadrement }) {
             l'encadrement, comme la feuille elle-même côté serveur.
           */}
           {encadrement && axe === 'groupe' && periode === 'jour' && sujets.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 gap-1.5 text-xs"
-                  disabled={!semaine || telechargement.isPending}
-                >
-                  <Download className="size-3.5" />
-                  Télécharger
-                  <ChevronDown className="size-3.5 opacity-60" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuItem onSelect={() => telechargement.mutate('docx')}>
-                  <FileText className="size-3.5 text-blue-600" />
-                  Télécharger en Word
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => telechargement.mutate('pdf')}>
-                  <File className="size-3.5 text-red-600" />
-                  Télécharger en PDF
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => telechargement.mutate('xlsx')}>
-                  <FileSpreadsheet className="size-3.5 text-green-600" />
-                  Télécharger en Excel
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <BoutonTelecharger
+              disabled={!semaine}
+              enCours={telechargement.isPending}
+              onChoisir={(format) => telechargement.mutate(format)}
+            />
           )}
         </div>
       </div>

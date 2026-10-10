@@ -42,6 +42,7 @@ import { cn } from '@/lib/utils';
 import { chargerAchevement, exporterAchevement } from './api';
 import PanneauFiltres from './PanneauFiltres';
 import { useEtatPartage } from '@/features/guidage/useEtatPartage';
+import BoutonTelecharger from '@/components/common/BoutonTelecharger';
 
 /**
  * L'ACHÈVEMENT des modules — combien sont terminés, et lesquels traînent.
@@ -361,34 +362,12 @@ function Telecharger({ face, lignes, resume, dateObservee }) {
   });
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-9 gap-1.5"
-          disabled={lignes.length === 0 || telechargement.isPending}
-        >
-          <Download className="size-4" />
-          {telechargement.isPending ? 'Préparation…' : 'Télécharger'}
-          <ChevronDown className="size-3.5 opacity-60" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuItem onSelect={() => telechargement.mutate('docx')}>
-          <FileText className="size-3.5 text-blue-600" />
-          Télécharger en Word
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => telechargement.mutate('pdf')}>
-          <File className="size-3.5 text-red-600" />
-          Télécharger en PDF
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => telechargement.mutate('xlsx')}>
-          <FileSpreadsheet className="size-3.5 text-green-600" />
-          Télécharger en Excel
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <BoutonTelecharger
+      className="h-9"
+      disabled={lignes.length === 0}
+      enCours={telechargement.isPending}
+      onChoisir={(format) => telechargement.mutate(format)}
+    />
   );
 }
 

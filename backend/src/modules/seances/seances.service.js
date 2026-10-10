@@ -20,11 +20,9 @@ import {
   groupesDuSoir,
   heuresPosees,
   heuresPoseesParSeance,
-  horsSalleImposee,
   modulesRegionaux,
   normaliserValeurSemaine,
   optionsDuFormateur,
-  sallesImposees,
   seancesDeLExamen,
   semaineAOuvrir,
   titulairesDuModule,
@@ -218,7 +216,7 @@ export async function depublier(etablissementId, anneeScolaire, valeur) {
 export async function contexte(etablissementId, anneeScolaire) {
   const [base, etablissement] = await Promise.all([
     Base.findOne({ etablissementId, anneeScolaire }).select(
-      'formateurs groupes affectations groupeFilieres sallesAffectations'
+      'formateurs groupes affectations groupeFilieres sallesAffectations groupeModes'
     ),
     Etablissement.findById(etablissementId).select('espaces groupesFq publications'),
   ]);
@@ -315,7 +313,7 @@ export async function contexte(etablissementId, anneeScolaire) {
 
     /*
      * ⚠️ LES SALLES IMPOSÉES PAR MODULE (2026-10-03) : la grille pré-remplit la
-     *    salle avec `sallesImposees`, la règle même que `poser()` applique.
+     *    salle avec `sallesImposees`, la règle même que la génération applique.
      */
     sallesAffectations: Object.fromEntries(base.sallesAffectations ?? []),
 
@@ -717,6 +715,9 @@ export async function semaines(etablissementId, anneeScolaire) {
  * facette sera cochée, ce qui se voit — au lieu d'apparaître sous un niveau
  * qui n'est pas le sien.
  */
+/** `groupeModes` est une Map Mongoose sur un document, un objet une fois `lean()`. */
+const lireMode = (modes, groupe) => (modes instanceof Map ? modes.get(groupe) : modes?.[groupe]) ?? '';
+
 async function identitesDesGroupes(base, groupes) {
   const filieres = filieresParGroupe(base);
   const codes = [...new Set([...filieres.values()])].filter(Boolean);
@@ -744,6 +745,9 @@ async function identitesDesGroupes(base, groupes) {
       filiereLibelle: referentiel.libelle ?? '',
       niveau: referentiel.niveau ?? '',
       annee: anneeDuNomGroupe(groupe),
+      /* Le MODE DE FORMATION (2026-10-10, demande du porteur : filtrer Alterné /
+         Résidentiel en Édition). ⚠️ Absent = résidentiel, la règle de la carte. */
+      mode: lireMode(base?.groupeModes, groupe) || 'Résidentiel',
     };
   }
   return identites;
@@ -1095,42 +1099,12 @@ export async function poser(etablissementId, anneeScolaire, valeur, donnees, reg
   }
 
   /*
-   * ═══ ⚠️ LA SALLE DÉCLARÉE POUR LE MODULE EST IMPOSÉE ═══ (décision du
-   * porteur, 2026-10-03) — à la saisie comme à la génération, par la même
-   * règle (`sallesImposees`).
-   *
-   * ⚠️ SEULEMENT QUAND LA SALLE OU LE COURS CHANGE. Une séance posée avant la
-   *    règle, dans une autre salle, doit encore pouvoir être marquée absente
-   *    ou rattachée à son statut sans qu'on exige d'abord de la déménager.
+   * ⚠️ LA SALLE DU MODULE N'EST PAS IMPOSÉE À LA SAISIE (2026-10-10, demande du
+   *    porteur : « permet le changement de l'espace même s'il est attribué dans
+   *    l'affectation »). Elle reste imposée à la GÉNÉRATION (`sallesDe`, dans
+   *    `probleme.js`) et proposée d'office par la grille (`sallesImposees`) ;
+   *    à la main, le directeur choisit.
    */
-  const memeSalle =
-    existante &&
-    String(existante.salle ?? '').trim().toUpperCase() ===
-      String(donnees.salle ?? '').trim().toUpperCase() &&
-    existante.groupe === donnees.groupe &&
-    existante.module === donnees.module;
-
-  if (!memeSalle) {
-    const imposees = sallesImposees(
-      base.sallesAffectations,
-      donnees.groupe,
-      donnees.module,
-      etablissement?.espaces ?? []
-    );
-    if (horsSalleImposee(donnees.salle, imposees)) {
-      throw badRequest(`« ${donnees.module} » se donne en ${imposees.join(' ou ')}`, {
-        code: 'SALLE_MODULE_IMPOSEE',
-        details: [
-          {
-            type: 'salleModule',
-            message:
-              `La carte impose ${imposees.join(' ou ')} pour ce module. ` +
-              'Choisissez cette salle, ou modifiez la carte de l’établissement.',
-          },
-        ],
-      });
-    }
-  }
 
   /*
    * ═══ ⚠️ LE GEL DE RENTRÉE EST CONTRÔLÉ ICI, PAS SEULEMENT À L'ÉCRAN ═══

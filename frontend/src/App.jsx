@@ -53,6 +53,9 @@ import PageMesAffectations from '@/features/consultation/PageMesAffectations';
 import PageMonProgramme from '@/features/consultation/PageMonProgramme';
 import PageMonAvancement from '@/features/consultation/PageMonAvancement';
 import PageMesAbsences from '@/features/consultation/PageMesAbsences';
+import PageMesPeriodes from '@/features/consultation/PageMesPeriodes';
+import PageAnnonces from '@/features/annonces/PageAnnonces';
+import PageAnnoncesAdmin from '@/features/annonces/PageAnnoncesAdmin';
 
 /*
  * ═══ GROUPES DE RÔLES — SESSIONS CONSULTATIVES (F14, 2026-09-03) ═══
@@ -127,6 +130,8 @@ export default function App() {
             administrateur n'a ni établissement ni année scolaire à y afficher.
           */}
           <Route path="/admin/messagerie" element={<PageMessagerieAdmin />} />
+          {/* Annonces aux directeurs, dans leur bandeau et leur messagerie (2026-10-10). */}
+          <Route path="/admin/annonces" element={<PageAnnoncesAdmin />} />
 
           {/* F3 — configuration initiale de l'établissement (← setup.html) */}
           <Route path="/configuration" element={<ConfigurationPage />} />
@@ -351,6 +356,35 @@ export default function App() {
               element={
                 <GardeRole roles={[ROLES.FORMATEUR, ROLES.STAGIAIRE]}>
                   <PageMonAvancement />
+                </GardeRole>
+              }
+            />
+            {/*
+              « Mes stages » / « Mes formations » (2026-10-10) : UNE page, deux
+              URL — le serveur répond selon le rôle du jeton (`/consultation/periodes`).
+            */}
+            {/* Annonces du bandeau : directeur → formateurs, gestionnaire → stagiaires (2026-10-10). */}
+            <Route
+              path="annonces"
+              element={
+                <GardeRole roles={[ROLES.DIRECTEUR, ROLES.GESTIONNAIRE]}>
+                  <PageAnnonces />
+                </GardeRole>
+              }
+            />
+            <Route
+              path="mes-stages"
+              element={
+                <GardeRole roles={[ROLES.STAGIAIRE]}>
+                  <PageMesPeriodes />
+                </GardeRole>
+              }
+            />
+            <Route
+              path="mes-formations"
+              element={
+                <GardeRole roles={[ROLES.FORMATEUR]}>
+                  <PageMesPeriodes />
                 </GardeRole>
               }
             />

@@ -49,6 +49,8 @@ const SECTIONS = [
    * n'engage que lui, vit dans ses Paramètres.
    */
   { to: '/admin/calendrier', libelle: 'Calendrier' },
+  // Les annonces aux directeurs — leur bandeau passant et leur messagerie (2026-10-10).
+  { to: '/admin/annonces', libelle: 'Annonces' },
 ];
 
 /**

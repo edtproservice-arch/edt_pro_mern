@@ -177,6 +177,24 @@ describe('annonces', () => {
     expect(await Message.countDocuments({ destinataireId: comptes.formateur._id })).toBe(0);
   });
 
+  it('page liée : une page interne, rendue au bandeau et au message', async () => {
+    await request(app)
+      .post('/api/v2/annonces')
+      .set('Cookie', cookies.directeur)
+      .send({ texte: 'Vos stages', fin: FIN, lien: '/app/mes-formations', lienTitre: 'Formations' });
+
+    expect((await mes('formateur'))[0]).toMatchObject({ lien: '/app/mes-formations', lienTitre: 'Formations' });
+    const message = await Message.findOne({ destinataireId: comptes.formateur._id }).lean();
+    expect(message.annonce).toMatchObject({ lien: '/app/mes-formations' });
+  });
+
+  it('page liée : une adresse externe est refusée', async () => {
+    for (const lien of ['https://exemple.com', '//exemple.com', 'javascript:alert(1)']) {
+      const reponse = await request(app).post('/api/v2/annonces').set('Cookie', cookies.directeur).send({ texte: 'x', fin: FIN, lien });
+      expect(reponse.status).toBe(400);
+    }
+  });
+
   it('une annonce expirée quitte le bandeau', async () => {
     await request(app)
       .post('/api/v2/annonces')

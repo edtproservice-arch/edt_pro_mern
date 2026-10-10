@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -15,6 +15,7 @@ import {
   Trash2,
   Undo2,
   X,
+  ArrowUpRight,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -869,6 +870,16 @@ function Lecture({
           </p>
           {/* La copie d'une annonce du bandeau (2026-10-10) : son degré d'importance, en clair. */}
           {message.annonce && <BadgeAnnonce importance={message.annonce.importance} />}
+          {/* La page liée à l'annonce (2026-10-10) — un lien interne, comme dans le bandeau. */}
+          {message.annonce?.lien && (
+            <Link
+              to={message.annonce.lien}
+              className="ml-2 mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary underline-offset-4 hover:underline"
+            >
+              {message.annonce.lienTitre ? `Ouvrir : ${message.annonce.lienTitre}` : 'Ouvrir la page'}
+              <ArrowUpRight className="size-3" />
+            </Link>
+          )}
           {/*
             ⚠️ « REÇU OU ENVOYÉ » VIENT DU SERVEUR, PAS DE LA BOÎTE. La règle
             précédente — `boite === 'envoyes'` — se trompait dans l'archive et

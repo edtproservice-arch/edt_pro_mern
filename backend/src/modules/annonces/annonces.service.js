@@ -41,6 +41,8 @@ function presenter(annonce, { auteur } = {}) {
     id: String(annonce._id),
     texte: annonce.texte,
     importance: annonce.importance,
+    lien: annonce.lien ?? '',
+    lienTitre: annonce.lienTitre ?? '',
     cible: annonce.cible,
     debut: annonce.debut,
     fin: annonce.fin,
@@ -62,7 +64,7 @@ function presenter(annonce, { auteur } = {}) {
 export async function publier(
   auteur,
   etablissementId,
-  { texte, importance = 'info', debut, fin, etablissementIds = [], matricules = [], groupes = [] },
+  { texte, importance = 'info', debut, fin, etablissementIds = [], matricules = [], groupes = [], lien = '', lienTitre = '' },
   anneeScolaire = null
 ) {
   const cible = CIBLE_PAR_ROLE[auteur.role];
@@ -97,6 +99,8 @@ export async function publier(
     groupes: groupesVises,
     texte,
     importance,
+    lien,
+    lienTitre: lien ? lienTitre : '',
     debut: premier,
     fin,
     destinataires: comptes.length,
@@ -134,7 +138,13 @@ async function remettre(annonce) {
         destinataires: ids.slice(i, i + 200),
         sujet,
         corps,
-        annonce: { id: String(marquee._id), importance: marquee.importance },
+        annonce: {
+          id: String(marquee._id),
+          importance: marquee.importance,
+          // Le bouton « Ouvrir la page » du message, s'il y a une page liée.
+          lien: marquee.lien ?? '',
+          lienTitre: marquee.lienTitre ?? '',
+        },
       });
       remis += bilan.envoyes;
     } catch {

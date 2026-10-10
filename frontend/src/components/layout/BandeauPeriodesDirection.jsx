@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Briefcase, GraduationCap, Info, Megaphone, Siren, X } from 'lucide-react';
+import { AlertTriangle, ArrowUpRight, Briefcase, GraduationCap, Info, Megaphone, Siren, X } from 'lucide-react';
 import { ROLES } from 'shared/constants';
 import { cn } from '@/lib/utils';
 import { chargerEtablissementCourant } from '@/features/configuration/api';
@@ -116,7 +116,29 @@ export default function BandeauPeriodesDirection({ lien = true, session = null, 
   // La couleur : la plus grave des annonces ; à défaut, l'ambre des stages et formations.
   const ton = annonces[0]?.importance === 'urgente' ? 'urgente' : annonces.some((a) => a.importance === 'importante') || periodes.length > 0 ? 'importante' : 'info';
   const style = STYLES_IMPORTANCE[ton];
-  const vers = session ? (estStagiaire ? '/app/mes-stages' : '/app/mes-formations') : '/app/parametres/stages';
+  /*
+   * Où mène l'étiquette de gauche. ⚠️ « À LA UNE » MÈNE À LA PAGE DE L'ANNONCE
+   * (2026-10-10, demande du porteur) : la plus grave qui en a une. Sans page
+   * liée, l'étiquette n'est pas un lien — elle ne renvoie pas vers les stages,
+   * puisque ce ne sont plus eux qui défilent.
+   */
+  const lienAnnonce = annonces.find((a) => a.lien);
+  const vers =
+    annonces.length > 0
+      ? lienAnnonce?.lien ?? null
+      : session
+        ? estStagiaire
+          ? '/app/mes-stages'
+          : '/app/mes-formations'
+        : '/app/parametres/stages';
+  const titreLien =
+    annonces.length > 0
+      ? lienAnnonce?.lienTitre
+        ? `Ouvrir : ${lienAnnonce.lienTitre}`
+        : 'Ouvrir la page de l’annonce'
+      : session
+        ? 'Voir le détail'
+        : 'Ouvrir les stages';
   const titreEtiquette = annonces.length > 0 ? 'À la une' : 'Cette semaine';
 
   const masquer = () => {
@@ -133,15 +155,13 @@ export default function BandeauPeriodesDirection({ lien = true, session = null, 
       {annonces.map((annonce) => {
         const { icone: Icone, teinte } = STYLES_IMPORTANCE[annonce.importance] ?? STYLES_IMPORTANCE.info;
         return (
-          <li key={`annonce-${annonce.id}`} className="flex items-center gap-1.5 whitespace-nowrap">
-            <Icone className={cn('size-3.5', teinte)} />
-            {annonce.importance !== 'info' && (
-              <strong className={cn('font-semibold uppercase', teinte)}>
-                {annonce.importance === 'urgente' ? 'Urgent' : 'Important'}
-              </strong>
-            )}
-            <span className="font-medium">{annonce.texte.replace(/\s+/g, ' ')}</span>
-            {annonce.auteur?.nom && <span className="text-muted-foreground">— {annonce.auteur.nom}</span>}
+          <li key={`annonce-${annonce.id}`} className="whitespace-nowrap">
+            {/*
+              ⚠️ UNE ANNONCE LIÉE SE CLIQUE (2026-10-10, demande du porteur) : elle
+              mène à sa page. Le survol arrête déjà le défilement — on vise sans
+              courir après. La copie doublée (`aria-hidden`) reste hors du clavier.
+            */}
+            <ContenuAnnonce annonce={annonce} Icone={Icone} teinte={teinte} doublon={doublon} />
           </li>
         );
       })}
@@ -176,11 +196,11 @@ export default function BandeauPeriodesDirection({ lien = true, session = null, 
       aria-label={`${total} annonce(s), stage(s) ou formation(s)`}
       className={cn('flex h-8 shrink-0 items-center border-b text-xs print:hidden', style.bandeau)}
     >
-      {lien ? (
+      {(annonces.length > 0 ? Boolean(vers) : lien) ? (
         <Link
           to={vers}
           className={cn('flex h-full shrink-0 items-center gap-1.5 border-r px-3 font-semibold', style.etiquette)}
-          title={session ? 'Voir le détail' : 'Ouvrir les stages'}
+          title={titreLien}
         >
           {contenuEtiquette}
         </Link>
@@ -225,6 +245,40 @@ export default function BandeauPeriodesDirection({ lien = true, session = null, 
         <X className="size-3.5" />
       </button>
     </div>
+  );
+}
+
+/** Le contenu d'une annonce dans le bandeau — un lien quand elle mène à une page. */
+function ContenuAnnonce({ annonce, Icone, teinte, doublon }) {
+  const contenu = (
+    <>
+      <Icone className={cn('size-3.5 shrink-0', teinte)} />
+      {annonce.importance !== 'info' && (
+        <strong className={cn('font-semibold uppercase', teinte)}>
+          {annonce.importance === 'urgente' ? 'Urgent' : 'Important'}
+        </strong>
+      )}
+      <span className="font-medium">{annonce.texte.replace(/\s+/g, ' ')}</span>
+      {annonce.auteur?.nom && <span className="text-muted-foreground">— {annonce.auteur.nom}</span>}
+      {annonce.lien && (
+        <span className={cn('inline-flex items-center gap-0.5 font-semibold', teinte)}>
+          {annonce.lienTitre ? `· ${annonce.lienTitre}` : '· Ouvrir'}
+          <ArrowUpRight className="size-3" />
+        </span>
+      )}
+    </>
+  );
+
+  if (!annonce.lien) return <span className="flex items-center gap-1.5">{contenu}</span>;
+  return (
+    <Link
+      to={annonce.lien}
+      tabIndex={doublon ? -1 : undefined}
+      title={annonce.lienTitre ? `Ouvrir : ${annonce.lienTitre}` : 'Ouvrir la page'}
+      className="flex items-center gap-1.5 rounded px-1 underline-offset-4 hover:bg-background/60 hover:underline"
+    >
+      {contenu}
+    </Link>
   );
 }
 

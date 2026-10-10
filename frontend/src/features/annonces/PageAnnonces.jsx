@@ -14,6 +14,8 @@ import { cn } from '@/lib/utils';
 import SelecteurDate from '@/components/common/SelecteurDate';
 import CadreReglage from '@/features/parametres/CadreReglage';
 import ChoixMultiple from '@/features/parametres/ChoixMultiple';
+import { NAVIGATION, NAVIGATION_FORMATEUR, NAVIGATION_STAGIAIRE } from '@/components/layout/navigation';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { chargerContexte } from '@/features/emploi/api';
 import { recupererSession } from '@/features/auth/api';
 import {
@@ -67,6 +69,54 @@ export const IMPORTANCES = {
   },
 };
 
+/*
+ * ═══ LES PAGES QU'UNE ANNONCE PEUT OUVRIR (2026-10-10) ═══ Celles du
+ * DESTINATAIRE, pas de l'auteur : un formateur ne peut ouvrir ni l'Édition ni
+ * les Paramètres, et un lien vers elles le renverrait à son accueil. Les listes
+ * viennent de `navigation.js`, la définition unique des menus.
+ */
+const CIBLE_DE = { [ROLES.ADMIN]: ROLES.DIRECTEUR, [ROLES.DIRECTEUR]: ROLES.FORMATEUR, [ROLES.GESTIONNAIRE]: ROLES.STAGIAIRE };
+const MESSAGERIE = { titre: 'Messagerie', url: '/app/messagerie' };
+const PAGES_PAR_CIBLE = {
+  [ROLES.DIRECTEUR]: [
+    { groupe: 'Pages', pages: [MESSAGERIE, ...NAVIGATION.filter((e) => !e.sousMenu)] },
+    ...NAVIGATION.filter((e) => e.sousMenu).map((e) => ({ groupe: e.titre, pages: e.sousMenu })),
+  ],
+  [ROLES.FORMATEUR]: [{ groupe: 'Pages du formateur', pages: [...NAVIGATION_FORMATEUR, MESSAGERIE] }],
+  [ROLES.STAGIAIRE]: [{ groupe: 'Pages du stagiaire', pages: [...NAVIGATION_STAGIAIRE, MESSAGERIE] }],
+};
+
+/** La page liée : « Aucune » par défaut, sinon un clic sur l'annonce y mène. */
+function ChoixPageLiee({ cible, valeur, onChange }) {
+  const groupes = PAGES_PAR_CIBLE[cible] ?? [];
+  return (
+    <div className="flex flex-col gap-1.5 sm:max-w-sm">
+      <Label htmlFor="lien-annonce">
+        Page liée <span className="font-normal text-muted-foreground">(facultatif)</span>
+      </Label>
+      <Select value={valeur || 'aucune'} onValueChange={(v) => onChange(v === 'aucune' ? '' : v)}>
+        <SelectTrigger id="lien-annonce" className="h-9 bg-card">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="aucune">Aucune — l’annonce ne mène nulle part</SelectItem>
+          {groupes.map(({ groupe, pages }) => (
+            <SelectGroup key={groupe}>
+              <SelectLabel>{groupe}</SelectLabel>
+              {pages.map((page) => (
+                <SelectItem key={page.url} value={page.url}>
+                  {page.titrePage ?? page.titre}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          ))}
+        </SelectContent>
+      </Select>
+      <p className="text-xs text-muted-foreground">Un clic sur l’annonce, dans le bandeau ou la messagerie, ouvrira cette page.</p>
+    </div>
+  );
+}
+
 /** « Les directeurs de tout le réseau », « 3 groupe(s) choisi(s) »… */
 function resumeDestinataires({ admin, role, estGestionnaire, etablissements, vises }) {
   if (admin) {
@@ -77,7 +127,7 @@ function resumeDestinataires({ admin, role, estGestionnaire, etablissements, vis
 }
 
 /** La ligne telle qu'elle défilera — même teinte, même icône que le bandeau réel. */
-function Apercu({ texte, importance }) {
+function Apercu({ texte, importance, lienTitre }) {
   const { icone: Icone, bandeau } = IMPORTANCES[importance] ?? IMPORTANCES.info;
   const teinte = { urgente: 'text-destructive', importante: 'text-warning', info: 'text-primary' }[importance];
   return (
@@ -93,6 +143,9 @@ function Apercu({ texte, importance }) {
         <span className={cn('truncate', texte.trim() ? 'font-medium' : 'italic text-muted-foreground')}>
           {texte.trim() ? texte.replace(/\s+/g, ' ') : 'Votre message apparaîtra ici…'}
         </span>
+        {lienTitre && (
+          <span className={cn('shrink-0 font-semibold underline underline-offset-4', teinte)}>· {lienTitre} ↗</span>
+        )}
       </span>
     </div>
   );
@@ -119,11 +172,14 @@ export default function PageAnnonces({ admin = false }) {
   const [etablissements, setEtablissements] = useState([]);
   // Formateurs (directeur) ou groupes (gestionnaire) visés — VIDE = TOUS, le défaut.
   const [vises, setVises] = useState([]);
+  // La page où mène un clic sur l'annonce — facultative.
+  const [lien, setLien] = useState('');
   const estGestionnaire = role === ROLES.GESTIONNAIRE;
 
   const publication = useMutation({
     mutationFn: () => {
-      const corps = { texte: texte.trim(), importance, debut, fin };
+      const page = PAGES_PAR_CIBLE[CIBLE_DE[role]].flatMap((g) => g.pages).find((x) => x.url === lien);
+      const corps = { texte: texte.trim(), importance, debut, fin, lien, lienTitre: page?.titre ?? '' };
       if (admin) return publierAnnonceAdmin({ ...corps, etablissementIds: etablissements });
       return publierAnnonce({ ...corps, [estGestionnaire ? 'groupes' : 'matricules']: vises });
     },
@@ -136,6 +192,7 @@ export default function PageAnnonces({ admin = false }) {
       setTexte('');
       setImportance('info');
       setVises([]);
+      setLien('');
       setDebut(enTexte(new Date()));
       client.invalidateQueries({ queryKey: ['annonces-publiees'] });
     },
@@ -266,9 +323,15 @@ export default function PageAnnonces({ admin = false }) {
               )}
             </div>
 
+            <ChoixPageLiee cible={CIBLE_DE[role]} valeur={lien} onChange={setLien} />
+
             <div className="space-y-1.5">
               <p className="text-sm font-medium">Aperçu dans le bandeau</p>
-              <Apercu texte={texte} importance={importance} />
+              <Apercu
+                texte={texte}
+                importance={importance}
+                lienTitre={PAGES_PAR_CIBLE[CIBLE_DE[role]].flatMap((g) => g.pages).find((x) => x.url === lien)?.titre}
+              />
             </div>
           </div>
 
@@ -319,6 +382,7 @@ export default function PageAnnonces({ admin = false }) {
                           du {afficher(annonce.debut)} au {afficher(annonce.fin)} · {annonce.destinataires} destinataire(s)
                           {annonce.groupes?.length > 0 && ` · ${annonce.groupes.join(', ')}`}
                           {annonce.matricules?.length > 0 && ` · ${annonce.matricules.length} formateur(s) choisi(s)`}
+                          {annonce.lien && ` · → ${annonce.lienTitre || annonce.lien}`}
                         </span>
                       </div>
                       <p className="whitespace-pre-wrap text-sm">{annonce.texte}</p>

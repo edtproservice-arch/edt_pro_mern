@@ -40,6 +40,13 @@ const annonceSchema = new mongoose.Schema(
     groupes: [{ type: String, trim: true }],
     texte: { type: String, trim: true, required: true, maxlength: 500 },
     importance: { type: String, enum: IMPORTANCES, default: 'info' },
+    /*
+     * La PAGE LIÉE (2026-10-10, demande du porteur : « cliquer l'annonce À la une
+     * mène à la page concernée »). Un chemin INTERNE (`/app/…`), jamais une
+     * adresse externe : un bandeau officiel ne doit pas pouvoir mener ailleurs.
+     */
+    lien: { type: String, trim: true, default: '' },
+    lienTitre: { type: String, trim: true, default: '' },
     // « AAAA-MM-JJ », bornes comprises — comme les stages.
     debut: { type: String, required: true },
     fin: { type: String, required: true },

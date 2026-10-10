@@ -27,6 +27,14 @@ const annonceSchema = z.object({
   importance: z.enum(IMPORTANCES).default('info'),
   debut: jour.optional(),
   fin: jour,
+  // ⚠️ INTERNE SEULEMENT : `/app` ou `/app/…`, sans hôte ni protocole.
+  lien: z
+    .string()
+    .trim()
+    .max(160)
+    .regex(/^(\/app(\/[A-Za-z0-9\-_/]*)?)?$/, 'Page interne attendue (/app/…)')
+    .default(''),
+  lienTitre: z.string().trim().max(80).default(''),
 });
 
 /** Le rôle sous lequel la requête agit : un admin en collaboration est directeur. */

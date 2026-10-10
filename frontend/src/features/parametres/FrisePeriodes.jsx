@@ -83,11 +83,13 @@ function EnteteSemaine({ lundi, numero, echelle, vacances, feries }) {
       )}
     >
       {numero ? (echelle === 'mois' ? numero : `S${numero}`) : ''}
+      {/* ⚠️ LE STYLE EXACT DES BADGES DU CHRONOGRAMME (`Badges` de
+          GrilleChronogramme.jsx, 2026-10-10, demande du porteur). */}
       {vacances.length > 0 && (
-        <span className="rounded bg-primary/20 px-0.5 text-[0.5rem] font-semibold leading-tight text-primary">VAC</span>
+        <span className="rounded bg-primary/20 px-1 text-[0.55rem] font-semibold leading-4 text-primary">VAC</span>
       )}
       {feries.length > 0 && (
-        <span className="whitespace-nowrap rounded bg-warning/40 px-0.5 text-[0.5rem] font-semibold leading-tight text-foreground">
+        <span className="whitespace-nowrap rounded bg-warning/40 px-1 text-[0.55rem] font-semibold leading-4 text-foreground">
           {feries.length} JF
         </span>
       )}

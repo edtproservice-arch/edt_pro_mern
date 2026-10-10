@@ -133,49 +133,63 @@ export default function BarreLaterale(proprietes) {
       <SidebarContent>
         <GroupeFavoris pathname={pathname} />
 
-        {/* Groupe Navigation (tous les menus sauf Paramètres) */}
-        <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
-          <SidebarMenu>
-            {raccourcis.map((entree) => {
-              const estAccueil = entree.url === '/app';
+        {/*
+          ⚠️ LES RACCOURCIS N'ONT PAS DE TITRE (2026-10-10, demande du porteur :
+          « Accueil, Messagerie, Annonces n'appartiennent pas à la navigation »).
+          Ils restent en tête, seuls ; l'intitulé « Navigation » passe au-dessus
+          des pages de travail, à partir d'« Emploi ».
+        */}
+        {raccourcis.length > 0 && (
+          <SidebarGroup>
+            <SidebarMenu>
+              {raccourcis.map((entree) => {
+                const estAccueil = entree.url === '/app';
 
-              return (
+                return (
+                  <SidebarMenuItem key={entree.url}>
+                    <SidebarMenuButton
+                      asChild
+                      tooltip={entree.titre}
+                      isActive={estAccueil ? pathname === '/app' : pathname === entree.url}
+                    >
+                      <NavLink to={entree.url} end={estAccueil}>
+                        <entree.icone className="stroke-[1.7]" />
+                        <span>{entree.titre}</span>
+                      </NavLink>
+                    </SidebarMenuButton>
+
+                    {/*
+                      ⚠️ LE COMPTEUR NE S'AFFICHE QU'AU-DELÀ DE ZÉRO. Un « 0 »
+                      permanent à côté de « Messagerie » se lit comme une pastille
+                      à traiter, et on finit par ne plus la regarder — y compris le
+                      jour où elle porte un vrai nombre.
+                    */}
+                    {entree.url === '/app/messagerie' && <CompteurMessages />}
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroup>
+        )}
+
+        {/* Groupe Navigation (tous les menus sauf Paramètres) */}
+        {sansEntree.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+            <SidebarMenu>
+              {sansEntree.map((entree) => (
                 <SidebarMenuItem key={entree.url}>
-                  <SidebarMenuButton
-                    asChild
-                    tooltip={entree.titre}
-                    isActive={estAccueil ? pathname === '/app' : pathname === entree.url}
-                  >
-                    <NavLink to={entree.url} end={estAccueil}>
+                  <SidebarMenuButton asChild tooltip={entree.titre} isActive={pathname === entree.url}>
+                    <NavLink to={entree.url}>
                       <entree.icone className="stroke-[1.7]" />
                       <span>{entree.titre}</span>
                     </NavLink>
                   </SidebarMenuButton>
-
-                  {/*
-                    ⚠️ LE COMPTEUR NE S'AFFICHE QU'AU-DELÀ DE ZÉRO. Un « 0 »
-                    permanent à côté de « Messagerie » se lit comme une pastille
-                    à traiter, et on finit par ne plus la regarder — y compris le
-                    jour où elle porte un vrai nombre.
-                  */}
-                  {entree.url === '/app/messagerie' && <CompteurMessages />}
                 </SidebarMenuItem>
-              );
-            })}
-
-            {sansEntree.map((entree) => (
-              <SidebarMenuItem key={entree.url}>
-                <SidebarMenuButton asChild tooltip={entree.titre} isActive={pathname === entree.url}>
-                  <NavLink to={entree.url}>
-                    <entree.icone className="stroke-[1.7]" />
-                    <span>{entree.titre}</span>
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
-        </SidebarGroup>
+              ))}
+            </SidebarMenu>
+          </SidebarGroup>
+        )}
 
         {partagees.length > 0 && (
           <SidebarGroup>

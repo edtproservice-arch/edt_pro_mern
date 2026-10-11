@@ -130,6 +130,51 @@ describe('propagation des masses de la répartition', () => {
     expect(annonces).toEqual([{ codeModule: 'M101' }]);
   });
 
+  /*
+   * ═══ « REPORTER SUR LES CARTES » (2026-10-11, signalé par le porteur) ═══ Une
+   * copie restée décalée — la répartition modifiée avant que la propagation
+   * soit déployée — ne suit plus le DRIF : resauver ne fait rien. Le report
+   * forcé la rattrape ; un groupe en ALTERNANCE garde sa masse.
+   */
+  it('« reporter sur les cartes » rattrape une copie décalée, sauf en alternance', async () => {
+    const decalee = await base(ANNEE, [
+      // Décalée : la répartition dit 30 / 15, la carte a gardé un ancien 24 / 0.
+      affectation({ s1Heures: 24, s2Heures: 0 }),
+      affectation({ type: TYPES_COURS.SYNCHRONE, s1Heures: 6, s2Heures: 0 }),
+      // En alternance : ajustement local légitime, laissé tel quel.
+      affectation({ groupe: 'GM102', s1Heures: 20, s2Heures: 0 }),
+    ]);
+    decalee.groupeModes = new Map([['GM102', 'Alterné']]);
+    await decalee.save();
+
+    // La propagation ordinaire n'y peut rien : la même valeur resauvée ne change rien.
+    expect((await modifier({ mhpS1: 30 })).body.ligne.propagation).toEqual({ bases: 0, affectations: 0 });
+
+    const reponse = await request(app)
+      .post(`/api/v2/admin/repartitions/${ligne.id}/reporter`)
+      .set('Cookie', cookiesAdmin)
+      .send({});
+    expect(reponse.status).toBe(200);
+    expect(reponse.body).toMatchObject({ bases: 1, affectations: 2, alternes: 1 });
+
+    const apres = await Base.findOne({ etablissementId: etablissement.id, anneeScolaire: ANNEE }).lean();
+    expect(apres.affectations.map((a) => [a.groupe, a.type, a.s1Heures, a.s2Heures])).toEqual([
+      ['GM101', TYPES_COURS.PRESENTIEL, 30, 15],
+      ['GM101', TYPES_COURS.SYNCHRONE, 10, 0],
+      ['GM102', TYPES_COURS.PRESENTIEL, 20, 0],
+    ]);
+
+    // Réservé à l'administrateur.
+    const directeur = await request(app)
+      .post('/api/v2/auth/connexion')
+      .send({ identifiant: 'directeur@edtpro.ma', motDePasse: MOT_DE_PASSE });
+    const refus = await request(app)
+      .post(`/api/v2/admin/repartitions/${ligne.id}/reporter`)
+      .set('Cookie', directeur.headers['set-cookie'])
+      .send({});
+    expect(refus.status).toBe(403);
+  });
+
   // Une année close garde ses masses : ses séances sont faites, son avancement arrêté.
   it('ne touche pas une année scolaire passée', async () => {
     await base(ANNEE - 1, [affectation({})]);

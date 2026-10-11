@@ -46,10 +46,21 @@ export const massesChangees = (avant, apres) =>
  * Reporte, dans les bases concernées, le changement de masses d'UNE ligne de
  * répartition. `avant` et `apres` sont deux états de la même ligne.
  *
- * @returns {Promise<{ bases: number, affectations: number }>}
+ * ═══ `forcer` — « REPORTER SUR LES CARTES » (2026-10-11, signalé par le
+ * porteur : « même si j'ai modifié en admin, en session directeur ne marche
+ * pas en hébergé ») ═══ La règle ordinaire ne suit que les copies qui portaient
+ * EXACTEMENT l'ancienne masse. Une copie déjà DÉCALÉE — la répartition changée
+ * avant que la propagation existe, ou sur un serveur pas encore mis à jour —
+ * passe alors pour un ajustement local, et ne rattrape plus JAMAIS le DRIF :
+ * resauver la même valeur ne change rien, et la changer encore la laisse de
+ * côté. `forcer` écrit la masse de la ligne (`apres`) sur toutes ses copies,
+ * quelle que soit leur valeur — SAUF les groupes en ALTERNANCE, le seul cas
+ * d'ajustement local légitime que l'on sache reconnaître.
+ *
+ * @returns {Promise<{ bases: number, affectations: number, alternes?: number }>}
  */
-export async function propagerMasses(avant, apres, { maintenant = new Date(), annoncer = true } = {}) {
-  if (!avant || !apres || !massesChangees(avant, apres)) return { bases: 0, affectations: 0 };
+export async function propagerMasses(avant, apres, { maintenant = new Date(), annoncer = true, forcer = false } = {}) {
+  if (!avant || !apres || (!forcer && !massesChangees(avant, apres))) return { bases: 0, affectations: 0 };
 
   // L'identité de la ligne AVANT : c'est sous elle que les bases connaissent le module.
   const code = String(avant.codeModule ?? '').trim();
@@ -64,6 +75,7 @@ export async function propagerMasses(avant, apres, { maintenant = new Date(), an
 
   let total = 0;
   let touchees = 0;
+  let alternes = 0;
 
   for (const base of bases) {
     const filieres = filieresParGroupe(base);
@@ -81,8 +93,19 @@ export async function propagerMasses(avant, apres, { maintenant = new Date(), an
       if (!concerne) continue;
 
       const [champS1, champS2] = champs;
-      // Ajustée par l'établissement : on n'y touche pas.
-      if (!egal(affectation.s1Heures, avant[champS1]) || !egal(affectation.s2Heures, avant[champS2])) continue;
+      if (forcer) {
+        // Un groupe en alternance reçoit souvent moins que le DRIF : sa masse est une décision locale.
+        const enAlternance = separerFusion(affectation.groupe).some((groupe) => /alt/i.test(lireMode(base.groupeModes, groupe)));
+        if (enAlternance) {
+          alternes += 1;
+          continue;
+        }
+        // Déjà à jour : rien à écrire.
+        if (egal(affectation.s1Heures, apres[champS1]) && egal(affectation.s2Heures, apres[champS2])) continue;
+      } else if (!egal(affectation.s1Heures, avant[champS1]) || !egal(affectation.s2Heures, avant[champS2])) {
+        // Ajustée par l'établissement : on n'y touche pas.
+        continue;
+      }
 
       affectation.s1Heures = Number(apres[champS1] ?? 0);
       affectation.s2Heures = Number(apres[champS2] ?? 0);
@@ -121,9 +144,15 @@ export async function propagerMasses(avant, apres, { maintenant = new Date(), an
    */
   if (annoncer) bus.emit(EVENEMENTS.REFERENTIEL_MODIFIE, { codeModule: code });
 
-  logger.info({ codeModule: code, filiere, anneeFormation, bases: touchees, affectations: total }, 'Masses de la répartition propagées');
-  return { bases: touchees, affectations: total };
+  logger.info(
+    { codeModule: code, filiere, anneeFormation, bases: touchees, affectations: total, forcer, alternes },
+    'Masses de la répartition propagées'
+  );
+  return { bases: touchees, affectations: total, ...(forcer ? { alternes } : {}) };
 }
+
+/** Le mode d'un groupe — `groupeModes` est une Map en document, un objet en `lean()`. */
+const lireMode = (modes, groupe) => String((modes instanceof Map ? modes.get(groupe) : modes?.[groupe]) ?? '');
 
 /**
  * Plusieurs lignes à la fois — un import du classeur DRIF. Une seule annonce à la

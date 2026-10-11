@@ -221,6 +221,18 @@ export async function modifier(id, donnees) {
   return { ...presenter(ligne), propagation };
 }
 
+/**
+ * « Reporter sur les cartes » (2026-10-11) : la masse de CETTE ligne écrite sur
+ * toutes ses copies dans les bases de l'année en cours — y compris celles
+ * restées décalées, que la propagation ordinaire ne rattrape plus. Les groupes
+ * en alternance sont laissés tels quels. Voir `propagerMasses({ forcer })`.
+ */
+export async function reporterSurLesCartes(id) {
+  const ligne = await Repartition.findById(id).lean();
+  if (!ligne) throw notFound('Ligne de répartition introuvable');
+  return propagerMasses(ligne, ligne, { forcer: true });
+}
+
 async function refuserDoublon(donnees, sauf = null) {
   const existante = await Repartition.findOne({
     codeFiliereDrif: donnees.codeFiliereDrif,

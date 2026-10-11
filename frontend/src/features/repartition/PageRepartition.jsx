@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Pencil, Plus, Search, Star, Trash2, Upload } from 'lucide-react';
+import { toast } from 'sonner';
+import { Pencil, Plus, RefreshCw, Search, Star, Trash2, Upload } from 'lucide-react';
 import BarreNavigation from '@/components/layout/BarreNavigation';
 import SectionsAdmin from '@/features/admin/components/SectionsAdmin';
 import Alerte from '@/components/common/Alerte';
@@ -27,6 +28,7 @@ import {
   chargerMetiers,
   creerLigne,
   modifierLigne,
+  reporterSurLesCartes,
   supprimerFiliere,
   supprimerLigne,
 } from './api';
@@ -124,6 +126,28 @@ export default function PageRepartition() {
       setEnEdition(null);
       rafraichir();
     },
+  });
+
+  /*
+   * ═══ « REPORTER SUR LES CARTES » (2026-10-11, signalé par le porteur : la
+   * masse modifiée ici n'arrivait pas dans la carte du directeur) ═══ La
+   * propagation ordinaire ne suit que les copies qui portaient l'ancienne
+   * masse ; une copie restée décalée ne la rattrape plus. Ce geste la force.
+   */
+  const [aReporter, setAReporter] = useState(null);
+  const report = useMutation({
+    mutationFn: (ligne) => reporterSurLesCartes(ligne.id),
+    onSuccess: (bilan, ligne) => {
+      setAReporter(null);
+      const alternes = bilan.alternes ? ` ${bilan.alternes} affectation(s) en alternance laissée(s) telles quelles.` : '';
+      toast.success(
+        bilan.affectations > 0
+          ? `${ligne.codeModule} : ${bilan.affectations} affectation(s) mise(s) à jour dans ${bilan.bases} établissement(s).`
+          : `${ligne.codeModule} : toutes les cartes étaient déjà à jour.`,
+        { description: alternes || undefined }
+      );
+    },
+    onError: (erreur) => toast.error('Report impossible', { description: erreur.message }),
   });
 
   const suppression = useMutation({
@@ -443,7 +467,7 @@ export default function PageRepartition() {
                   {
                     id: 'actions',
                     entete: '',
-                    largeur: 'w-20',
+                    largeur: 'w-28',
                     aligne: 'droite',
                     rendu: (ligne) => (
                       <div className="flex items-center justify-end gap-1">
@@ -454,6 +478,15 @@ export default function PageRepartition() {
                           onClick={() => setEnEdition({ ligne })}
                         >
                           <Pencil />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Reporter les masses de ${ligne.codeModule} sur les cartes des établissements`}
+                          title="Reporter sur les cartes des établissements"
+                          onClick={() => setAReporter(ligne)}
+                        >
+                          <RefreshCw />
                         </Button>
                         <Button
                           variant="ghost"
@@ -566,6 +599,23 @@ export default function PageRepartition() {
         description={descriptionSuppression(aSupprimer)}
         libelleConfirmation="Supprimer"
         onConfirmer={() => suppression.mutate(aSupprimer)}
+      />
+
+      <ConfirmationAction
+        ouvert={Boolean(aReporter)}
+        onOpenChange={(ouvert) => !ouvert && setAReporter(null)}
+        titre={`Reporter ${aReporter?.codeModule ?? ''} sur les cartes ?`}
+        description={
+          aReporter
+            ? `Les masses de cette ligne (MHP S1 ${aReporter.mhpS1 ?? 0} h, S2 ${aReporter.mhpS2 ?? 0} h, synchrone ${
+                (aReporter.mhsynS1 ?? 0) + (aReporter.mhsynS2 ?? 0)
+              } h) remplaceront celles des affectations de ${aReporter.codeModule} — ${aReporter.codeFiliereDrif}, ${
+                Number(aReporter.anneeFormation) === 1 ? '1re' : `${aReporter.anneeFormation}e`
+              } année — dans les cartes de tous les établissements, pour l'année en cours. Une masse ajustée à la main par un établissement sera écrasée ; les groupes en alternance ne sont pas touchés.`
+            : ''
+        }
+        libelleConfirmation="Reporter"
+        onConfirmer={() => report.mutate(aReporter)}
       />
     </>
   );

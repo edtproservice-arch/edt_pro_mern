@@ -41,6 +41,14 @@ export function modifierLigne(id, corps) {
   return api.patch(`${BASE}/${id}`, corps);
 }
 
+/**
+ * « Reporter sur les cartes » (2026-10-11) : la masse de la ligne écrite sur
+ * toutes ses copies dans les bases de l'année — groupes en alternance exceptés.
+ */
+export function reporterSurLesCartes(id) {
+  return api.post(`${BASE}/${id}/reporter`, {});
+}
+
 export function supprimerLigne(id) {
   return api.delete(`${BASE}/${id}`);
 }

@@ -120,6 +120,18 @@ router.patch(
   }
 );
 
+/**
+ * Reporter la masse d'une ligne sur les cartes des établissements (2026-10-11)
+ * — pour rattraper des copies restées décalées. Voir `reporterSurLesCartes`.
+ */
+router.post('/:id/reporter', validate({ params: identifiantMongo }), async (req, res, next) => {
+  try {
+    res.json({ success: true, ...(await service.reporterSurLesCartes(req.params.id)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.delete('/:id', validate({ params: identifiantMongo }), async (req, res, next) => {
   try {
     res.json({ success: true, ...(await service.supprimer(req.params.id)) });

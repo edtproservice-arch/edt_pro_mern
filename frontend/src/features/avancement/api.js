@@ -42,6 +42,15 @@ export const exporterAchevement = (corps) =>
     nomParDefaut: `achevement-modules.${corps.format}`,
   });
 
+/**
+ * Le « Calendrier EFM DR » au format du canevas de la Direction Régionale
+ * (2026-10-11) — les couples affichés et leur date d'achèvement.
+ */
+export const exporterCalendrierEfm = (lignes) =>
+  api.telecharger('/api/v2/avancement/achevement/calendrier-efm', { lignes }, {
+    nomParDefaut: 'calendrier-efm-dr.xlsx',
+  });
+
 /** Les points de la courbe de la face e-note : le taux déclaré de chaque dépôt, par semaine. */
 export const chargerPointsEnote = (date = null) =>
   api.get(`/api/v2/avancement/points-enote${date ? `?date=${date}` : ''}`);

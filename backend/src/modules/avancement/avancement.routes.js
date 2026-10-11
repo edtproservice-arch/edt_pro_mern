@@ -9,6 +9,7 @@ import { badRequest } from '../../lib/httpError.js';
 import { exigerDroitPage } from '../partages/exigerDroitPage.js';
 import { validate } from '../../middleware/validate.js';
 import { construireExportAchevement } from './exportAchevement.service.js';
+import { construireCalendrierEfm } from './exportCalendrierEfm.service.js';
 
 /**
  * Avancement réalisé / prévu (F7).
@@ -157,6 +158,52 @@ router.post(
         etablissementId: req.etablissementId,
         anneeScolaire: req.anneeScolaire,
         ...req.body,
+      });
+      res.setHeader('Content-Type', contentType);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="export"; filename*=UTF-8''${encodeURIComponent(nomFichier)}`
+      );
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+      res.send(tampon);
+    } catch (erreur) {
+      next(erreur);
+    }
+  }
+);
+
+/*
+ * Le « Calendrier EFM DR » (2026-10-11, demande du porteur, canevas transmis) —
+ * voir `exportCalendrierEfm.service.js`. L'écran envoie les couples affichés
+ * et leur date d'achèvement ; le serveur complète le reste.
+ */
+router.post(
+  '/achevement/calendrier-efm',
+  validate({
+    body: z.object({
+      lignes: z
+        .array(
+          z.object({
+            groupe: z.string().trim().min(1).max(200),
+            module: z.string().trim().min(1).max(50),
+            intitule: z.string().trim().max(300).nullish(),
+            estRegional: z.boolean().default(false),
+            dateAchevement: z
+              .string()
+              .regex(/^\d{4}-\d{2}-\d{2}$/)
+              .nullish(),
+          })
+        )
+        .min(1)
+        .max(5000),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const { tampon, nomFichier, contentType } = await construireCalendrierEfm({
+        etablissementId: req.etablissementId,
+        anneeScolaire: req.anneeScolaire,
+        lignes: req.body.lignes,
       });
       res.setHeader('Content-Type', contentType);
       res.setHeader(

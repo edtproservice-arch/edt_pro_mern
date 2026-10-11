@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
+  CalendarCheck,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -39,7 +40,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { nombre } from '@/lib/nombres';
 import { cn } from '@/lib/utils';
-import { chargerAchevement, exporterAchevement } from './api';
+import { chargerAchevement, exporterAchevement, exporterCalendrierEfm } from './api';
 import PanneauFiltres from './PanneauFiltres';
 import { useEtatPartage } from '@/features/guidage/useEtatPartage';
 import BoutonTelecharger from '@/components/common/BoutonTelecharger';
@@ -221,6 +222,7 @@ export default function AchevementModules({
               resume={`${acheves} achevé(s) et ${lignesVisibles.length - acheves} en cours, sur ${lignesVisibles.length}.`}
               dateObservee={dateObservee}
             />
+            <CalendrierEfm lignes={lignesVisibles} />
           </div>
 
           <Tableau lignes={lignesVisibles} face={face} chargement={lignesTableau.chargement} />
@@ -374,6 +376,41 @@ function Telecharger({ face, lignes, resume, dateObservee }) {
       enCours={telechargement.isPending}
       onChoisir={(format) => telechargement.mutate(format)}
     />
+  );
+}
+
+/**
+ * Le « Calendrier EFM DR » (2026-10-11, demande du porteur) : le classeur à
+ * transmettre à la Direction Régionale, au format de son canevas — voir
+ * `exportCalendrierEfm.service.js`. Les lignes de la fenêtre, filtre compris :
+ * filtrer « Hors régional » donne le calendrier des seuls EFM locaux.
+ */
+function CalendrierEfm({ lignes }) {
+  const telechargement = useMutation({
+    mutationFn: () =>
+      exporterCalendrierEfm(
+        lignes.map((ligne) => ({
+          groupe: ligne.groupe,
+          module: ligne.module,
+          intitule: ligne.intitule ?? null,
+          estRegional: Boolean(ligne.estRegional),
+          dateAchevement: ligne.dateAchevement ?? null,
+        }))
+      ),
+    onError: (erreur) => toast.error('Téléchargement impossible', { description: erreur.message }),
+  });
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="h-9 gap-1.5"
+      disabled={lignes.length === 0 || telechargement.isPending}
+      onClick={() => telechargement.mutate()}
+    >
+      <CalendarCheck className="size-4" />
+      {telechargement.isPending ? 'Préparation…' : 'Calendrier EFM DR'}
+    </Button>
   );
 }
 
@@ -593,8 +630,11 @@ function datesDuModule(detail, plage, contexte = {}) {
   let finTexte = null;
   let semaineFin = Infinity;
 
+  let previsionEnCours = null;
+
   if (detail.taux > 0 && !detail.acheve) {
     const prevision = finPrevisionnelle(detail, plage, contexte);
+    previsionEnCours = prevision;
     // Le même libellé en texte brut, pour l'export.
     finTexte = `En cours (${Math.round(detail.taux)} %)${
       prevision ? ` — ${prevision.libelle} S${prevision.semaine} (${enDate(prevision.date)})${prevision.depassee ? ', dépassée' : ''}` : ''
@@ -635,6 +675,17 @@ function datesDuModule(detail, plage, contexte = {}) {
     semaineDebut,
     semaineFin,
     prevision: previsionExport(semaineDebut, semaineFin, contexte),
+    /*
+     * La date d'achèvement du « Calendrier EFM DR » (2026-10-11), en AAAA-MM-JJ :
+     * achevé → dernière séance posée ; en cours → fin prévue ou estimée ;
+     * pas commencé → fin prévue au chronogramme.
+     */
+    dateAchevement:
+      detail.acheve && plage?.posee
+        ? (plage.datesPosees?.fin ?? null)
+        : detail.taux > 0 && !detail.acheve
+          ? (previsionEnCours?.date ?? null)
+          : (plage?.datesPrevues?.fin ?? null),
   };
 }
 

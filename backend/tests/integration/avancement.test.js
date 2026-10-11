@@ -802,3 +802,56 @@ describe('POST /avancement/achevement/export — Word / Excel (2026-10-07)', () 
     expect(reponse.status).toBe(400);
   });
 });
+
+describe('POST /avancement/achevement/calendrier-efm — canevas DR (2026-10-11)', () => {
+  const telecharger = (lignes) =>
+    request(app)
+      .post('/api/v2/avancement/achevement/calendrier-efm')
+      .set('Cookie', cookies)
+      .send({ lignes })
+      .responseType('blob');
+
+  it('remplit le canevas : en-tête gardé, une ligne par couple, dates et formateur', async () => {
+    const reponse = await telecharger([
+      { groupe: 'GM101', module: 'M101', intitule: 'Métrologie', estRegional: false, dateAchevement: '2026-12-19' },
+      { groupe: 'GM102', module: 'M101', estRegional: true, dateAchevement: null },
+    ]);
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-disposition']).toContain('Calendrier_EFM_DR_2026-2027.xlsx');
+
+    const ExcelJS = (await import('exceljs')).default;
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(reponse.body);
+    const feuille = classeur.worksheets[0];
+
+    // L'en-tête du canevas, intact.
+    expect(feuille.getCell('A1').value).toBe('DR');
+    expect(feuille.getCell('X1').value).toBe('Date prévisionnelle EFM');
+
+    // Les lignes d'exemple du canevas ont disparu : deux lignes, les nôtres.
+    expect(feuille.rowCount).toBe(3);
+    expect(feuille.getCell('A2').value).toBe('Fès-Meknès');
+    expect(feuille.getCell('E2').value).toBe('2026-2027');
+    expect(feuille.getCell('K2').value).toBe('GM101');
+    expect(feuille.getCell('M2').value).toBe('Métrologie');
+    expect(feuille.getCell('T2').value).toBe('N');
+    expect(feuille.getCell('U2').value).toBe('9863');
+    expect(feuille.getCell('V2').value).toBe('BRAHIM LOURID');
+    expect(new Date(feuille.getCell('W2').value).toISOString().slice(0, 10)).toBe('2026-12-19');
+    // La date prévisionnelle d'EFM reste vide : c'est la DR qui la fixe.
+    expect(feuille.getCell('X2').value).toBeNull();
+    // Tout est centré.
+    expect(feuille.getCell('M2').alignment).toMatchObject({ horizontal: 'center', vertical: 'middle' });
+
+    expect(feuille.getCell('T3').value).toBe('O');
+    expect(feuille.getCell('W3').value).toBeNull();
+  });
+
+  it('refuse une liste vide', async () => {
+    const reponse = await request(app)
+      .post('/api/v2/avancement/achevement/calendrier-efm')
+      .set('Cookie', cookies)
+      .send({ lignes: [] });
+    expect(reponse.status).toBe(400);
+  });
+});

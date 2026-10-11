@@ -74,6 +74,14 @@ const userSchema = new mongoose.Schema(
     derniereConnexion: { type: Date, default: null },
     derniereActivite: { type: Date, default: null },
     tempsPasse: { type: Number, default: 0 },
+
+    /**
+     * La version de la CARTE DE STAGIAIRE (2026-10-11) : son QR connecte au compte
+     * tant qu'il porte CETTE version. Renouveler les cartes (carte perdue)
+     * l'incrémente — les anciens QR cessent aussitôt de fonctionner. Voir
+     * `modules/auth/jetonCarte.js`.
+     */
+    versionCarte: { type: Number, default: 1, min: 1 },
   },
   { timestamps: true, strict: true }
 );

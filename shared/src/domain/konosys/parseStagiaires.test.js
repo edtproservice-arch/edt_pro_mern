@@ -228,3 +228,22 @@ describe('lireStagiaires — lieu de naissance et date d’inscription (2026-09-
     expect(stagiaires[0]).toMatchObject({ lieuNaissance: 'RABAT', dateInscription: '01/07/2026' });
   });
 });
+
+describe('lireStagiaires — niveau scolaire (2026-10-11)', () => {
+  it('lit la colonne, et répare les espaces doublées et l’apostrophe échappée de l’export', () => {
+    const { stagiaires } = lireStagiaires([
+      ligne({ NiveauScolaire: "3 ème année de  l''Enseignement  Secondaire Collégial" }),
+    ]);
+    expect(stagiaires[0].niveauScolaire).toBe("3 ème année de l'Enseignement Secondaire Collégial");
+  });
+
+  it('rend un champ vide quand la colonne manque, et le complète depuis une autre ligne du stagiaire', () => {
+    expect(lireStagiaires([ligne()]).stagiaires[0].niveauScolaire).toBe('');
+
+    const { stagiaires } = lireStagiaires([
+      ligne({ NiveauScolaire: '' }),
+      ligne({ CodeDiplome: 'ACADA101 (FQ)', NiveauScolaire: 'Baccalauréat' }),
+    ]);
+    expect(stagiaires[0].niveauScolaire).toBe('Baccalauréat');
+  });
+});

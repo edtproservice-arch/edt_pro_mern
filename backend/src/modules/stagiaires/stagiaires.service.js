@@ -343,6 +343,8 @@ function presenter(stagiaire) {
     // avait besoin.
     lieuNaissance: stagiaire.lieuNaissance,
     dateInscription: stagiaire.dateInscription,
+    // EXPOSÉ (2026-10-11, demande du porteur : « affiche le niveau scolaire dans la fiche stagiaire »).
+    niveauScolaire: stagiaire.niveauScolaire,
     groupes: stagiaire.groupes,
     groupePrincipal: stagiaire.groupePrincipal,
     niveau: stagiaire.niveau,

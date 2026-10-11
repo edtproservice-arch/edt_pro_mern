@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   ArrowRightLeft,
@@ -19,6 +19,7 @@ import {
   Mail,
   Ticket,
   Users, Loader2 } from 'lucide-react';
+import { anneeDuNomGroupe } from 'shared/domain';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
@@ -28,10 +29,12 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import {
+  exporterCartes,
   exporterFeuilleAbsence,
   exporterFeuillePresence,
   telechargerBilletsVierges,
 } from '@/features/absences/stagiaires/api';
+import { chargerEtablissementCourant } from '@/features/configuration/api';
 import DialogueChoixGroupes from './DialogueChoixGroupes';
 import { empreinte, useEtatPartage } from '@/features/guidage/useEtatPartage';
 
@@ -116,14 +119,44 @@ const DOCUMENTS = [
   {
     cle: 'convocation',
     titre: 'Convocation à l’EFF',
-    resume: 'Examen de fin de formation',
+    resume: '2e et 3e année',
     icone: Mail,
+    // Canevas transmis (2026-10-11) : seuls les groupes de 2e et 3e année sont proposés.
+    choixGroupes: {
+      description:
+        'Une convocation par stagiaire, pour les groupes de 2e et 3e année. La date, l’horaire et le type d’épreuve laissés vides restent à remplir à la main.',
+      formats: ['docx', 'pdf'],
+      telecharger: exporterFeuillePresence('convocation-eff'),
+      groupesAdmis: (groupe) => anneeDuNomGroupe(groupe) >= 2,
+      champs: [
+        { nom: 'date', libelle: 'Date de l’épreuve', type: 'date' },
+        { nom: 'epreuve', libelle: 'Type d’épreuve', defaut: 'Epreuve de synthèse' },
+        { nom: 'debut', libelle: 'De', type: 'time', defaut: '08:30' },
+        { nom: 'fin', libelle: 'À', type: 'time', defaut: '12:30' },
+      ],
+    },
   },
   {
     cle: 'carte',
     titre: 'Carte de stagiaire',
     resume: 'Badge avec photo et QR',
     icone: IdCard,
+    // Composée ici, sans canevas (2026-10-11) : dix cartes par page A4, à découper.
+    choixGroupes: {
+      // ⚠️ L'ADRESSE OÙ MÈNERONT LES QR, AFFICHÉE (2026-10-11) : un QR qui ouvre la mauvaise
+      // application se voit ICI, avant l'impression — pas au premier scan.
+      description: `Dix cartes par page, à découper (format carte bancaire). La photo se colle dans son cadre. Le QR connecte directement à la session du stagiaire : remettez la carte à son titulaire seulement. Les QR mèneront à ${window.location.origin}.`,
+      formats: ['docx', 'pdf'],
+      telecharger: exporterCartes,
+      champs: [
+        {
+          nom: 'renouveler',
+          type: 'checkbox',
+          libelle: 'Renouveler les QR codes',
+          aide: 'Les cartes déjà imprimées de ces stagiaires ne permettront plus de se connecter (carte perdue ou volée).',
+        },
+      ],
+    },
   },
   {
     cle: 'badges-table',
@@ -217,9 +250,12 @@ const DOCUMENTS = [
     // Canevas transmis (2026-10-10) : les groupes se choisissent d'abord.
     choixGroupes: {
       description:
-        'Une convention par stagiaire, avec la période de stage de son groupe ; l’entreprise, son représentant, le lieu et la date se remplissent à la main.',
+        'Une convention par stagiaire, avec la période de stage de son groupe ; l’entreprise, son représentant, le lieu et la date se remplissent à la main. Seuls les groupes qui ont une période de stage sont proposés.',
       formats: ['docx', 'pdf'],
       telecharger: exporterFeuillePresence('convention'),
+      // Seuls les groupes AYANT une période de stage (2026-10-11, demande du porteur).
+      exigeStage: true,
+      videGroupes: 'Aucun groupe n’a de période de stage : déclarez-les dans Paramètres → Stages.',
     },
   },
   {
@@ -227,18 +263,39 @@ const DOCUMENTS = [
     titre: 'Formulaire de transfert',
     resume: 'Changement d’établissement',
     icone: ArrowRightLeft,
+    // Canevas transmis (2026-10-11) : les groupes se choisissent d'abord.
+    choixGroupes: {
+      description:
+        'Un formulaire par stagiaire, la partie du demandeur pré-remplie (identité, niveau scolaire, filière, niveau, année et mode cochés) ; l’établissement demandé, les motifs et les visas se remplissent à la main.',
+      formats: ['docx', 'pdf'],
+      telecharger: exporterFeuillePresence('transfert'),
+    },
   },
   {
     cle: 'reclamation',
     titre: 'Fiche de réclamation',
-    resume: 'Discipline, récupération automatique',
+    resume: 'Incident signalé par un formateur',
     icone: FileWarning,
+    // Canevas transmis (2026-10-11) : une fiche par groupe ; par stagiaire depuis « Notes de discipline ».
+    choixGroupes: {
+      description:
+        'Une fiche par groupe, l’établissement et le groupe pré-remplis : le formateur, le surveillant et le conseil la remplissent à la main. Pour la fiche d’un seul stagiaire, son nom écrit, ouvrez sa fiche dans Absences → Notes de discipline.',
+      formats: ['docx', 'pdf'],
+      telecharger: exporterFeuillePresence('reclamation'),
+    },
   },
   {
     cle: 'pv-discipline',
     titre: 'PV du conseil de discipline',
     resume: 'Procès-verbal de séance',
     icone: Gavel,
+    // Canevas transmis (2026-10-11) : seuls les stagiaires qui relèvent du conseil.
+    choixGroupes: {
+      description:
+        'Un PV par stagiaire qui relève du conseil de discipline (sanction de blâme ou d’exclusion, d’après sa note de discipline) : identité, filière, année, mode, téléphone et faits pré-remplis. Les motifs exposés, la décision et les signatures se remplissent à la main.',
+      formats: ['docx', 'pdf'],
+      telecharger: exporterFeuillePresence('pv-discipline'),
+    },
   },
 ];
 
@@ -547,7 +604,22 @@ function DocumentAvecDialogue({ document, attenue }) {
   useEtatPartage(`documents.fenetre.${empreinte(document.titre)}`, { ouvert }, (valeur) =>
     setOuvert(Boolean(valeur?.ouvert))
   );
-  const { choixGroupes } = document;
+  const { exigeStage = false, ...choixGroupes } = document.choixGroupes;
+
+  /*
+   * ⚠️ LA CONVENTION DE STAGE NE PROPOSE QUE LES GROUPES QUI ONT UNE PÉRIODE DE
+   * STAGE (2026-10-11, demande du porteur) : une convention sans dates ne
+   * servirait à rien. Les périodes sont celles de Paramètres → Stages, lues à
+   * l'ouverture de la fenêtre — la même requête que le bloc « À venir » de l'accueil.
+   */
+  const etablissement = useQuery({
+    queryKey: ['etablissement-courant'],
+    queryFn: chargerEtablissementCourant,
+    enabled: exigeStage && ouvert,
+    retry: false,
+  });
+  const avecStage = new Set((etablissement.data?.etablissement?.stages ?? []).map((stage) => stage.groupe));
+  const groupesAdmis = exigeStage ? (groupe) => avecStage.has(groupe) : choixGroupes.groupesAdmis;
 
   return (
     <>
@@ -569,6 +641,7 @@ function DocumentAvecDialogue({ document, attenue }) {
         onFermer={() => setOuvert(false)}
         titre={document.titre}
         {...choixGroupes}
+        groupesAdmis={groupesAdmis}
       />
     </>
   );

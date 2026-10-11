@@ -42,6 +42,28 @@ beforeAll(async () => {
    * pour cette seule raison, sans le moindre bogue applicatif.
    */
   await mongoose.connect(serveur.getUri(), { bufferTimeoutMS: 30_000, heartbeatFrequencyMS: 200 });
+
+  /*
+   * ═══ ⚠️ LES TESTS QUI FIGENT LA DATE CASSAIENT LES TRANSACTIONS (2026-10-11) ═══
+   * Mongoose 8 déclare la connexion « disconnected » (getter `readyState`) dès
+   * qu'aucun battement de cœur du serveur n'a été reçu depuis 2 ×
+   * `heartbeatFrequencyMS` — une parade aux conteneurs AWS Lambda gelés. Le
+   * calcul compare l'horodatage du dernier battement à `Date.now()`. Or plusieurs
+   * fichiers figent la date (`vi.useFakeTimers({ toFake: ['Date'] })`, au
+   * 16/09/2026 pour l'appel) : après le premier battement, la connexion passait
+   * pour coupée alors qu'elle répondait — constaté ici, `readyState` à 0 avec
+   * `_readyState` à 1.
+   *
+   * Les requêtes ordinaires n'en voyaient rien ; mais `mongoose.startSession()`
+   * ATTEND une connexion « connected » : chaque transaction (validation de
+   * l'appel, import e-note, carte…) restait bloquée jusqu'à `bufferTimeoutMS`, et
+   * les tests tombaient en timeout sans aucun bogue applicatif.
+   *
+   * Sans l'écouteur qui enregistre les battements, `_lastHeartbeatAt` reste nul
+   * et Mongoose ne fait plus ce contrôle : `readyState` redit l'état réel. La
+   * surveillance du serveur par le pilote, elle, continue.
+   */
+  mongoose.connection.getClient().removeAllListeners('serverHeartbeatSucceeded');
 }, 180_000);
 
 afterEach(async () => {

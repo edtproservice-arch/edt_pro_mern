@@ -9,6 +9,7 @@ import { nombre } from '@/lib/nombres';
 import DialogueChoixGroupes from '@/features/documents/DialogueChoixGroupes';
 import { chargerNotes, exporterNotes } from './api';
 import BadgeSanction from './BadgeSanction';
+import BoutonPvConseil, { releveDuConseil } from './BoutonPvConseil';
 import FicheStagiaire from './FicheStagiaire';
 import { DialogueComportement } from './SaisieComportement';
 import ListeGroupes from './ListeGroupes';
@@ -96,7 +97,7 @@ function NotesDuGroupe({ groupe, onOuvrirFiche, onComportement }) {
       <TableauTriable
         cartesSous="xl"
         collant={`-${MARGE_PAGE}px`}
-        colonnes={colonnes({ ouvrirFiche: onOuvrirFiche, ouvrirComportement: onComportement, passage })}
+        colonnes={colonnes({ ouvrirFiche: onOuvrirFiche, ouvrirComportement: onComportement, passage, groupe })}
         lignes={stagiaires}
         cleLigne={(s) => s.matricule}
         vide={notes.isLoading ? 'Calcul des notes…' : 'Aucun stagiaire dans ce groupe.'}
@@ -112,7 +113,7 @@ const avecJustifiees = (nonJustifiees, justifiees) => (
   </span>
 );
 
-function colonnes({ ouvrirFiche, ouvrirComportement, passage }) {
+function colonnes({ ouvrirFiche, ouvrirComportement, passage, groupe }) {
   const liste = [
     {
       id: 'stagiaire',
@@ -175,6 +176,8 @@ function colonnes({ ouvrirFiche, ouvrirComportement, passage }) {
     entete: '',
     rendu: (s) => (
       <div className="flex justify-end gap-1.5">
+        {/* Le PV du conseil (2026-10-11) : sur la ligne de ceux qui en relèvent ; pour les autres, depuis la fiche. */}
+        {releveDuConseil(s.note) && <BoutonPvConseil groupe={groupe} matricule={s.matricule} nom={s.nom} enEvidence />}
         <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={() => ouvrirComportement(s.matricule)}>
           <Plus className="size-3.5" /> Comportement
         </Button>

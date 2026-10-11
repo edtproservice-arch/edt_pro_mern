@@ -20,6 +20,25 @@ export const exporterFeuilleAbsence = ({ format, groupes, semaine }) =>
     nomParDefaut: `feuille-absence.${format}`,
   });
 
+/**
+ * Les cartes de stagiaire des groupes choisis, en Word ou PDF (2026-10-11).
+ * `valeurs.renouveler` : invalide les cartes déjà imprimées (nouveaux QR).
+ */
+export const exporterCartes = ({ format, groupes, valeurs }) =>
+  api.telecharger(
+    `${RACINE}/cartes`,
+    // `adresse` : l'application qu'on utilise — c'est là que mèneront les QR (2026-10-11).
+    { format, groupes, renouveler: Boolean(valeurs?.renouveler), adresse: window.location.origin },
+    { nomParDefaut: `cartes-stagiaires.${format}` }
+  );
+
+/**
+ * Les liens de connexion (et leurs QR) des stagiaires d'un groupe — la colonne
+ * QR de la fiche stagiaire (2026-10-11). Réservés à l'encadrement : 403 sinon.
+ */
+export const chargerLiensCartes = (groupe) =>
+  api.get(`${RACINE}/cartes/liens?${requete({ groupe, adresse: window.location.origin })}`);
+
 /** Les notes de discipline des groupes choisis, en Word, PDF ou Excel (2026-10-11) — une page par groupe. */
 export const exporterNotes = ({ format, groupes }) =>
   api.telecharger(`${RACINE}/notes/export`, { format, groupes }, { nomParDefaut: `notes-discipline.${format}` });
@@ -32,10 +51,14 @@ export const exporterRegistre = () =>
  * Une feuille de présence d'épreuve d'un ou plusieurs groupes, en Word ou PDF
  * (2026-10-02) — `modele` : `eff` ou `cc-efm`. Une page par groupe.
  */
-export const exporterFeuillePresence = (modele) => ({ format, groupes }) =>
-  api.telecharger(`${RACINE}/presence/${modele}`, { format, groupes }, {
-    nomParDefaut: `feuille-presence-${modele}.${format}`,
-  });
+export const exporterFeuillePresence = (modele) => ({ format, groupes, valeurs, matricules }) =>
+  // `valeurs` : les champs saisis dans la fenêtre — la date et l'horaire de la convocation à l'EFF (2026-10-11).
+  // `matricules` : seulement ces stagiaires — le PV du conseil d'UN stagiaire (2026-10-11).
+  api.telecharger(
+    `${RACINE}/presence/${modele}`,
+    { format, groupes, ...(valeurs ? { examen: valeurs } : {}), ...(matricules ? { matricules } : {}) },
+    { nomParDefaut: `feuille-presence-${modele}.${format}` }
+  );
 
 /** Le tableau de bord du gestionnaire (2026-09-29) : absences et discipline, pour tout l'établissement. */
 export const chargerTableauDeBord = () => api.get(`${RACINE}/tableau-bord`);

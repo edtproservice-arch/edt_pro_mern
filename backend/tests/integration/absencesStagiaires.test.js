@@ -1121,7 +1121,12 @@ describe('POST /absences-stagiaires/registre/export — le registre de l’anné
   });
 
   it('est réservé à l’encadrement', async () => {
-    expect((await exporter('formateur')).status).toBe(403);
+    // Une erreur JSON : sans le parseur binaire (voir plus haut).
+    const refus = await request(app)
+      .post('/api/v2/absences-stagiaires/registre/export')
+      .set('Cookie', cookies.formateur)
+      .send({});
+    expect(refus.status).toBe(403);
     expect((await exporter('gestionnaire')).status).toBe(200);
   });
 });
@@ -1197,6 +1202,209 @@ describe('POST /absences-stagiaires/notes/export — les notes de discipline par
     expect(word.headers['content-disposition']).toContain('Notes_discipline_GM101.docx');
     expect(word.body.subarray(0, 2).toString()).toBe('PK');
 
-    expect((await exporter({ format: 'xlsx', groupes: ['GM101'] }, 'formateur')).status).toBe(403);
+    // Une erreur JSON : sans le parseur binaire (voir plus haut).
+    const refus = await request(app)
+      .post('/api/v2/absences-stagiaires/notes/export')
+      .set('Cookie', cookies.formateur)
+      .send({ format: 'xlsx', groupes: ['GM101'] });
+    expect(refus.status).toBe(403);
+  });
+});
+
+describe('POST /absences-stagiaires/presence/convocation-eff — la convocation à l’EFF (2026-10-11)', () => {
+  const exporter = (corps) =>
+    request(app)
+      .post('/api/v2/absences-stagiaires/presence/convocation-eff')
+      .set('Cookie', cookies.directeur)
+      .buffer(true)
+      .parse(bufferiserExport)
+      .send(corps);
+
+  it('convoque les groupes de 2e année, écarte la 1re, et refuse une demande sans aucun groupe concerné', async () => {
+    await Stagiaire.create({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      matricule: 'CEF201',
+      nom: 'DRISSI',
+      prenom: 'Amine',
+      niveau: 'TS',
+      groupes: ['GM201'],
+      groupePrincipal: 'GM201',
+    });
+    const examen = { date: '2027-06-21', debut: '08:30', fin: '12:30', epreuve: 'Epreuve de synthèse' };
+
+    // GM101 (1re année) est écarté en silence : seul GM201 est convoqué.
+    const reponse = await exporter({ format: 'docx', groupes: ['GM101', 'GM201'], examen });
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-disposition']).toContain('Convocation_EFF_GM201');
+
+    const JSZip = (await import('jszip')).default;
+    const xml = await (await JSZip.loadAsync(reponse.body)).file('word/document.xml').async('string');
+    expect(xml).toContain('DRISSI Amine');
+    expect(xml).toContain('Lundi 21 Juin 2027');
+    expect(xml).toContain('de 08h30 à 12h30');
+    expect(xml).not.toContain('ALAOUI');
+
+    // Une erreur JSON : sans le parseur binaire (voir plus haut).
+    const refus = await request(app)
+      .post('/api/v2/absences-stagiaires/presence/convocation-eff')
+      .set('Cookie', cookies.directeur)
+      .send({ format: 'docx', groupes: ['GM101'], examen });
+    expect(refus.status).toBe(400);
+    expect(refus.body.code).toBe('ANNEE_NON_CONCERNEE');
+  });
+});
+
+describe('POST /absences-stagiaires/presence/convention — seulement les groupes ayant un stage (2026-10-11)', () => {
+  const exporter = (groupes) =>
+    request(app)
+      .post('/api/v2/absences-stagiaires/presence/convention')
+      .set('Cookie', cookies.directeur)
+      .buffer(true)
+      .parse(bufferiserExport)
+      .send({ format: 'docx', groupes });
+
+  it('écarte un groupe sans période de stage, et refuse quand aucun n’en a', async () => {
+    await Etablissement.updateOne(
+      { _id: etablissement.id },
+      { $set: { stages: [{ groupe: 'GM101', debut: '2027-03-01', fin: '2027-04-10' }] } }
+    );
+
+    const reponse = await exporter(['GM101', 'GM102']);
+    expect(reponse.status).toBe(200);
+    // GM102 n'a pas de stage : seul GM101 reçoit ses conventions.
+    expect(reponse.headers['content-disposition']).toContain('Convention_Stage_GM101');
+
+    // ⚠️ Une ERREUR JSON se lit SANS `bufferiserExport` (voir plus haut) : le
+    // parseur binaire y déclenche le « double callback » de superagent.
+    const refus = await request(app)
+      .post('/api/v2/absences-stagiaires/presence/convention')
+      .set('Cookie', cookies.directeur)
+      .send({ format: 'docx', groupes: ['GM102'] });
+    expect(refus.status).toBe(400);
+    expect(refus.body.code).toBe('SANS_PERIODE_DE_STAGE');
+  });
+});
+
+describe('POST /absences-stagiaires/presence/transfert — le formulaire de transfert (2026-10-11)', () => {
+  it('pré-remplit la partie du demandeur et coche niveau, année et mode', async () => {
+    await Stagiaire.updateOne(
+      { etablissementId: etablissement.id, matricule: 'CEF001' },
+      { $set: { niveau: 'TS', annee: '1A', niveauScolaire: 'Baccalauréat', filiere: 'Génie Mécanique' } }
+    );
+
+    const reponse = await request(app)
+      .post('/api/v2/absences-stagiaires/presence/transfert')
+      .set('Cookie', cookies.directeur)
+      .buffer(true)
+      .parse(bufferiserExport)
+      .send({ format: 'docx', groupes: ['GM101'] });
+    expect(reponse.status).toBe(200);
+
+    const JSZip = (await import('jszip')).default;
+    const xml = await (await JSZip.loadAsync(reponse.body)).file('word/document.xml').async('string');
+    expect(xml).toContain('Je soussigné, Mlle, Mme, M. ALAOUI Yassine');
+    expect(xml).toContain('Niveau scolaire Baccalauréat');
+    expect(xml).toContain('Filière de formation : Génie Mécanique');
+    // TS coché ; « 1ère Année » cochée ; mode inconnu → résidentiel coché.
+    expect(xml).toMatch(/Niveau : TS <\/w:t>[\s\S]*?☒/);
+    expect(xml).toContain('☒ 1ère Année');
+    expect(xml).toContain('☒ Résidentielle');
+  });
+});
+
+describe('POST /absences-stagiaires/presence/pv-discipline — le PV du conseil de discipline (2026-10-11)', () => {
+  it('un PV pour le seul stagiaire qui relève du conseil, ses faits écrits ; refusé quand personne n’en relève', async () => {
+    // Dix séances d'absence non justifiées : 5 points retirés → blâme, autorité du Conseil de discipline.
+    const jours = ['2026-09-07', '2026-09-08', '2026-09-09', '2026-09-10', '2026-09-11'];
+    await AbsenceStagiaire.create(
+      jours.flatMap((date) =>
+        ['S1', 'S2'].map((seance) => ({
+          etablissementId: etablissement.id,
+          anneeScolaire: ANNEE,
+          matricule: 'CEF001',
+          nomComplet: 'ALAOUI Yassine',
+          groupe: 'GM101',
+          date,
+          semaine: '2026-W1',
+          jour: 'Lundi',
+          seance,
+          typeAbsence: 'absence',
+        }))
+      )
+    );
+
+    const reponse = await request(app)
+      .post('/api/v2/absences-stagiaires/presence/pv-discipline')
+      .set('Cookie', cookies.directeur)
+      .buffer(true)
+      .parse(bufferiserExport)
+      .send({ format: 'docx', groupes: ['GM101'] });
+    expect(reponse.status).toBe(200);
+
+    const JSZip = (await import('jszip')).default;
+    const xml = await (await JSZip.loadAsync(reponse.body)).file('word/document.xml').async('string');
+    expect(xml).toContain('ALAOUI Yassine');
+    // BENANI Sara n'a rien : pas de PV pour elle.
+    expect(xml).not.toContain('BENANI');
+    expect(xml).toContain("10 séance(s) d'absence non justifiée(s)");
+    // La case « Absence » cochée.
+    expect(xml).toContain('☒Absence');
+
+    // GM102 : personne ne relève du conseil.
+    const refus = await request(app)
+      .post('/api/v2/absences-stagiaires/presence/pv-discipline')
+      .set('Cookie', cookies.directeur)
+      .send({ format: 'docx', groupes: ['GM102'] });
+    expect(refus.status).toBe(400);
+    expect(refus.body.code).toBe('AUCUN_CONSEIL');
+  });
+
+  it('demandé nommément (« Notes de discipline »), le PV d’un stagiaire sort même sans sanction du conseil', async () => {
+    const reponse = await request(app)
+      .post('/api/v2/absences-stagiaires/presence/pv-discipline')
+      .set('Cookie', cookies.directeur)
+      .buffer(true)
+      .parse(bufferiserExport)
+      .send({ format: 'docx', groupes: ['GM101'], matricules: ['CEF002'] });
+    expect(reponse.status).toBe(200);
+
+    const JSZip = (await import('jszip')).default;
+    const xml = await (await JSZip.loadAsync(reponse.body)).file('word/document.xml').async('string');
+    expect(xml).toContain('BENANI Sara');
+    expect(xml).not.toContain('ALAOUI');
+    // Aucune sanction : ni « Absence » ni « Conduite » cochées.
+    expect(xml).not.toContain('☒Absence');
+  });
+});
+
+describe('POST /absences-stagiaires/presence/reclamation — la fiche de réclamation (2026-10-11)', () => {
+  const fiche = async (corps) => {
+    const reponse = await request(app)
+      .post('/api/v2/absences-stagiaires/presence/reclamation')
+      .set('Cookie', cookies.directeur)
+      .buffer(true)
+      .parse(bufferiserExport)
+      .send({ format: 'docx', ...corps });
+    expect(reponse.status).toBe(200);
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(reponse.body);
+    return {
+      corps: await zip.file('word/document.xml').async('string'),
+      entete: await zip.file('word/header1.xml').async('string'),
+    };
+  };
+
+  it('une fiche par groupe, sans nom ; une par stagiaire demandé nommément, son nom écrit', async () => {
+    const { corps, entete } = await fiche({ groupes: ['GM101', 'GM102'] });
+    expect(corps.match(/Groupe : GM10\d/g)).toEqual(['Groupe : GM101', 'Groupe : GM102']);
+    expect(corps).not.toContain('ALAOUI');
+    // L'établissement remplace celui du canevas.
+    expect(entete).not.toContain('CFMMS TIT MELLIL');
+
+    const seul = await fiche({ groupes: ['GM101'], matricules: ['CEF002'] });
+    expect(seul.corps).toContain('Groupe : GM101');
+    expect(seul.corps).toContain('Nom &amp; Prénom : BENANI Sara');
+    expect(seul.corps).not.toContain('ALAOUI');
   });
 });

@@ -333,6 +333,7 @@ export default function PageAvancement() {
   /* Le nom lisible de chaque module, résolu par le serveur depuis la
      répartition DRIF : `Base.affectations` ne garde que le code. */
   const intitules = requete.data?.intitules ?? {};
+  const intitulesParGroupe = requete.data?.intitulesParGroupe ?? AUCUN_INTITULE;
 
   /* Les courbes ne valent que là où les sujets se comparent — cf.
      `GrapheAvancement`. Calculées ici parce que la LÉGENDE, qui doit les
@@ -498,6 +499,7 @@ export default function PageAvancement() {
           filtre={nombreDeFiltres(filtres) > 0}
           lignesAchevement={brutes}
           intitules={intitules}
+          intitulesParGroupe={intitulesParGroupe}
           /* En vue graphique, ils vivent à droite du graphe — cf. plus bas. */
           chiffresAilleurs={chiffresLateraux}
           anneeScolaire={requete.data?.anneeScolaire}
@@ -864,3 +866,6 @@ function PlusAvances({ lignes }) {
     </div>
   );
 }
+
+/** ⚠️ UN SEUL objet vide partagé : en créer un par rendu relancerait les calculs mémoïsés. */
+const AUCUN_INTITULE = {};

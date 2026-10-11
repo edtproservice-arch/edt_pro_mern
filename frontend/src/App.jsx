@@ -33,6 +33,7 @@ import { queryClient } from '@/lib/queryClient';
 import { Toaster } from '@/components/ui/sonner';
 
 import LoginPage from '@/features/auth/LoginPage';
+import PageConnexionCarte from '@/features/auth/PageConnexionCarte';
 import RegisterPage from '@/features/auth/RegisterPage';
 import VerificationPage from '@/features/auth/VerificationPage';
 import MotDePasseOubliePage from '@/features/auth/MotDePasseOubliePage';
@@ -109,6 +110,8 @@ export default function App() {
 
           {/* F1 — authentification */}
           <Route path="/connexion" element={<LoginPage />} />
+          {/* Le QR de la carte de stagiaire (2026-10-11) : connexion directe à sa session. */}
+          <Route path="/carte/:jeton" element={<PageConnexionCarte />} />
           <Route path="/inscription" element={<RegisterPage />} />
           <Route path="/verification" element={<VerificationPage />} />
           <Route path="/mot-de-passe-oublie" element={<MotDePasseOubliePage />} />

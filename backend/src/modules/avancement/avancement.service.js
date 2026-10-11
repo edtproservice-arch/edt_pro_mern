@@ -275,7 +275,7 @@ export async function avancement(etablissementId, anneeScolaire, observation = n
    * ce sont deux colonnes du même document DRIF, et les chercher séparément
    * ferait deux parcours de la collection pour un seul besoin.
    */
-  const { intitules, massesDrif } = await referentielDesModules(
+  const { intitules, massesDrif, intitulesParGroupe } = await referentielDesModules(
     [...lignesEdtpro, ...lignesEnote],
     base
   );
@@ -392,6 +392,14 @@ export async function avancement(etablissementId, anneeScolaire, observation = n
        quoi « 12 h réalisées » ne se rapporterait à aucun moment. */
     seancesTermineesAu: maintenant,
     intitules,
+    /*
+     * ⚠️ PAR (GROUPE, MODULE) AUSSI (2026-10-11, signalé par le porteur : « parfois
+     * le code du module ne marche pas avec l'intitulé ») — « M201 » ne désigne pas
+     * le même module en Génie mécanique et en Restauration. `intitules`, indexé
+     * par code seul, prend la filière du PREMIER groupe qui porte ce code ; une
+     * ligne qui nomme son groupe lit ici l'intitulé de SA filière.
+     */
+    intitulesParGroupe: Object.fromEntries(intitulesParGroupe),
     source: importe
       ? { fichier: importe.nomFichier, importeLe: importe.importeLe, lignes: importe.lignes.length }
       : null,

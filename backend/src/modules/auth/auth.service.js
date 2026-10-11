@@ -1,5 +1,5 @@
 import { ROLES, STATUTS_COMPTE } from 'shared/constants';
-import { anneeScolaireAPreparer } from 'shared/domain';
+import { anneeScolaireAPreparer, anneeScolaireCourante } from 'shared/domain';
 import { User } from '../../models/User.js';
 import { Etablissement } from '../../models/Etablissement.js';
 import { RefreshToken } from '../../models/RefreshToken.js';
@@ -13,6 +13,7 @@ import {
 import { badRequest, conflict, forbidden, notFound, unauthorized } from '../../lib/httpError.js';
 import { envoyerEmail } from '../../config/mailer.js';
 import { creerRefreshToken, empreinte, signerAccessToken } from './tokens.js';
+import { lireJetonCarte } from './jetonCarte.js';
 
 const DUREE_CODE_MS = 15 * 60 * 1000;
 
@@ -140,6 +141,37 @@ export async function connecter({ identifiant, motDePasse, appareil, ip }) {
   if (!appareilConnu) {
     await emettreCode(utilisateur, TYPES_CODE.APPAREIL, { appareil, ip });
     return { action: 'verification_appareil', email: utilisateur.email };
+  }
+
+  return { action: 'connecte', ...(await ouvrirSession(utilisateur, appareil, ip)) };
+}
+
+/**
+ * Connexion par la CARTE DE STAGIAIRE : le QR scanné (2026-10-11). Voir
+ * `jetonCarte.js` pour ce que porte le jeton et pourquoi.
+ *
+ * ⚠️ UN SEUL MESSAGE POUR TOUS LES REFUS (signature fausse, compte absent, carte
+ * renouvelée, année passée) : dire lequel aiderait qui fabrique des jetons.
+ * Seul un compte désactivé ou non approuvé le dit — comme à la connexion par
+ * mot de passe, la carte étant alors authentique.
+ */
+export async function connecterParCarte({ jeton, appareil, ip, maintenant = new Date() }) {
+  const refus = unauthorized('Cette carte n’est plus valable. Demandez une nouvelle carte à l’administration.', {
+    code: 'CARTE_INVALIDE',
+  });
+  const carte = lireJetonCarte(jeton);
+  if (!carte) throw refus;
+
+  const utilisateur = await User.findById(carte.utilisateurId);
+  if (!utilisateur || utilisateur.role !== ROLES.STAGIAIRE) throw refus;
+  if ((utilisateur.versionCarte ?? 1) !== carte.version) throw refus;
+  if (carte.anneeScolaire < anneeScolaireCourante(maintenant)) throw refus;
+
+  if (!utilisateur.estActif) {
+    throw forbidden('Votre compte a été désactivé. Contactez un administrateur.', { code: 'COMPTE_DESACTIVE' });
+  }
+  if (utilisateur.statut !== STATUTS_COMPTE.APPROUVE || !utilisateur.estVerifie) {
+    throw forbidden("Votre compte n'est pas encore actif.", { code: 'COMPTE_NON_APPROUVE' });
   }
 
   return { action: 'connecte', ...(await ouvrirSession(utilisateur, appareil, ip)) };

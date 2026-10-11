@@ -39,6 +39,7 @@ const ENTETES = [
   'NTelelephone',
   'LieuNaissance',
   'DateInscription',
+  'NiveauScolaire',
 ];
 
 /** Classeur Konosys : la PREMIÈRE feuille, en-têtes en ligne 1. */
@@ -174,6 +175,24 @@ describe('Import Konosys', () => {
     const liste = await request(app).get('/api/v2/stagiaires').set('Cookie', cookies);
     const s001 = liste.body.stagiaires.find((s) => s.matricule === 'S001');
     expect(s001).toMatchObject({ lieuNaissance: 'RABAT', dateInscription: '22/06/2026' });
+  });
+
+  it('CONSERVE le niveau scolaire, nettoyé, et l’EXPOSE dans la fiche stagiaire (2026-10-11)', async () => {
+    const reponse = await importer([
+      stagiaire({ NiveauScolaire: "3 ème année de  l''Enseignement  Secondaire Collégial" }),
+      stagiaire({ MatriculeEtudiant: 'S002', Nom: 'ALAMI' }),
+    ]);
+    expect(reponse.status).toBe(200);
+
+    expect((await Stagiaire.findOne({ matricule: 'S001' })).niveauScolaire).toBe(
+      "3 ème année de l'Enseignement Secondaire Collégial"
+    );
+    expect((await Stagiaire.findOne({ matricule: 'S002' })).niveauScolaire).toBe('');
+
+    // La liste des stagiaires le rend : la fiche (page Documents) l'affiche.
+    const liste = await request(app).get('/api/v2/stagiaires').set('Cookie', cookies);
+    const s001 = liste.body.stagiaires.find((s) => s.matricule === 'S001');
+    expect(s001.niveauScolaire).toBe("3 ème année de l'Enseignement Secondaire Collégial");
   });
 
   it('REGROUPE les deux inscriptions d’un même stagiaire', async () => {

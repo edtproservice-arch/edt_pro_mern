@@ -21,6 +21,11 @@ export function seConnecter({ identifiant, motDePasse }) {
   });
 }
 
+/** Connexion par le QR de la carte de stagiaire (2026-10-11) — le jeton lu dans l'adresse. */
+export function seConnecterParCarte(jeton) {
+  return api.post('/api/v2/auth/carte', { jeton, appareil: decrireAppareil() });
+}
+
 export function sInscrire(valeurs) {
   return api.post('/api/v2/auth/inscription', valeurs);
 }

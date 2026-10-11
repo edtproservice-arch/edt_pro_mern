@@ -4,6 +4,7 @@ import Alerte from '@/components/common/Alerte';
 import { nombre } from '@/lib/nombres';
 import { chargerFiche } from './api';
 import BadgeSanction from './BadgeSanction';
+import BoutonPvConseil, { BoutonReclamation, releveDuConseil } from './BoutonPvConseil';
 import RegistreStagiaires from './RegistreStagiaires';
 import { SaisieComportement } from './SaisieComportement';
 
@@ -29,9 +30,24 @@ export default function FicheStagiaire({ matricule, onFermer }) {
       <DialogContent className="flex max-h-[90vh] w-[96vw] max-w-4xl flex-col gap-3 overflow-hidden sm:max-w-4xl">
         <DialogHeader className="shrink-0">
           <DialogTitle>{donnees?.nom ?? 'Fiche de discipline'}</DialogTitle>
-          <DialogDescription>
-            {donnees ? `${donnees.matricule} · ${donnees.groupe}` : 'Chargement…'}
-          </DialogDescription>
+          {/* Le PV du conseil de ce stagiaire (2026-10-11) — pour tout stagiaire : la direction décide de l'y traduire. */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pr-6">
+            <DialogDescription>
+              {donnees ? `${donnees.matricule} · ${donnees.groupe}` : 'Chargement…'}
+            </DialogDescription>
+            {donnees && (
+              <div className="flex gap-1.5">
+                {/* La fiche de réclamation de ce stagiaire (2026-10-11) : groupe et nom pré-remplis. */}
+                <BoutonReclamation groupe={donnees.groupe} matricule={donnees.matricule} nom={donnees.nom} />
+                <BoutonPvConseil
+                  groupe={donnees.groupe}
+                  matricule={donnees.matricule}
+                  nom={donnees.nom}
+                  enEvidence={releveDuConseil(donnees.note)}
+                />
+              </div>
+            )}
+          </div>
         </DialogHeader>
 
         <div className="min-h-0 min-w-0 flex-1 space-y-5 overflow-y-auto pr-1">

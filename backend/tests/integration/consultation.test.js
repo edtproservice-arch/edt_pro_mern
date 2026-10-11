@@ -338,7 +338,8 @@ describe('GET /consultation/periodes — « Mes stages » / « Mes formations »
     expect(reponse.status).toBe(200);
     expect(reponse.body.role).toBe(ROLES.FORMATEUR);
     expect(reponse.body.periodes).toEqual([
-      { matriculeFormateur: '9863', nomFormateur: 'BRAHIM LOURID', debut: '2026-11-02', fin: '2026-11-04' },
+      // Le motif (2026-10-11, « Congés et formations ») : une période sans motif enregistré est une formation.
+      { matriculeFormateur: '9863', nomFormateur: 'BRAHIM LOURID', debut: '2026-11-02', fin: '2026-11-04', motif: 'Formation' },
     ]);
   });
 

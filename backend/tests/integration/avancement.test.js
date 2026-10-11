@@ -372,6 +372,26 @@ describe('GET /avancement — les intitulés de modules', () => {
   });
 
   /*
+   * ⚠️ PAR (GROUPE, MODULE) AUSSI (2026-10-11) : le même code porte un autre
+   * module dans une autre filière, et la fenêtre « Achèvement des modules » lit
+   * l'intitulé de la filière de CHAQUE groupe.
+   */
+  it('rend aussi l’intitulé par groupe et module', async () => {
+    await Repartition.create({
+      secteur: 'Mécanique',
+      codeFiliereDrif: 'GM',
+      filiere: 'Génie Mécanique',
+      anneeFormation: 1,
+      codeModule: 'M101',
+      module: 'Métrologie et contrôle',
+      niveau: 'TS',
+      masseHorairePresentiel: 30,
+    });
+
+    expect((await lire()).body.intitulesParGroupe['GM101||M101']).toBe('Métrologie et contrôle');
+  });
+
+  /*
    * ⚠️ UN MODULE HORS RÉFÉRENTIEL N'EST PAS UNE ERREUR : la carte permet d'en
    * saisir. Il n'a simplement pas d'entrée, et l'écran affiche le seul code.
    */

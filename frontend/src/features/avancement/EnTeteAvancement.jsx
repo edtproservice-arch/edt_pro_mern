@@ -73,6 +73,7 @@ export default function EnTeteAvancement({
   chiffresAilleurs = false,
   lignesAchevement = VIDE,
   intitules,
+  intitulesParGroupe,
   anneeScolaire,
   dateObservee = null,
 }) {
@@ -269,6 +270,7 @@ export default function EnTeteAvancement({
             <AchevementModules
               lignes={lignesAchevement}
               intitules={intitules}
+              intitulesParGroupe={intitulesParGroupe}
               anneeScolaire={anneeScolaire}
               dateObservee={dateObservee}
               face={face}

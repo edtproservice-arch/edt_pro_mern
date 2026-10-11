@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronRight, Search, UserX } from 'lucide-react';
+import { toast } from 'sonner';
+import { ChevronRight, Copy, Download, Search, UserX } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { chargerLiensCartes } from '@/features/absences/stagiaires/api';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import Alerte from '@/components/common/Alerte';
@@ -118,6 +122,19 @@ function Groupe({ groupe, ouvert, onBasculer }) {
 
   const liste = stagiaires.data?.stagiaires ?? [];
 
+  /*
+   * ═══ LE QR DE CONNEXION DE CHAQUE STAGIAIRE (2026-10-11, demande du porteur)
+   * ═══ Le même que sur sa carte. ⚠️ RÉSERVÉ À L'ENCADREMENT : le serveur répond
+   * 403 à un formateur invité sur cette page — la colonne n'apparaît alors pas.
+   */
+  const liens = useQuery({
+    queryKey: ['stagiaires', 'liens-cartes', groupe.nom],
+    queryFn: () => chargerLiensCartes(groupe.nom),
+    enabled: ouvert,
+    retry: false,
+  });
+  const parMatricule = liens.isSuccess ? new Map(liens.data.liens.map((l) => [l.matricule, l])) : null;
+
   return (
     <div className="rounded-md border">
       <button
@@ -142,7 +159,7 @@ function Groupe({ groupe, ouvert, onBasculer }) {
           ) : stagiaires.isLoading ? (
             <p className="px-3 py-2 text-sm text-muted-foreground">Chargement…</p>
           ) : (
-            <TableauStagiaires groupe={groupe.nom} liste={liste} />
+            <TableauStagiaires groupe={groupe.nom} liste={liste} liens={parMatricule} />
           )}
         </div>
       )}
@@ -158,7 +175,9 @@ function Groupe({ groupe, ouvert, onBasculer }) {
  * ⚠️ LE TABLEAU DÉFILE EN LARGEUR, PAS LA PAGE : dix colonnes ne tiennent pas
  * sur un écran étroit.
  */
-function TableauStagiaires({ groupe, liste }) {
+function TableauStagiaires({ groupe, liste, liens = null }) {
+  const [qrOuvert, setQrOuvert] = useState(null);
+
   if (liste.length === 0) {
     return <p className="px-3 py-2 text-sm text-muted-foreground">Aucun stagiaire dans ce groupe.</p>;
   }
@@ -177,9 +196,11 @@ function TableauStagiaires({ groupe, liste }) {
             <TableHead>Lieu de naissance</TableHead>
             <TableHead>E-mail</TableHead>
             <TableHead>Niveau · année</TableHead>
+            <TableHead>Niveau scolaire</TableHead>
             <TableHead>Autres groupes</TableHead>
             <TableHead>Site</TableHead>
             <TableHead>Date d'inscription</TableHead>
+            {liens && <TableHead className="text-center">QR de connexion</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -212,6 +233,8 @@ function TableauStagiaires({ groupe, liste }) {
                 <TableCell className="whitespace-nowrap">
                   {[stagiaire.niveau, stagiaire.annee].filter(Boolean).join(' · ') || '—'}
                 </TableCell>
+                {/* Le niveau d'études à l'entrée (2026-10-11) — parfois long : il passe à la ligne. */}
+                <TableCell className="min-w-40 max-w-64">{stagiaire.niveauScolaire || '—'}</TableCell>
                 <TableCell>
                   {autres.length ? (
                     <div className="flex flex-wrap gap-1">
@@ -227,11 +250,77 @@ function TableauStagiaires({ groupe, liste }) {
                 </TableCell>
                 <TableCell className="whitespace-nowrap">{stagiaire.site || '—'}</TableCell>
                 <TableCell className="whitespace-nowrap tabular-nums">{stagiaire.dateInscription || '—'}</TableCell>
+                {liens && (
+                  <TableCell className="text-center">
+                    {liens.get(stagiaire.matricule) ? (
+                      <button
+                        type="button"
+                        onClick={() => setQrOuvert({ stagiaire, ...liens.get(stagiaire.matricule) })}
+                        className="inline-block rounded border bg-white p-0.5 hover:ring-2 hover:ring-primary"
+                        aria-label={`Afficher le QR de connexion de ${[stagiaire.nom, stagiaire.prenom].filter(Boolean).join(' ')}`}
+                      >
+                        <img src={liens.get(stagiaire.matricule).qr} alt="" className="size-9" />
+                      </button>
+                    ) : (
+                      <span className="text-muted-foreground" title="Pas de compte stagiaire : créez-le dans Paramètres → Sessions.">
+                        —
+                      </span>
+                    )}
+                  </TableCell>
+                )}
               </TableRow>
             );
           })}
         </TableBody>
       </Table>
+      <DialogueQr qr={qrOuvert} onFermer={() => setQrOuvert(null)} />
     </div>
+  );
+}
+
+/**
+ * Le QR d'un stagiaire, en grand : à scanner depuis l'écran, ou à copier /
+ * télécharger. ⚠️ CE LIEN OUVRE SA SESSION : il ne se transmet qu'à lui.
+ */
+function DialogueQr({ qr, onFermer }) {
+  const nom = qr ? [qr.stagiaire.nom, qr.stagiaire.prenom].filter(Boolean).join(' ') : '';
+  const copier = async () => {
+    try {
+      await navigator.clipboard.writeText(qr.lien);
+      toast.success('Lien copié');
+    } catch {
+      toast.error('Copie impossible', { description: 'Sélectionnez le lien et copiez-le à la main.' });
+    }
+  };
+
+  return (
+    <Dialog open={Boolean(qr)} onOpenChange={(ouvert) => !ouvert && onFermer()}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{nom}</DialogTitle>
+          <DialogDescription>
+            QR de connexion directe à la session de ce stagiaire. Ne le transmettez qu&apos;à lui.
+          </DialogDescription>
+        </DialogHeader>
+        {qr && (
+          <div className="space-y-3">
+            <img src={qr.qr} alt={`QR de connexion de ${nom}`} className="mx-auto size-56 rounded border bg-white p-1" />
+            <p className="break-all rounded bg-muted px-2 py-1 font-mono text-[0.7rem] text-muted-foreground">{qr.lien}</p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={copier}>
+                <Copy className="size-3.5" />
+                Copier le lien
+              </Button>
+              <Button asChild size="sm" className="gap-1.5">
+                <a href={qr.qr} download={`QR_${qr.stagiaire.matricule}.png`}>
+                  <Download className="size-3.5" />
+                  Télécharger le QR
+                </a>
+              </Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

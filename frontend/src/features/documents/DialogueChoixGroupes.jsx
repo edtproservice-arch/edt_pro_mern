@@ -4,6 +4,9 @@ import { toast } from 'sonner';
 import { File, FileSpreadsheet, FileText, Loader2 } from 'lucide-react';
 import { facettesDesGroupes, filtrerGroupes, semaineAOuvrir } from 'shared/domain';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ChoixSujets, FiltreGroupes } from '@/features/edition/FiltresDetaillee';
 import { chargerContexte, chargerSemaines } from '@/features/emploi/api';
@@ -27,8 +30,15 @@ const FORMATS = {
  * filtre laisse — comme sur la grille de l'appel, où le bouton télécharge tout
  * ce qui est visible.
  *
- * @param {(options: {format, groupes, semaine?}) => Promise} telecharger
+ * @param {(options: {format, groupes, semaine?, valeurs?}) => Promise} telecharger
  * @param {string[]} formats — parmi `docx`, `pdf`, `xlsx`
+ * @param {(groupe: string) => boolean} [groupesAdmis] — les groupes que le
+ *   document concerne (la convocation à l'EFF : 2ᵉ et 3ᵉ année, 2026-10-11) ;
+ *   les autres ne sont pas proposés.
+ * @param {string} [videGroupes] — ce que dit la fenêtre quand aucun groupe n'est admis.
+ * @param {Array<{nom, libelle, type?, defaut?, placeholder?}>} [champs] — des
+ *   valeurs communes à tous les stagiaires (date, horaire de l'épreuve…),
+ *   rendues à `telecharger` dans `valeurs`.
  */
 export default function DialogueChoixGroupes({
   ouvert,
@@ -38,7 +48,13 @@ export default function DialogueChoixGroupes({
   avecSemaine = false,
   formats,
   telecharger,
+  groupesAdmis = null,
+  videGroupes = 'Aucun groupe n’est concerné par ce document.',
+  champs = null,
 }) {
+  const [valeurs, setValeurs] = useState(() =>
+    Object.fromEntries((champs ?? []).map((champ) => [champ.nom, champ.defaut ?? '']))
+  );
   const anneeChoisie = useAnneeActive();
   const contexte = useQuery({ queryKey: ['emploi', 'contexte'], queryFn: chargerContexte, retry: false, enabled: ouvert });
   const semaines = useQuery({
@@ -77,7 +93,7 @@ export default function DialogueChoixGroupes({
     }
   );
 
-  const groupes = contexte.data?.groupes ?? [];
+  const groupes = (contexte.data?.groupes ?? []).filter((groupe) => !groupesAdmis || groupesAdmis(groupe));
   const groupesIdentites = contexte.data?.groupesIdentites ?? {};
   const facettes = useMemo(() => facettesDesGroupes(groupes, groupesIdentites), [groupes, groupesIdentites]);
   const retenus = useMemo(() => {
@@ -86,7 +102,13 @@ export default function DialogueChoixGroupes({
   }, [groupes, groupesIdentites, filtreGroupes, choisis]);
 
   const telechargement = useMutation({
-    mutationFn: (format) => telecharger(avecSemaine ? { format, groupes: retenus, semaine } : { format, groupes: retenus }),
+    mutationFn: (format) =>
+      telecharger({
+        format,
+        groupes: retenus,
+        ...(avecSemaine ? { semaine } : {}),
+        ...(champs ? { valeurs } : {}),
+      }),
     onSuccess: onFermer,
     onError: (erreur) => toast.error('Téléchargement impossible', { description: erreur.message }),
   });
@@ -105,6 +127,9 @@ export default function DialogueChoixGroupes({
           <p className="text-sm text-muted-foreground">Chargement des groupes…</p>
         ) : (
           <div className="space-y-4">
+            {groupes.length === 0 && (contexte.data?.groupes ?? []).length > 0 && (
+              <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">{videGroupes}</p>
+            )}
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-muted-foreground">Groupes</p>
               <div className="flex flex-wrap items-center gap-2">
@@ -121,6 +146,43 @@ export default function DialogueChoixGroupes({
                 </span>
               </div>
             </div>
+
+            {champs && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {champs.map((champ) =>
+                  champ.type === 'checkbox' ? (
+                    // Une option à cocher (2026-10-11 : renouveler les QR des cartes de stagiaire).
+                    <label key={champ.nom} className="flex items-start gap-2 text-sm sm:col-span-2">
+                      <Checkbox
+                        className="mt-0.5"
+                        checked={Boolean(valeurs[champ.nom])}
+                        onCheckedChange={(coche) => setValeurs((actuelles) => ({ ...actuelles, [champ.nom]: coche === true }))}
+                      />
+                      <span>
+                        {champ.libelle}
+                        {champ.aide && <span className="block text-xs text-muted-foreground">{champ.aide}</span>}
+                      </span>
+                    </label>
+                  ) : (
+                  <div key={champ.nom} className={champ.large ? 'space-y-1.5 sm:col-span-2' : 'space-y-1.5'}>
+                    <Label htmlFor={`champ-${champ.nom}`} className="text-xs font-medium text-muted-foreground">
+                      {champ.libelle}
+                    </Label>
+                    <Input
+                      id={`champ-${champ.nom}`}
+                      type={champ.type ?? 'text'}
+                      value={valeurs[champ.nom] ?? ''}
+                      placeholder={champ.placeholder}
+                      className="h-9"
+                      onChange={(evenement) =>
+                        setValeurs((actuelles) => ({ ...actuelles, [champ.nom]: evenement.target.value }))
+                      }
+                    />
+                  </div>
+                  )
+                )}
+              </div>
+            )}
 
             {avecSemaine && (
               <div className="space-y-1.5">

@@ -184,6 +184,8 @@ export const MODELES = {
   convention: {
     chemin: canevas('conventionStage.docx'),
     nomFichier: 'Convention_Stage',
+    // Seuls les groupes AYANT une période de stage (2026-10-11) — voir le service.
+    exigeStage: true,
     construireCorps: corpsParStagiaire(
       {
         'CFP MGD HASSANIA': 'efp',
@@ -211,6 +213,72 @@ export const MODELES = {
       CASABLANCA: 'vide',
     },
   },
+  /* La convocation à l'EFF (2026-10-11, `Convocation_Examens_NOUZRI_MOUAD.docx`) :
+     une page par stagiaire, SEULEMENT pour les groupes de 2ᵉ et 3ᵉ année
+     (`anneeMinimale`) — la fin de formation ne concerne pas la 1ʳᵉ année.
+     L'identité vient de Konosys ; la date, l'horaire et le type d'épreuve, communs
+     à tous, sont saisis dans la fenêtre de téléchargement (`examen`). Dans la
+     copie de `canevas/` : l'horaire, coupé en deux runs, est réuni en un seul, et
+     Aptos passe en Calibri. Les consignes restent telles quelles. */
+  'convocation-eff': {
+    chemin: canevas('convocationEff.docx'),
+    nomFichier: 'Convocation_EFF',
+    anneeMinimale: 2,
+    construireCorps: corpsParStagiaire(
+      {
+        'CENTRE DE FORMATION PROFESSIONNELLE HASSANIA DANS LES MÉTIERS DE GESTION ET DU DIGITAL': 'etablissement',
+        '2006042900082': 'matricule',
+        'NOUZRI MOUAD': 'nomComplet',
+        BM54946: 'cin',
+        'Technicien spécialisé': 'niveauLibelle',
+        'Développement Digital Option Web Full Stack': 'filiere',
+        'Lundi 22 Juin 2026': 'dateExamen',
+        'Epreuve de synthèse': 'typeEpreuve',
+        'de 08h30 à 12h30': 'horaire',
+      },
+      valeursConvocation
+    ),
+  },
+  /* Le formulaire de transfert (2026-10-11, `Formulaire_de_transfert (1).docx`) :
+     un par stagiaire, la « partie réservée au demandeur » PRÉ-REMPLIE — identité,
+     naissance, niveau scolaire, établissement, niveau / année / mode cochés,
+     filière, date d'inscription — et le nom du stagiaire repris dans la partie de
+     l'établissement d'origine. Le reste (établissement demandé, motifs, visas)
+     se remplit à la main. Copie de `canevas/` : Aptos → Calibri, logo commun. */
+  transfert: {
+    chemin: canevas('formulaireTransfert.docx'),
+    nomFichier: 'Formulaire_Transfert',
+    construireCorps: corpsTransfert,
+    remplacementsDocument: {},
+  },
+  /* Le PV du conseil de discipline (2026-10-11, `PV_Conseil_Discipline.docx`) :
+     un PV par stagiaire QUI RELÈVE DU CONSEIL — sa sanction d'assiduité ou de
+     comportement est de l'autorité « CD » (voir le service, `exigeConseil`).
+     Identité, filière, année, niveau, mode, téléphone et les faits (absences,
+     retards, indisciplines) sont remplis ; les motifs exposés, la décision et les
+     signatures restent à la main. L'en-tête et le pied venaient de la DR Casa
+     Settat et du CF Médiouna : la région et l'établissement les remplacent.
+     Copie de `canevas/` : Aptos → Calibri, logo commun. */
+  'pv-discipline': {
+    chemin: canevas('pvConseilDiscipline.docx'),
+    nomFichier: 'PV_Conseil_Discipline',
+    exigeConseil: true,
+    construireCorps: corpsPvDiscipline,
+    remplacementsDocument: { 'DR Casa Settat /SRIO': 'drSrio' },
+    partielsDocument: { 'DR Casa Settat': 'drRegion' },
+  },
+  /* La fiche de réclamation (2026-10-11, `Fiche_Reclamation_Discipline.docx`) :
+     le formateur, le surveillant puis le conseil la remplissent à la main. Pré-
+     remplis : l'établissement (en-tête) et le groupe — UNE FICHE PAR GROUPE depuis
+     Documents, les noms à écrire ; UNE PAR STAGIAIRE, son nom écrit, quand il est
+     demandé nommément (« Notes de discipline »). Copie de `canevas/` : Aptos →
+     Calibri, logo commun, la ligne « Groupe : … Nom & Prénom : » en un seul run. */
+  reclamation: {
+    chemin: canevas('ficheReclamation.docx'),
+    nomFichier: 'Fiche_Reclamation',
+    construireCorps: corpsReclamation,
+    remplacementsDocument: { 'CF MEDIOUNA ': 'complexe', 'CFMMS TIT MELLIL': 'efp' },
+  },
   /* Les mêmes badges, AVEC les informations du stagiaire (2026-10-02). */
   'badges-infos': {
     chemin: canevas('badgesNumerosAvecInfos.docx'),
@@ -221,7 +289,17 @@ export const MODELES = {
 
 for (const { chemin } of Object.values(MODELES)) prechaufferLibreOffice(chemin);
 
-const SAUT_DE_PAGE = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+/*
+ * ⚠️ UN SAUT DE PAGE D'UN POINT DE HAUT (2026-10-11, signalé par le porteur :
+ * « une page reste vide » après le formulaire de transfert). Sur une page déjà
+ * pleine, un paragraphe de taille normale portant le saut glissait sur la page
+ * suivante — et le saut en créait alors une de plus, blanche. Réduit à 1 pt, il
+ * tient toujours au bas de la page qu'il termine.
+ */
+const SAUT_DE_PAGE =
+  '<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/>' +
+  '<w:rPr><w:sz w:val="2"/><w:szCs w:val="2"/></w:rPr></w:pPr>' +
+  '<w:r><w:rPr><w:sz w:val="2"/><w:szCs w:val="2"/></w:rPr><w:br w:type="page"/></w:r></w:p>';
 
 /**
  * Le corps d'un document à UNE PAGE PAR STAGIAIRE (la check-list des
@@ -401,6 +479,255 @@ function valeursConvention(v) {
   };
 }
 
+const JOURS_SEMAINE = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+
+/** « 2026-06-22 » → « Lundi 22 Juin 2026 », l'écriture du canevas. */
+function dateLongue(iso) {
+  const lettres = dateEnLettres(iso);
+  if (!lettres) return '';
+  return `${JOURS_SEMAINE[new Date(`${String(iso).slice(0, 10)}T12:00:00`).getDay()]} ${lettres}`;
+}
+
+/** « 08:30 » → « 08h30 ». */
+const heure = (valeur) => String(valeur ?? '').trim().replace(':', 'h');
+
+/**
+ * Les champs de la convocation à l'EFF. La date, l'horaire et le type d'épreuve
+ * viennent de la fenêtre (`examen`) ; laissés vides, ils restent en pointillés
+ * — la convocation se complète alors à la main, jamais avec l'exemple du canevas.
+ */
+function valeursConvocation(v) {
+  const ouPointilles = (texte) => (String(texte ?? '').trim() ? texte : POINTILLES);
+  const examen = v.examen ?? {};
+  return {
+    ...v,
+    cin: ouPointilles(v.cin),
+    niveauLibelle: ouPointilles(LIBELLES_NIVEAUX[v.niveau] ?? v.niveau),
+    filiere: ouPointilles(v.filiereLibelle),
+    dateExamen: ouPointilles(dateLongue(examen.date)),
+    typeEpreuve: ouPointilles(examen.epreuve),
+    horaire: `de ${heure(examen.debut) || '………'} à ${heure(examen.fin) || '………'}`,
+  };
+}
+
+/**
+ * ═══ LE FORMULAIRE DE TRANSFERT (2026-10-11) ═══ Un canevas SANS valeur
+ * d'exemple : ses lignes sont « Libellé ………… ». Chaque ligne reconnue voit ses
+ * pointillés remplacés par la valeur du stagiaire — une valeur absente les
+ * garde, la ligne se remplit alors à la main. Les cases ☐ de « Niveau », de
+ * l'année et du « Mode » sont cochées (☒) d'après Konosys et la carte.
+ */
+const COCHEE = '☒';
+
+/** `texte` dont le n-ième groupe de pointillés reçoit `valeurs[n]` — une valeur vide garde les siens. */
+function remplirPointilles(texte, valeurs) {
+  let rang = -1;
+  return texte.replace(/…+/g, (pointilles) => {
+    rang += 1;
+    const valeur = String(valeurs[rang] ?? '').trim();
+    return valeur ? echapperXml(valeur) : pointilles;
+  });
+}
+
+/** Coche la n-ième case ☐ d'un texte (`rangs` : les cases à cocher, à partir de 0). */
+function cocher(texte, rangs) {
+  let rang = -1;
+  return texte.replace(/☐/g, (caseVide) => {
+    rang += 1;
+    return rangs.includes(rang) ? COCHEE : caseVide;
+  });
+}
+
+/** Les lignes du demandeur reconnues par leur début, et ce qu'elles reçoivent. */
+const LIGNES_TRANSFERT = [
+  [/^Je soussigné, Mlle/, (v) => [v.nomComplet]],
+  [/^Né \(e\) le/, (v) => [v.dateNaissance, v.lieuNaissance]],
+  [/^Niveau scolaire/, (v) => [v.niveauScolaire]],
+  [/^Déclare être inscrit/, (v) => [v.etablissement]],
+  [/^Filière de formation/, (v) => [v.filiereLibelle]],
+  [/^ le /, (v) => [v.dateInscription]], // « depuis le … » : le run qui suit « depuis »
+  [/^ que Mlle, Mme, Mr/, (v) => [v.nomComplet]], // partie de l'établissement d'origine
+  // L'EFP d'origine, c'est le nôtre : son directeur certifie.
+  [/^Je soussigné, directeur de l'EFP/, (v) => [v.etablissement]],
+];
+
+function corpsTransfert(gabarit, feuilles, sautDePage) {
+  return feuilles
+    .flatMap((feuille) =>
+      feuille.stagiaires.map((stagiaire) => {
+        const v = { ...feuille, ...stagiaire, nomComplet: `${stagiaire.nom} ${stagiaire.prenom}`.trim() };
+        // Les cases de « Niveau : TS ☐ - T ☐ - Q ☐ - S ☐  ☐ 1ère Année ☐ 2ème Année », dans l'ordre.
+        const niveaux = ['TS', 'T', 'Q', 'S'];
+        const rangNiveau = niveaux.indexOf(String(v.niveau ?? '').toUpperCase());
+        const annee = Number(/^(\d)/.exec(String(v.annee ?? ''))?.[1]);
+        const casesNiveau = [rangNiveau, annee === 1 ? 4 : annee === 2 ? 5 : -1].filter((r) => r >= 0);
+        const alterne = /alt/i.test(v.mode ?? '');
+
+        return gabarit.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (paragraphe) => {
+          const texte = [...paragraphe.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g)].map((m) => m[1]).join('');
+
+          // La ligne des niveaux : ses cases sont réparties sur plusieurs runs — on les compte d'un run à l'autre.
+          if (texte.startsWith('Niveau : TS')) {
+            let vues = 0;
+            return paragraphe.replace(/(<w:t(?:\s[^>]*)?>)([^<]*)(<\/w:t>)/g, (tout, ouverture, contenu, fermeture) => {
+              const debut = vues;
+              vues += (contenu.match(/☐/g) ?? []).length;
+              const locaux = casesNiveau.map((r) => r - debut);
+              const coche = cocher(contenu, locaux);
+              return coche === contenu ? tout : `${ouverture}${coche}${fermeture}`;
+            });
+          }
+
+          return paragraphe.replace(/(<w:t(?:\s[^>]*)?>)([^<]*)(<\/w:t>)/g, (tout, ouverture, contenu, fermeture) => {
+            const ligne = LIGNES_TRANSFERT.find(([debut]) => debut.test(contenu));
+            if (!ligne) return tout;
+            let rempli = remplirPointilles(contenu, ligne[1](v));
+            // « Mode : ☐ Résidentielle ☐ Alterné » — sur la ligne de la filière. Sans mode connu : résidentiel, la règle de la carte.
+            if (contenu.startsWith('Filière de formation')) rempli = cocher(rempli, [alterne ? 1 : 0]);
+            return rempli === contenu ? tout : `<w:t xml:space="preserve">${rempli}${fermeture}`;
+          });
+        });
+      })
+    )
+    .join(sautDePage);
+}
+
+/**
+ * ═══ LE PV DU CONSEIL DE DISCIPLINE (2026-10-11) ═══ Un canevas SANS valeur
+ * d'exemple pour le stagiaire : ses lignes sont « Libellé ………… ». Chaque ligne
+ * reconnue reçoit la valeur du stagiaire à la place de ses pointillés, et les
+ * cases ☐ (motif, année, mode) sont cochées ; une valeur absente garde les
+ * pointillés. Le paragraphe est reconnu par son TEXTE (runs réunis), puis seuls
+ * ses runs concernés sont réécrits — la mise en forme du canevas reste.
+ */
+const RUN = /(<w:t(?:\s[^>]*)?>)([^<]*)(<\/w:t>)/g;
+const texteDu = (paragraphe) => [...paragraphe.matchAll(RUN)].map((m) => m[2]).join('');
+
+/** Réécrit les runs d'un paragraphe : `transformer(texte, rang)` rend le nouveau texte (déjà échappé). */
+function reecrireRuns(paragraphe, transformer) {
+  let rang = -1;
+  return paragraphe.replace(RUN, (tout, ouverture, contenu, fermeture) => {
+    rang += 1;
+    const nouveau = transformer(contenu, rang);
+    return nouveau === contenu ? tout : `<w:t xml:space="preserve">${nouveau}${fermeture}`;
+  });
+}
+
+/** Coche, dans tout le paragraphe, les cases ☐ de rangs `rangs` (comptés d'un run à l'autre). */
+function cocherParagraphe(paragraphe, rangs) {
+  let vues = 0;
+  return reecrireRuns(paragraphe, (contenu) => {
+    const debut = vues;
+    vues += (contenu.match(/☐/g) ?? []).length;
+    return cocher(contenu, rangs.map((r) => r - debut));
+  });
+}
+
+/** Le premier groupe de pointillés du run qui en porte, rempli de `valeur` — vide : inchangé. */
+const remplirPremiersPointilles = (paragraphe, valeur) => {
+  let fait = false;
+  return reecrireRuns(paragraphe, (contenu) => {
+    if (fait || !/…/.test(contenu) || !String(valeur ?? '').trim()) return contenu;
+    fait = true;
+    return remplirPointilles(contenu, [valeur]);
+  });
+};
+
+function corpsPvDiscipline(gabarit, feuilles, sautDePage) {
+  const anneeCivile = new Date().getFullYear();
+  return feuilles
+    .flatMap((feuille) =>
+      feuille.stagiaires.map((stagiaire) => {
+        const v = { ...feuille, ...stagiaire, nomComplet: `${stagiaire.nom} ${stagiaire.prenom}`.trim() };
+        const annee = Number(/^(\d)/.exec(String(v.annee ?? ''))?.[1]) || null;
+        // Suivi d'une espace : le canevas colle « année » aux pointillés.
+        const ordinal = annee === 1 ? '1ère ' : annee ? `${annee}ème ` : '';
+        let apresRaison = false; // la ligne de pointillés qui suit « … en raison de »
+
+        return gabarit.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (paragraphe) => {
+          const texte = texteDu(paragraphe);
+
+          if (texte.startsWith('CFP :')) {
+            return reecrireRuns(paragraphe, (contenu) =>
+              contenu === 'CF ' ? '' : contenu === 'MEDIOUNA  ' ? `${echapperXml(v.complexe)}  ` : contenu === 'CFMMS TIT MELLIL' ? echapperXml(v.efp) : contenu
+            );
+          }
+          // La ville n'est dans aucune fiche : des pointillés, comme la date.
+          if (texte.startsWith('Casablanca, le')) {
+            return reecrireRuns(paragraphe, (contenu) => contenu.replace('Casablanca', '………………'));
+          }
+          if (texte.startsWith('TIT MELLIL/N°')) {
+            return reecrireRuns(paragraphe, (contenu) =>
+              contenu === 'TIT MELLIL/N° ' ? `${echapperXml(v.efp)}/N° ` : contenu.replace('/2026', `/${anneeCivile}`)
+            );
+          }
+          if (texte.startsWith('cas du stagiaire')) {
+            return reecrireRuns(paragraphe, (contenu, rang) =>
+              rang === 2 ? remplirPointilles(contenu, [v.nomComplet]) : contenu.includes('CEF :') ? remplirPointilles(contenu, [v.matricule]) : contenu
+            );
+          }
+          if (texte.startsWith('☐Absence')) {
+            return cocherParagraphe(paragraphe, [v.conseilAbsence ? 0 : -1, v.conseilConduite ? 1 : -1]);
+          }
+          if (texte.startsWith('Filière :')) return remplirPremiersPointilles(paragraphe, v.filiereLibelle);
+          if (texte.startsWith('Année de formation : ☐1')) return annee === 1 ? cocherParagraphe(paragraphe, [0]) : paragraphe;
+          if (texte.trim().startsWith('☐2ème')) return annee === 2 ? cocherParagraphe(paragraphe, [0]) : paragraphe;
+          if (texte.trim().startsWith('☐3ème')) return annee === 3 ? cocherParagraphe(paragraphe, [0]) : paragraphe;
+          if (texte.startsWith('Niveau de formation')) {
+            return remplirPremiersPointilles(paragraphe, LIBELLES_NIVEAUX[v.niveau] ?? v.niveau);
+          }
+          // Sans mode connu : résidentiel, la règle de la carte.
+          if (texte.startsWith('Mode de formation')) return cocherParagraphe(paragraphe, [/alt/i.test(v.mode ?? '') ? 1 : 0]);
+          if (texte.startsWith('N° Téléphone')) return remplirPremiersPointilles(paragraphe, v.telephone);
+          if (texte.startsWith("L'intéressé(e) est traduit(e)")) {
+            apresRaison = true;
+            return paragraphe;
+          }
+          // Les faits, sur la première ligne de pointillés qui suit « en raison de ».
+          if (apresRaison && /^…+$/.test(texte.trim())) {
+            apresRaison = false;
+            return remplirPremiersPointilles(paragraphe, v.faits);
+          }
+          if (texte.startsWith("L'intéressé(e) est définitivement rayé(e)")) return remplirPremiersPointilles(paragraphe, ordinal);
+          if (texte.startsWith('la filière')) {
+            return reecrireRuns(paragraphe, (contenu) =>
+              contenu.startsWith('…') ? remplirPointilles(contenu, [v.filiereLibelle]) : contenu.includes('groupe') ? remplirPointilles(contenu, [v.groupe]) : contenu
+            );
+          }
+          // « Validation de la Direction Régionale Casa Settat » : la région de l'établissement.
+          if (texte.startsWith('Validation de la Direction Régionale')) {
+            return reecrireRuns(paragraphe, (contenu) => (contenu === 'Casa Settat' ? echapperXml(v.region || contenu) : contenu));
+          }
+          return paragraphe;
+        });
+      })
+    )
+    .join(sautDePage);
+}
+
+/**
+ * La fiche de réclamation : une page par groupe, ou par stagiaire quand ils sont
+ * `nommes`. Seule la ligne « Groupe : ……… Nom & Prénom : » est écrite — les
+ * pointillés du groupe remplacés, le nom ajouté après son libellé.
+ */
+function corpsReclamation(gabarit, feuilles, sautDePage, { nommes = false } = {}) {
+  const page = (groupe, nom) =>
+    gabarit.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (paragraphe) =>
+      texteDu(paragraphe).startsWith('Groupe :')
+        ? reecrireRuns(paragraphe, (contenu) =>
+            contenu.startsWith('Groupe :')
+              ? `${remplirPointilles(contenu.replace(/Nom &amp; Prénom : $/, ''), [groupe]).replace(/^Groupe :(?!…)/, 'Groupe : ')}${'\u00a0'.repeat(8)}Nom &amp; Prénom : ${echapperXml(nom)}`
+              : contenu
+          )
+        : paragraphe
+    );
+  return feuilles
+    .flatMap((feuille) =>
+      nommes ? feuille.stagiaires.map((s) => page(feuille.groupe, `${s.nom} ${s.prenom}`.trim())) : [page(feuille.groupe, '')]
+    )
+    .join(sautDePage);
+}
+
 /** « 14/10/2026 » — la date de délivrance. */
 function dateDuJour() {
   const maintenant = new Date();
@@ -520,7 +847,7 @@ function remplacerTextes(xml, remplacements, valeurs) {
   );
 }
 
-export async function construireDocxFeuillePresence(modele, { anneeScolaire, feuilles }) {
+export async function construireDocxFeuillePresence(modele, { anneeScolaire, feuilles, nommes = false }) {
   const zip = await JSZip.loadAsync(await chargerCanevasTampon(modele.chemin));
 
   const xmlDocument = await zip.file('word/document.xml').async('string');
@@ -537,14 +864,16 @@ export async function construireDocxFeuillePresence(modele, { anneeScolaire, feu
   // Dans le corps quand le titre n'est pas dans un en-tête de page (liste de vérification, retrait du bac).
   const gabarit = annee(xmlDocument.slice(debutCorps, debutSectPr));
   const corps = modele.construireCorps
-    ? modele.construireCorps(gabarit, feuilles, SAUT_DE_PAGE)
+    ? modele.construireCorps(gabarit, feuilles, SAUT_DE_PAGE, { nommes })
     : feuilles.map((feuille) => construirePage(gabarit, modele, feuille)).join(SAUT_DE_PAGE);
   zip.file('word/document.xml', xmlDocument.slice(0, debutCorps) + corps + xmlDocument.slice(debutSectPr));
 
   // L'en-tête et le pied de page : l'année, et ce qui y désigne l'établissement (une valeur par document).
   for (const nom of Object.keys(zip.files).filter((n) => /^word\/(header|footer)\d*\.xml$/.test(n))) {
     const xml = annee(await zip.file(nom).async('string'));
-    zip.file(nom, remplacerTextes(xml, modele.remplacementsDocument ?? {}, { ...feuilles[0], vide: '' }));
+    const valeurs = { ...feuilles[0], vide: '' };
+    // `partielsDocument` : un texte remplacé au milieu d'une phrase du pied (« … à la DR Casa Settat … »).
+    zip.file(nom, remplacerPartiels(remplacerTextes(xml, modele.remplacementsDocument ?? {}, valeurs), modele.partielsDocument ?? {}, valeurs));
   }
 
   return zip.generateAsync({ type: 'nodebuffer' });

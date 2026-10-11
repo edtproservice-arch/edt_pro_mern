@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import {
   changementMotDePasseSchema,
   connexionSchema,
@@ -89,6 +90,27 @@ router.post(
         return res.json({ success: true, action: resultat.action, email: resultat.email });
       }
 
+      poserCookies(res, resultat.accessToken, resultat.refreshToken);
+      return res.json({ success: true, action: 'connecte', utilisateur: resultat.utilisateur });
+    } catch (error) {
+      return next(error);
+    }
+  }
+);
+
+/**
+ * Connexion par le QR de la carte de stagiaire (2026-10-11) — la page
+ * `/carte/:jeton` de l'écran envoie le jeton lu dans l'adresse. Même limiteur que
+ * la connexion par mot de passe : un jeton ne se devine pas à force d'essais.
+ */
+router.post(
+  '/carte',
+  limiteurConnexion,
+  validate({ body: z.object({ jeton: z.string().trim().min(10).max(200), appareil: z.any().optional() }) }),
+  async (req, res, next) => {
+    try {
+      const { appareil, ip } = contexteAppareil(req);
+      const resultat = await service.connecterParCarte({ jeton: req.body.jeton, appareil, ip });
       poserCookies(res, resultat.accessToken, resultat.refreshToken);
       return res.json({ success: true, action: 'connecte', utilisateur: resultat.utilisateur });
     } catch (error) {

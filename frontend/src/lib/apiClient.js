@@ -178,7 +178,8 @@ export const etatRafraichissement = rafraichirEtat;
  * `deconnexion` en font partie — se rafraîchir pour se rafraîchir bouclerait.
  */
 function accepteRafraichissement(path) {
-  return !/\/auth\/(connexion|inscription|verification|mot-de-passe|rafraichir|deconnexion)/.test(
+  // `carte` (2026-10-11) : une carte refusée est un 401 définitif, comme un mot de passe faux.
+  return !/\/auth\/(connexion|carte|inscription|verification|mot-de-passe|rafraichir|deconnexion)/.test(
     path
   );
 }

@@ -14,6 +14,7 @@ import { construireBilletsAbsence, construireBilletsVierges } from './exportBill
 import { construireFeuillePresence } from './exportFeuillePresence.service.js';
 import { construireExportRegistreAbsences } from './exportRegistreAbsences.service.js';
 import { construireExportNotesDiscipline } from './exportNotesDiscipline.service.js';
+import { adresseDeLaRequete, construireCartesStagiaires, liensDesCartes } from './exportCarteStagiaire.service.js';
 
 /**
  * Absences, retards et indisciplines des stagiaires — la note de discipline (F9).
@@ -139,10 +140,21 @@ router.post(
   '/presence/:modele',
   ENCADREMENT,
   validate({
-    params: z.object({ modele: z.enum(['eff', 'cc-efm', 'liste', 'badges-sans', 'badges-infos', 'checklist', 'verification', 'retrait-definitif', 'retrait-provisoire', 'attestation-poursuite', 'convention']) }),
+    params: z.object({ modele: z.enum(['eff', 'cc-efm', 'liste', 'badges-sans', 'badges-infos', 'checklist', 'verification', 'retrait-definitif', 'retrait-provisoire', 'attestation-poursuite', 'convention', 'convocation-eff', 'transfert', 'pv-discipline', 'reclamation']) }),
     body: z.object({
       format: z.enum(['docx', 'pdf']),
       groupes: z.array(z.string().trim().min(1).max(200)).min(1).max(100),
+      // Seulement ces stagiaires (2026-10-11 : le PV du conseil d'UN stagiaire, depuis « Notes de discipline »).
+      matricules: z.array(z.string().trim().min(1).max(50)).min(1).max(500).optional(),
+      // La convocation à l'EFF (2026-10-11) : date, horaire et type d'épreuve, communs à tous.
+      examen: z
+        .object({
+          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal('')).optional(),
+          debut: z.string().regex(/^\d{2}:\d{2}$/).or(z.literal('')).optional(),
+          fin: z.string().regex(/^\d{2}:\d{2}$/).or(z.literal('')).optional(),
+          epreuve: z.string().trim().max(100).optional(),
+        })
+        .optional(),
     }),
   }),
   route(async (req, res) => {
@@ -267,6 +279,63 @@ router.delete(
     await discipline.supprimerIndiscipline(req.etablissementId, req.anneeScolaire, req.params.id);
     res.json({ success: true });
     annoncer(req, 'indiscipline');
+  })
+);
+
+/**
+ * Les cartes de stagiaire des groupes choisis, en Word ou PDF (2026-10-11) —
+ * dix par page, QR de connexion au compte. Voir `exportCarteStagiaire.service.js`.
+ *
+ * ⚠️ RÉSERVÉES À L'ENCADREMENT : chaque QR ouvre la session d'un stagiaire.
+ * `renouveler` invalide les cartes déjà imprimées des stagiaires concernés.
+ */
+router.post(
+  '/cartes',
+  ENCADREMENT,
+  validate({
+    body: z.object({
+      format: z.enum(['docx', 'pdf']),
+      groupes: z.array(z.string().trim().min(1).max(200)).min(1).max(100),
+      renouveler: z.boolean().default(false),
+      // L'adresse de l'écran (`window.location.origin`) : où mènera le QR — voir `adresseDesLiens`.
+      adresse: z.string().trim().max(200).optional(),
+    }),
+  }),
+  route(async (req, res) => {
+    const { tampon, nomFichier, contentType } = await construireCartesStagiaires(req.etablissementId, req.anneeScolaire, {
+      ...req.body,
+      // Le QR mène à l'application qu'on utilise — voir `adresseDesLiens`.
+      adresse: adresseDeLaRequete(req, req.body.adresse),
+    });
+    res.setHeader('Content-Type', contentType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="export"; filename*=UTF-8''${encodeURIComponent(nomFichier)}`
+    );
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+    res.send(tampon);
+  })
+);
+
+/**
+ * Les liens de connexion (et leurs QR) des stagiaires d'un groupe — la colonne
+ * QR de la fiche stagiaire (2026-10-11). Mêmes liens que les cartes imprimées.
+ *
+ * ⚠️ RÉSERVÉS À L'ENCADREMENT : chaque lien ouvre la session d'un stagiaire. La
+ * page Documents se partage en lecture : un formateur invité ne les voit pas.
+ */
+router.get(
+  '/cartes/liens',
+  ENCADREMENT,
+  validate({
+    query: z.object({
+      groupe: z.string().trim().min(1).max(200),
+      adresse: z.string().trim().max(200).optional(),
+    }),
+  }),
+  route(async (req, res) => {
+    const { groupe, adresse } = req.validatedQuery ?? req.query;
+    res.json(await liensDesCartes(req.etablissementId, req.anneeScolaire, groupe, adresseDeLaRequete(req, adresse)));
   })
 );
 

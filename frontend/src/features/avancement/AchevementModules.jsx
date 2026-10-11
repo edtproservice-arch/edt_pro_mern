@@ -75,6 +75,9 @@ export default function AchevementModules({
   /* Le nom complet de chaque module, par code — résolu par le serveur depuis la
      répartition DRIF (`Base.affectations` ne garde que le code). */
   intitules = {},
+  /* Le nom complet par `groupe||module`, dans la filière du groupe (2026-10-11) :
+     prioritaire sur `intitules`, qui ne connaît que le code. */
+  intitulesParGroupe = {},
 }) {
   const [ouvert, setOuvert] = useState(false);
   const [filtresModale, setFiltresModale] = useState(FILTRES_VIDES);
@@ -97,6 +100,7 @@ export default function AchevementModules({
     dateObservee,
     face,
     intitules,
+    intitulesParGroupe,
   });
 
   /*
@@ -249,7 +253,7 @@ export default function AchevementModules({
  * Les lignes du détail, dates comprises — calculées UNE fois, pour le tableau ET
  * pour l'export : le fichier téléchargé dit exactement ce que la fenêtre montre.
  */
-function useLignesTableau({ details, ouvert, anneeScolaire, dateObservee, face, intitules }) {
+function useLignesTableau({ details, ouvert, anneeScolaire, dateObservee, face, intitules, intitulesParGroupe }) {
   const avecDates = face === 'edtpro';
 
   /*
@@ -279,7 +283,9 @@ function useLignesTableau({ details, ouvert, anneeScolaire, dateObservee, face, 
     const parCle = plages.data?.plages ?? {};
     return details.map((detail) => ({
       ...detail,
-      intitule: intitules[detail.module] ?? null,
+      /* ⚠️ LA FILIÈRE DU GROUPE D'ABORD : le même code porte un autre module
+         dans une autre filière. Le code seul n'est qu'un repli. */
+      intitule: intitulesParGroupe[`${detail.groupe}||${detail.module}`] ?? intitules[detail.module] ?? null,
       ...(avecDates
         ? datesDuModule(detail, parCle[`${detail.groupe}||${detail.module}`] ?? null, {
             anneeScolaire,
@@ -289,7 +295,7 @@ function useLignesTableau({ details, ouvert, anneeScolaire, dateObservee, face, 
           })
         : {}),
     }));
-  }, [details, avecDates, plages.data, intitules, anneeScolaire, dateObservee]);
+  }, [details, avecDates, plages.data, intitules, intitulesParGroupe, anneeScolaire, dateObservee]);
 
   return { lignes, chargement: plages.isLoading };
 }

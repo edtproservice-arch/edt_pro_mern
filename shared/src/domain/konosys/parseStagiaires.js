@@ -43,9 +43,24 @@ export const COLONNES_KONOSYS = {
    */
   lieuNaissance: ['LieuNaissance'],
   dateInscription: ['DateInscription'],
+  /*
+   * ═══ NIVEAU SCOLAIRE (2026-10-11, demande du porteur : « je vais l'utiliser
+   * après ») ═══ Le niveau d'études à l'entrée — « Baccalauréat », « 3 ème année
+   * de l'Enseignement Secondaire Collégial », « Qualification »… Lu et CONSERVÉ,
+   * sans encore servir, comme les champs ci-dessus.
+   */
+  niveauScolaire: ['NiveauScolaire'],
 };
 
 const texte = (valeur) => String(valeur ?? '').trim();
+
+/*
+ * ⚠️ LE NIVEAU SCOLAIRE ARRIVE ABÎMÉ PAR L'EXPORT : « 3 ème année de  l''Enseignement
+ * Secondaire » — espaces doublées, apostrophe échappée deux fois (« '' »). Remis
+ * d'aplomb à la lecture, pour que deux stagiaires du même niveau portent la même
+ * valeur et se regroupent quand on s'en servira.
+ */
+const niveauScolaireNet = (valeur) => texte(valeur).replace(/''/g, "'").replace(/\s+/g, ' ');
 
 /** Première colonne renseignée parmi les intitulés acceptés. */
 function champ(ligne, intitules) {
@@ -142,6 +157,7 @@ export function lireStagiaires(lignes = []) {
         // ⚠️ EN TEXTE elle aussi, comme `dateNaissance` : l'existant y stocke des
         // formats hétérogènes, pas toujours convertibles en `Date`.
         dateInscription: champ(ligne, COLONNES_KONOSYS.dateInscription),
+        niveauScolaire: niveauScolaireNet(champ(ligne, COLONNES_KONOSYS.niveauScolaire)),
         /*
          * ⚠️ L'adresse n'est PAS lue dans le fichier : `upload.php:74` la
          * FABRIQUE à partir du matricule. Konosys n'en fournit pas.
@@ -169,6 +185,9 @@ export function lireStagiaires(lignes = []) {
     }
     if (existant.dateInscription === '') {
       existant.dateInscription = champ(ligne, COLONNES_KONOSYS.dateInscription);
+    }
+    if (existant.niveauScolaire === '') {
+      existant.niveauScolaire = niveauScolaireNet(champ(ligne, COLONNES_KONOSYS.niveauScolaire));
     }
 
     /*

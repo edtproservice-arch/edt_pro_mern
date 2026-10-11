@@ -56,6 +56,14 @@ const stagiaireSchema = new mongoose.Schema(
     lieuNaissance: { type: String, trim: true, default: '' },
     dateInscription: { type: String, trim: true, default: '' },
 
+    /**
+     * ← NiveauScolaire de Konosys (2026-10-11, demande du porteur : « je vais l'utiliser
+     * après ») : le niveau d'études à l'entrée — « Baccalauréat », « Qualification »,
+     * « 3 ème année de l'Enseignement Secondaire Collégial »… Affiché dans la fiche
+     * stagiaire (page Documents) depuis le 2026-10-11.
+     */
+    niveauScolaire: { type: String, trim: true, default: '' },
+
     /*
      * ═══ TOUS SES GROUPES, ET NON UN SEUL ═══ (décision du 2026-08-19)
      *

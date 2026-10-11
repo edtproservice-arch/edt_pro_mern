@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { lireStagiaires } from 'shared/domain';
+import { dateSansHeure, lireStagiaires } from 'shared/domain';
 import { ROLES, STATUTS_COMPTE } from 'shared/constants';
 import { Stagiaire } from '../../models/Stagiaire.js';
 import { User } from '../../models/User.js';
@@ -215,9 +215,26 @@ export async function lister(
   if (filiere) filtre.filiere = filiere;
   if (groupe) filtre.groupes = groupe;
 
+  /*
+   * ⚠️ MOT PAR MOT (2026-10-12, recherche par nom dans Documents → effectifs) :
+   * « aya mohamed » porte sur DEUX champs — le nom ET le prénom. Chaque mot doit
+   * se trouver dans l'un des champs d'identité ; les mots se cumulent.
+   */
   if (recherche) {
-    const motif = new RegExp(recherche.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-    filtre.$or = [{ nom: motif }, { prenom: motif }, { matricule: motif }];
+    const mots = recherche.split(/\s+/).filter(Boolean).slice(0, 6);
+    filtre.$and = mots.map((mot) => {
+      const motif = new RegExp(mot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      return {
+        $or: [
+          { nom: motif },
+          { prenom: motif },
+          { nomArabe: motif },
+          { prenomArabe: motif },
+          { matricule: motif },
+          { cin: motif },
+        ],
+      };
+    });
   }
 
   const stagiaires = await Stagiaire.find(filtre).sort({ nom: 1, prenom: 1 }).limit(3000);
@@ -336,7 +353,8 @@ function presenter(stagiaire) {
     prenomArabe: stagiaire.prenomArabe,
     email: stagiaire.email,
     cin: stagiaire.cin,
-    dateNaissance: stagiaire.dateNaissance,
+    // Sans l'heure de l'export Konosys, même pour un stagiaire importé avant le 2026-10-12.
+    dateNaissance: dateSansHeure(stagiaire.dateNaissance),
     // ⚠️ EXPOSÉS (2026-09-27, demande du porteur : « exposer ces champs dans la
     // fiche stagiaire ») — contrairement à `motifAdmission`/`telephone`, lus la
     // même semaine mais laissés hors de cette liste tant qu'aucun écran n'en

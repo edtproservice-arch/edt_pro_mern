@@ -569,3 +569,29 @@ describe('Import Konosys', () => {
     expect(reponse.status).toBe(403);
   });
 });
+
+describe('Recherche et date de naissance (2026-10-12)', () => {
+  const chercher = (recherche) =>
+    request(app)
+      .get(`/api/v2/stagiaires?recherche=${encodeURIComponent(recherche)}`)
+      .set('Cookie', cookies);
+
+  it('trouve un stagiaire par nom ET prénom, mot par mot, dans n’importe quel ordre', async () => {
+    await importer([stagiaire(), stagiaire({ MatriculeEtudiant: 'S002', Nom: 'ALAMI', Prenom: 'Youssef' })]);
+
+    const parNomComplet = (await chercher('salma benani')).body.stagiaires;
+    expect(parNomComplet.map((s) => s.matricule)).toEqual(['S001']);
+
+    const parCin = (await chercher('be123')).body.stagiaires;
+    // Triés par nom : ALAMI avant BENANI.
+    expect(parCin.map((s) => s.matricule)).toEqual(['S002', 'S001']);
+
+    expect((await chercher('alami salma')).body.stagiaires).toEqual([]);
+  });
+
+  it('n’enregistre pas l’heure de la date de naissance de l’export', async () => {
+    await importer([stagiaire({ DateNaissance: '24/09/2006 00:00:00' })]);
+    const [trouve] = (await chercher('S001')).body.stagiaires;
+    expect(trouve.dateNaissance).toBe('24/09/2006');
+  });
+});

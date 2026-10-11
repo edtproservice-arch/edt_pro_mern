@@ -109,6 +109,10 @@ export const telechargerBillets = ({ format, ids }) =>
 export const telechargerBilletsVierges = (format) =>
   api.telecharger(`${RACINE}/billets/vierges`, { format }, { nomParDefaut: `billets-excuse-vierges.${format}` });
 
+/** Un formulaire d'examen vierge, logo OFPPT en tête (2026-10-11) — `cle` : voir le serveur. */
+export const telechargerFormulaireExamen = (cle) => (format) =>
+  api.telecharger(`${RACINE}/formulaires-examen`, { cle, format }, { nomParDefaut: `${cle}.${format}` });
+
 export const chargerNotes = (groupe) => api.get(`${RACINE}/notes?${requete({ groupe })}`);
 export const chargerFiche = (matricule) => api.get(`${RACINE}/stagiaires/${encodeURIComponent(matricule)}`);
 

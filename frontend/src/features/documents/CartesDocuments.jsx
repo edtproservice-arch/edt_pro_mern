@@ -33,6 +33,7 @@ import {
   exporterFeuilleAbsence,
   exporterFeuillePresence,
   telechargerBilletsVierges,
+  telechargerFormulaireExamen,
 } from '@/features/absences/stagiaires/api';
 import { chargerEtablissementCourant } from '@/features/configuration/api';
 import DialogueChoixGroupes from './DialogueChoixGroupes';
@@ -297,6 +298,102 @@ const DOCUMENTS = [
       telecharger: exporterFeuillePresence('pv-discipline'),
     },
   },
+  /*
+   * ═══ FORMULAIRES D'EXAMEN VIERGES (2026-10-11, treize canevas transmis, « avec
+   * le logo ») ═══ Remplis à la main par la commission le jour de l'épreuve :
+   * Word ou PDF, logo OFPPT en tête — voir `exportFormulairesExamen.service.js`.
+   */
+  {
+    cle: 'presence-surveillants',
+    titre: 'Feuille de présence des surveillants',
+    resume: 'Par session d’examen',
+    icone: Users,
+    telecharger: telechargerFormulaireExamen('presence-surveillants'),
+  },
+  {
+    cle: 'pv-ouverture-enveloppes',
+    titre: 'PV d’ouverture des enveloppes',
+    resume: 'Épreuves, stagiaires, surveillants',
+    icone: FileSignature,
+    telecharger: telechargerFormulaireExamen('pv-ouverture-enveloppes'),
+  },
+  {
+    cle: 'enveloppe-a',
+    titre: 'Enveloppe A',
+    resume: 'Copies et feuille de présence',
+    icone: Mail,
+    telecharger: telechargerFormulaireExamen('enveloppe-a'),
+  },
+  {
+    cle: 'enveloppe-b',
+    titre: 'Enveloppe B',
+    resume: 'Souches des copies',
+    icone: Mail,
+    telecharger: telechargerFormulaireExamen('enveloppe-b'),
+  },
+  {
+    cle: 'enveloppe-c',
+    titre: 'Enveloppe C',
+    resume: 'Enveloppes A et B réunies',
+    icone: Mail,
+    telecharger: telechargerFormulaireExamen('enveloppe-c'),
+  },
+  {
+    cle: 'preparation-pratiques',
+    titre: 'Fiche de préparation des examens pratiques',
+    resume: 'Par le formateur préparateur',
+    icone: ClipboardCheck,
+    telecharger: telechargerFormulaireExamen('preparation-pratiques'),
+  },
+  {
+    cle: 'deroulement-pratiques',
+    titre: 'Fiche de déroulement des examens pratiques',
+    resume: 'Par le formateur évaluateur',
+    icone: ClipboardCheck,
+    telecharger: telechargerFormulaireExamen('deroulement-pratiques'),
+  },
+  {
+    cle: 'accuse-depot-retrait',
+    titre: 'Accusé de dépôt et de retrait des paquets',
+    resume: 'Copies envoyées à la correction',
+    icone: FileCheck2,
+    telecharger: telechargerFormulaireExamen('accuse-depot-retrait'),
+  },
+  {
+    cle: 'accuse-copies-corriger',
+    titre: 'Accusé de réception des copies à corriger',
+    resume: 'Remise au correcteur',
+    icone: FileCheck2,
+    telecharger: telechargerFormulaireExamen('accuse-copies-corriger'),
+  },
+  {
+    cle: 'pv-report-notes',
+    titre: 'PV de report des notes',
+    resume: 'Notes par code de copie',
+    icone: ClipboardList,
+    telecharger: telechargerFormulaireExamen('pv-report-notes'),
+  },
+  {
+    cle: 'pv-fraude-deroulement',
+    titre: 'PV de fraude — déroulement',
+    resume: 'Constat pendant l’épreuve',
+    icone: FileWarning,
+    telecharger: telechargerFormulaireExamen('pv-fraude-deroulement'),
+  },
+  {
+    cle: 'pv-fraude-correction',
+    titre: 'PV de fraude — correction',
+    resume: 'Constat à la correction',
+    icone: FileWarning,
+    telecharger: telechargerFormulaireExamen('pv-fraude-correction'),
+  },
+  {
+    cle: 'cr-conseil-discipline',
+    titre: 'Compte rendu du conseil de discipline',
+    resume: 'Fraude aux examens',
+    icone: Gavel,
+    telecharger: telechargerFormulaireExamen('cr-conseil-discipline'),
+  },
 ];
 
 /*
@@ -310,7 +407,27 @@ const APERCU_MAX = 3;
 const CATEGORIES = [
   {
     titre: 'Examen',
-    cles: ['convocation', 'presence-eff', 'presence-cc-efm','liste', 'badges-table', 'badges-simples'],
+    cles: [
+      'convocation',
+      'presence-eff',
+      'presence-cc-efm',
+      'liste',
+      'badges-table',
+      'badges-simples',
+      'presence-surveillants',
+      'pv-ouverture-enveloppes',
+      'enveloppe-a',
+      'enveloppe-b',
+      'enveloppe-c',
+      'preparation-pratiques',
+      'deroulement-pratiques',
+      'accuse-depot-retrait',
+      'accuse-copies-corriger',
+      'pv-report-notes',
+      'pv-fraude-deroulement',
+      'pv-fraude-correction',
+      'cr-conseil-discipline',
+    ],
     icone: ClipboardList,
   },
   {

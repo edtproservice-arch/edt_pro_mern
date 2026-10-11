@@ -260,7 +260,8 @@ function SousMenu({ entree, pathname }) {
                       visuel, on relit la liste entière à chaque visite.
                     */}
                     <sous.icone className="stroke-[1.7]" />
-                    <span>{sous.titre}</span>
+                    {/* Le libellé complet au survol, s'il est coupé. */}
+                    <span title={sous.titre}>{sous.titre}</span>
                   </NavLink>
                 </SidebarMenuSubButton>
               </SidebarMenuSubItem>

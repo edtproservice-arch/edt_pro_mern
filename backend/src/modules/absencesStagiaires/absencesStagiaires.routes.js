@@ -14,6 +14,7 @@ import { construireBilletsAbsence, construireBilletsVierges } from './exportBill
 import { construireFeuillePresence } from './exportFeuillePresence.service.js';
 import { construireExportRegistreAbsences } from './exportRegistreAbsences.service.js';
 import { construireExportNotesDiscipline } from './exportNotesDiscipline.service.js';
+import { FORMULAIRES_EXAMEN, construireFormulaireExamen } from './exportFormulairesExamen.service.js';
 import { adresseDeLaRequete, construireCartesStagiaires, liensDesCartes } from './exportCarteStagiaire.service.js';
 
 /**
@@ -465,6 +466,31 @@ router.post(
   validate({ body: z.object({ format: z.enum(['docx', 'pdf']) }) }),
   route(async (req, res) => {
     const { tampon, nomFichier, contentType } = await construireBilletsVierges(req.anneeScolaire, req.body.format);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="export"; filename*=UTF-8''${encodeURIComponent(nomFichier)}`
+    );
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+    res.send(tampon);
+  })
+);
+
+/**
+ * Les formulaires d'examen VIERGES de la carte « Examen » de la page Documents
+ * (2026-10-11, treize canevas transmis) — voir `exportFormulairesExamen.service.js`.
+ * Ouverts comme les billets vierges : ils ne disent rien de personne.
+ */
+router.post(
+  '/formulaires-examen',
+  validate({
+    body: z.object({
+      cle: z.enum(Object.keys(FORMULAIRES_EXAMEN)),
+      format: z.enum(['docx', 'pdf']),
+    }),
+  }),
+  route(async (req, res) => {
+    const { tampon, nomFichier, contentType } = await construireFormulaireExamen(req.body.cle, req.body.format);
     res.setHeader('Content-Type', contentType);
     res.setHeader(
       'Content-Disposition',

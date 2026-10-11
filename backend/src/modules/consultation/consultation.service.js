@@ -1,4 +1,4 @@
-import { estVacataire, filieresParGroupe, instantLocal, semestreDe, separerFusion } from 'shared/domain';
+import { dateSansHeure, estVacataire, filieresParGroupe, instantLocal, semestreDe, separerFusion } from 'shared/domain';
 import { ROLES, TYPES_COURS } from 'shared/constants';
 import { Base } from '../../models/Base.js';
 import { Stagiaire } from '../../models/Stagiaire.js';
@@ -563,7 +563,8 @@ export async function ficheCompte(etablissementId, anneeScolaire, role, matricul
     niveau: stagiaire.niveau,
     annee: stagiaire.annee,
     site: stagiaire.site,
-    dateNaissance: stagiaire.dateNaissance,
+    // Sans l'heure de l'export Konosys, même pour un stagiaire importé avant le 2026-10-12.
+    dateNaissance: dateSansHeure(stagiaire.dateNaissance),
   };
 }
 

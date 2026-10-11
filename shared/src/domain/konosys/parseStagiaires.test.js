@@ -247,3 +247,15 @@ describe('lireStagiaires — niveau scolaire (2026-10-11)', () => {
     expect(stagiaires[0].niveauScolaire).toBe('Baccalauréat');
   });
 });
+
+describe('dateSansHeure (2026-10-12)', () => {
+  it('retire l’heure de l’export Konosys, garde la date telle qu’écrite', async () => {
+    const { dateSansHeure } = await import('./parseStagiaires.js');
+    expect(dateSansHeure('24/09/2006 00:00:00')).toBe('24/09/2006');
+    expect(dateSansHeure('2006-09-24T00:00:00.000Z')).toBe('2006-09-24');
+    expect(dateSansHeure('24/09/2006 12:30')).toBe('24/09/2006');
+    expect(dateSansHeure('24/09/2006')).toBe('24/09/2006');
+    expect(dateSansHeure('')).toBe('');
+    expect(dateSansHeure(null)).toBe('');
+  });
+});

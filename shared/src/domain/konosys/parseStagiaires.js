@@ -62,6 +62,15 @@ const texte = (valeur) => String(valeur ?? '').trim();
  */
 const niveauScolaireNet = (valeur) => texte(valeur).replace(/''/g, "'").replace(/\s+/g, ' ');
 
+/**
+ * Une date SANS son heure (2026-10-12, demande du porteur) : Konosys exporte
+ * « 24/09/2006 00:00:00 » — une heure qui ne veut rien dire pour une date de
+ * naissance. On garde la date telle qu'écrite (« 24/09/2006 », ou « 2006-09-24 »
+ * pour un export ISO), sans la convertir : les formats restent hétérogènes.
+ */
+export const dateSansHeure = (valeur) =>
+  texte(valeur).replace(/[T\s]+\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:\s*[AP]M)?\s*(?:Z|[+-]\d{2}:?\d{2})?$/iu, '');
+
 /** Première colonne renseignée parmi les intitulés acceptés. */
 function champ(ligne, intitules) {
   for (const intitule of intitules) {
@@ -148,7 +157,7 @@ export function lireStagiaires(lignes = []) {
         nomArabe: champ(ligne, COLONNES_KONOSYS.nomArabe),
         prenomArabe: champ(ligne, COLONNES_KONOSYS.prenomArabe),
         cin: champ(ligne, COLONNES_KONOSYS.cin),
-        dateNaissance: champ(ligne, COLONNES_KONOSYS.dateNaissance),
+        dateNaissance: dateSansHeure(champ(ligne, COLONNES_KONOSYS.dateNaissance)),
         site: champ(ligne, COLONNES_KONOSYS.site),
         motifAdmission: champ(ligne, COLONNES_KONOSYS.motifAdmission),
         // ⚠️ EN TEXTE : un numéro commence par 0, et une conversion en nombre le perdrait.

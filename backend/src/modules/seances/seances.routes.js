@@ -429,7 +429,8 @@ const seanceSchema = z.object({
   periode: z.nativeEnum(PERIODES).default(PERIODES.JOUR),
   formateurMatricule: z.string().trim().min(1).max(40),
   groupe: z.string().trim().min(1).max(120),
-  module: z.string().trim().min(1).max(60),
+  // Le module peut rester vide (2026-10-14) ; renseigné, il doit être affecté — voir `poser()`.
+  module: z.string().trim().max(60).default(''),
   salle: z.string().trim().max(60).default(''),
   statut: z.enum(['planifie', 'absent', 'rattrape']).default('planifie'),
 });

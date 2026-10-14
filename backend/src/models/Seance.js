@@ -49,7 +49,8 @@ const seanceSchema = new mongoose.Schema(
     formateurMatricule: { type: String, required: true, trim: true },
 
     groupe: { type: String, required: true, trim: true },
-    module: { type: String, required: true, trim: true },
+    // ⚠️ PEUT ÊTRE VIDE (2026-10-14) : une séance posée sans module, à préciser plus tard.
+    module: { type: String, trim: true, default: '' },
     salle: { type: String, trim: true, default: '' },
 
     type: { type: String, enum: Object.values(TYPES_COURS), default: TYPES_COURS.PRESENTIEL },

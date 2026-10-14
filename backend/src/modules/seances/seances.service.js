@@ -46,7 +46,7 @@ import { Etablissement } from '../../models/Etablissement.js';
 import { Seance } from '../../models/Seance.js';
 import { lister as listerContraintes } from '../base/contraintes.service.js';
 import { HttpError, badRequest, conflict, notFound } from '../../lib/httpError.js';
-import { exigerCoursInchange, refuser, retraitAligne, verrouActif } from './verrouChronogramme.js';
+import { estDelie, exigerCoursInchange, refuser, retraitAligne, verrouActif } from './verrouChronogramme.js';
 import {
   figerParPublication,
   sansFaireEchouer as sansFaireEchouerTrace,
@@ -1081,6 +1081,14 @@ export async function poser(etablissementId, anneeScolaire, valeur, donnees, reg
    * donner — et l'avancement compterait alors des heures que le chronogramme n'a
    * jamais prévues. L'écran ne propose que ces options ; le serveur ne s'y fie
    * pas pour autant.
+   *
+   * ═══ ⚠️ MAIS LE MODULE PEUT RESTER VIDE — EMPLOI DÉLIÉ SEULEMENT ═══
+   * (2026-10-14, demande du porteur : « la case de module peut être vide mais
+   * la logique d'affectation reste la même », puis « être vide si l'emploi est
+   * délié ».) Le formateur doit toujours être affecté au groupe, et un module
+   * RENSEIGNÉ doit toujours être le sien. Lié, le chronogramme fixe les volumes
+   * par module : une séance sans module n'y aurait pas de place, il reste exigé.
+   * Sans module, pas de masse à consommer (`verifierQuota`) ni de prévu à couvrir.
    */
   const options = optionsDuFormateur(base.affectations, donnees.formateurMatricule);
   const modules = options.modulesParGroupe.get(donnees.groupe);
@@ -1091,7 +1099,12 @@ export async function poser(etablissementId, anneeScolaire, valeur, donnees, reg
       { code: 'AFFECTATION_ABSENTE' }
     );
   }
-  if (!modules.includes(donnees.module)) {
+  if (!String(donnees.module ?? '').trim() && !(await estDelie(etablissementId, anneeScolaire, session))) {
+    throw badRequest('Le module est requis tant que l’emploi du temps est lié au chronogramme', {
+      code: 'MODULE_ABSENT',
+    });
+  }
+  if (String(donnees.module ?? '').trim() && !modules.includes(donnees.module)) {
     throw badRequest(
       `« ${donnees.module} » n’est pas un module de ${donnees.groupe} pour ce formateur`,
       { code: 'MODULE_NON_AFFECTE' }

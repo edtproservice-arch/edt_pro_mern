@@ -2952,3 +2952,53 @@ describe('Publication et édition — 100 % du chronogramme, sauf emploi délié
     expect((await publier()).status).toBe(200);
   });
 });
+
+describe('Module vide — emploi délié seulement (2026-10-14)', () => {
+  const poserPar = (corps) =>
+    request(app)
+      .put(`/api/v2/seances/${SEMAINE}/case`)
+      .set('Cookie', cookies)
+      .send({
+        jour: 'Lundi',
+        seance: 'S1',
+        periode: 'jour',
+        formateurMatricule: '9863',
+        groupe: 'GM101',
+        salle: 'A12',
+        ...corps,
+      });
+
+  const delier = () =>
+    AutoGenConfig.updateOne(
+      { etablissementId: etablissement.id, anneeScolaire: ANNEE },
+      { $set: { chronogrammeLie: false } },
+      { upsert: true }
+    );
+
+  it('REFUSE une séance sans module tant que l’emploi est lié', async () => {
+    const reponse = await poserPar({ module: '' });
+    expect(reponse.status).toBe(400);
+    expect(reponse.body.error?.code ?? reponse.body.code).toBe('MODULE_ABSENT');
+  });
+
+  it('ACCEPTE une séance sans module quand l’emploi est délié', async () => {
+    await delier();
+    const reponse = await poserPar({ module: '' });
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.seance.module).toBe('');
+  });
+
+  it('un module RENSEIGNÉ doit toujours être affecté, même délié', async () => {
+    await delier();
+    const reponse = await poserPar({ module: 'M999' });
+    expect(reponse.status).toBe(400);
+    expect(reponse.body.error?.code ?? reponse.body.code).toBe('MODULE_NON_AFFECTE');
+  });
+
+  it('le formateur doit toujours être affecté au groupe, même délié', async () => {
+    await delier();
+    const reponse = await poserPar({ module: '', groupe: 'GE101 (CDS)' });
+    expect(reponse.status).toBe(400);
+    expect(reponse.body.error?.code ?? reponse.body.code).toBe('AFFECTATION_ABSENTE');
+  });
+});

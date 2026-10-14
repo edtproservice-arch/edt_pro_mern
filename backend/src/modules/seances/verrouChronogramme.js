@@ -58,6 +58,19 @@ export const CODE_VERROU = 'CHRONOGRAMME_VERROUILLE';
  *    planning vide, après une réinitialisation. On cherche une cellule qui
  *    porte des heures, pas une ligne.
  */
+/**
+ * L'emploi du temps est-il DÉLIÉ du chronogramme ? (choix explicite du directeur)
+ *
+ * ⚠️ L'ABSENCE D'`AutoGenConfig` VAUT « LIÉ », comme pour `verrouActif`.
+ */
+export async function estDelie(etablissementId, anneeScolaire, session = null) {
+  const config = await AutoGenConfig.findOne({ etablissementId, anneeScolaire })
+    .select('chronogrammeLie')
+    .session(session)
+    .lean();
+  return (config?.chronogrammeLie ?? true) === false;
+}
+
 export async function verrouActif(etablissementId, anneeScolaire, session = null) {
   const config = await AutoGenConfig.findOne({ etablissementId, anneeScolaire })
     .select('chronogrammeLie')

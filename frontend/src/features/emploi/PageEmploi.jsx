@@ -972,15 +972,23 @@ export default function PageEmploi() {
       );
     }
 
-    const complet = base.formateurMatricule && base.groupe && base.module;
+    /*
+     * ⚠️ LE MODULE PEUT RESTER VIDE — EMPLOI DÉLIÉ SEULEMENT (2026-10-14,
+     *    demande du porteur). Délié, formateur et groupe suffisent à écrire ;
+     *    lié, le module reste exigé, comme le serveur le vérifie. Un module
+     *    choisi reste pris dans la liste des modules affectés.
+     */
+    const delie = liaison.data?.liee === false;
+    const complet = base.formateurMatricule && base.groupe && (base.module || delie);
 
     if (!complet) {
       /*
        * Rien d'assez complet pour écrire : on RETIENT le choix. Et si la case
-       * portait une séance, effacer son groupe ou son module la retire — une
-       * séance sans l'un des deux n'a plus de sens.
+       * portait une séance, effacer son groupe la retire — une séance sans
+       * groupe n'a plus de sens. Vider le MODULE la retire aussi tant que
+       * l'emploi est lié ; délié, la séance reste, sans module.
        */
-      const retire = seance && (champ === 'Groupe' || champ === 'Module') && !valeur;
+      const retire = seance && (champ === 'Groupe' || (champ === 'Module' && !delie)) && !valeur;
 
       if (retire) {
         oublierBrouillon(cle);
@@ -1004,6 +1012,7 @@ export default function PageEmploi() {
     brouillons,
     axeGroupe,
     indexContraintes,
+    liaison.data?.liee,
     contexte.data?.sallesAffectations,
     contexte.data?.salles,
     seances,

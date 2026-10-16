@@ -1042,6 +1042,17 @@ export default function PageEmploi() {
 
     oublierBrouillon(cle);
     appliquer([{ type: 'poser', cle, seance: base }]);
+
+    /*
+     * ⚠️ UNE SÉANCE SANS ESPACE EST ENREGISTRÉE, MAIS SIGNALÉE (2026-10-16,
+     *    demande du porteur). La case Espace porte ensuite « Espace ? » tant
+     *    qu'aucun n'est choisi.
+     */
+    if (!base.salle && base.statut !== 'absent') {
+      toast.warning('Espace non sélectionné', {
+        description: `La séance du ${jour} ${creneau} est enregistrée sans espace : choisissez-en un dans la ligne ESP.`,
+      });
+    }
   }, [
     brouillons,
     axeGroupe,

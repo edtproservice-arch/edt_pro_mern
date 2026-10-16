@@ -467,6 +467,14 @@ function CaseEmploi({
                 <span className="block truncate text-[0.6rem] font-medium text-muted-foreground">
                   {occupation.par}
                 </span>
+              ) : champ === 'Espace' && seance && !seance.salle && !absent && !ferme ? (
+                /*
+                  ⚠️ L'ESPACE OUBLIÉ SE VOIT (2026-10-16, demande du porteur :
+                  « avertir en cas d'oubli de sélectionner l'espace »). La
+                  séance est enregistrée, mais sa case Espace vide ressemblait
+                  à toutes les cases libres de la grille.
+                */
+                <span className="block text-[0.6rem] font-semibold text-warning">Espace ?</span>
               ) : (
                 libelle
               )}

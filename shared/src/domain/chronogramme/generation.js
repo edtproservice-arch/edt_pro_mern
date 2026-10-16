@@ -106,10 +106,36 @@ export function cibleHebdomadaire(masseAffectee) {
  * PARTIEL ». Ses modules ne reçoivent rien cette semaine, et le formateur
  * reporte ses heures sur ses autres groupes : réduire aussi sa cible lui
  * retirerait la semaine entière pour un seul groupe absent.
+ *
+ * ═══ ⚠️ LE STAGE D'UN GROUPE, COMME UN FÉRIÉ POUR LE FORMATEUR (2026-10-16) ═══
+ * Décision du porteur : un jour de stage partiel (ou d'avant-rentrée) ne
+ * retire 5 h au formateur que si TOUS ses groupes ouverts sont absents ce
+ * jour-là — un férié pour lui. On retient donc le PLUS PETIT nombre de jours
+ * perdus parmi ses groupes, et non plus le plus grand : un formateur à cinq
+ * groupes tombait à 10 h parce qu'UN seul partait cinq jours en stage,
+ * alors que ses quatre autres groupes étaient là.
+ *
+ * ⚠️ LE PLUS PETIT DES NOMBRES, faute des dates exactes de chaque côté : c'est
+ *    la seule borne sûre des jours communs à tous.
  */
 export function joursPerdusFormateur({ feries = 0, formation = 0, groupes = [] } = {}) {
-  const autres = Math.max(0, formation, ...groupes);
+  const tousAbsents = groupes.length > 0 ? Math.max(0, Math.min(...groupes)) : 0;
+  const autres = Math.max(0, formation, tousAbsents);
   return Math.min(JOURS_PAR_SEMAINE, Math.max(0, feries) + autres);
+}
+
+/**
+ * Le minimum hebdomadaire d'une semaine de FORMATION ou de CONGÉ partiel
+ * (2026-10-16, décision du porteur) : proportionnel aux jours présents.
+ *
+ * ⚠️ 25 h restaient dues en trois jours de présence : le plancher annulait la
+ *    réduction de 5 h par jour d'absence. Absent 3 jours sur 6, le minimum
+ *    passe à 12,5 h. Les FÉRIÉS, eux, gardent le plancher entier (règle du
+ *    porteur du 2026-10-04 : « 25 h minimum, fériés compris »).
+ */
+export function plancherSelonPresence(plancher, joursAbsence = 0) {
+  const presents = Math.max(0, JOURS_PAR_SEMAINE - Math.max(0, joursAbsence));
+  return Math.round(((Number(plancher) || 0) * presents) / JOURS_PAR_SEMAINE * 100) / 100;
 }
 
 /**
@@ -195,8 +221,11 @@ export function ferieSurJourDisponible(feries = [], disponibles = new Set(JOURS)
  */
 export function cibleDeLaSemaine(cible, joursPerdus = 0, plancher = 0) {
   const perdus = Math.max(0, joursPerdus);
-  const reduite = (Number(cible) || 0) - HEURES_PAR_JOUR_CIBLE * perdus;
   const restants = Math.max(0, JOURS_PAR_SEMAINE - perdus);
+  // Plus aucun jour : rien à viser — une cible de 30,63 h moins 30 h laissait
+  // 0,63 h, et un « créneau minimum » dans une semaine d'absence (2026-10-16).
+  if (restants === 0) return 0;
+  const reduite = (Number(cible) || 0) - HEURES_PAR_JOUR_CIBLE * perdus;
   const minimum = Math.min(Number(plancher) || 0, restants * HEURES_PAR_JOUR);
   return Math.max(0, Math.round(Math.max(reduite, minimum) * 100) / 100);
 }

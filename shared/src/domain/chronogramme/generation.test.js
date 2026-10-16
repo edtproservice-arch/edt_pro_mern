@@ -20,6 +20,7 @@ import {
   plafondSoupleGroupe,
   plafondTolereGroupe,
   plancherHebdomadaire,
+  plancherSelonPresence,
   poseMinimaleModule,
   prioriteGeneration,
   repartirSemestresAuPas,
@@ -81,7 +82,9 @@ describe('joursPerdusFormateur et cibleDeLaSemaine — règle D', () => {
 
   it('retire aussi stage partiel, formation et rentrée', () => {
     expect(joursPerdusFormateur({ formation: 3 })).toBe(3);
-    expect(joursPerdusFormateur({ groupes: [0, 2, 4] })).toBe(4);
+    // Depuis le 2026-10-16 : seuls les jours où TOUS ses groupes sont absents.
+    expect(joursPerdusFormateur({ groupes: [0, 2, 4] })).toBe(0);
+    expect(joursPerdusFormateur({ groupes: [2, 4] })).toBe(2);
   });
 
   it('additionne les fériés au plus grand des autres motifs, sans les cumuler entre eux', () => {
@@ -330,5 +333,29 @@ describe('ouvrirAPartirDe', () => {
     const ouvertes = ouvrirAPartirDe(semaines, 3);
     expect(ouvertes.map((s) => s.disponible)).toEqual([false, false, true]);
     expect(ouvrirAPartirDe(semaines, null)).toBe(semaines);
+  });
+});
+
+describe('stage partiel, formation et congé (2026-10-16)', () => {
+  it('le stage d’un groupe ne réduit le formateur que si tous ses groupes sont absents', () => {
+    // Un groupe en stage 5 jours, les autres là : aucun jour perdu.
+    expect(joursPerdusFormateur({ groupes: [5, 0, 0] })).toBe(0);
+    // Tous ses groupes absents au moins 2 jours : 2 jours perdus.
+    expect(joursPerdusFormateur({ groupes: [5, 2, 3] })).toBe(2);
+    // Un seul groupe : comme avant.
+    expect(joursPerdusFormateur({ groupes: [3] })).toBe(3);
+  });
+
+  it('le minimum d’une semaine de formation ou de congé suit les jours présents', () => {
+    expect(plancherSelonPresence(25, 3)).toBe(12.5);
+    expect(plancherSelonPresence(25, 0)).toBe(25);
+    expect(plancherSelonPresence(10, 6)).toBe(0);
+    // Absent 3 jours, 30,51 h visées : 30,51 − 15 = 15,51 h, au-dessus de 12,5 h.
+    expect(cibleDeLaSemaine(30.51, 3, plancherSelonPresence(25, 3))).toBe(15.51);
+  });
+
+  it('une semaine entière d’absence ne vise plus rien', () => {
+    expect(cibleDeLaSemaine(30.63, 6, 25)).toBe(0);
+    expect(cibleDeLaSemaine(30.63, joursPerdusFormateur({ formation: 6 }), 25)).toBe(0);
   });
 });

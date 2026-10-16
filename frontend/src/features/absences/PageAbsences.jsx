@@ -553,6 +553,15 @@ function RattrapagePlacement({ absence, enCours, onEnregistrer }) {
   useEtatPartage(`${cleRattrapage}.semaine`, semaineAjout, setSemaineAjoutBrut);
   const cache = useQueryClient();
   const posee = absence.rattrapage ?? null;
+  /*
+   * ⚠️ UN RATTRAPAGE PEUT N'EXISTER QU'AU CHRONOGRAMME (2026-10-16, signalé par
+   * le porteur) : posé depuis l'onglet « Chronogramme », il n'a qu'une date
+   * (`dateRattrapage`), aucune séance dans la grille — `posee` reste vide. Ne
+   * tester que `posee` cachait « Annuler le rattrapage » et faisait lire
+   * « Aucun rattrapage placé » à côté d'une semaine marquée ↺. L'annulation du
+   * serveur reprend déjà les heures dans les deux cas.
+   */
+  const enregistre = Boolean(posee || absence.dateRattrapage);
 
   // L'un OU l'autre — voir « un seul bouton » ci-dessus.
   const setChoisi = (creneau) => {
@@ -606,7 +615,14 @@ function RattrapagePlacement({ absence, enCours, onEnregistrer }) {
 
   const annuler = useMutation({
     mutationFn: () => annulerRattrapage(absence.id),
-    onSuccess: (reponse) => apresEcriture(reponse, 'Rattrapage annulé'),
+    onSuccess: async (reponse) => {
+      apresEcriture(reponse, 'Rattrapage annulé');
+      // Comme à la pose au chronogramme : les heures reprises doivent s'y relire.
+      cache.invalidateQueries({ queryKey: ['absences'] });
+      cache.invalidateQueries({ queryKey: ['chronogramme'] });
+      cache.invalidateQueries({ queryKey: ['chronogrammes'] });
+      await cache.invalidateQueries({ queryKey: ['chronogramme-formateur'] });
+    },
     onError: refus,
   });
 
@@ -716,7 +732,7 @@ function RattrapagePlacement({ absence, enCours, onEnregistrer }) {
                   Abandonner ce choix
                 </Button>
               )}
-              {posee && !choisi && !semaineAjout && (
+              {enregistre && !choisi && !semaineAjout && (
                 <Button
                   type="button"
                   variant="outline"
@@ -780,6 +796,22 @@ function EtatRattrapage({ choisi, semaineAjout, posee, absence }) {
           ({libelleSemaine(choisi.semaine, { court: true })})
           {!choisi.salleDOrigine && absence.salle ? ` — ${absence.salle} est pris, autre espace libre` : ''}
           {' — '}pas encore enregistré
+        </span>
+      </p>
+    );
+  }
+
+  // Posé au chronogramme seulement : une semaine, pas de case dans la grille.
+  if (!posee && absence.dateRattrapage) {
+    return (
+      <p className="text-sm">
+        <span className={cn(PASTILLE_RATTRAPAGE, 'mr-1.5 align-middle')}>↺</span>
+        Rattrapage enregistré au chronogramme :{' '}
+        <span className="font-medium">
+          {jourMois(absence.dateRattrapage)} · +{DUREE_RATTRAPAGE} h
+        </span>
+        <span className="ml-1.5 text-muted-foreground">
+          — cliquez une autre semaine ou une case de l’emploi du temps pour le déplacer
         </span>
       </p>
     );

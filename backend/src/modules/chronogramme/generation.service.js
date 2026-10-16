@@ -25,6 +25,7 @@ import {
   plafondHebdomadaireModule,
   plafondHebdomadaireSynchrone,
   plancherHebdomadaire,
+  plancherSelonPresence,
   poseMinimaleModule,
   plafondSemaine,
   plafondSoupleGroupe,
@@ -575,9 +576,17 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
           Math.max(semaine.joursStage ?? 0, semaine.joursRentree ?? 0)
         ),
       });
-      const plancher = plancherHebdomadaire(masseAffectee, {
-        ferieSurJourDisponible: ferieSurJourDisponible(commune.feries, disponibles),
-      });
+      /*
+       * ⚠️ FORMATION OU CONGÉ PARTIEL : le minimum suit les jours présents
+       *    (2026-10-16) — 25 h en trois jours de présence annulaient la
+       *    réduction. Les fériés gardent le minimum entier.
+       */
+      const plancher = plancherSelonPresence(
+        plancherHebdomadaire(masseAffectee, {
+          ferieSurJourDisponible: ferieSurJourDisponible(commune.feries, disponibles),
+        }),
+        formation.get(commune.numero) ?? 0
+      );
       const cible = cibleDeLaSemaine(cibleBase, perdus, plancher);
       if (cible > 0) parSemaine[commune.numero] = cible;
       /*

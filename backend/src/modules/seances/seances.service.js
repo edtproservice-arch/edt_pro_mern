@@ -27,6 +27,7 @@ import {
   semaineAOuvrir,
   titulairesDuModule,
   typeDeSeance,
+  libelleMutualise,
 } from 'shared/domain';
 import {
   chargerPieces,
@@ -1002,6 +1003,23 @@ export async function poser(etablissementId, anneeScolaire, valeur, donnees, reg
    *    passer une écriture qui ne devait pas passer, ce qui ne se voit pas.
    */
   const { session = null, rattrapageDe = null, precharge = null, verrou = true } = reglages;
+
+  /*
+   * ═══ UNE SÉANCE SYNCHRONE PREND LE LIBELLÉ DE SA FUSION (2026-10-16) ═══
+   * Posée en vue par groupe sur un seul membre d'une fusion synchrone, elle
+   * s'enregistre sous le libellé fusionné — elle apparaît alors dans la ligne
+   * de chacun des groupes (`libelleMutualise`). Fait ICI, AVANT tout contrôle :
+   * le verrou du chronogramme, les conflits et les quotas voient la séance
+   * telle qu'elle sera écrite, quel que soit l'écran qui la pose.
+   */
+  if (typeDeSeance(donnees) === TYPES_COURS.SYNCHRONE && separerFusion(donnees.groupe ?? '').length === 1) {
+    const affectations =
+      (precharge?.base ??
+        (await Base.findOne({ etablissementId, anneeScolaire }).select('affectations').session(session).lean()))
+        ?.affectations ?? [];
+    donnees = { ...donnees, groupe: libelleMutualise(donnees, affectations) };
+  }
+
   const normalisee = normaliserValeurSemaine(valeur);
   if (!normalisee) {
     throw badRequest(`Semaine « ${valeur} » illisible`, { code: 'SEMAINE_INVALIDE' });

@@ -1,5 +1,6 @@
 import { api } from '@/lib/apiClient';
 import { decrireAppareil } from '@/lib/appareil';
+import { oublierSemaineChoisie } from '@/lib/semaineChoisie';
 import { ROLES } from 'shared/constants';
 
 /**
@@ -13,7 +14,13 @@ import { ROLES } from 'shared/constants';
  * traduction vers les noms PHP (`nom_complet`, `mot_de_passe`…).
  */
 
+/*
+ * ⚠️ LA SEMAINE CHOISIE NE SURVIT PAS À LA SESSION (2026-10-16, demande du
+ * porteur) : se connecter ou se déconnecter rouvre l'emploi du temps sur la
+ * semaine en cours. Voir `lib/semaineChoisie`.
+ */
 export function seConnecter({ identifiant, motDePasse }) {
+  oublierSemaineChoisie();
   return api.post('/api/v2/auth/connexion', {
     identifiant,
     motDePasse,
@@ -23,6 +30,7 @@ export function seConnecter({ identifiant, motDePasse }) {
 
 /** Connexion par le QR de la carte de stagiaire (2026-10-11) — le jeton lu dans l'adresse. */
 export function seConnecterParCarte(jeton) {
+  oublierSemaineChoisie();
   return api.post('/api/v2/auth/carte', { jeton, appareil: decrireAppareil() });
 }
 
@@ -49,6 +57,7 @@ export function renvoyerCode({ email, type }) {
 }
 
 export function seDeconnecter() {
+  oublierSemaineChoisie();
   return api.post('/api/v2/auth/deconnexion');
 }
 

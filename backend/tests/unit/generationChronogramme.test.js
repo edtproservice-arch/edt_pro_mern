@@ -374,13 +374,30 @@ describe('règles B, C et D — la cible de chaque semaine', () => {
     expect(cibles.get('100').parSemaine[semaineDu('2026-11-06')]).toBe(25);
   });
 
-  it('entre 360 h et 900 h, 10 h minimum même avec trois jours de formation et un férié', () => {
+  it('entre 360 h et 900 h, le minimum de 10 h suit les jours présents en formation (2026-10-16)', () => {
     const { cibles } = construire([affectation('100', 'GM101', 'M101', P, 300, 300)], {
       joursFeries: [{ date: '2026-11-13' }],
       formations: [{ matriculeFormateur: '100', debut: '2026-11-09', fin: '2026-11-11' }],
     });
-    // 25 h − 4 jours × 5 h = 5 h : remonté à 10 h.
-    expect(cibles.get('100').parSemaine[semaineDu('2026-11-10')]).toBe(10);
+    // 25 h − 4 jours × 5 h = 5 h ; le minimum, 10 h × 3/6 jours présents = 5 h.
+    expect(cibles.get('100').parSemaine[semaineDu('2026-11-10')]).toBe(5);
+  });
+
+  it('au-delà de 900 h, 25 h minimum fériés compris — mais 12,5 h pour 3 jours de congé', () => {
+    const { cibles } = construire([affectation('100', 'GM101', 'M101', P, 500, 553)], {
+      joursFeries: [{ date: '2026-11-05' }, { date: '2026-11-06' }],
+      formations: [{ matriculeFormateur: '100', debut: '2026-11-09', fin: '2026-11-11', motif: 'Congé' }],
+    });
+    expect(cibles.get('100').parSemaine[semaineDu('2026-11-06')]).toBe(25);
+    // 30,09 h − 3 × 5 h = 15,09 h, au-dessus du minimum de 12,5 h.
+    expect(cibles.get('100').parSemaine[semaineDu('2026-11-10')]).toBe(15.09);
+  });
+
+  it('une semaine entière de congé ne vise plus rien', () => {
+    const { cibles } = construire([affectation('100', 'GM101', 'M101', P, 500, 553)], {
+      formations: [{ matriculeFormateur: '100', debut: '2026-11-09', fin: '2026-11-14', motif: 'Congé' }],
+    });
+    expect(cibles.get('100').parSemaine[semaineDu('2026-11-10')]).toBeUndefined();
   });
 
   it('à 360 h ou moins : 10 h minimum, sauf si le férié tombe un jour où il est disponible', () => {
@@ -436,11 +453,25 @@ describe('règles B, C et D — la cible de chaque semaine', () => {
     expect(cibles.get('100').parSemaine[semaineDu('2026-11-10')]).toBe(10);
   });
 
-  it('D : −5 h par jour de stage PARTIEL d’un de ses groupes', () => {
+  it('D : le stage partiel d’UN de ses groupes ne réduit pas — l’autre est là (2026-10-16)', () => {
     const { cibles } = construire(
       [affectation('100', 'GM101', 'M101', P, 150, 150), affectation('100', 'GM102', 'M101', P, 150, 150)],
       { stages: [{ groupe: 'GM101', debut: '2026-11-16', fin: '2026-11-17' }] }
     );
+    expect(cibles.get('100').parSemaine[semaineDu('2026-11-16')]).toBe(25);
+  });
+
+  it('D : −5 h par jour où TOUS ses groupes sont en stage partiel', () => {
+    const { cibles } = construire(
+      [affectation('100', 'GM101', 'M101', P, 150, 150), affectation('100', 'GM102', 'M101', P, 150, 150)],
+      {
+        stages: [
+          { groupe: 'GM101', debut: '2026-11-16', fin: '2026-11-17' },
+          { groupe: 'GM102', debut: '2026-11-16', fin: '2026-11-18' },
+        ],
+      }
+    );
+    // Deux jours communs : 25 h − 10 h = 15 h.
     expect(cibles.get('100').parSemaine[semaineDu('2026-11-16')]).toBe(15);
   });
 

@@ -8,7 +8,6 @@ import {
   FileSpreadsheet,
   FileText,
   Moon,
-  Printer,
   Sun,
 } from 'lucide-react';
 import {
@@ -491,7 +490,7 @@ export default function PageEdition() {
           </PortailEnTete>
 
           {/* ⚠️ `CommandesZoom` fournit SON PROPRE groupe — le zoom est soudé,
-              « Imprimer » à côté ne l'est pas. Ne jamais l'envelopper dans un
+              « Télécharger » à côté ne l'est pas. Ne jamais l'envelopper dans un
               autre `ButtonGroup` : voir le piège documenté dans le composant. */}
           <CommandesZoom zoom={zoom} onZoom={setZoom} />
 
@@ -507,9 +506,9 @@ export default function PageEdition() {
           */}
           {!grille.isError && !nonPubliee && sujets.length > 0 && affiches.length > 0 && (
             <span title={blocageEdition} className="inline-flex">
+              {/* « Télécharger », plus « Imprimer » (2026-10-16, demande du porteur) :
+                  le libellé et l'icône par défaut du bouton disent ce qu'il fait. */}
               <BoutonTelecharger
-                libelle="Imprimer"
-                icone={Printer}
                 enCours={telechargement.isPending}
                 disabled={Boolean(blocageEdition)}
                 title={blocageEdition}

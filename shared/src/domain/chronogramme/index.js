@@ -91,6 +91,7 @@ export {
   plafondSoupleGroupe,
   plafondTolereGroupe,
   plancherHebdomadaire,
+  plancherSelonPresence,
   poseMinimaleModule,
   prioriteGeneration,
   repartirSemestresAuPas,

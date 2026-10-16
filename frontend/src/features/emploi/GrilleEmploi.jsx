@@ -213,6 +213,21 @@ function GrilleEmploi({
         valeur: f.matricule,
         libelle: f.nom,
       })),
+      /*
+       * Groupe (en majuscules) → les matricules qui y sont AFFECTÉS (2026-10-16,
+       * demande du porteur). En vue par groupe, la liste des formateurs ne
+       * propose plus qu'eux : proposer un formateur sans affectation dans le
+       * groupe menait au refus du serveur (« n'est pas affecté au groupe »).
+       * Une fusion (« GM101 GM102 ») compte pour chacun de ses groupes.
+       */
+      formateursParGroupe: (contexte.affectations ?? []).reduce((index, affectation) => {
+        for (const membre of separerFusion(affectation.groupe ?? '')) {
+          const cle = membre.trim().toUpperCase();
+          if (!index.has(cle)) index.set(cle, new Set());
+          index.get(cle).add(String(affectation.formateur ?? '').trim());
+        }
+        return index;
+      }, new Map()),
       // ⚠️ INDEXÉES PAR `matricule||type` : les groupes d'une séance en salle et
       // ceux d'une séance à distance ne sont pas la même liste.
       groupes: new Map(
@@ -227,7 +242,7 @@ function GrilleEmploi({
       // n'est pas connu d'avance, et la plupart ne seront jamais ouverts.
       modules: new Map(),
     };
-  }, [options, contexte.salles, contexte.formateurs]);
+  }, [options, contexte.salles, contexte.formateurs, contexte.affectations]);
 
   /*
    * ═══ ⚠️ QUI MANQUE SUR CETTE LIGNE, CE JOUR-LÀ ═══
@@ -1273,9 +1288,21 @@ function optionsDeLaCase({
   }
 
   if (intitule === 'Formateur') {
-    if (!enEdition) return listes.formateurs;
+    /*
+     * ⚠️ EN VUE PAR GROUPE, SEULEMENT LES FORMATEURS AFFECTÉS AU GROUPE
+     *    (2026-10-16) — plus celui déjà posé dans la case, pour qu'une séance
+     *    ancienne reste lisible et corrigeable même s'il ne l'est plus.
+     */
+    const affectes = axe === 'groupe' ? listes.formateursParGroupe.get(String(sujet).trim().toUpperCase()) : null;
+    const proposes =
+      axe === 'groupe'
+        ? listes.formateurs.filter(
+            (option) => affectes?.has(option.valeur) || option.valeur === seance?.formateurMatricule
+          )
+        : listes.formateurs;
+    if (!enEdition) return proposes;
     // La charge de la SEMAINE, pour voir d'un coup qui a encore de la place.
-    return listes.formateurs.map((option) => {
+    return proposes.map((option) => {
       /*
        * ⚠️ UN FORMATEUR EN FORMATION NE PEUT PAS ÊTRE CHOISI, même depuis la
        * ligne d'un groupe. Le verrouillage de LIGNE ne joue qu'en vue par
@@ -1394,14 +1421,29 @@ function optionsDeLaCase({
   }
 
   const groupe = axe === 'groupe' ? sujet : seance?.groupe;
-  const cle = `${matricule}||${type}||${groupe}`;
+  // La VUE entre dans la clé : la vue par groupe y ajoute les fusions (voir plus bas).
+  const cle = `${axe}||${matricule}||${type}||${groupe}`;
   let base = listes.modules.get(cle);
 
   if (!base) {
-    base = (jeu.modulesParGroupe.get(groupe) ?? []).map((module) => ({
-      valeur: module,
-      libelle: module,
-    }));
+    /*
+     * ⚠️ EN VUE PAR GROUPE, LES FUSIONS QUI CONTIENNENT LE GROUPE COMPTENT AUSSI
+     *    (2026-10-16). Une affectation synchrone est rangée sous son libellé
+     *    fusionné (« GM101 GM102 ») : chercher « GM101 » seul laissait la liste
+     *    VIDE une fois TEAMS choisi — et ses modules à distance impossibles à
+     *    poser depuis la ligne du groupe. La séance prend ensuite le libellé
+     *    fusionné au serveur (`libelleMutualise`).
+     */
+    const modules = new Set(jeu.modulesParGroupe.get(groupe) ?? []);
+    if (axe === 'groupe') {
+      const membre = String(groupe ?? '').trim().toUpperCase();
+      for (const [libelle, desModules] of jeu.modulesParGroupe) {
+        if (separerFusion(libelle).some((nom) => nom.trim().toUpperCase() === membre)) {
+          for (const module of desModules) modules.add(module);
+        }
+      }
+    }
+    base = [...modules].sort().map((module) => ({ valeur: module, libelle: module }));
     listes.modules.set(cle, base);
   }
 

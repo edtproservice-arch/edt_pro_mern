@@ -23,6 +23,7 @@ import Alerte from '@/components/common/Alerte';
 import CadreReglage from '@/features/parametres/CadreReglage';
 import { recupererSession } from '@/features/auth/api';
 import { cn } from '@/lib/utils';
+import { lireSemaineChoisie, retenirSemaineChoisie } from '@/lib/semaineChoisie';
 import {
   chargerContexte,
   chargerSemaine,
@@ -102,11 +103,13 @@ export default function PageEmploi() {
    * ⚠️ LE LIEN COPIÉ DEPUIS « PARTAGER » PORTE LA SEMAINE (`?semaine=`) : celui
    * qui l'ouvre doit tomber sur la semaine dont on lui parle, pas sur celle du
    * jour.
+   * Sans lien, la semaine choisie sur un autre écran (2026-10-16,
+   * `lib/semaineChoisie`) : l'Édition et l'Emploi montrent la même semaine.
    */
   const [parametres] = useSearchParams();
   const [semaine, setSemaine] = useState(() => {
     const demandee = parametres.get('semaine');
-    return demandee && /^\d{4}-W\d{1,3}$/i.test(demandee) ? demandee : null;
+    return demandee && /^\d{4}-W\d{1,3}$/i.test(demandee) ? demandee : lireSemaineChoisie();
   });
   const [parGroupe, setParGroupe] = useState(false);
   const [ancre, setAncre] = useState(null);
@@ -145,6 +148,37 @@ export default function PageEmploi() {
   /* `?rapport=1` (2026-09-28) : « Saisir » depuis « À traiter » de l'accueil
      ouvre la semaine AVEC ses écarts au chronogramme déjà affichés. */
   const [rapportOuvert, setRapportOuvert] = useState(() => parametres.get('rapport') === '1');
+
+  /*
+   * ═══ LE RAPPORT SE REPLIE AU PREMIER CLIC HORS DE LUI (2026-10-16, demande
+   * du porteur : « comme le sidebar ») ═══
+   * ⚠️ AU `click`, PAS AU `pointerdown` — même raison que la barre latérale
+   *    (`ContenuPage`) : fermer le panneau élargit la grille ; fait avant le
+   *    relâchement, la case visée glisserait sous le curseur et le clic tomberait
+   *    à côté.
+   * ⚠️ EN PHASE DE CAPTURE : les boutons des cases appellent `stopPropagation()`,
+   *    un clic sur la grille n'arriverait jamais en bulle jusqu'au document.
+   * ⚠️ SONT EXCLUS : le panneau lui-même (on y supprime, on y place), le bouton
+   *    du taux (il bascule déjà — l'inclure rouvrirait aussitôt), et ce qui est
+   *    rendu en portail par-dessus (fenêtres, menus, notifications).
+   */
+  useEffect(() => {
+    if (!rapportOuvert) return undefined;
+    const surClic = (evenement) => {
+      const cible = evenement.target;
+      if (!(cible instanceof Element)) return;
+      if (
+        cible.closest(
+          '[data-panneau-droit], [data-bouton-completude], [role="dialog"], [role="alertdialog"], [role="menu"], [data-radix-popper-content-wrapper], [data-sonner-toaster]'
+        )
+      ) {
+        return;
+      }
+      setRapportOuvert(false);
+    };
+    document.addEventListener('click', surClic, true);
+    return () => document.removeEventListener('click', surClic, true);
+  }, [rapportOuvert]);
   /*
    * Le zoom de la grille — préférence de LECTURE, comme celui du chronogramme.
    * Il ne part pas au serveur : deux personnes du même établissement peuvent
@@ -1510,6 +1544,8 @@ export default function PageEmploi() {
           semaine={semaine}
           onChanger={(valeur) => {
             setSemaine(valeur);
+            // La semaine en cours n'est pas un choix : la retenir figerait la bascule du samedi.
+            retenirSemaineChoisie(valeur === semaines.data?.courante ? null : valeur);
             setSelection(new Set());
             // ⚠️ L'historique est propre à la SEMAINE : le garder ferait
             // rejouer sur mardi un état qui appartenait à lundi.
@@ -1857,8 +1893,9 @@ export default function PageEmploi() {
         ═══ LE RAPPORT DE CONFORMITÉ, PANNEAU DE DROITE « À LA NOTION » ═══
         (2026-09-28) Rendu dans l'emplacement de la coquille (`PanneauDroit`) :
         pleine hauteur, collé au bord droit, et toute la zone de page se
-        resserre à sa gauche. ⚠️ Il reste ouvert pendant qu'on corrige : on
-        supprime une séance et on voit le taux bouger.
+        resserre à sa gauche. ⚠️ Il reste ouvert tant qu'on corrige DEDANS (on
+        supprime une séance et on voit le taux bouger) ; un clic ailleurs le
+        replie, comme la barre latérale (2026-10-16).
       */}
       {rapportOuvert && bilanCompletude.data?.planifie && (
         <PanneauDroit>

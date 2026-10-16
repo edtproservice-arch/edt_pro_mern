@@ -35,7 +35,7 @@ from typing import Any
 #: Identité du moteur, comme `generateur.contrat.MOTEUR` — à incrémenter dès
 #: que la répartition change, pour que deux heuristiques ne se confondent pas.
 MOTEUR = "chronogramme-glouton"
-VERSION = "1.11.0"
+VERSION = "1.12.0"
 
 
 # --------------------------------------------------------------------------

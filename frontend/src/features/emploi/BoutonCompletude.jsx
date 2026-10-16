@@ -69,6 +69,8 @@ export default function BoutonCompletude({ semaine, ouvert = false, onOuvrir }) 
       size="sm"
       onClick={() => onOuvrir?.(!ouvert)}
       aria-pressed={ouvert}
+      /* Repère du clic extérieur de `PageEmploi` : ce clic-ci bascule déjà le panneau. */
+      data-bouton-completude
       /* La couleur porte le message : on doit voir l'état sans lire le chiffre. */
       className={cn('gap-2', couleur.fond, couleur.texte, ouvert && 'ring-1 ring-inset ring-current')}
       title={

@@ -533,6 +533,99 @@ def resoudre_chronogramme(probleme: ProblemeChronogramme) -> SolutionChronogramm
             obtenu = deja[formateur].get(semaine, 0.0) + pose_formateur[formateur]
             report[formateur] = max(-1.0, min(1.0, voulu - obtenu))
 
+    # ═══ RATTRAPAGE (2026-10-16, demande du porteur : « récupère les heures
+    #     non planifiées ») ═══
+    # Le glouton sert les modules par priorité : un module peu prioritaire peut
+    # ne commencer qu'en fin d'année, puis manquer de semaines à 10 h au plus —
+    # alors que la marge du formateur (cible + `_TOLERANCE`) est restée libre
+    # ailleurs. Mesuré sur l'année réelle : 30 h perdues ainsi. Une fois tout
+    # posé, chaque lot inachevé reprend des heures :
+    #   1. dans les semaines où il a DÉJÀ cours (sa grille ne change pas de forme) ;
+    #   2. puis en PROLONGEANT son bloc d'une semaine ouverte, avant son début ou
+    #      après sa fin — jamais une semaine isolée, qui creuserait la grille.
+    # Tous les plafonds tiennent : le lot, la case, le groupe (toléré), le
+    # formateur (cible + tolérance), la pose minimale des longs modules.
+    # ⚠️ PAS LES TÂCHES ENCADRÉES NI À GRANULARITÉ (le synchrone, pour Node) :
+    #    leurs règles de séance et d'encadrement ne se rejouent pas ici.
+    taches_par_id = {tache.id: tache for tache in probleme.taches}
+    charge_formateur: dict[tuple[str, int], float] = defaultdict(float)
+    for (tache_id, _index, semaine), quantite in poses.items():
+        charge_formateur[(taches_par_id[tache_id].formateur, semaine)] += quantite
+    for formateur, semaines_deja in deja.items():
+        for semaine, quantite in semaines_deja.items():
+            charge_formateur[(formateur, semaine)] += quantite
+
+    def place_rattrapage(lot: _Lot, semaine: int) -> int:
+        formateur = lot.tache.formateur
+        cible = cibles[formateur].get(semaine, 0.0)
+        if cible <= 0:
+            return 0
+        bornes = [
+            math.floor(cible + _TOLERANCE + _EPS - charge_formateur[(formateur, semaine)] + _EPS),
+            lot.plafonds.get(semaine, 0) - poses[(lot.tache.id, lot.index, semaine)],
+        ]
+        for nom in lot.tache.cellules:
+            bornes.append(_en_pas(cellules[nom].plafonds.get(semaine, 0) - charge_cellule[nom][semaine], pas))
+        for nom in lot.tache.groupes:
+            plafond = groupes[nom].plafonds_toleres.get(semaine, 0)
+            bornes.append(_en_pas(plafond - charge_groupe[nom][semaine], pas))
+        return max(0, min(bornes))
+
+    rattrapees = 0
+
+    def poser_rattrapage(lot: _Lot, semaine: int, quantite: int) -> None:
+        nonlocal apres_echeance, rattrapees
+        heures = quantite * pas
+        lot.reste -= quantite
+        poses[(lot.tache.id, lot.index, semaine)] += quantite
+        charge_formateur[(lot.tache.formateur, semaine)] += quantite
+        for nom in lot.tache.cellules:
+            charge_cellule[nom][semaine] += heures
+        for nom in lot.tache.groupes:
+            charge_groupe[nom][semaine] += heures
+        if lot.echeance is not None and rang[semaine] > lot.echeance:
+            apres_echeance += quantite
+        rattrapees += quantite
+
+    for lot in sorted((l for l in lots if l.reste > 0), key=lambda l: (l.tache.priorite, l.tache.id, l.index)):
+        if lot.tache.encadree_par or lot.granularite > 1 or not lot.ouvertes:
+            continue
+        progres = True
+        while lot.reste > 0 and progres:
+            progres = False
+            posees = sorted(
+                rang[semaine]
+                for (tache_id, index, semaine), quantite in poses.items()
+                if tache_id == lot.tache.id and index == lot.index and quantite > 0
+            )
+            # 1. Les semaines où il a déjà cours.
+            for r in posees:
+                quantite = min(lot.reste, place_rattrapage(lot, semaines[r]))
+                if quantite > 0:
+                    poser_rattrapage(lot, semaines[r], quantite)
+                    progres = True
+                    if lot.reste <= 0:
+                        break
+            if lot.reste <= 0 or progres:
+                continue
+            # 2. Prolonger le bloc d'une semaine ouverte, d'un côté ou de l'autre.
+            if posees:
+                voisines = []
+                avant = bisect.bisect_left(lot.ouvertes, posees[0])
+                apres = bisect.bisect_right(lot.ouvertes, posees[-1])
+                if avant > 0:
+                    voisines.append(lot.ouvertes[avant - 1])
+                if apres < len(lot.ouvertes):
+                    voisines.append(lot.ouvertes[apres])
+            else:
+                voisines = list(lot.ouvertes)
+            for r in voisines:
+                disponible = place_rattrapage(lot, semaines[r])
+                if disponible >= min(lot.reste, lot.pose_min):
+                    poser_rattrapage(lot, semaines[r], min(lot.reste, disponible))
+                    progres = True
+                    break
+
     # ─── Ce qui n'a pas trouvé de place ───
     non_poses: list[NonPose] = []
     for lot in lots:
@@ -570,5 +663,6 @@ def resoudre_chronogramme(probleme: ProblemeChronogramme) -> SolutionChronogramm
             "heuresPosees": round(sum(p.heures for p in sortie), 2),
             "heuresNonPosees": round(sum(n.heures for n in non_poses), 2),
             "heuresApresEcheance": round(apres_echeance * pas, 2),
+            "heuresRattrapees": round(rattrapees * pas, 2),
         },
     )

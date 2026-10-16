@@ -378,3 +378,39 @@ function ciblesDuType(type, libelle, membres) {
   // Sans filtre : l'union, pour que le serveur accepte les deux formes.
   return membres.length > 1 ? [...membres, libelle] : membres;
 }
+
+/**
+ * Le groupe sous lequel ENREGISTRER une séance (2026-10-16, demande du porteur :
+ * « en mode groupe, une séance synchrone posée à un groupe doit se planifier
+ * automatiquement à l'autre groupe de la fusion »).
+ *
+ * ═══ UNE SÉANCE MUTUALISÉE S'ENREGISTRE UNE FOIS, SOUS LE LIBELLÉ FUSIONNÉ ═══
+ * C'est déjà la règle de la vue par formateur (`ciblesDuType`) et de la
+ * génération (`groupeLibelle`). La vue par GROUPE, elle, posait la séance sur
+ * le seul groupe de sa ligne : l'autre groupe de la fusion n'avait jamais ce
+ * cours. Ici, une séance à distance (TEAMS) posée sur un groupe MEMBRE d'une
+ * fusion synchrone — même formateur, même module — prend le libellé fusionné,
+ * et apparaît donc dans la ligne de chacun de ses groupes.
+ *
+ * ⚠️ LE PRÉSENTIEL NE SE FUSIONNE JAMAIS : deux classes ne se réunissent pas
+ *    dans une salle.
+ *
+ * @param {{groupe, formateurMatricule, module, salle}} seance
+ * @param {Array<{formateur, groupe, module, type}>} affectations
+ * @returns {string} le groupe à écrire
+ */
+export function libelleMutualise(seance, affectations = []) {
+  const groupe = String(seance?.groupe ?? '').trim();
+  if (typeDeSeance(seance) !== TYPES_COURS.SYNCHRONE) return groupe;
+  if (separerFusion(groupe).length !== 1) return groupe;
+
+  const cle = (valeur) => String(valeur ?? '').trim().toUpperCase();
+  const affectation = (affectations ?? []).find((candidate) => {
+    if (candidate?.type !== TYPES_COURS.SYNCHRONE) return false;
+    if (cle(candidate.formateur) !== cle(seance.formateurMatricule)) return false;
+    if (cle(candidate.module) !== cle(seance.module)) return false;
+    const membres = separerFusion(candidate.groupe).map(cle);
+    return membres.length > 1 && membres.includes(cle(groupe));
+  });
+  return affectation ? String(affectation.groupe).trim() : groupe;
+}

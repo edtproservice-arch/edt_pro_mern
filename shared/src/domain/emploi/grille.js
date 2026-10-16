@@ -1,6 +1,19 @@
 import { JOURS, PERIODES, SEANCES } from '../../constants/index.js';
 import { bornesAnneeScolaire, lundiPremiereSemaine } from '../planning/anneeScolaire.js';
 import { analyserSemaine, valeurSemaine } from '../planning/semaines.js';
+import { separerFusion } from '../carte/reconstruction.js';
+
+/**
+ * Les lignes d'une séance : son formateur, ou CHACUN de ses groupes.
+ *
+ * ⚠️ UNE SÉANCE MUTUALISÉE (« GM101 GM102 ») APPARTIENT AUX DEUX GROUPES
+ *    (2026-10-16) : la vue par groupe ne l'affichait sur aucune ligne, faute
+ *    d'en reconnaître le libellé fusionné.
+ */
+const sujetsDeSeance = (seance, axe) =>
+  axe === 'groupe'
+    ? separerFusion(seance.groupe ?? '').filter(Boolean)
+    : [seance.formateurMatricule].filter(Boolean);
 
 /**
  * La grille d'emploi du temps d'une semaine.
@@ -65,10 +78,9 @@ export function indexerSeances(seances = [], axe = 'formateur') {
   const index = new Map();
 
   for (const seance of seances) {
-    const sujet = axe === 'groupe' ? seance.groupe : seance.formateurMatricule;
-    if (!sujet) continue;
-
-    index.set(cle(sujet, seance.jour, seance.seance, seance.periode), seance);
+    for (const sujet of sujetsDeSeance(seance, axe)) {
+      index.set(cle(sujet, seance.jour, seance.seance, seance.periode), seance);
+    }
   }
 
   return index;
@@ -91,10 +103,10 @@ export function heuresParSujet(seances = [], axe = 'formateur') {
   for (const seance of seances) {
     if (seance.statut === 'absent') continue;
 
-    const sujet = axe === 'groupe' ? seance.groupe : seance.formateurMatricule;
-    if (!sujet) continue;
-
-    heures.set(sujet, (heures.get(sujet) ?? 0) + dureeSeance(seance.seance));
+    // Une séance mutualisée compte pour CHACUN de ses groupes : chacun la reçoit.
+    for (const sujet of sujetsDeSeance(seance, axe)) {
+      heures.set(sujet, (heures.get(sujet) ?? 0) + dureeSeance(seance.seance));
+    }
   }
 
   return heures;

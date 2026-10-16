@@ -26,6 +26,7 @@ export {
   SALLES_SANS_CONFLIT,
   SALLE_DISTANCIEL,
   typeDeSeance,
+  libelleMutualise,
   detecterConflits,
   estSalleReelle,
   groupesCompares,

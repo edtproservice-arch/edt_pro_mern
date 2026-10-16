@@ -772,11 +772,34 @@ class TestPoseMinimale(unittest.TestCase):
         semaines = sorted(poses)
         self.assertEqual(semaines, list(range(semaines[0], semaines[-1] + 1)), poses)
 
-    def test_sans_pose_minimale_des_semaines_a_2_5_h(self):
-        lots = self.poses_par_lot(resoudre(self.charge(None)))
-        self.assertTrue(any(h == 2.5 for poses in lots.values() for _, h in sorted(poses)[:-1]))
-
     def test_la_derniere_pose_peut_solder_plus_court(self):
         t = {**tache("M", 12.5, plafond=10), "poseMin": 5}
         poses = par_tache(resoudre(probleme([t], formateurs=[{"id": "F1", "cibles": par_semaine(5)}])))["M"]
         self.assertEqual([poses[w] for w in sorted(poses)], [5, 5, 2.5])
+
+
+class TestRattrapage(unittest.TestCase):
+    """2026-10-16 : « récupère les heures non planifiées » — un module que la
+    priorité laisse de côté reprend la marge du formateur, sans trou."""
+
+    def test_un_module_laisse_de_cote_est_rattrape(self):
+        # HAUT, prioritaire et à l'étroit, prend tout le budget (20 h) chaque
+        # semaine ; BAS n'aurait rien. La marge (cible + 5 h) le récupère.
+        haut = tache("HAUT", 200, priorite=1, plafond=20)
+        bas = tache("BAS", 20, priorite=6, plafond=10)
+        charge = probleme([haut, bas], formateurs=[{"id": "F1", "cibles": par_semaine(20)}])
+        solution = resoudre(charge)
+        poses = par_tache(solution)
+        self.assertEqual(sum(poses["BAS"].values()), 20, poses["BAS"])
+        semaines = sorted(poses["BAS"])
+        self.assertEqual(semaines, list(range(semaines[0], semaines[-1] + 1)), "sans trou")
+        for semaine, heures in par_formateur(solution, charge)["F1"].items():
+            self.assertLessEqual(heures, 25, f"S{semaine}")
+        self.assertGreater(solution.rapport["heuresRattrapees"], 0)
+
+    def test_le_rattrapage_respecte_la_pose_minimale(self):
+        haut = tache("HAUT", 200, priorite=1, plafond=20)
+        bas = {**tache("BAS", 20, priorite=6, plafond=10), "poseMin": 5}
+        charge = probleme([haut, bas], formateurs=[{"id": "F1", "cibles": par_semaine(20)}])
+        poses = par_tache(resoudre(charge))["BAS"]
+        self.assertTrue(all(h >= 5 for h in poses.values()), poses)

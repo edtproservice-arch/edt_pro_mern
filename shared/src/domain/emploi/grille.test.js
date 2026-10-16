@@ -345,3 +345,24 @@ describe('dureeSeance', () => {
     expect(heures.get('9863')).toBe(4);
   });
 });
+
+describe('vue par groupe — la séance mutualisée sur chaque ligne (2026-10-16)', () => {
+  const seances = [
+    { groupe: 'GM101 GM102', formateurMatricule: '18494', jour: 'Lundi', seance: 'S1', periode: 'jour', salle: 'TEAMS' },
+  ];
+
+  it('apparaît dans la ligne de chacun de ses groupes', () => {
+    const lignes = assemblerGrille({ sujets: ['GM101', 'GM102', 'GM103'], seances, axe: 'groupe' });
+    const premiere = (sujet) => lignes.find((l) => l.sujet === sujet).cases.find((c) => c.jour === 'Lundi' && c.seance === 'S1');
+    expect(premiere('GM101').contenu).toBe(seances[0]);
+    expect(premiere('GM102').contenu).toBe(seances[0]);
+    expect(premiere('GM103').contenu).toBeNull();
+  });
+
+  it('compte dans la charge de chacun', () => {
+    const heures = heuresParSujet(seances, 'groupe');
+    expect(heures.get('GM101')).toBeGreaterThan(0);
+    expect(heures.get('GM102')).toBe(heures.get('GM101'));
+    expect(heures.has('GM101 GM102')).toBe(false);
+  });
+});

@@ -6,6 +6,7 @@ import {
   estSalleReelle,
   groupesCompares,
   groupesSeCroisent,
+  libelleMutualise,
   memeGroupe,
   optionsDuFormateur,
 } from './conflits.js';
@@ -419,5 +420,31 @@ describe('Groupes FQ — un groupe virtuel occupe ses groupes réels', () => {
     expect(() =>
       groupesCompares('EEM101', [{ groupeFq: '', groupeConstituant: null }])
     ).not.toThrow();
+  });
+});
+
+describe('libelleMutualise — la séance synchrone suit sa fusion (2026-10-16)', () => {
+  const affectations = [
+    { formateur: '18494', groupe: 'GM101 GM102', module: 'EGTS101', type: 'synchrone' },
+    { formateur: '18494', groupe: 'GM101', module: 'EGTS101', type: 'presentiel' },
+  ];
+  const seance = (autres) => ({ groupe: 'GM101', formateurMatricule: '18494', module: 'EGTS101', salle: 'TEAMS', ...autres });
+
+  it('une séance TEAMS posée sur un membre prend le libellé fusionné', () => {
+    expect(libelleMutualise(seance(), affectations)).toBe('GM101 GM102');
+    expect(libelleMutualise(seance({ groupe: 'GM102', salle: 'teams' }), affectations)).toBe('GM101 GM102');
+  });
+
+  it('le présentiel reste sur son groupe', () => {
+    expect(libelleMutualise(seance({ salle: 'Salle 1' }), affectations)).toBe('GM101');
+  });
+
+  it('sans fusion pour ce formateur et ce module, rien ne change', () => {
+    expect(libelleMutualise(seance({ formateurMatricule: 'AUTRE' }), affectations)).toBe('GM101');
+    expect(libelleMutualise(seance({ module: 'M999' }), affectations)).toBe('GM101');
+  });
+
+  it('un libellé déjà fusionné est gardé tel quel', () => {
+    expect(libelleMutualise(seance({ groupe: 'GM101 GM102' }), affectations)).toBe('GM101 GM102');
   });
 });

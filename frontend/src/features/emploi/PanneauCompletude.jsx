@@ -38,8 +38,9 @@ import PlacementManquantes from './PlacementManquantes';
  * en-tête compris, se resserre à sa gauche. Seul le CONTENU défile. Son cadre
  * — en-tête sans trait, bord gauche qu'on glisse pour redimensionner ou qu'on
  * clique pour fermer — est `CadrePanneauDroit`, réutilisable.
- * Il se ferme aussi par sa croix ou par le bouton du taux — jamais par Échap,
- * qui désélectionne dans la grille.
+ * Il se ferme aussi par sa croix, par le bouton du taux ou par un clic hors du
+ * panneau (2026-10-16, « comme le sidebar » — voir `PageEmploi`) — jamais par
+ * Échap, qui désélectionne dans la grille.
  */
 export default function PanneauCompletude({
   onFermer,

@@ -824,6 +824,52 @@ describe('PUT /seances/:semaine/case — poser une séance', () => {
         ...corps,
       });
 
+  /*
+   * ═══ VUE PAR GROUPE : LE SYNCHRONE SUIT SA FUSION (2026-10-16) ═══
+   * Posée sur GM101 seul, une séance TEAMS d'un module que la carte a fusionné
+   * « GM101 GM102 » en synchrone s'enregistre sous le libellé fusionné — elle
+   * apparaît alors dans la ligne des deux groupes.
+   */
+  describe('séance synchrone d’une fusion, posée sur un seul groupe', () => {
+    beforeEach(async () => {
+      await Base.updateOne(
+        { etablissementId: etablissement.id, anneeScolaire: ANNEE },
+        {
+          $push: {
+            affectations: {
+              formateur: '9863',
+              groupe: 'GM101 GM102',
+              module: 'M103',
+              type: TYPES_COURS.SYNCHRONE,
+              s1Heures: 20,
+            },
+          },
+        }
+      );
+    });
+
+    it('s’enregistre sous le libellé fusionné', async () => {
+      const reponse = await poserPar({ module: 'M103', salle: 'TEAMS' });
+      expect(reponse.status).toBe(200);
+      expect(reponse.body.seance.groupe).toBe('GM101 GM102');
+      expect(await Seance.countDocuments({ etablissementId: etablissement.id, semaine: SEMAINE })).toBe(1);
+    });
+
+    it('le même cours en salle reste sur son groupe', async () => {
+      await Base.updateOne(
+        { etablissementId: etablissement.id, anneeScolaire: ANNEE },
+        {
+          $push: {
+            affectations: { formateur: '9863', groupe: 'GM101', module: 'M103', type: TYPES_COURS.PRESENTIEL, s1Heures: 20 },
+          },
+        }
+      );
+      const reponse = await poserPar({ module: 'M103', salle: 'A12' });
+      expect(reponse.status).toBe(200);
+      expect(reponse.body.seance.groupe).toBe('GM101');
+    });
+  });
+
   it('pose une séance sur un créneau libre', async () => {
     const reponse = await poserPar();
 

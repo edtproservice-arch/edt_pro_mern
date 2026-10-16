@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { prochaineBascule } from 'shared/domain';
 
+import { lireSemaineChoisie, retenirSemaineChoisie } from '@/lib/semaineChoisie';
+
 /* Marge après 6 h 30 : c'est l'horloge du SERVEUR qui décide de la semaine, et
    celle du poste peut avancer de quelques secondes sur la sienne. */
 const MARGE_MS = 5_000;
@@ -24,6 +26,10 @@ const MARGE_MS = 5_000;
  * délibérément une autre semaine. Revenir sur la semaine courante (« Cette
  * semaine ») rend la main à la règle.
  *
+ * ⚠️ LE CHOIX EST COMMUN À TOUS LES ÉCRANS (2026-10-16, `lib/semaineChoisie`) :
+ * passer de l'Emploi à l'Édition garde la semaine choisie ; seule une nouvelle
+ * connexion ramène à la semaine en cours.
+ *
  * @param {object} p
  * @param {string|undefined} p.courante — la semaine désignée par le serveur
  * @param {string|null} [p.repli] — tant que le serveur n'a pas répondu
@@ -32,7 +38,7 @@ const MARGE_MS = 5_000;
  */
 export function useSemaineSuivie({ courante, repli = null, cle }) {
   const cache = useQueryClient();
-  const [choisie, setChoisie] = useState(null);
+  const [choisie, setChoisie] = useState(lireSemaineChoisie);
   const [tour, setTour] = useState(0);
 
   // La clé est un tableau neuf à chaque rendu : en dépendre réarmerait la
@@ -49,7 +55,11 @@ export function useSemaineSuivie({ courante, repli = null, cle }) {
     return () => clearTimeout(minuterie);
   }, [cache, tour]);
 
-  const choisir = (semaine) => setChoisie(semaine === courante ? null : semaine);
+  const choisir = (semaine) => {
+    const valeur = semaine === courante ? null : semaine;
+    retenirSemaineChoisie(valeur);
+    setChoisie(valeur);
+  };
 
   return [choisie ?? courante ?? repli, choisir];
 }

@@ -103,6 +103,7 @@ export default function PageFormateurs() {
           lectureSeule={lectureSeule}
           avecContraintes
           avecAjout
+          avecHeuresSupp
         />
       </CadreReglage>
     </>

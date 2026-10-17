@@ -18,6 +18,7 @@ import AjoutFormateur from './AjoutFormateur';
 import { FiltreSalle } from './ContraintesFormateurs';
 import FiltreCreneaux from './FiltreCreneaux';
 import LigneFormateur from './LigneFormateur';
+import { BoutonHeuresSupp, FenetreHeuresSupp } from './HeuresSupp';
 import {
   BoutonFormateursMutualises,
   FenetreFormateursMutualises,
@@ -55,12 +56,15 @@ import { MODE_INDISPONIBLES, filtrerFormateurs, identifiantFormateur } from './f
  *   la disponibilité et les salles attribuées (2026-09-17), donc les filtres qui
  *   s'y rapportent. L'assistant de configuration ne les montre pas — les salles
  *   n'y sont saisies qu'après.
+ * @param {boolean} [props.avecHeuresSupp]  page Paramètres → Formateurs : le bouton qui ouvre le
+ *   calcul des heures supplémentaires (2026-10-17).
  */
 export default function EtapeFormateurs({
   onModification,
   lectureSeule = false,
   avecContraintes = false,
   avecAjout = false,
+  avecHeuresSupp = false,
 }) {
   const cache = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ['base'], queryFn: chargerBase, retry: false });
@@ -79,6 +83,7 @@ export default function EtapeFormateurs({
   // Les formateurs affectés dans plusieurs établissements : détectés par le serveur (2026-09-21).
   const mutualises = useFormateursMutualises(avecContraintes);
   const [schemaMutualises, setSchemaMutualises] = useState(false);
+  const [heuresSupp, setHeuresSupp] = useState(false);
   const [corrections, setCorrections] = useState({});
   const [ouverts, setOuverts] = useState(() => new Set());
 
@@ -358,6 +363,7 @@ export default function EtapeFormateurs({
         )}
 
         <div className="ml-auto flex items-center gap-2">
+        {avecHeuresSupp && <BoutonHeuresSupp onClick={() => setHeuresSupp(true)} />}
         <BoutonFormateursMutualises
           nombre={mutualises.liste.length}
           onClick={() => setSchemaMutualises(true)}
@@ -418,6 +424,8 @@ export default function EtapeFormateurs({
         {filtresActifs ? `${formateurs.length} sur ${tous.length}` : tous.length} formateur(s). Les
         corrections sont enregistrées en passant à l&apos;étape suivante.
       </p>
+
+      {heuresSupp && <FenetreHeuresSupp onFermer={() => setHeuresSupp(false)} />}
 
       {schemaMutualises && (
         <FenetreFormateursMutualises

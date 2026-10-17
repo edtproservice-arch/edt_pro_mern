@@ -111,6 +111,23 @@ function construireLignesJour(gabaritPlein, gabaritCreux, jour, casesJour, ligne
     .join('');
 }
 
+/** Taille du nom du sujet dans l'entête, en demi-points : 15 pt (10 pt × 1,5). */
+const TAILLE_NOM_SUJET = 30;
+
+/** Fixe la taille de police de tout le paragraphe qui contient `repere`. */
+function agrandirParagraphe(xml, repere, demiPoints) {
+  const position = xml.indexOf(repere);
+  if (position === -1) return xml;
+  const debut = xml.lastIndexOf('<w:p ', position);
+  const fin = xml.indexOf('</w:p>', position);
+  if (debut === -1 || fin === -1) return xml;
+  const paragraphe = xml
+    .slice(debut, fin)
+    .replace(/<w:sz w:val="\d+"\/>/g, `<w:sz w:val="${demiPoints}"/>`)
+    .replace(/<w:szCs w:val="\d+"\/>/g, `<w:szCs w:val="${demiPoints}"/>`);
+  return xml.slice(0, debut) + paragraphe + xml.slice(fin);
+}
+
 /** UNE PAGE — le triplet titre/identité/grille d'un seul sujet, depuis un gabarit vierge. */
 function construirePage(modelePage, { etablissement, anneeScolaire, semaineDebut, entete, lignes, creneaux, page, nomsFormateurs, horaireDuCreneau }) {
   let xml = modelePage;
@@ -134,6 +151,13 @@ function construirePage(modelePage, { etablissement, anneeScolaire, semaineDebut
   // l'entête de chaque tableau de `GrilleDetaillee` à l'écran), PAS la
   // capacité statutaire annuelle du formateur. Voir `exportIndividuel.service.js`.
   xml = remplacerBalise(xml, ' 40.00 H', ` ${page.heures.toFixed(2)} H`);
+  /*
+   * ⚠️ LE NOM DU SUJET EN PLUS GRAND (2026-10-16, demande du porteur : × 1,5).
+   * Le canevas l'écrit en 10 pt (`w:sz` 20, en demi-points) : on passe à 15 pt
+   * (30) le seul paragraphe « Formateur : ABDELHAK CHARKAOUI » — étiquette,
+   * nom et marque de paragraphe — avant d'y substituer le sujet.
+   */
+  xml = agrandirParagraphe(xml, 'ABDELHAK CHARKAOUI', TAILLE_NOM_SUJET);
   // ⚠️ L'ÉTIQUETTE DÉPEND DE L'AXE — « Formateur : », « Groupe : » ou « Espace : ».
   xml = remplacerBalise(xml, 'Formateur : ', `${entete} : `);
   xml = remplacerBalise(xml, 'ABDELHAK CHARKAOUI', echapperXml(page.libelle));

@@ -11,6 +11,8 @@ import { badRequest } from '../../lib/httpError.js';
 import * as service from './base.service.js';
 import * as carteService from './carte.service.js';
 import * as contraintesService from './contraintes.service.js';
+import { heuresSupplementaires } from './heuresSupp.service.js';
+import { construireEtatMensuelHeuresSupp } from './exportHeuresSupp.service.js';
 import { contraintesFormateurSchema } from 'shared/schemas';
 import { construireClasseurBilan } from './bilan.service.js';
 import { construireClasseurCarte } from './carteExport.service.js';
@@ -569,6 +571,27 @@ router.patch('/formateurs', exigerDroitPage('formateurs', 'modifier'), validate(
     );
     res.json({ success: true, ...resultat });
     annoncerBase(req, 'corriger-formateurs');
+  } catch (error) {
+    next(error);
+  }
+});
+
+/*
+ * Heures supplémentaires de chaque formateur (2026-10-17) — semaine par semaine, plafonnées
+ * par mois et par le quota « affecté − statutaire ». Voir `heuresSupp.service.js`.
+ */
+router.get('/formateurs/heures-supp', exigerDroitPage('formateurs', 'consulter'), async (req, res, next) => {
+  try {
+    res.json({ success: true, ...(await heuresSupplementaires(req.etablissementId, req.anneeScolaire)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Le même calcul au format de l'état mensuel de l'administration : une feuille par mois.
+router.post('/formateurs/heures-supp/etat-mensuel', exigerDroitPage('formateurs', 'consulter'), async (req, res, next) => {
+  try {
+    repondreClasseur(res, await construireEtatMensuelHeuresSupp(req.etablissementId, req.anneeScolaire));
   } catch (error) {
     next(error);
   }

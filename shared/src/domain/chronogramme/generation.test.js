@@ -293,6 +293,13 @@ describe('repartirSemestresAuPas', () => {
     expect(repartirSemestresAuPas(40, 35)).toEqual({ s1: 40, s2: 35 });
   });
 
+  it('synchrone : le S1 en séances entières de 5 h, le reliquat au S2 (2026-10-18)', () => {
+    expect(repartirSemestresAuPas(2.5, 2.5, 5)).toEqual({ s1: 5, s2: 0 });
+    expect(repartirSemestresAuPas(7.5, 7.5, 5)).toEqual({ s1: 10, s2: 5 });
+    expect(repartirSemestresAuPas(2.5, 10, 5)).toEqual({ s1: 5, s2: 7.5 });
+    expect(repartirSemestresAuPas(2.5, 0, 5)).toEqual({ s1: 2.5, s2: 0 });
+  });
+
   it('un seul semestre : le total au pas', () => {
     expect(repartirSemestresAuPas(0, 12)).toEqual({ s1: 0, s2: 10 });
     expect(repartirSemestresAuPas(15, 0)).toEqual({ s1: 15, s2: 0 });

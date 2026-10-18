@@ -456,16 +456,24 @@ export function plafondHebdomadaireSynchrone(heures, semainesOuvertes) {
  *    n'expliquait à l'écran. On arrondit donc le S1 au pas le plus proche, et
  *    le S2 prend le reste du total.
  *
+ * ⚠️ LE SYNCHRONE SE DÉCOUPE EN SÉANCES ENTIÈRES (2026-10-18) : `seance` =
+ *    5 h. Un synchrone annuel de 5 h coupé en 2,5 h + 2,5 h faisait DEUX
+ *    séances courtes, une par semestre — refusées au contrôle (une seule
+ *    séance courte par tâche), et la génération entière échouait sur
+ *    « répartition incohérente ». Le S1 s'arrondit donc à la séance, et seul
+ *    le S2 garde le reliquat.
+ *
+ * @param {number} [seance] — l'unité du S1 : le pas, ou la séance synchrone
  * @returns {{s1: number, s2: number}}
  */
-export function repartirSemestresAuPas(s1 = 0, s2 = 0) {
+export function repartirSemestresAuPas(s1 = 0, s2 = 0, seance = PAS) {
   const un = Math.max(0, Number(s1) || 0);
   const deux = Math.max(0, Number(s2) || 0);
   const total = Math.floor((un + deux) / PAS + 1e-9) * PAS;
   if (un === 0 || deux === 0) {
     return un === 0 ? { s1: 0, s2: total } : { s1: total, s2: 0 };
   }
-  const premier = Math.min(total, Math.round(un / PAS) * PAS);
+  const premier = Math.min(total, Math.round(un / seance) * seance);
   return { s1: premier, s2: Math.round((total - premier) * 100) / 100 };
 }
 

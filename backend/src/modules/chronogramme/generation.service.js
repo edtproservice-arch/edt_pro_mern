@@ -332,7 +332,7 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
 
     // ⚠️ Découpage S1/S2 arrondi au pas, total inchangé (11,11 + 8,89 → 10 + 10).
     const reserve = retirerReserve(
-      repartirSemestresAuPas(tache.s1, tache.s2),
+      repartirSemestresAuPas(tache.s1, tache.s2, tache.type === TYPES.SYNCHRONE ? SEANCE_SYNCHRONE : PAS),
       porteReserve(tache) ? RESERVE_REGIONALE : 0
     );
     reserveRegionale += reserve.retenu * tache.groupes.length;

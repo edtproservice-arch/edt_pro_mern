@@ -562,7 +562,10 @@ def resoudre_chronogramme(probleme: ProblemeChronogramme) -> SolutionChronogramm
             return 0
         bornes = [
             math.floor(cible + _TOLERANCE + _EPS - charge_formateur[(formateur, semaine)] + _EPS),
-            lot.plafonds.get(semaine, 0) - poses[(lot.tache.id, lot.index, semaine)],
+            # ⚠️ `.get` : lire `poses[…]` créerait une entrée à 0 dans le
+            #    defaultdict — rendue ensuite comme une pose de 0 h, que Node
+            #    refuse (« 0 h ne tombe pas sur un pas »), 2026-10-18.
+            lot.plafonds.get(semaine, 0) - poses.get((lot.tache.id, lot.index, semaine), 0),
         ]
         for nom in lot.tache.cellules:
             bornes.append(_en_pas(cellules[nom].plafonds.get(semaine, 0) - charge_cellule[nom][semaine], pas))
@@ -651,6 +654,7 @@ def resoudre_chronogramme(probleme: ProblemeChronogramme) -> SolutionChronogramm
         for (tache_id, index, semaine), quantite in sorted(
             poses.items(), key=lambda e: (e[0][0], e[0][1], rang[e[0][2]])
         )
+        if quantite > 0
     )
 
     return SolutionChronogramme(

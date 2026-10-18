@@ -803,3 +803,22 @@ class TestRattrapage(unittest.TestCase):
         charge = probleme([haut, bas], formateurs=[{"id": "F1", "cibles": par_semaine(20)}])
         poses = par_tache(resoudre(charge))["BAS"]
         self.assertTrue(all(h >= 5 for h in poses.values()), poses)
+
+    def test_un_rattrapage_impossible_ne_rend_pas_de_pose_a_0_h(self):
+        # 2026-10-18 : le rattrapage SONDAIT les semaines voisines en lisant
+        # `poses[…]` — un defaultdict, qui y créait une entrée à 0. Rendue comme
+        # une pose de 0 h, Node refusait toute la génération (« 0 h ne tombe
+        # pas sur un pas de 2,5 h »). Ici HAUT prend toute la marge du formateur
+        # (cible + tolérance) : BAS n'a nulle part où aller, et ne doit RIEN
+        # recevoir — pas même des poses vides.
+        haut = tache("HAUT", 300, priorite=1, plafond=25)
+        bas = tache("BAS", 20, priorite=6, plafond=10)
+        charge = probleme(
+            [haut, bas],
+            formateurs=[{"id": "F1", "cibles": par_semaine(20)}],
+            cellules=[{"id": "G1||HAUT", "plafonds": par_semaine(30)}, {"id": "G1||BAS", "plafonds": par_semaine(20)}],
+        )
+        solution = resoudre(charge)
+        self.assertEqual([p for p in solution.poses if p.heures <= 0], [])
+        self.assertNotIn("BAS", par_tache(solution))
+        self.assertEqual(sum(n.heures for n in solution.non_poses if n.tache_id == "BAS"), 20)

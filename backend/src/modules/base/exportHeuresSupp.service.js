@@ -1,3 +1,4 @@
+import JSZip from 'jszip';
 import { Etablissement } from '../../models/Etablissement.js';
 import { nouveauClasseur } from './bilan.service.js';
 import { heuresSupplementaires } from './heuresSupp.service.js';
@@ -54,20 +55,117 @@ const plein = (argb) => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } 
  * une note sur la cellule avec la masse affectée et le réalisé de chaque établissement — les
  * chiffres de la ligne, eux, sont cumulés sur tous.
  */
-function marquerMutualise(ligne, formateur) {
+/** « 22.5 » → « 22,5 » : les notes se lisent comme le reste du classeur. */
+const nombreFr = (valeur) => String(Math.round((Number(valeur) || 0) * 100) / 100).replace('.', ',');
+
+/**
+ * Le texte d'une note de répartition : un titre, une ligne par établissement, le total.
+ *
+ * ⚠️ DES LIGNES COURTES (2026-10-18, signalé par le porteur : « le commentaire n'affiche pas la
+ * masse de l'autre établissement »). Une ligne longue passe à la ligne dans le cadre de la note,
+ * et les établissements suivants en sortaient : on ne voyait que « Cet établissement ». Le cadre
+ * est aussi agrandi à l'enregistrement — voir `agrandirLesNotes`.
+ */
+function noteRepartition(titre, ici, ailleurs, total) {
+  return [
+    titre,
+    `• Ici : ${nombreFr(ici)} h`,
+    ...ailleurs.map((a) => `• ${a.nom} : ${nombreFr(a.valeur)} h`),
+    `= Total : ${nombreFr(total)} h`,
+  ].join('\n');
+}
+
+/** Pose une note de répartition sur une cellule, et la teinte en violet. */
+function noter(cellule, texte) {
+  cellule.note = texte;
+  cellule.font = { ...(cellule.font ?? {}), color: { argb: COULEURS.mutualiseTexte } };
+}
+
+/** Les heures d'un formateur mutualisé sur une liste de semaines, par établissement. */
+function repartitionDesSemaines(semainesDuFormateur) {
+  const parEtablissement = new Map();
+  let total = 0;
+  for (const semaine of semainesDuFormateur) {
+    total += semaine.heures ?? 0;
+    for (const autre of semaine.ailleurs ?? []) {
+      parEtablissement.set(autre.nom, (parEtablissement.get(autre.nom) ?? 0) + autre.heures);
+    }
+  }
+  const ailleurs = [...parEtablissement].map(([nom, valeur]) => ({ nom, valeur }));
+  const horsIci = ailleurs.reduce((somme, a) => somme + a.valeur, 0);
+  return { ici: total - horsIci, ailleurs, total };
+}
+
+/**
+ * Formateur MUTUALISÉ (2026-10-18) : Mle et nom sur fond violet, « (mutualisé) » après le nom, et
+ * une note sur chaque valeur qui cumule plusieurs établissements, avec la part de chacun :
+ *   - le nom : masse affectée et heures réalisées, établissement par établissement ;
+ *   - la masse affectée (synthèse) ;
+ *   - les heures d'un mois (synthèse) et le total réalisé du mois (feuille mensuelle) ;
+ *   - les heures d'une semaine (feuille mensuelle), quand une part a été faite ailleurs.
+ *
+ * @param {object} options
+ * @param {number} [options.colAffectee]  colonne de la masse affectée
+ * @param {Array<{colonne: number, semaines: object[], titre: string}>} [options.heures]  cellules
+ *   d'heures à commenter, avec les semaines du formateur qu'elles additionnent
+ */
+function marquerMutualise(ligne, formateur, { colAffectee = null, heures = [] } = {}) {
   if (!formateur.mutualise) return;
   const { ici, ailleurs } = formateur.mutualise;
-  const detail = [
-    'Formateur mutualisé — heures cumulées sur tous ses établissements :',
-    `• Cet établissement : ${ici.affecte} h affectées, ${ici.heures} h réalisées`,
-    ...ailleurs.map((a) => `• ${a.nom} : ${a.affecte} h affectées, ${a.heures} h réalisées`),
-    `Total : ${formateur.affecte} h affectées, ${formateur.totaux.heures} h réalisées`,
-  ].join('\n');
+
   for (const c of [1, 2]) ligne.getCell(c).fill = plein(COULEURS.mutualise);
   const nom = ligne.getCell(2);
   nom.value = `${formateur.nom} (mutualisé)`;
   nom.font = { ...(nom.font ?? {}), color: { argb: COULEURS.mutualiseTexte } };
-  nom.note = detail;
+  nom.note = [
+    'Formateur mutualisé',
+    `• Ici : ${nombreFr(ici.affecte)} h affectées, ${nombreFr(ici.heures)} h réalisées`,
+    ...ailleurs.map((a) => `• ${a.nom} : ${nombreFr(a.affecte)} h affectées, ${nombreFr(a.heures)} h réalisées`),
+    `= Total : ${nombreFr(formateur.affecte)} h affectées, ${nombreFr(formateur.totaux.heures)} h réalisées`,
+  ].join('\n');
+
+  if (colAffectee) {
+    noter(
+      ligne.getCell(colAffectee),
+      noteRepartition(
+        'Masse affectée',
+        ici.affecte,
+        ailleurs.map((a) => ({ nom: a.nom, valeur: a.affecte })),
+        formateur.affecte
+      )
+    );
+  }
+
+  for (const { colonne, semaines, titre } of heures) {
+    const repartition = repartitionDesSemaines(semaines);
+    if (repartition.ailleurs.length === 0) continue;
+    noter(
+      ligne.getCell(colonne),
+      noteRepartition(titre, repartition.ici, repartition.ailleurs, repartition.total)
+    );
+  }
+}
+
+/**
+ * ⚠️ LE CADRE DES NOTES EST AGRANDI APRÈS COUP (2026-10-18). ExcelJS le fixe à 2 colonnes sur
+ * 4 lignes, sans réglage : une répartition sur trois établissements n'y tenait pas. On retouche
+ * donc l'ancre de chaque note dans le classeur produit — 4 colonnes sur 8 lignes.
+ */
+async function agrandirLesNotes(tampon) {
+  const zip = await JSZip.loadAsync(tampon);
+  const dessins = Object.keys(zip.files).filter((chemin) => /^xl\/drawings\/vmlDrawing\d+\.vml$/.test(chemin));
+  if (dessins.length === 0) return tampon;
+
+  for (const chemin of dessins) {
+    const xml = await zip.file(chemin).async('string');
+    const agrandi = xml.replace(/<x:Anchor>([^<]+)<\/x:Anchor>/g, (tout, valeurs) => {
+      const [gauche, dg, haut, dh] = valeurs.split(',').map((v) => Number(v.trim()));
+      if ([gauche, dg, haut, dh].some(Number.isNaN)) return tout;
+      return `<x:Anchor>${[gauche, dg, haut, dh, gauche + 4, 2, haut + 8, 16].join(', ')}</x:Anchor>`;
+    });
+    zip.file(chemin, agrandi);
+  }
+  return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
 
 const MENTION_MUTUALISE = ' · Violet : formateur mutualisé, heures cumulées sur tous ses établissements (détail en note)';
@@ -234,7 +332,14 @@ function ajouterSyntheseAnnuelle(classeur, { parMatricule, moisTravailles, etabl
       if (c >= 6) cellule.numFmt = c >= PREMIER_MOIS && c < colTotal ? FORMAT_HEURES : FORMAT_CUMUL;
     }
     ligne.getCell(2).font = { name: POLICE, size: 10, bold: !vacataire, ...discret };
-    marquerMutualise(ligne, formateur);
+    marquerMutualise(ligne, formateur, {
+      colAffectee: 5,
+      heures: moisTravailles.map((mois, i) => ({
+        colonne: PREMIER_MOIS + i * 2,
+        semaines: formateur.semaines.filter((semaine) => semaine.mois === mois),
+        titre: `Heures réalisées — ${libelleMois(mois)}`,
+      })),
+    });
 
     // Les HS payées d'un mois se voient d'un coup d'œil.
     moisTravailles.forEach((_, i) => {
@@ -454,7 +559,17 @@ export async function construireEtatMensuelHeuresSupp(etablissementId, anneeScol
       }
       ligne.getCell(3).numFmt = '0';
       ligne.getCell(2).font = { name: POLICE, size: 10, bold: !vacataire, ...(vacataire ? { italic: true, color: { argb: COULEURS.gris } } : {}) };
-      marquerMutualise(ligne, formateur);
+      const semainesDuFormateur = semaines.map((s) => detail.get(formateur).get(s.numero)).filter(Boolean);
+      marquerMutualise(ligne, formateur, {
+        heures: [
+          ...semaines.map((s, i) => ({
+            colonne: PREMIERE_SEMAINE + i * 2,
+            semaines: [detail.get(formateur).get(s.numero)].filter(Boolean),
+            titre: `S-${s.calendaire} (S${s.numero}) — heures réalisées`,
+          })),
+          { colonne: colTotal, semaines: semainesDuFormateur, titre: `Total réalisé — ${nomMois}` },
+        ],
+      });
 
       // Une heure supplémentaire se voit d'un coup d'œil.
       semaines.forEach((_, i) => {
@@ -500,7 +615,7 @@ export async function construireEtatMensuelHeuresSupp(etablissementId, anneeScol
   if (moisTravailles.length === 0) classeur.addWorksheet('Aucune séance');
 
   return {
-    tampon: Buffer.from(await classeur.xlsx.writeBuffer()),
+    tampon: await agrandirLesNotes(Buffer.from(await classeur.xlsx.writeBuffer())),
     nomFichier: `Etat_mensuel_heures_supp_${anneeScolaire}-${anneeScolaire + 1}.xlsx`,
     resume: { mois: moisTravailles.length, formateurs: formateurs.length },
   };

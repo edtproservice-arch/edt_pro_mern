@@ -420,9 +420,51 @@ function BadgeMutualise({ formateur }) {
   );
 }
 
-/** Le titre d'une cellule qui cumule ici et ailleurs. */
-const detailCumul = (total, ailleurs) =>
-  ailleurs ? `Ici : ${heures(total - ailleurs)} h · Autre(s) établissement(s) : ${heures(ailleurs)} h` : undefined;
+/**
+ * Une valeur cumulée sur plusieurs établissements : soulignée en pointillé, et au survol une
+ * CARTE (2026-10-18, demande du porteur — pas une infobulle) qui nomme chaque établissement.
+ *
+ * @param {{titre: string, ici: number, ailleurs: Array<{nom: string, valeur: number}>,
+ *   total: number, format: (n: number) => string, children: React.ReactNode}} props
+ */
+function CarteCumul({ titre, ici, ailleurs, total, format, children }) {
+  if (!ailleurs?.length) return children;
+  const lignes = [{ nom: 'Cet établissement', valeur: ici }, ...ailleurs];
+  return (
+    <HoverCard openDelay={120} closeDelay={80}>
+      <HoverCardTrigger asChild>
+        <span className={cumule}>{children}</span>
+      </HoverCardTrigger>
+      <HoverCardContent side="top" className="w-auto p-3 text-left not-italic">
+        <p className="text-sm font-medium">{titre}</p>
+        <table className="mt-2 w-full text-xs tabular-nums">
+          <tbody>
+            {lignes.map((ligne) => (
+              <tr key={ligne.nom} className="border-t first:border-t-0">
+                <td className="py-1 pr-4">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span
+                      className={cn(
+                        'size-2 rounded-full',
+                        ligne.nom === 'Cet établissement' ? 'bg-primary' : 'bg-violet-500'
+                      )}
+                    />
+                    {ligne.nom}
+                  </span>
+                </td>
+                <td className="py-1 text-right">{format(ligne.valeur)} h</td>
+              </tr>
+            ))}
+            <tr className="border-t font-semibold">
+              <td className="py-1 pr-4">Total</td>
+              <td className="py-1 text-right">{format(total)} h</td>
+            </tr>
+          </tbody>
+        </table>
+      </HoverCardContent>
+    </HoverCard>
+  );
+}
 
 /* ─── Synthèse annuelle ──────────────────────────────────────────────────── */
 
@@ -461,11 +503,16 @@ function SyntheseAnnuelle({ formateurs, moisTravailles }) {
           <LigneFormateur key={f.matricule || f.nom} formateur={f}>
             <TableCell className={cellule}>{f.statutaire || '—'}</TableCell>
             <TableCell className={cellule}>{mhs(f)}</TableCell>
-            <TableCell
-              className={cn(cellule, f.mutualise && cumule)}
-              title={f.mutualise ? `Ici : ${entier(f.mutualise.ici.affecte)} h · Total sur tous ses établissements` : undefined}
-            >
-              {entier(f.affecte)}
+            <TableCell className={cellule}>
+              <CarteCumul
+                titre={`Masse affectée de ${f.nom}`}
+                ici={f.mutualise?.ici.affecte}
+                ailleurs={f.mutualise?.ailleurs.map((a) => ({ nom: a.nom, valeur: a.affecte }))}
+                total={f.affecte}
+                format={entier}
+              >
+                {entier(f.affecte)}
+              </CarteCumul>
             </TableCell>
             <TableCell className={cellule}>{heures(f.totaux.quota)}</TableCell>
             {moisTravailles.flatMap((mois) => {
@@ -539,12 +586,15 @@ function EtatDuMois({ formateurs, semaines, mois }) {
                 const valeurs = semaine(f, s.numero);
                 return [
                   <TableCell key={`${s.numero}-r`} className={cn(cellule, separation)}>
-                    <span
-                      className={cn(valeurs?.ailleurs && cumule)}
-                      title={detailCumul(valeurs?.heures ?? 0, valeurs?.ailleurs)}
+                    <CarteCumul
+                      titre={`S-${s.calendaire} (S${s.numero}) — heures réalisées`}
+                      ici={(valeurs?.heures ?? 0) - (valeurs?.ailleurs ?? []).reduce((t, a) => t + a.heures, 0)}
+                      ailleurs={valeurs?.ailleurs?.map((a) => ({ nom: a.nom, valeur: a.heures }))}
+                      total={valeurs?.heures ?? 0}
+                      format={decimales}
                     >
                       {decimales(valeurs?.heures)}
-                    </span>
+                    </CarteCumul>
                   </TableCell>,
                   <TableCell key={`${s.numero}-s`} className={cn(cellule, serre, valeurs?.brut && valeurHs)}>
                     {heuresOuVide(valeurs?.brut)}

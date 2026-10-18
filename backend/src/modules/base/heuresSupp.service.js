@@ -210,18 +210,26 @@ export async function heuresSupplementaires(
       mois: calcul.mois,
       totaux: calcul.totaux,
       // Seules les semaines travaillées : le calendrier commun est rendu une fois, à part.
-      semaines: complet
+      /*
+       * Ce qui a été fait dans chaque AUTRE établissement, pour un formateur mutualisé — nommé :
+       * l'écran en fait une carte au survol, l'export un commentaire (2026-10-18). Les deux le
+       * reçoivent, d'où le même ajout sur les deux branches.
+       */
+      semaines: (complet
         ? calcul.semaines
         : calcul.semaines
             .filter((semaine) => semaine.heures > 0)
-            .map(({ numero, heures: h, brut, paye }) => ({
-              numero,
-              heures: h,
-              brut,
-              paye,
-              // La part faite dans un autre établissement, pour un formateur mutualisé.
-              ...(parSemaineAilleurs.has(numero) ? { ailleurs: arrondi(parSemaineAilleurs.get(numero)) } : {}),
-            })),
+            .map(({ numero, heures: h, brut, paye }) => ({ numero, heures: h, brut, paye }))
+      ).map((semaine) =>
+        parSemaineAilleurs.has(semaine.numero)
+          ? {
+              ...semaine,
+              ailleurs: autres
+                .filter((autre) => autre.parSemaine.get(semaine.numero))
+                .map((autre) => ({ nom: autre.nom, heures: arrondi(autre.parSemaine.get(semaine.numero)) })),
+            }
+          : semaine
+      ),
     };
   });
 

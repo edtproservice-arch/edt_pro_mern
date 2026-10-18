@@ -24,11 +24,18 @@ export const exporterFeuilleAbsence = ({ format, groupes, semaine }) =>
  * Les cartes de stagiaire des groupes choisis, en Word ou PDF (2026-10-11).
  * `valeurs.renouveler` : invalide les cartes déjà imprimées (nouveaux QR).
  */
-export const exporterCartes = ({ format, groupes, valeurs }) =>
+export const exporterCartes = ({ format, groupes, valeurs, matricules }) =>
   api.telecharger(
     `${RACINE}/cartes`,
     // `adresse` : l'application qu'on utilise — c'est là que mèneront les QR (2026-10-11).
-    { format, groupes, renouveler: Boolean(valeurs?.renouveler), adresse: window.location.origin },
+    // `matricules` : seulement ces stagiaires (2026-10-17, filtre par stagiaire de Documents).
+    {
+      format,
+      groupes,
+      renouveler: Boolean(valeurs?.renouveler),
+      adresse: window.location.origin,
+      ...(matricules ? { matricules } : {}),
+    },
     { nomParDefaut: `cartes-stagiaires.${format}` }
   );
 
@@ -108,6 +115,14 @@ export const telechargerBillets = ({ format, ids }) =>
 /** Une page de quinze billets vierges, à remplir à la main (Word ou PDF). */
 export const telechargerBilletsVierges = (format) =>
   api.telecharger(`${RACINE}/billets/vierges`, { format }, { nomParDefaut: `billets-excuse-vierges.${format}` });
+
+/**
+ * Un document VIERGE de la page Documents (2026-10-17) — `cle` : `fils-agent`
+ * (fiche du candidat fils d'agent), `duplicata` (demande de duplicata imprimée vide),
+ * `reorientation` (PV de réorientation imprimé vide).
+ */
+export const telechargerDocumentVierge = (cle) => (format) =>
+  api.telecharger(`${RACINE}/documents-vierges`, { cle, format }, { nomParDefaut: `${cle}.${format}` });
 
 /** Un formulaire d'examen vierge, logo OFPPT en tête (2026-10-11) — `cle` : voir le serveur. */
 export const telechargerFormulaireExamen = (cle) => (format) =>

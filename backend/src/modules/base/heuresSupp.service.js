@@ -20,6 +20,8 @@ import { joursFeries } from '../calendrier/calendrier.service.js';
 import { obtenir as calendrierNational } from '../calendrierNational/calendrierNational.service.js';
 import { obtenir as horairesSeances } from '../horaires/horaires.service.js';
 import { notFound } from '../../lib/httpError.js';
+import { mutualisationDesFormateurs } from '../espaces/formateursMutualises.service.js';
+import { identite, nomCourt } from '../espaces/espaces.service.js';
 
 /**
  * Heures supplémentaires de chaque formateur sur l'année (demande du porteur, 2026-10-17).
@@ -32,6 +34,13 @@ import { notFound } from '../../lib/httpError.js';
  * ⚠️ RÉALISÉES, PAS PLANIFIÉES (demande du porteur, 2026-10-17) : seules comptent les séances
  * TERMINÉES à l'instant du calcul — un jour passé, ou le jour même une fois l'horaire officiel du
  * créneau échu. C'est `seanceTerminee`, la règle du réalisé eDTpro et du badge « Terminé ».
+ *
+ * ═══ ⚠️ UN FORMATEUR MUTUALISÉ EST COMPTÉ SUR TOUS SES ÉTABLISSEMENTS (2026-10-18) ═══
+ * (demande du porteur.) Ses heures supp ne se jugent pas établissement par établissement : 90 h
+ * affectées ici et 925 h ailleurs font 1015 h, soit 105 h au-delà de ses 910 h statutaires — et
+ * ses semaines se chargent dans les deux. On additionne donc les masses affectées ET les séances
+ * de chaque établissement où son matricule figure ; les deux directeurs voient les mêmes chiffres,
+ * avec le détail par établissement (`mutualise`).
  *
  * ⚠️ UN JOUR FERMÉ EST UN FÉRIÉ OU UN JOUR DE VACANCES, du lundi au samedi. Un férié tombant un
  * dimanche ne réduit pas le seuil de la semaine : on n'y travaille pas de toute façon.
@@ -52,7 +61,7 @@ export async function heuresSupplementaires(
   anneeScolaire,
   { complet = false, maintenant = instantLocal(new Date()) } = {}
 ) {
-  const [base, seances, etablissement, feries, national, horaires] = await Promise.all([
+  const [base, seances, etablissement, feries, national, horaires, mutualisation] = await Promise.all([
     Base.findOne({ etablissementId, anneeScolaire }).select('formateurs affectations').lean(),
     Seance.find({ etablissementId, anneeScolaire, statut: { $ne: 'absent' }, estEfm: { $ne: true } })
       .select('formateurMatricule semaine jour seance date')
@@ -62,9 +71,16 @@ export async function heuresSupplementaires(
     calendrierNational(anneeScolaire),
     // L'horaire en vigueur (hiver, été, ramadan) décide de l'heure de fin d'un créneau.
     horairesSeances().then((h) => h.courant),
+    // Une panne de la détection ne doit pas priver l'écran : on compte alors ce seul établissement.
+    mutualisationDesFormateurs(etablissementId, anneeScolaire).catch(() => ({
+      parMatricule: new Map(),
+      etablissements: new Map(),
+    })),
   ]);
 
   if (!base) throw notFound('Aucune base pour cette année scolaire', { code: 'BASE_ABSENTE' });
+
+  const ailleurs = await chargerAilleurs(mutualisation, anneeScolaire, maintenant, horaires);
 
   const rentrees = national.rentrees ?? [];
   const vacances = fusionnerVacances(
@@ -131,15 +147,7 @@ export async function heuresSupplementaires(
   const semainesComptees = semaines.filter((semaine) => moisCompteHeuresSupp(semaine.mois));
 
   // Heures de grille : identifiant du formateur → numéro de semaine → heures.
-  const heures = new Map();
-  for (const seance of seances) {
-    if (!seanceTerminee(seance, maintenant, horaires)) continue;
-    const numero = Number(/-W(\d+)$/.exec(seance.semaine ?? '')?.[1]);
-    if (!Number.isInteger(numero)) continue;
-    const parSemaine = heures.get(cle(seance.formateurMatricule)) ?? new Map();
-    parSemaine.set(numero, (parSemaine.get(numero) ?? 0) + dureeSeance(seance.seance));
-    heures.set(cle(seance.formateurMatricule), parSemaine);
-  }
+  const heures = heuresParSemaine(seances, maintenant, horaires);
 
   // Masse affectée : les affectations désignent le formateur par matricule, à défaut par nom.
   const affectees = new Map();
@@ -151,8 +159,7 @@ export async function heuresSupplementaires(
 
   const formateurs = (base.formateurs ?? []).map((formateur) => {
     const identifiants = [...new Set([cle(formateur.matricule), cle(formateur.nomComplet)])].filter(Boolean);
-    const statutaire = Number(formateur.masseHoraire) || 0;
-    const affecte = arrondi(identifiants.reduce((total, id) => total + (affectees.get(id) ?? 0), 0));
+    const affecteIci = arrondi(identifiants.reduce((total, id) => total + (affectees.get(id) ?? 0), 0));
 
     const parSemaine = new Map();
     for (const id of identifiants) {
@@ -160,6 +167,21 @@ export async function heuresSupplementaires(
         parSemaine.set(numero, (parSemaine.get(numero) ?? 0) + valeur);
       }
     }
+    const heuresIci = arrondi([...parSemaine.values()].reduce((total, h) => total + h, 0));
+
+    // Mutualisé : ses autres établissements s'ajoutent — masse affectée et séances.
+    const autres = ailleurs.get(cle(formateur.matricule)) ?? [];
+    const parSemaineAilleurs = new Map();
+    for (const autre of autres) {
+      for (const [numero, valeur] of autre.parSemaine) {
+        parSemaineAilleurs.set(numero, (parSemaineAilleurs.get(numero) ?? 0) + valeur);
+        parSemaine.set(numero, (parSemaine.get(numero) ?? 0) + valeur);
+      }
+    }
+    const affecte = arrondi(affecteIci + autres.reduce((total, autre) => total + autre.affecte, 0));
+    // La masse statutaire est celle de la PERSONNE : à défaut ici, on prend celle d'ailleurs.
+    const statutaire =
+      Number(formateur.masseHoraire) || Math.max(0, ...autres.map((autre) => autre.statutaire));
 
     // 910 h → 26 h/semaine, 1260 h → 36 h ; toute autre masse est un vacataire, sans HS.
     const regime = regimeFormateur(statutaire);
@@ -178,6 +200,13 @@ export async function heuresSupplementaires(
       sansStatutaire: statutaire <= 0,
       statut: regime.statut,
       mhs: regime.mhs,
+      mutualise:
+        autres.length === 0
+          ? null
+          : {
+              ici: { affecte: affecteIci, heures: heuresIci },
+              ailleurs: autres.map(({ nom, affecte: a, heures: h }) => ({ nom, affecte: a, heures: h })),
+            },
       mois: calcul.mois,
       totaux: calcul.totaux,
       // Seules les semaines travaillées : le calendrier commun est rendu une fois, à part.
@@ -185,11 +214,99 @@ export async function heuresSupplementaires(
         ? calcul.semaines
         : calcul.semaines
             .filter((semaine) => semaine.heures > 0)
-            .map(({ numero, heures: h, brut, paye }) => ({ numero, heures: h, brut, paye })),
+            .map(({ numero, heures: h, brut, paye }) => ({
+              numero,
+              heures: h,
+              brut,
+              paye,
+              // La part faite dans un autre établissement, pour un formateur mutualisé.
+              ...(parSemaineAilleurs.has(numero) ? { ailleurs: arrondi(parSemaineAilleurs.get(numero)) } : {}),
+            })),
     };
   });
 
   formateurs.sort((a, b) => b.totaux.paye - a.totaux.paye || a.nom.localeCompare(b.nom, 'fr'));
 
   return { anneeScolaire, realiseAu: maintenant, semaines: semainesComptees, formateurs };
+}
+
+/** Séances terminées → identifiant du formateur → numéro de semaine → heures. */
+function heuresParSemaine(seances, maintenant, horaires) {
+  const heures = new Map();
+  for (const seance of seances) {
+    if (!seanceTerminee(seance, maintenant, horaires)) continue;
+    const numero = Number(/-W(\d+)$/.exec(seance.semaine ?? '')?.[1]);
+    if (!Number.isInteger(numero)) continue;
+    const parSemaine = heures.get(cle(seance.formateurMatricule)) ?? new Map();
+    parSemaine.set(numero, (parSemaine.get(numero) ?? 0) + dureeSeance(seance.seance));
+    heures.set(cle(seance.formateurMatricule), parSemaine);
+  }
+  return heures;
+}
+
+/**
+ * Ce que chaque formateur mutualisé fait AILLEURS : par établissement, sa masse affectée, sa masse
+ * statutaire déclarée et ses heures réalisées semaine par semaine.
+ *
+ * ⚠️ UN SEUL COMPTE PAR ÉTABLISSEMENT (même nom, même complexe) : celui qui lui affecte le plus
+ * d'heures. Deux comptes du même lieu porteraient sinon deux fois les mêmes affectations.
+ *
+ * @returns {Promise<Map<string, Array<{nom, affecte, statutaire, heures, parSemaine: Map}>>>}
+ *   clé : matricule normalisé (`cle`)
+ */
+async function chargerAilleurs({ parMatricule, etablissements }, anneeScolaire, maintenant, horaires) {
+  const resultat = new Map();
+  if (parMatricule.size === 0) return resultat;
+
+  const matricules = [...parMatricule.keys()];
+  const ids = [...new Set([...parMatricule.values()].flat())];
+  const [bases, seances] = await Promise.all([
+    Base.find({ anneeScolaire, etablissementId: { $in: ids } })
+      .select('etablissementId affectations formateurs.matricule formateurs.masseHoraire')
+      .lean(),
+    Seance.find({
+      anneeScolaire,
+      etablissementId: { $in: ids },
+      formateurMatricule: { $in: matricules },
+      statut: { $ne: 'absent' },
+      estEfm: { $ne: true },
+    })
+      .select('etablissementId formateurMatricule semaine jour seance date')
+      .lean(),
+  ]);
+
+  for (const [matricule, idsAilleurs] of parMatricule) {
+    const parIdentite = new Map();
+    for (const id of idsAilleurs) {
+      const base = bases.find((b) => String(b.etablissementId) === id);
+      if (!base) continue;
+      const affecte = arrondi(
+        (base.affectations ?? [])
+          .filter((a) => cle(a.formateur) === cle(matricule))
+          .reduce((total, a) => total + (Number(a.s1Heures) || 0) + (Number(a.s2Heures) || 0), 0)
+      );
+      const fiche = (base.formateurs ?? []).find((f) => cle(f.matricule) === cle(matricule));
+      const parSemaine =
+        heuresParSemaine(
+          seances.filter((x) => String(x.etablissementId) === id && cle(x.formateurMatricule) === cle(matricule)),
+          maintenant,
+          horaires
+        ).get(cle(matricule)) ?? new Map();
+      const document = etablissements.get(id);
+      const entree = {
+        nom: nomCourt(document) ?? 'Autre établissement',
+        affecte,
+        statutaire: Number(fiche?.masseHoraire) || 0,
+        heures: arrondi([...parSemaine.values()].reduce((total, h) => total + h, 0)),
+        parSemaine,
+      };
+      const clef = document ? identite(document) : id;
+      const deja = parIdentite.get(clef);
+      if (!deja || entree.affecte > deja.affecte || (entree.affecte === deja.affecte && entree.heures > deja.heures)) {
+        parIdentite.set(clef, entree);
+      }
+    }
+    if (parIdentite.size > 0) resultat.set(cle(matricule), [...parIdentite.values()]);
+  }
+  return resultat;
 }

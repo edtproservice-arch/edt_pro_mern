@@ -42,3 +42,4 @@ export {
   filtrerAvancement,
   nombreDeFiltres,
 } from './filtres.js';
+export { rapportAvancement } from './rapport.js';

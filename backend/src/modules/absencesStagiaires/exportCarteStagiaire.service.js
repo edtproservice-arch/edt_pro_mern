@@ -98,9 +98,17 @@ export async function liensDesCartes(etablissementId, anneeScolaire, groupe, adr
   return { adresse, liens };
 }
 
-export async function construireCartesStagiaires(etablissementId, anneeScolaire, { format, groupes, renouveler = false, adresse }) {
+export async function construireCartesStagiaires(
+  etablissementId,
+  anneeScolaire,
+  { format, groupes, renouveler = false, adresse, matricules: voulus = null }
+) {
+  // `matricules` : seulement ces stagiaires des groupes (2026-10-17, filtre par stagiaire de Documents) —
+  // et seules leurs cartes sont renouvelées.
+  const filtre = { etablissementId, anneeScolaire, groupes: { $in: groupes } };
+  if (voulus?.length) filtre.matricule = { $in: voulus };
   const [stagiaires, etablissement] = await Promise.all([
-    Stagiaire.find({ etablissementId, anneeScolaire, groupes: { $in: groupes } })
+    Stagiaire.find(filtre)
       .select('matricule nom prenom nomArabe prenomArabe niveau annee filiere groupes')
       .sort({ nom: 1, prenom: 1 })
       .lean(),

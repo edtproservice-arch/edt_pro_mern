@@ -122,6 +122,16 @@ describe('POST /absences-stagiaires/cartes — les cartes', () => {
     expect(Object.keys(zip.files).filter((nom) => /^word\/media\/qr\d+\.png$/.test(nom))).toHaveLength(1);
   });
 
+  it('« matricules » : les seules cartes des stagiaires choisis (filtre par stagiaire de Documents, 2026-10-17)', async () => {
+    const reponse = await exporter({ format: 'docx', groupes: ['GM101'], matricules: ['CEF002'] });
+    expect(reponse.status).toBe(200);
+
+    const zip = await JSZip.loadAsync(reponse.body);
+    const xml = await zip.file('word/document.xml').async('string');
+    expect(xml).toContain('BENANI Sara');
+    expect(xml).not.toContain('ALAOUI');
+  });
+
   it('« renouveler » invalide la carte déjà imprimée', async () => {
     const ancienne = jetonDe(stagiaire);
     expect((await scanner(ancienne)).status).toBe(200);

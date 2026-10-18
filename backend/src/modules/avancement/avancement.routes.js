@@ -10,6 +10,7 @@ import { exigerDroitPage } from '../partages/exigerDroitPage.js';
 import { validate } from '../../middleware/validate.js';
 import { construireExportAchevement } from './exportAchevement.service.js';
 import { construireCalendrierEfm } from './exportCalendrierEfm.service.js';
+import { construireRapportAvancement } from './exportRapportAvancement.js';
 
 /**
  * Avancement réalisé / prévu (F7).
@@ -155,6 +156,70 @@ router.post(
   async (req, res, next) => {
     try {
       const { tampon, nomFichier, contentType } = await construireExportAchevement({
+        etablissementId: req.etablissementId,
+        anneeScolaire: req.anneeScolaire,
+        ...req.body,
+      });
+      res.setHeader('Content-Type', contentType);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="export"; filename*=UTF-8''${encodeURIComponent(nomFichier)}`
+      );
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+      res.send(tampon);
+    } catch (erreur) {
+      next(erreur);
+    }
+  }
+);
+
+/*
+ * Le rapport d'avancement d'un ou plusieurs formateurs ou groupes (2026-10-17,
+ * demande du porteur) — un graphe à bâtons et un tableau par sujet, voir
+ * `exportRapportAvancement.js`. L'écran envoie ses lignes déjà agrégées.
+ */
+const heuresRapport = z.number().min(0).max(100000);
+// Les quatre séries du graphe (présentiel / distanciel) : facultatives, à zéro sinon.
+const repartitionRapport = {
+  affectePresentiel: heuresRapport.default(0),
+  affecteDistanciel: heuresRapport.default(0),
+  realisePresentiel: heuresRapport.default(0),
+  realiseDistanciel: heuresRapport.default(0),
+};
+router.post(
+  '/rapport/export',
+  validate({
+    body: z.object({
+      format: z.enum(['docx', 'pdf', 'xlsx']),
+      type: z.enum(['formateur', 'groupe']),
+      face: z.enum(['edtpro', 'enote']),
+      dateObservee: z.string().trim().max(40).nullish(),
+      rapports: z
+        .array(
+          z.object({
+            sujet: z.string().trim().min(1).max(200),
+            total: z.object({ affecte: heuresRapport, realise: heuresRapport, ...repartitionRapport }),
+            lignes: z
+              .array(
+                z.object({
+                  module: z.string().trim().max(100),
+                  intitule: z.string().trim().max(300).default(''),
+                  complement: z.string().trim().max(500).default(''),
+                  affecte: heuresRapport,
+                  realise: heuresRapport,
+                  ...repartitionRapport,
+                })
+              )
+              .max(300),
+          })
+        )
+        .min(1)
+        .max(200),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const { tampon, nomFichier, contentType } = await construireRapportAvancement({
         etablissementId: req.etablissementId,
         anneeScolaire: req.anneeScolaire,
         ...req.body,

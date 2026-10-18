@@ -9,6 +9,7 @@ import {
   GraduationCap,
   ClipboardCheck,
   ClipboardList,
+  Copy,
   File,
   FileCheck2,
   FileSignature,
@@ -17,7 +18,10 @@ import {
   Gavel,
   IdCard,
   Mail,
+  Shuffle,
+  Stethoscope,
   Ticket,
+  UserCheck,
   Users, Loader2 } from 'lucide-react';
 import { anneeDuNomGroupe } from 'shared/domain';
 import { Badge } from '@/components/ui/badge';
@@ -33,6 +37,7 @@ import {
   exporterFeuilleAbsence,
   exporterFeuillePresence,
   telechargerBilletsVierges,
+  telechargerDocumentVierge,
   telechargerFormulaireExamen,
 } from '@/features/absences/stagiaires/api';
 import { chargerEtablissementCourant } from '@/features/configuration/api';
@@ -66,6 +71,7 @@ const DOCUMENTS = [
       description: 'Une page par groupe, avec son niveau et son effectif.',
       formats: ['docx', 'pdf'],
       telecharger: exporterFeuillePresence('liste'),
+      vierge: telechargerDocumentVierge('liste'),
     },
   },
   {
@@ -78,6 +84,7 @@ const DOCUMENTS = [
       description: 'Une page par groupe ; l’épreuve, la date et les heures se remplissent à la main.',
       formats: ['docx', 'pdf'],
       telecharger: exporterFeuillePresence('eff'),
+      vierge: telechargerDocumentVierge('eff'),
     },
   },
   {
@@ -91,6 +98,7 @@ const DOCUMENTS = [
         'Une page par groupe ; le module, la date, l’horaire et le type d’épreuve se remplissent à la main.',
       formats: ['docx', 'pdf'],
       telecharger: exporterFeuillePresence('cc-efm'),
+      vierge: telechargerDocumentVierge('cc-efm'),
     },
   },
   {
@@ -103,6 +111,7 @@ const DOCUMENTS = [
       description: 'Une page par groupe : CIN, noms en arabe et date de naissance de chaque stagiaire.',
       formats: ['docx', 'pdf'],
       telecharger: exporterFeuillePresence('verification'),
+      vierge: telechargerDocumentVierge('verification'),
     },
   },
   {
@@ -115,6 +124,8 @@ const DOCUMENTS = [
       description: 'Une page par stagiaire ; la vérification et les visas se remplissent à la main.',
       formats: ['docx', 'pdf'],
       telecharger: exporterFeuillePresence('checklist'),
+      vierge: telechargerDocumentVierge('checklist'),
+      parStagiaire: true,
     },
   },
   {
@@ -128,6 +139,8 @@ const DOCUMENTS = [
         'Une convocation par stagiaire, pour les groupes de 2e et 3e année. La date, l’horaire et le type d’épreuve laissés vides restent à remplir à la main.',
       formats: ['docx', 'pdf'],
       telecharger: exporterFeuillePresence('convocation-eff'),
+      vierge: telechargerDocumentVierge('convocation-eff'),
+      parStagiaire: true,
       groupesAdmis: (groupe) => anneeDuNomGroupe(groupe) >= 2,
       champs: [
         { nom: 'date', libelle: 'Date de l’épreuve', type: 'date' },
@@ -149,6 +162,7 @@ const DOCUMENTS = [
       description: `Dix cartes par page, à découper (format carte bancaire). La photo se colle dans son cadre. Le QR connecte directement à la session du stagiaire : remettez la carte à son titulaire seulement. Les QR mèneront à ${window.location.origin}.`,
       formats: ['docx', 'pdf'],
       telecharger: exporterCartes,
+      parStagiaire: true,
       champs: [
         {
           nom: 'renouveler',
@@ -169,6 +183,9 @@ const DOCUMENTS = [
       description: 'Un badge par stagiaire — groupe, matricule, nom et prénom — numéroté comme la liste du groupe.',
       formats: ['docx', 'pdf'],
       telecharger: exporterFeuillePresence('badges-infos'),
+      vierge: telechargerDocumentVierge('badges-infos'),
+      // Filtrables aussi (2026-10-17) : chacun garde le numéro de sa place dans la liste du groupe.
+      parStagiaire: true,
     },
   },
   {
@@ -181,6 +198,9 @@ const DOCUMENTS = [
       description: 'Un badge par stagiaire, numéroté comme la liste du groupe ; un groupe par page.',
       formats: ['docx', 'pdf'],
       telecharger: exporterFeuillePresence('badges-sans'),
+      vierge: telechargerDocumentVierge('badges-sans'),
+      // Filtrables aussi (2026-10-17) : chacun garde le numéro de sa place dans la liste du groupe.
+      parStagiaire: true,
     },
   },
   {
@@ -215,6 +235,8 @@ const DOCUMENTS = [
         'Une attestation par stagiaire, datée du jour ; le numéro de référence et la ville se remplissent à la main.',
       formats: ['docx', 'pdf'],
       telecharger: exporterFeuillePresence('attestation-poursuite'),
+      vierge: telechargerDocumentVierge('attestation-poursuite'),
+      parStagiaire: true,
     },
   },
   {
@@ -228,6 +250,8 @@ const DOCUMENTS = [
         'Une page par stagiaire ; le baccalauréat (type, année, spécialité, série) et le motif se remplissent à la main.',
       formats: ['docx', 'pdf'],
       telecharger: exporterFeuillePresence('retrait-definitif'),
+      vierge: telechargerDocumentVierge('retrait-definitif'),
+      parStagiaire: true,
     },
   },
   {
@@ -241,6 +265,8 @@ const DOCUMENTS = [
         'Une page par stagiaire ; le baccalauréat, le motif et les dates de retrait et de remise se remplissent à la main.',
       formats: ['docx', 'pdf'],
       telecharger: exporterFeuillePresence('retrait-provisoire'),
+      vierge: telechargerDocumentVierge('retrait-provisoire'),
+      parStagiaire: true,
     },
   },
   {
@@ -254,6 +280,8 @@ const DOCUMENTS = [
         'Une convention par stagiaire, avec la période de stage de son groupe ; l’entreprise, son représentant, le lieu et la date se remplissent à la main. Seuls les groupes qui ont une période de stage sont proposés.',
       formats: ['docx', 'pdf'],
       telecharger: exporterFeuillePresence('convention'),
+      vierge: telechargerDocumentVierge('convention'),
+      parStagiaire: true,
       // Seuls les groupes AYANT une période de stage (2026-10-11, demande du porteur).
       exigeStage: true,
       videGroupes: 'Aucun groupe n’a de période de stage : déclarez-les dans Paramètres → Stages.',
@@ -270,6 +298,61 @@ const DOCUMENTS = [
         'Un formulaire par stagiaire, la partie du demandeur pré-remplie (identité, niveau scolaire, filière, niveau, année et mode cochés) ; l’établissement demandé, les motifs et les visas se remplissent à la main.',
       formats: ['docx', 'pdf'],
       telecharger: exporterFeuillePresence('transfert'),
+      vierge: telechargerDocumentVierge('transfert'),
+      parStagiaire: true,
+    },
+  },
+  {
+    cle: 'fils-agent',
+    titre: 'Fiche du candidat fils d’agent OFPPT',
+    resume: 'À joindre au dossier d’inscription',
+    icone: UserCheck,
+    // (2026-10-17) Une fiche VIERGE, téléchargée directement — ni groupe ni stagiaire à choisir.
+    telecharger: telechargerDocumentVierge('fils-agent'),
+  },
+  {
+    cle: 'reorientation',
+    titre: 'PV de réorientation',
+    resume: 'Changement de filière',
+    icone: Shuffle,
+    // Canevas transmis (2026-10-17) : groupes puis stagiaires, ou le PV vierge.
+    choixGroupes: {
+      description:
+        'Un PV par stagiaire, pré-rempli (rentrée, complexe, EFP, nom, prénom, CEF, CIN, date de naissance, filière d’origine). La date, le type de réorientation, la filière d’accueil, la moyenne, les motifs et l’avis du CGCP se remplissent à la main.',
+      formats: ['docx', 'pdf'],
+      telecharger: exporterFeuillePresence('reorientation'),
+      vierge: telechargerDocumentVierge('reorientation'),
+      parStagiaire: true,
+    },
+  },
+  {
+    cle: 'soins',
+    titre: 'Bon de soins',
+    resume: 'Pour le service des Urgences',
+    icone: Stethoscope,
+    // Canevas transmis (2026-10-18) : un bon par stagiaire et par page.
+    choixGroupes: {
+      description:
+        'Un bon par stagiaire, son nom et son groupe écrits, daté du jour. L’hôpital, la ville et le jour de la visite se remplissent à la main.',
+      formats: ['docx', 'pdf'],
+      telecharger: exporterFeuillePresence('soins'),
+      vierge: telechargerDocumentVierge('soins'),
+      parStagiaire: true,
+    },
+  },
+  {
+    cle: 'duplicata',
+    titre: 'Demande de duplicata du diplôme',
+    resume: 'À remplir par le lauréat',
+    icone: Copy,
+    // (2026-10-17) Groupes puis stagiaires choisis : une demande pré-remplie par stagiaire.
+    choixGroupes: {
+      description:
+        'Une demande par stagiaire, pré-remplie (nom, prénom, naissance, n° d’inscription, CIN, niveau, filière, établissement). La promotion, les raisons de la demande, le lieu, la date et la signature se remplissent à la main.',
+      formats: ['docx', 'pdf'],
+      telecharger: exporterFeuillePresence('duplicata'),
+      vierge: telechargerDocumentVierge('duplicata'),
+      parStagiaire: true,
     },
   },
   {
@@ -280,9 +363,11 @@ const DOCUMENTS = [
     // Canevas transmis (2026-10-11) : une fiche par groupe ; par stagiaire depuis « Notes de discipline ».
     choixGroupes: {
       description:
-        'Une fiche par groupe, l’établissement et le groupe pré-remplis : le formateur, le surveillant et le conseil la remplissent à la main. Pour la fiche d’un seul stagiaire, son nom écrit, ouvrez sa fiche dans Absences → Notes de discipline.',
+        'Une fiche par groupe, l’établissement et le groupe pré-remplis : le formateur, le surveillant et le conseil la remplissent à la main. Choisissez des stagiaires pour une fiche chacun, son nom écrit.',
       formats: ['docx', 'pdf'],
       telecharger: exporterFeuillePresence('reclamation'),
+      vierge: telechargerDocumentVierge('reclamation'),
+      parStagiaire: true,
     },
   },
   {
@@ -296,6 +381,8 @@ const DOCUMENTS = [
         'Un PV par stagiaire qui relève du conseil de discipline (sanction de blâme ou d’exclusion, d’après sa note de discipline) : identité, filière, année, mode, téléphone et faits pré-remplis. Les motifs exposés, la décision et les signatures se remplissent à la main.',
       formats: ['docx', 'pdf'],
       telecharger: exporterFeuillePresence('pv-discipline'),
+      vierge: telechargerDocumentVierge('pv-discipline'),
+      parStagiaire: true,
     },
   },
   /*
@@ -437,12 +524,12 @@ const CATEGORIES = [
   },
   {
     titre: 'Diplômes',
-    cles: ['checklist', 'verification', 'retrait-definitif', 'retrait-provisoire'],
+    cles: ['checklist', 'verification', 'retrait-definitif', 'retrait-provisoire', 'duplicata'],
     icone: GraduationCap,
   },
   {
     titre: 'Administration',
-    cles: ['carte', 'convention', 'transfert', 'attestation-poursuite'],
+    cles: ['carte', 'convention', 'transfert', 'reorientation', 'attestation-poursuite', 'soins', 'fils-agent'],
     icone: Briefcase,
   },
   {

@@ -1,5 +1,7 @@
+import http from 'node:http';
 import { afterAll, afterEach, beforeAll } from 'vitest';
 import mongoose from 'mongoose';
+import request from 'supertest';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { oublierRentrees } from 'shared/domain';
 
@@ -20,6 +22,31 @@ import { oublierRentrees } from 'shared/domain';
  * dans lequel ils s'exécutent.
  */
 let serveur;
+
+/*
+ * ═══ ⚠️ LES TÉLÉCHARGEMENTS « ECONNRESET » APRÈS ~20 s (2026-10-17) ═══
+ * Un test de téléchargement sur dix environ (Word, PDF, Excel ~200 Ko) restait
+ * bloqué puis tombait en ECONNRESET, alors que le serveur avait répondu en
+ * 20 ms. Mesuré, et reproduit HORS de l'application dans un script Node de
+ * vingt lignes (Node 22, Windows) : quand le SERVEUR ferme la connexion juste
+ * après une grosse réponse (`Connection: close`), les derniers kilo-octets
+ * n'arrivent parfois jamais au client — 4 échecs sur 40. Aucun échec quand la
+ * connexion reste ouverte (keep-alive) : 0 sur 40.
+ *
+ * Or superagent (sous supertest) n'utilise par défaut AUCUN agent
+ * (`_agent = false`) : Node envoie alors `Connection: close`, et chaque
+ * réponse finit par une fermeture côté serveur. Les navigateurs, eux, gardent
+ * la connexion : l'application n'est pas en cause, seul le client de test.
+ *
+ * Toute requête supertest passe donc par un agent keep-alive — sauf celle à
+ * qui un test a donné le sien.
+ */
+const agentDeTest = new http.Agent({ keepAlive: true });
+const finOriginale = request.Test.prototype.end;
+request.Test.prototype.end = function end(...args) {
+  if (this._agent === false) this.agent(agentDeTest);
+  return finOriginale.apply(this, args);
+};
 
 beforeAll(async () => {
   serveur = await MongoMemoryReplSet.create({ replSet: { count: 1 } });

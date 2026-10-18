@@ -855,3 +855,84 @@ describe('POST /avancement/achevement/calendrier-efm — canevas DR (2026-10-11)
     expect(reponse.status).toBe(400);
   });
 });
+
+describe('POST /avancement/rapport/export — le rapport d’un formateur ou d’un groupe (2026-10-17)', () => {
+  const corps = (format) => ({
+    format,
+    type: 'formateur',
+    face: 'edtpro',
+    rapports: [
+      {
+        sujet: 'ZINEB EL OMARI',
+        total: { affecte: 170, realise: 70 },
+        lignes: [
+          { module: 'EGQ202', intitule: 'Gestion & <qualité>', complement: 'SMP201', affecte: 95, realise: 40, affectePresentiel: 75, affecteDistanciel: 20, realisePresentiel: 30, realiseDistanciel: 10 },
+          { module: 'EGQ202', intitule: '', complement: 'SMP202', affecte: 95, realise: 40 },
+        ],
+      },
+      { sujet: 'SANS MODULE', total: { affecte: 0, realise: 0 }, lignes: [] },
+    ],
+  });
+
+  it('une page par sujet : un graphique Word (et son classeur) et le tableau', async () => {
+    const reponse = await request(app)
+      .post('/api/v2/avancement/rapport/export')
+      .set('Cookie', cookies)
+      .send(corps('docx'))
+      .responseType('blob');
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-disposition']).toContain('Rapport_avancement_Formateurs_2.docx');
+
+    const { default: JSZip } = await import('jszip');
+    const zip = await JSZip.loadAsync(reponse.body);
+    const xml = await zip.file('word/document.xml').async('string');
+    expect(xml).toContain('Formateur : ZINEB EL OMARI');
+    expect(xml).toContain('Gestion &amp; &lt;qualité&gt;');
+    expect(xml).toContain('Taux d’avancement : 41,2 %');
+    // Un seul graphique : le sujet sans module n'en a pas.
+    expect(xml.match(/<c:chart /g)).toHaveLength(1);
+    const graphe = await zip.file('word/charts/chart1.xml').async('string');
+    expect(graphe).toContain('<c:v>EGQ202\nSMP201</c:v>');
+    // Les couleurs de l'application : vert présentiel, violet distanciel.
+    expect(graphe).toContain('<a:srgbClr val="15A821"/>');
+    expect(graphe).toContain('<a:srgbClr val="A056DC"/>');
+    // La courbe du taux, orange, sur son axe en % : 40 ÷ 95 = 42,1 %.
+    expect(graphe).toContain('<c:lineChart>');
+    expect(graphe).toContain('<a:srgbClr val="DD5B00"/>');
+    expect(graphe).toContain('<c:v>42.1</c:v>');
+    expect(zip.file('word/embeddings/Classeur_graphique1.xlsx')).toBeTruthy();
+    expect(await zip.file('[Content_Types].xml').async('string')).toContain('/word/charts/chart1.xml');
+    expect(await zip.file('word/_rels/document.xml.rels').async('string')).toContain('charts/chart1.xml');
+  });
+
+  it('rend aussi un Excel : une feuille de synthèse puis une par sujet, chacune avec son graphique', async () => {
+    const reponse = await request(app)
+      .post('/api/v2/avancement/rapport/export')
+      .set('Cookie', cookies)
+      .send(corps('xlsx'))
+      .responseType('blob');
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-disposition']).toContain('Rapport_avancement_Formateurs_2.xlsx');
+
+    const ExcelJS = (await import('exceljs')).default;
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(reponse.body);
+    expect(classeur.worksheets.map((f) => f.name)).toEqual(['Synthèse', 'ZINEB EL OMARI', 'SANS MODULE']);
+
+    const { default: JSZip } = await import('jszip');
+    const zip = await JSZip.loadAsync(reponse.body);
+    // Synthèse et ZINEB EL OMARI ont un graphique ; le sujet sans module n'en a pas.
+    expect(zip.file('xl/charts/chart2.xml')).toBeTruthy();
+    expect(zip.file('xl/charts/chart3.xml')).toBeNull();
+    expect(await zip.file('xl/worksheets/sheet2.xml').async('string')).toContain('<drawing r:id="rIdGrapheRapport"/>');
+    expect(await zip.file('xl/charts/chart2.xml').async('string')).toContain("'ZINEB EL OMARI'!");
+  });
+
+  it('refuse un type inconnu', async () => {
+    const reponse = await request(app)
+      .post('/api/v2/avancement/rapport/export')
+      .set('Cookie', cookies)
+      .send({ ...corps('docx'), type: 'module' });
+    expect(reponse.status).toBe(400);
+  });
+});

@@ -6,6 +6,10 @@ import { chargerCanevasTampon } from '../seances/canevasCache.js';
 import { convertirDocxEnPdf, prechaufferLibreOffice } from '../seances/libreOffice.js';
 import { LIBELLES_NIVEAUX } from 'shared/domain';
 import { corpsBadgesNumeros } from './exportBadgesNumeros.js';
+import { corpsFicheFilsAgent } from './exportFicheFilsAgentDocx.js';
+import { corpsDemandeDuplicata } from './exportDemandeDuplicataDocx.js';
+import { corpsPvReorientation } from './exportPvReorientationDocx.js';
+import { corpsBonDeSoins } from './exportBonDeSoinsDocx.js';
 
 /**
  * Les feuilles de présence des stagiaires aux épreuves — GREFFÉES dans les
@@ -133,7 +137,8 @@ export const MODELES = {
     chemin: canevas('checklistDiplomes.docx'),
     nomFichier: 'Checklist_Diplomes',
     construireCorps: corpsParStagiaire({
-      CS: 'region',
+      // Le sigle de la région (« CS »), pas son nom — voir `champsEtablissement`.
+      CS: 'sigleRegion',
       'CFP MGD HASSANIA': 'efp',
       TS: 'niveau',
       'Développement Digital option Web Full Stack': 'filiereLibelle',
@@ -279,6 +284,42 @@ export const MODELES = {
     construireCorps: corpsReclamation,
     remplacementsDocument: { 'CF MEDIOUNA ': 'complexe', 'CFMMS TIT MELLIL': 'efp' },
   },
+  /* La fiche du candidat fils d'agent OFPPT (2026-10-17, Annexe 14 du code
+     d'admission, transmise en PDF) : l'EN-TÊTE de l'attestation de poursuite —
+     le style des autres documents —, un corps composé — voir
+     `exportFicheFilsAgentDocx.js`. Téléchargée VIERGE depuis Documents
+     (`construireDocumentVierge`) ; pré-remplie si on lui donne des stagiaires. */
+  'fils-agent': {
+    chemin: canevas('attestationPoursuiteFormation.docx'),
+    nomFichier: 'Fiche_Fils_Agent',
+    construireCorps: corpsFicheFilsAgent,
+    remplacementsDocument: { 'CFP MGD HASSANIA': 'efp' },
+  },
+  /* La demande de duplicata du diplôme (2026-10-17, canevas transmis) : une par
+     stagiaire choisi, pré-remplie — voir `exportDemandeDuplicataDocx.js`. */
+  duplicata: {
+    chemin: canevas('attestationPoursuiteFormation.docx'),
+    nomFichier: 'Demande_Duplicata_Diplome',
+    construireCorps: corpsDemandeDuplicata,
+    remplacementsDocument: { 'CFP MGD HASSANIA': 'efp' },
+  },
+  /* Le PV de réorientation (2026-10-17, `VF-Modèle PV Réorientation 2021.docx`) :
+     un par stagiaire choisi, COMPOSÉ au style des autres documents sur l'en-tête de
+     l'attestation (2026-10-18) — voir `exportPvReorientationDocx.js`. */
+  reorientation: {
+    chemin: canevas('attestationPoursuiteFormation.docx'),
+    nomFichier: 'PV_Reorientation',
+    construireCorps: corpsPvReorientation,
+    remplacementsDocument: { 'CFP MGD HASSANIA': 'efp' },
+  },
+  /* Le bon de soins (2026-10-18, `Bon de soins.docx`) : un par stagiaire choisi et
+     par page, composé au style des autres documents — voir `exportBonDeSoinsDocx.js`. */
+  soins: {
+    chemin: canevas('attestationPoursuiteFormation.docx'),
+    nomFichier: 'Bon_De_Soins',
+    construireCorps: corpsBonDeSoins,
+    remplacementsDocument: { 'CFP MGD HASSANIA': 'efp' },
+  },
   /* Les mêmes badges, AVEC les informations du stagiaire (2026-10-02). */
   'badges-infos': {
     chemin: canevas('badgesNumerosAvecInfos.docx'),
@@ -313,16 +354,33 @@ const SAUT_DE_PAGE =
  * ⚠️ UNE DÉCLARATION DE FONCTION, hissée : `MODELES`, plus haut, l'appelle à son chargement.
  */
 function modeleRetraitBac(fichier, nomFichier) {
+  const formulaire = corpsFormulaire([
+    [/^Noms\s*&\s*Prénoms/, (v) => `${v.nom} ${v.prenom}`],
+    [/^Date\s*&\s*lieu\s*de\s*naissance/, (v) => [v.dateNaissance, v.lieuNaissance].filter(Boolean).join(' à ')],
+    [/^N°\s*C\.N\.I\./, (v) => v.cin],
+    [/^Filière\s*de\s*formation/, (v) => v.filiereLibelle],
+    [/^CEF/, (v) => v.matricule],
+  ]);
   return {
     chemin: canevas(fichier),
     nomFichier,
-    construireCorps: corpsFormulaire([
-      [/^Noms\s*&\s*Prénoms/, (v) => `${v.nom} ${v.prenom}`],
-      [/^Date\s*&\s*lieu\s*de\s*naissance/, (v) => [v.dateNaissance, v.lieuNaissance].filter(Boolean).join(' à ')],
-      [/^N°\s*C\.N\.I\./, (v) => v.cin],
-      [/^Filière\s*de\s*formation/, (v) => v.filiereLibelle],
-      [/^CEF/, (v) => v.matricule],
-    ]),
+    /*
+     * ⚠️ LE CORPS PARLAIT AUSSI DE CASABLANCA (2026-10-18, signalé par le
+     * porteur) : « … envoyés à la DR Casa Settat pour valider l'exclusion » — la
+     * direction régionale de l'établissement la remplace (« DR » seul si la
+     * région manque) ; « Casablanca, le … » — la ville n'est dans aucune fiche :
+     * des pointillés, comme sur le PV du conseil de discipline.
+     */
+    construireCorps: (gabarit, feuilles, sautDePage) =>
+      formulaire(
+        remplacerPartiels(
+          gabarit,
+          { 'DR Casa Settat': 'drRegion', 'Casablanca, le': 'villeLe' },
+          { drRegion: feuilles[0]?.drRegion || 'DR', villeLe: '………………, le' }
+        ),
+        feuilles,
+        sautDePage
+      ),
     remplacementsDocument: {
       // Le COMPLEXE, pas le nom abrégé (2026-10-02, demande du porteur).
       'CF MEDIOUNA CASABLANCA': 'complexe',
@@ -583,7 +641,8 @@ function corpsTransfert(gabarit, feuilles, sautDePage) {
             if (!ligne) return tout;
             let rempli = remplirPointilles(contenu, ligne[1](v));
             // « Mode : ☐ Résidentielle ☐ Alterné » — sur la ligne de la filière. Sans mode connu : résidentiel, la règle de la carte.
-            if (contenu.startsWith('Filière de formation')) rempli = cocher(rempli, [alterne ? 1 : 0]);
+            // ⚠️ Vierge (aucun stagiaire, 2026-10-18) : rien n'est coché — la règle vaut pour un stagiaire, pas pour un formulaire vide.
+            if (contenu.startsWith('Filière de formation') && v.matricule) rempli = cocher(rempli, [alterne ? 1 : 0]);
             return rempli === contenu ? tout : `<w:t xml:space="preserve">${rempli}${fermeture}`;
           });
         });
@@ -676,8 +735,10 @@ function corpsPvDiscipline(gabarit, feuilles, sautDePage) {
           if (texte.startsWith('Niveau de formation')) {
             return remplirPremiersPointilles(paragraphe, LIBELLES_NIVEAUX[v.niveau] ?? v.niveau);
           }
-          // Sans mode connu : résidentiel, la règle de la carte.
-          if (texte.startsWith('Mode de formation')) return cocherParagraphe(paragraphe, [/alt/i.test(v.mode ?? '') ? 1 : 0]);
+          // Sans mode connu : résidentiel, la règle de la carte. Vierge (aucun stagiaire) : rien n'est coché.
+          if (texte.startsWith('Mode de formation')) {
+            return v.matricule ? cocherParagraphe(paragraphe, [/alt/i.test(v.mode ?? '') ? 1 : 0]) : paragraphe;
+          }
           if (texte.startsWith('N° Téléphone')) return remplirPremiersPointilles(paragraphe, v.telephone);
           if (texte.startsWith("L'intéressé(e) est traduit(e)")) {
             apresRaison = true;
@@ -746,6 +807,22 @@ function dateDuJour() {
 function valeursAttestation(v) {
   const ouPointilles = (texte) => (String(texte ?? '').trim() ? texte : POINTILLES);
   const aujourdhui = dateDuJour();
+  /* ⚠️ Vierge (aucun stagiaire, 2026-10-18) : ni type ni mode par défaut, ni date
+     du jour — tout se remplit à la main. */
+  if (!v.matricule) {
+    return {
+      ...valeursAttestationStagiaire(v, ouPointilles, aujourdhui),
+      nomComplet: POINTILLES,
+      matricule: POINTILLES,
+      typeFormation: POINTILLES,
+      modeFormation: POINTILLES,
+      faitLe: POINTILLES,
+    };
+  }
+  return valeursAttestationStagiaire(v, ouPointilles, aujourdhui);
+}
+
+function valeursAttestationStagiaire(v, ouPointilles, aujourdhui) {
   return {
     ...v,
     reference: `Réf : ${POINTILLES}/${aujourdhui.slice(-4)}`,

@@ -42,6 +42,7 @@ import EnTeteAvancement, { Chiffres, chiffresAAfficher } from './EnTeteAvancemen
 import PanneauFiltres, { etiquetteValeur } from './PanneauFiltres';
 import SheetChronologie from './SheetChronologie';
 import TableauAvancement from './TableauAvancement';
+import RapportAvancement from './RapportAvancement';
 import { useEtatPartage } from '@/features/guidage/useEtatPartage';
 
 /**
@@ -355,7 +356,8 @@ export default function PageAvancement() {
     [axe, requete.data?.statutaires, requete.data?.nonAffectes, retenues, face]
   );
 
-  const courbeTaux = axe === 'formateur' || axe === 'groupe';
+  // La courbe du taux, sur les trois axes (2026-10-17) — cf. `GrapheAvancement`.
+  const courbeTaux = true;
   const courbeObjectif = axe === 'groupe' && Object.keys(objectifs).length > 0;
 
   /*
@@ -602,6 +604,22 @@ export default function PageAvancement() {
               jusquA={dateObservee ? null : (requete.data?.semaineCourante ?? null)}
             />
           )}
+
+          {/* Le rapport de la vue affichée — graphe et tableau (2026-10-17) — sur la
+              ligne du filtre et de la chronologie qui décident de ce qu'il
+              contient, poussé à l'autre bout (demande du porteur). */}
+          <div className="ml-auto">
+            <RapportAvancement
+              brutes={brutes}
+              filtres={filtres}
+              axe={axe}
+              visibles={visibles}
+              face={face}
+              dateObservee={dateObservee}
+              intitules={intitules}
+              intitulesParGroupe={intitulesParGroupe}
+            />
+          </div>
         </div>
 
         {/*

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CalendarRange, ChevronLeft, ChevronRight, Clock, Search } from 'lucide-react';
+import { CalendarRange, ChevronLeft, ChevronRight, Clock, Network, Search } from 'lucide-react';
 import { seuilHebdomadaire } from 'shared/domain';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -98,6 +98,15 @@ const fondSemaine = (s) => (feriesDe(s).length > 0 ? fondFerie : fondGroupe);
 const valeurHs = 'bg-emerald-50 font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400';
 const valeurPaye = 'bg-amber-50 font-semibold text-foreground dark:bg-amber-950/30';
 const tetePaye = 'bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:text-amber-200';
+/*
+ * Formateur MUTUALISÉ (2026-10-18, demande du porteur) : sa ligne se distingue en violet — ses
+ * masses et ses heures sont cumulées sur TOUS ses établissements, et le badge en donne le détail.
+ */
+const fondMutualise = 'bg-violet-50 dark:bg-violet-950/30';
+const badgeMutualise =
+  'inline-flex items-center gap-1 rounded bg-violet-100 px-1.5 text-[0.65rem] font-semibold leading-5 text-violet-700 dark:bg-violet-900/60 dark:text-violet-200';
+// Une valeur qui additionne plusieurs établissements : soulignée en pointillé, détail au survol.
+const cumule = 'cursor-help underline decoration-violet-400 decoration-dotted underline-offset-2';
 
 export function BoutonHeuresSupp({ onClick }) {
   return (
@@ -254,6 +263,7 @@ export function FenetreHeuresSupp({ onFermer }) {
                     mois={moisAffiche}
                   />
                 </TabsContent>
+                <LegendeMutualises formateurs={formateurs} />
               </Tabs>
             )}
           </div>
@@ -317,6 +327,17 @@ function resteFinDeMois(formateur, mois) {
   return Math.max(0, Math.round((formateur.totaux.quota - paye) * 100) / 100);
 }
 
+function LegendeMutualises({ formateurs }) {
+  if (!formateurs.some((f) => f.mutualise)) return null;
+  return (
+    <p className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+      <span className={cn('inline-block size-3 rounded-sm border border-violet-200', fondMutualise)} />
+      Formateur mutualisé : masse affectée et heures cumulées sur tous ses établissements — survolez le
+      badge pour le détail, et une valeur soulignée pour la part faite ailleurs.
+    </p>
+  );
+}
+
 function Cadre({ children }) {
   return (
     <div className="rounded-lg border">
@@ -334,25 +355,74 @@ function EnTete({ children }) {
 
 function LigneFormateur({ formateur, children }) {
   const discret = vacataire(formateur) && 'italic text-muted-foreground';
+  const fond = formateur.mutualise ? fondMutualise : 'bg-background';
   return (
-    <TableRow className={cn('group', discret)}>
-      <TableCell className={cn(cellule, fixeMle, 'bg-background text-left group-hover:bg-muted')}>
+    <TableRow className={cn('group', discret, formateur.mutualise && fondMutualise)}>
+      <TableCell className={cn(cellule, fixeMle, fond, 'text-left group-hover:bg-muted')}>
         {formateur.matricule}
       </TableCell>
       <TableCell
-        className={cn(
-          cellule,
-          fixeNom,
-          'bg-background text-left group-hover:bg-muted',
-          !vacataire(formateur) && 'font-medium'
-        )}
+        className={cn(cellule, fixeNom, fond, 'text-left group-hover:bg-muted', !vacataire(formateur) && 'font-medium')}
       >
-        {formateur.nom}
+        <span className="inline-flex items-center gap-1.5">
+          {formateur.nom}
+          {formateur.mutualise && <BadgeMutualise formateur={formateur} />}
+        </span>
       </TableCell>
       {children}
     </TableRow>
   );
 }
+
+/** « Mutualisé » : au survol, la masse affectée et les heures réalisées de chaque établissement. */
+function BadgeMutualise({ formateur }) {
+  const { ici, ailleurs } = formateur.mutualise;
+  const lignes = [{ nom: 'Cet établissement', ...ici }, ...ailleurs];
+  return (
+    <HoverCard openDelay={120} closeDelay={80}>
+      <HoverCardTrigger asChild>
+        <span className={cn(badgeMutualise, 'cursor-help')}>
+          <Network className="size-3" />
+          Mutualisé
+        </span>
+      </HoverCardTrigger>
+      <HoverCardContent side="right" className="w-auto p-3 text-left not-italic">
+        <p className="text-sm font-medium">Formateur mutualisé</p>
+        <p className="mt-0.5 max-w-72 whitespace-normal text-xs text-muted-foreground">
+          Ses heures supplémentaires sont calculées sur l’ensemble de ses établissements : les
+          masses affectées et les heures de chaque semaine s’additionnent.
+        </p>
+        <table className="mt-2 w-full text-xs tabular-nums">
+          <thead className="text-muted-foreground">
+            <tr>
+              <th className="pr-3 text-left font-medium">Établissement</th>
+              <th className="px-2 text-right font-medium">Affectée</th>
+              <th className="pl-2 text-right font-medium">Réalisé</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lignes.map((ligne) => (
+              <tr key={ligne.nom} className="border-t">
+                <td className="py-1 pr-3">{ligne.nom}</td>
+                <td className="px-2 py-1 text-right">{entier(ligne.affecte)} h</td>
+                <td className="py-1 pl-2 text-right">{heures(ligne.heures)} h</td>
+              </tr>
+            ))}
+            <tr className="border-t font-semibold">
+              <td className="py-1 pr-3">Total</td>
+              <td className="px-2 py-1 text-right">{entier(formateur.affecte)} h</td>
+              <td className="py-1 pl-2 text-right">{heures(formateur.totaux.heures)} h</td>
+            </tr>
+          </tbody>
+        </table>
+      </HoverCardContent>
+    </HoverCard>
+  );
+}
+
+/** Le titre d'une cellule qui cumule ici et ailleurs. */
+const detailCumul = (total, ailleurs) =>
+  ailleurs ? `Ici : ${heures(total - ailleurs)} h · Autre(s) établissement(s) : ${heures(ailleurs)} h` : undefined;
 
 /* ─── Synthèse annuelle ──────────────────────────────────────────────────── */
 
@@ -391,7 +461,12 @@ function SyntheseAnnuelle({ formateurs, moisTravailles }) {
           <LigneFormateur key={f.matricule || f.nom} formateur={f}>
             <TableCell className={cellule}>{f.statutaire || '—'}</TableCell>
             <TableCell className={cellule}>{mhs(f)}</TableCell>
-            <TableCell className={cellule}>{entier(f.affecte)}</TableCell>
+            <TableCell
+              className={cn(cellule, f.mutualise && cumule)}
+              title={f.mutualise ? `Ici : ${entier(f.mutualise.ici.affecte)} h · Total sur tous ses établissements` : undefined}
+            >
+              {entier(f.affecte)}
+            </TableCell>
             <TableCell className={cellule}>{heures(f.totaux.quota)}</TableCell>
             {moisTravailles.flatMap((mois) => {
               const m = duMois(f, mois);
@@ -464,7 +539,12 @@ function EtatDuMois({ formateurs, semaines, mois }) {
                 const valeurs = semaine(f, s.numero);
                 return [
                   <TableCell key={`${s.numero}-r`} className={cn(cellule, separation)}>
-                    {decimales(valeurs?.heures)}
+                    <span
+                      className={cn(valeurs?.ailleurs && cumule)}
+                      title={detailCumul(valeurs?.heures ?? 0, valeurs?.ailleurs)}
+                    >
+                      {decimales(valeurs?.heures)}
+                    </span>
                   </TableCell>,
                   <TableCell key={`${s.numero}-s`} className={cn(cellule, serre, valeurs?.brut && valeurHs)}>
                     {heuresOuVide(valeurs?.brut)}

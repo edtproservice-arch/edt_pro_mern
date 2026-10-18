@@ -229,3 +229,25 @@ export async function occupationsAilleurs(etablissementId, anneeScolaire, semain
       groupe: seance.groupe,
     }));
 }
+
+/**
+ * ═══ LES ÉTABLISSEMENTS DE CHAQUE FORMATEUR MUTUALISÉ, POUR LES HEURES SUPP (2026-10-18) ═══
+ * (demande du porteur : « un formateur mutualisé a 90 h ici et 925 h ailleurs — sa masse
+ * affectée est 1015 h, il a donc des heures supp, et les deux directeurs doivent le voir ».)
+ *
+ * ⚠️ UN ÉTABLISSEMENT PAR IDENTITÉ : deux comptes du même établissement (nom + complexe) portent
+ * souvent la même base. Les additionner compterait deux fois ses affectations et ses séances —
+ * on n'en garde qu'un, choisi par l'appelant (voir `heuresSupp.service.js`).
+ *
+ * @returns {Promise<{ parMatricule: Map<string, string[]>, etablissements: Map<string, object> }>}
+ *   matricule → identifiants des AUTRES établissements ; identifiant → document (nom, complexe…)
+ */
+export async function mutualisationDesFormateurs(etablissementId, anneeScolaire) {
+  const { parMatricule, retenus } = await formateursCommuns(enChaine(etablissementId), anneeScolaire);
+  const gardes = new Map();
+  for (const [matricule, ids] of parMatricule) {
+    const ailleurs = [...ids].filter((id) => retenus.has(id));
+    if (ailleurs.length > 0) gardes.set(matricule, ailleurs);
+  }
+  return { parMatricule: gardes, etablissements: retenus };
+}

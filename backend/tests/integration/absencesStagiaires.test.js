@@ -1408,3 +1408,196 @@ describe('POST /absences-stagiaires/presence/reclamation — la fiche de réclam
     expect(seul.corps).not.toContain('ALAOUI');
   });
 });
+
+describe('POST /absences-stagiaires/presence/badges-infos — filtrés par stagiaire (2026-10-17)', () => {
+  it('ne sort que le badge choisi, avec le numéro de sa place dans la liste du groupe', async () => {
+    const reponse = await request(app)
+      .post('/api/v2/absences-stagiaires/presence/badges-infos')
+      .set('Cookie', cookies.directeur)
+      .buffer(true)
+      .parse(bufferiserExport)
+      .send({ format: 'docx', groupes: ['GM101'], matricules: ['CEF002'] });
+    expect(reponse.status).toBe(200);
+
+    const JSZip = (await import('jszip')).default;
+    const xml = await (await JSZip.loadAsync(reponse.body)).file('word/document.xml').async('string');
+    const textes = [...xml.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)].map((m) => m[1].trim()).filter(Boolean);
+    expect(textes).not.toContain('ALAOUI');
+    // GM101 : ALAOUI (1), BENANI (2) — son badge, seul, porte le n° 2 : numéro, EFP, groupe, matricule.
+    expect(textes[textes.indexOf('CEF002') - 3]).toBe('2');
+  });
+});
+
+describe('Fiche fils d’agent (vierge) et demande de duplicata (par stagiaire) — 2026-10-17', () => {
+  it('une seule fiche, sans aucun stagiaire : pointillés, cases vides, l’établissement dans l’en-tête', async () => {
+    const reponse = await request(app)
+      .post('/api/v2/absences-stagiaires/documents-vierges')
+      .set('Cookie', cookies.formateur)
+      .buffer(true)
+      .parse(bufferiserExport)
+      .send({ cle: 'fils-agent', format: 'docx' });
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-disposition']).toContain('Fiche_Fils_Agent_vierge.docx');
+
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(reponse.body);
+    const xml = await zip.file('word/document.xml').async('string');
+    const textes = [...xml.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)].map((m) => m[1].trim()).filter(Boolean);
+    expect(textes.filter((t) => t === 'Fiche du candidat Fils d’Agent OFPPT')).toHaveLength(1);
+    // Personne : aucun stagiaire du groupe n'y figure, le CEF n'a que des cases vides.
+    expect(textes).not.toContain('ALAOUI');
+    expect(textes).not.toContain('BENANI');
+    const debut = textes.indexOf('CEF :') + 1;
+    expect(textes[debut]).toBe('Date de naissance :');
+    // Le style des autres documents : l'en-tête officiel de l'attestation, l'établissement à sa place.
+    const entete = await zip.file('word/header1.xml').async('string');
+    expect(entete).toContain('Office de la Formation Professionnelle');
+    expect(entete).toContain('ISTA Test');
+    expect(entete).not.toContain('CFP MGD HASSANIA');
+  });
+
+  it('la demande de duplicata : une par stagiaire choisi, pré-remplie, ses pièces à joindre', async () => {
+    await Stagiaire.updateOne(
+      { etablissementId: etablissement.id, matricule: 'CEF002' },
+      { $set: { cin: 'BK12345', lieuNaissance: 'Fès', dateNaissance: '06/10/2007 00:00:00' } }
+    );
+    const reponse = await request(app)
+      .post('/api/v2/absences-stagiaires/presence/duplicata')
+      .set('Cookie', cookies.directeur)
+      .buffer(true)
+      .parse(bufferiserExport)
+      .send({ format: 'docx', groupes: ['GM101'], matricules: ['CEF002'] });
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-disposition']).toContain('Demande_Duplicata_Diplome');
+
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(reponse.body);
+    const xml = await zip.file('word/document.xml').async('string');
+    expect(xml).toContain('Formulaire de demande du duplicata du diplôme');
+    expect(xml).toContain('Une déclaration de perte ;');
+    // Pré-remplie : le stagiaire choisi, et lui seul.
+    expect(xml).toContain('>BENANI<');
+    expect(xml).toContain('>CEF002<');
+    expect(xml).toContain('>Fès<');
+    expect(xml).toContain('>06/10/2007<');
+    expect(xml).not.toContain('ALAOUI');
+    expect(xml.match(/Formulaire de demande du duplicata du diplôme/g)).toHaveLength(1);
+    // Des lignes à points de suite, pas des « … » : elles vont jusqu'au bord.
+    expect(xml).toContain('w:leader="dot"');
+    expect(await zip.file('word/header1.xml').async('string')).toContain('ISTA Test');
+  });
+
+  it('la demande de duplicata imprimée vierge : aucun stagiaire, une seule demande', async () => {
+    const reponse = await request(app)
+      .post('/api/v2/absences-stagiaires/documents-vierges')
+      .set('Cookie', cookies.formateur)
+      .buffer(true)
+      .parse(bufferiserExport)
+      .send({ cle: 'duplicata', format: 'docx' });
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-disposition']).toContain('Demande_Duplicata_Diplome_vierge.docx');
+
+    const JSZip = (await import('jszip')).default;
+    const xml = await (await JSZip.loadAsync(reponse.body)).file('word/document.xml').async('string');
+    expect(xml.match(/Formulaire de demande du duplicata du diplôme/g)).toHaveLength(1);
+    expect(xml).not.toContain('ALAOUI');
+    expect(xml).not.toContain('BENANI');
+  });
+
+  it('refuse un document vierge inconnu', async () => {
+    const reponse = await request(app)
+      .post('/api/v2/absences-stagiaires/documents-vierges')
+      .set('Cookie', cookies.formateur)
+      .send({ cle: 'inconnu', format: 'docx' });
+    expect(reponse.status).toBe(400);
+  });
+});
+
+describe('PV de réorientation (2026-10-17)', () => {
+  it('un PV par stagiaire choisi : rentrée, complexe, EFP et identité écrits', async () => {
+    await Stagiaire.updateOne(
+      { etablissementId: etablissement.id, matricule: 'CEF002' },
+      { $set: { cin: 'BK12345', filiere: 'Génie Mécanique', dateNaissance: '06/10/2007 00:00:00' } }
+    );
+    const reponse = await request(app)
+      .post('/api/v2/absences-stagiaires/presence/reorientation')
+      .set('Cookie', cookies.directeur)
+      .buffer(true)
+      .parse(bufferiserExport)
+      .send({ format: 'docx', groupes: ['GM101'], matricules: ['CEF002'] });
+    expect(reponse.status).toBe(200);
+
+    const JSZip = (await import('jszip')).default;
+    const xml = await (await JSZip.loadAsync(reponse.body)).file('word/document.xml').async('string');
+    for (const valeur of ['BENANI', 'Sara', 'CEF002', 'BK12345', '06/10/2007', 'Génie Mécanique (GM101)', 'CF Bâtiment', `Rentrée ${ANNEE}/${ANNEE + 1}`]) {
+      expect(xml).toContain(`>${valeur}<`);
+    }
+    expect(xml).not.toContain('ALAOUI');
+    expect(xml.match(/PV de r/g)).toHaveLength(1);
+  });
+
+  it('imprimé vierge : aucun stagiaire, mais la rentrée, le complexe et l’EFP', async () => {
+    const reponse = await request(app)
+      .post('/api/v2/absences-stagiaires/documents-vierges')
+      .set('Cookie', cookies.formateur)
+      .buffer(true)
+      .parse(bufferiserExport)
+      .send({ cle: 'reorientation', format: 'docx' });
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-disposition']).toContain('PV_Reorientation_vierge.docx');
+
+    const JSZip = (await import('jszip')).default;
+    const xml = await (await JSZip.loadAsync(reponse.body)).file('word/document.xml').async('string');
+    expect(xml).toContain('>CF Bâtiment<');
+    expect(xml).toContain(`>Rentrée ${ANNEE}/${ANNEE + 1}<`);
+    expect(xml).not.toContain('BENANI');
+  });
+});
+
+describe('POST /absences-stagiaires/documents-vierges — « Imprimer vierge » pour tous les documents (2026-10-18)', () => {
+  it('chaque modèle sort vide : aucun stagiaire, aucun « undefined », l’établissement écrit', async () => {
+    const { MODELES } = await import('../../src/modules/absencesStagiaires/exportFeuillePresenceDocx.js');
+    const JSZip = (await import('jszip')).default;
+    for (const cle of Object.keys(MODELES)) {
+      const reponse = await request(app)
+        .post('/api/v2/absences-stagiaires/documents-vierges')
+        .set('Cookie', cookies.formateur)
+        .buffer(true)
+        .parse(bufferiserExport)
+        .send({ cle, format: 'docx' });
+      expect(reponse.status, cle).toBe(200);
+      expect(reponse.headers['content-disposition'], cle).toContain('_vierge.docx');
+
+      const zip = await JSZip.loadAsync(reponse.body);
+      const textes = await Promise.all(
+        Object.keys(zip.files)
+          .filter((nom) => /^word\/(document|header\d*|footer\d*)\.xml$/.test(nom))
+          .map((nom) => zip.file(nom).async('string'))
+      );
+      const texte = textes.join('').replace(/<[^>]+>/g, '');
+      expect(texte, cle).not.toMatch(/undefined|null|NaN/);
+      for (const nom of ['ALAOUI', 'BENANI', 'CHAFIK']) expect(texte, cle).not.toContain(nom);
+    }
+  }, 120_000);
+});
+
+describe('POST /absences-stagiaires/presence/soins — le bon de soins (2026-10-18)', () => {
+  it('un bon par stagiaire choisi : son nom, son groupe, l’en-tête de l’établissement', async () => {
+    const reponse = await request(app)
+      .post('/api/v2/absences-stagiaires/presence/soins')
+      .set('Cookie', cookies.directeur)
+      .buffer(true)
+      .parse(bufferiserExport)
+      .send({ format: 'docx', groupes: ['GM101'], matricules: ['CEF002'] });
+    expect(reponse.status).toBe(200);
+
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(reponse.body);
+    const xml = await zip.file('word/document.xml').async('string');
+    expect(xml).toContain('>BENANI Sara<');
+    expect(xml).toContain('>GM101<');
+    expect(xml).not.toContain('ALAOUI');
+    expect(xml.match(/>Bon de soins</g)).toHaveLength(1);
+    expect(await zip.file('word/header1.xml').async('string')).toContain('ISTA Test');
+  });
+});

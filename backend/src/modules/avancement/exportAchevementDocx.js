@@ -129,8 +129,11 @@ export const SAUT_DE_PAGE = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
  * « diminuer l'espace entre l'entête et Année de Formation ») : le paragraphe
  * vide qui clôt l'en-tête du canevas, sous son tableau, tombe à 1 pt, et
  * l'en-tête remonte à 0,5 cm du bord — le corps commence juste sous le trait.
+ *
+ * `completer(zip)` (facultatif, 2026-10-17) : ajoute ses propres parties au
+ * paquet avant sa fermeture — les graphiques du rapport d'avancement.
  */
-export async function construireDocxPaysage({ etablissement, titre, corps, enteteCompact = false }) {
+export async function construireDocxPaysage({ etablissement, titre, corps, enteteCompact = false, completer = null }) {
   const zip = await JSZip.loadAsync(await chargerCanevasTampon(CHEMIN_CANEVAS_AFFECTATION));
   const fichierDocument = zip.file('word/document.xml');
   const fichierEntete = zip.file('word/header1.xml');
@@ -165,6 +168,7 @@ export async function construireDocxPaysage({ etablissement, titre, corps, entet
   if (enteteCompact) sectPr = sectPr.replace(/w:header="\d+"/, 'w:header="284"');
 
   zip.file('word/document.xml', xml.slice(0, debutCorps) + corps + sectPr + '</w:body></w:document>');
+  if (completer) await completer(zip);
   return zip.generateAsync({ type: 'nodebuffer' });
 }
 

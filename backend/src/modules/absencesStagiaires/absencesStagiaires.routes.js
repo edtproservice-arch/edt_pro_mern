@@ -11,7 +11,7 @@ import * as appelService from './absencesStagiaires.service.js';
 import * as discipline from './discipline.service.js';
 import { construireExportFeuilleAbsence } from './exportFeuilleAbsence.service.js';
 import { construireBilletsAbsence, construireBilletsVierges } from './exportBilletAbsence.service.js';
-import { construireFeuillePresence } from './exportFeuillePresence.service.js';
+import { DOCUMENTS_VIERGES, construireDocumentVierge, construireFeuillePresence } from './exportFeuillePresence.service.js';
 import { construireExportRegistreAbsences } from './exportRegistreAbsences.service.js';
 import { construireExportNotesDiscipline } from './exportNotesDiscipline.service.js';
 import { FORMULAIRES_EXAMEN, construireFormulaireExamen } from './exportFormulairesExamen.service.js';
@@ -141,7 +141,7 @@ router.post(
   '/presence/:modele',
   ENCADREMENT,
   validate({
-    params: z.object({ modele: z.enum(['eff', 'cc-efm', 'liste', 'badges-sans', 'badges-infos', 'checklist', 'verification', 'retrait-definitif', 'retrait-provisoire', 'attestation-poursuite', 'convention', 'convocation-eff', 'transfert', 'pv-discipline', 'reclamation']) }),
+    params: z.object({ modele: z.enum(['eff', 'cc-efm', 'liste', 'badges-sans', 'badges-infos', 'checklist', 'verification', 'retrait-definitif', 'retrait-provisoire', 'attestation-poursuite', 'convention', 'convocation-eff', 'transfert', 'pv-discipline', 'reclamation', 'duplicata', 'reorientation', 'soins']) }),
     body: z.object({
       format: z.enum(['docx', 'pdf']),
       groupes: z.array(z.string().trim().min(1).max(200)).min(1).max(100),
@@ -298,6 +298,8 @@ router.post(
       format: z.enum(['docx', 'pdf']),
       groupes: z.array(z.string().trim().min(1).max(200)).min(1).max(100),
       renouveler: z.boolean().default(false),
+      // Seulement ces stagiaires (2026-10-17 : le filtre par stagiaire de Documents).
+      matricules: z.array(z.string().trim().min(1).max(50)).min(1).max(500).optional(),
       // L'adresse de l'écran (`window.location.origin`) : où mènera le QR — voir `adresseDesLiens`.
       adresse: z.string().trim().max(200).optional(),
     }),
@@ -466,6 +468,32 @@ router.post(
   validate({ body: z.object({ format: z.enum(['docx', 'pdf']) }) }),
   route(async (req, res) => {
     const { tampon, nomFichier, contentType } = await construireBilletsVierges(req.anneeScolaire, req.body.format);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="export"; filename*=UTF-8''${encodeURIComponent(nomFichier)}`
+    );
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+    res.send(tampon);
+  })
+);
+
+/**
+ * Les documents VIERGES de la page Documents (2026-10-17) — la fiche du candidat
+ * fils d'agent, la demande de duplicata et le PV de réorientation imprimés vides :
+ * voir `construireDocumentVierge`.
+ * Ouverts comme les billets vierges : ils ne disent rien de personne.
+ */
+router.post(
+  '/documents-vierges',
+  validate({ body: z.object({ cle: z.enum(Object.keys(DOCUMENTS_VIERGES)), format: z.enum(['docx', 'pdf']) }) }),
+  route(async (req, res) => {
+    const { tampon, nomFichier, contentType } = await construireDocumentVierge(
+      req.etablissementId,
+      req.anneeScolaire,
+      req.body.cle,
+      req.body.format
+    );
     res.setHeader('Content-Type', contentType);
     res.setHeader(
       'Content-Disposition',

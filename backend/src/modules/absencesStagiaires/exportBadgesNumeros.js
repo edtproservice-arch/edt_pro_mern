@@ -98,7 +98,13 @@ export const corpsBadgesNumeros = (champs) => (corps, feuilles, sautDePage) => {
   return feuilles
     .map((feuille) => {
       const badges = feuille.stagiaires.map((stagiaire, index) =>
-        remplirBadge(cases[0], champs, { ...stagiaire, numero: index + 1, efp: feuille.efp, groupe: feuille.groupe })
+        remplirBadge(cases[0], champs, {
+          ...stagiaire,
+          // Le rang dans la liste du groupe — même filtré sur quelques stagiaires (2026-10-17).
+          numero: stagiaire.rang ?? index + 1,
+          efp: feuille.efp,
+          groupe: feuille.groupe,
+        })
       );
       while (badges.length % PAR_RANGEE !== 0) badges.push(caseVide);
       const lignes = [];

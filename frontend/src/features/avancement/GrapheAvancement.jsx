@@ -32,11 +32,13 @@ import { decouper, interligne, tailleCommune } from './etiquettes';
  *
  * ═══ ⚠️ DEUX COURBES SUR UN SECOND AXE, EN % ═══
  * ← `datasets.push({ type: 'line', … yAxisID: 'y_percent' })` de l'existant.
- * Elles ne s'affichent QUE sur les axes formateur et groupe, comme lui
- * (`display: type !== 'module'`) : sur l'axe module, chaque colonne est déjà un
- * module, et une courbe qui relie cinquante-quatre modules sans ordre entre eux
- * ne décrit aucune évolution — elle ferait un zigzag qu'on lirait à tort comme
- * une tendance.
+ * L'existant ne les montrait que sur les axes formateur et groupe
+ * (`display: type !== 'module'`). ⚠️ LA COURBE DU TAUX VAUT DÉSORMAIS SUR LES
+ * TROIS AXES (2026-10-17, demande du porteur : « ajoute aussi la courbe du taux
+ * dans le graphe ») — comme dans le rapport d'avancement : par module, elle se
+ * lit point par point (le taux de CE module), pas comme une tendance entre des
+ * modules qui n'ont pas d'ordre entre eux. L'objectif pédagogique, lui, reste à
+ * l'axe groupe.
  *
  * ⚠️ LE TAUX OBJECTIF PÉDAGOGIQUE est réservé à l'axe GROUPE, et c'est ce qui
  * donne son sens au reste : il dit où le groupe DEVRAIT en être au vu du
@@ -160,8 +162,8 @@ export default function GrapheAvancement({
 
   const margeHaute = margeDesEtiquettes(traces, tailleEtiquette);
 
-  // Les courbes ne valent que là où les sujets se comparent — cf. en-tête.
-  const courbeTaux = axe === 'formateur' || axe === 'groupe';
+  // Le taux sur les trois axes (2026-10-17) ; l'objectif au seul axe groupe — cf. en-tête.
+  const courbeTaux = true;
   const courbeObjectif = axe === 'groupe' && traces.some((ligne) => ligne.objectif !== null);
   const courbeReference = Boolean(reference) && traces.some((ligne) => ligne.reference !== null);
 
@@ -260,15 +262,20 @@ export default function GrapheAvancement({
                   border: '1px solid hsl(var(--border))',
                   background: 'hsl(var(--card))',
                 }}
-                formatter={(valeur, cle, entree) =>
+                formatter={(valeur, nom, entree) => {
                   /* ⚠️ DEUX UNITÉS SUR LE MÊME GRAPHE : les courbes de TAUX sont
                      en pourcentages, les barres et la courbe de RÉFÉRENCE en
                      heures. Une mise en forme unique ferait lire « 42 h » là où
-                     il faut lire « 42 % », et l'inverse. */
-                  cle === 'taux' || cle === 'objectif'
-                    ? [`${nombre(valeur)} %`, entree?.name ?? cle]
-                    : [`${nombre(valeur)} h`, LIBELLES[cle] ?? entree?.name ?? cle]
-                }
+                     il faut lire « 42 % », et l'inverse.
+                     ⚠️ LA CLÉ DE DONNÉE, PAS LE NOM (2026-10-17, signalé par le
+                     porteur : « Taux d'avancement : 100 h ») : recharts passe en
+                     second le `name` d'une courbe — « Taux d'avancement » —, qui
+                     n'était jamais égal à `taux`. */
+                  const cle = entree?.dataKey ?? nom;
+                  return cle === 'taux' || cle === 'objectif'
+                    ? [`${nombre(valeur)} %`, entree?.name ?? nom]
+                    : [`${nombre(valeur)} h`, LIBELLES[cle] ?? entree?.name ?? nom];
+                }}
                 /*
                  * ⚠️ LE TAUX EST DANS L'EN-TÊTE DE L'INFOBULLE. Le libellé de
                  * l'axe est incliné et ne peut pas porter une seconde ligne : le

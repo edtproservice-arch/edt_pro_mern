@@ -179,19 +179,38 @@ export async function convertirDocxEnPdf(tamponDocx) {
  * ralentirait la suite sans rien vérifier de plus que les tests d'export
  * eux-mêmes, qui préchauffent déjà bien assez en s'exécutant.
  */
+/*
+ * ═══ ⚠️ UNE SEULE FOIS PAR PROCESSUS, ET SON DOSSIER CRÉÉ AU DERNIER MOMENT
+ * (2026-10-17, disque plein constaté : 3 258 dossiers `edt-prechauffage-*`,
+ * 650 Mo, dans le dossier temporaire) ═══
+ * Chaque module d'export appelait le préchauffage au chargement — une trentaine
+ * de fois par démarrage (un par canevas de la feuille de présence) —, et chaque
+ * appel créait AUSSITÔT son dossier temporaire, puis attendait son tour dans la
+ * file. `node --watch` relance le serveur à chaque fichier modifié : le
+ * processus mourait avant la fin de la file, et les dossiers restaient.
+ *
+ * Or un seul suffit : c'est le PROFIL partagé qu'on chauffe, quel que soit le
+ * canevas converti. Le premier appel du processus préchauffe ; les suivants ne
+ * font rien. Et le dossier ne naît qu'au moment de convertir : un processus
+ * interrompu en laisse au plus un.
+ */
+let prechauffageLance = false;
+
 export function prechaufferLibreOffice(cheminCanevas) {
   if (process.env.NODE_ENV === 'test') return;
+  if (prechauffageLance) return;
+  prechauffageLance = true;
 
-  (async () => {
+  enFile(async () => {
     const dossier = await mkdtemp(path.join(tmpdir(), 'edt-prechauffage-'));
     try {
       const cheminDocx = path.join(dossier, 'prechauffage.docx');
       await writeFile(cheminDocx, await readFile(cheminCanevas));
-      await enFile(() => convertirFichierEnPdf(cheminDocx, dossier));
+      await convertirFichierEnPdf(cheminDocx, dossier);
     } finally {
       await rm(dossier, { recursive: true, force: true });
     }
-  })().catch(() => {
+  }).catch(() => {
     // Un export réel referait la même tentative et répondrait alors l'erreur
     // claire habituelle — le préchauffage n'est qu'un confort.
   });

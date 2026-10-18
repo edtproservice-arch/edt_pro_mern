@@ -74,3 +74,13 @@ export const chargerDetailEcartSaisie = (formateur, semaine) =>
   api.get(
     `/api/v2/avancement/ecarts-saisie/detail?formateur=${encodeURIComponent(formateur)}&semaine=${semaine}`
   );
+
+/**
+ * Le rapport d'avancement d'un ou plusieurs formateurs ou groupes, en Word ou
+ * PDF (2026-10-17) : un graphe à bâtons et un tableau par sujet. L'écran envoie
+ * ses lignes déjà calculées — voir `rapportAvancement` (domaine).
+ */
+export const exporterRapportAvancement = (corps) =>
+  api.telecharger('/api/v2/avancement/rapport/export', corps, {
+    nomParDefaut: `rapport-avancement.${corps.format}`,
+  });

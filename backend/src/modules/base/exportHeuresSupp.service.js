@@ -44,8 +44,33 @@ const COULEURS = {
   paye: 'FFFFF2CC',
   trait: 'FFB4C0D6',
   gris: 'FF7F7F7F',
+  mutualise: 'FFEDE7F6', // formateur mutualisé : le violet de l'écran
+  mutualiseTexte: 'FF5B21B6',
 };
 const plein = (argb) => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
+
+/**
+ * Formateur MUTUALISÉ (2026-10-18) : Mle et nom sur fond violet, « (mutualisé) » après le nom, et
+ * une note sur la cellule avec la masse affectée et le réalisé de chaque établissement — les
+ * chiffres de la ligne, eux, sont cumulés sur tous.
+ */
+function marquerMutualise(ligne, formateur) {
+  if (!formateur.mutualise) return;
+  const { ici, ailleurs } = formateur.mutualise;
+  const detail = [
+    'Formateur mutualisé — heures cumulées sur tous ses établissements :',
+    `• Cet établissement : ${ici.affecte} h affectées, ${ici.heures} h réalisées`,
+    ...ailleurs.map((a) => `• ${a.nom} : ${a.affecte} h affectées, ${a.heures} h réalisées`),
+    `Total : ${formateur.affecte} h affectées, ${formateur.totaux.heures} h réalisées`,
+  ].join('\n');
+  for (const c of [1, 2]) ligne.getCell(c).fill = plein(COULEURS.mutualise);
+  const nom = ligne.getCell(2);
+  nom.value = `${formateur.nom} (mutualisé)`;
+  nom.font = { ...(nom.font ?? {}), color: { argb: COULEURS.mutualiseTexte } };
+  nom.note = detail;
+}
+
+const MENTION_MUTUALISE = ' · Violet : formateur mutualisé, heures cumulées sur tous ses établissements (détail en note)';
 const fin = { style: 'thin', color: { argb: COULEURS.trait } };
 const moyen = { style: 'medium', color: { argb: COULEURS.marine } };
 const CADRE = { top: fin, left: fin, bottom: fin, right: fin };
@@ -128,7 +153,7 @@ function ajouterSyntheseAnnuelle(classeur, { parMatricule, moisTravailles, etabl
   feuille.mergeCells(3, 1, 3, derniere);
   feuille.getCell(3, 1).value =
     'Quota HS = masse affectée − masse statutaire · MHS : 26 h (910 h), 36 h (1260 h), « Vac. » : ' +
-    'vacataire, sans HS · ' + mentionRealise(realiseAu);
+    'vacataire, sans HS · ' + mentionRealise(realiseAu) + MENTION_MUTUALISE;
   feuille.getCell(3, 1).font = { name: POLICE, italic: true, size: 9, color: { argb: COULEURS.gris } };
 
   /* ─── En-tête du tableau : deux lignes ────────────────────────────── */
@@ -209,6 +234,7 @@ function ajouterSyntheseAnnuelle(classeur, { parMatricule, moisTravailles, etabl
       if (c >= 6) cellule.numFmt = c >= PREMIER_MOIS && c < colTotal ? FORMAT_HEURES : FORMAT_CUMUL;
     }
     ligne.getCell(2).font = { name: POLICE, size: 10, bold: !vacataire, ...discret };
+    marquerMutualise(ligne, formateur);
 
     // Les HS payées d'un mois se voient d'un coup d'œil.
     moisTravailles.forEach((_, i) => {
@@ -340,7 +366,7 @@ export async function construireEtatMensuelHeuresSupp(etablissementId, anneeScol
     feuille.mergeCells(3, 1, 3, derniere);
     feuille.getCell(3, 1).value =
       'S-xx : semaine calendaire · (Sn) : semaine de l’année de formation · JF : jours fériés ou ' +
-      'de vacances · ' + mentionRealise(realiseAu);
+      'de vacances · ' + mentionRealise(realiseAu) + MENTION_MUTUALISE;
     feuille.getCell(3, 1).font = { name: POLICE, italic: true, size: 9, color: { argb: COULEURS.gris } };
 
     /* ─── En-tête du tableau : deux lignes ────────────────────────────── */
@@ -428,6 +454,7 @@ export async function construireEtatMensuelHeuresSupp(etablissementId, anneeScol
       }
       ligne.getCell(3).numFmt = '0';
       ligne.getCell(2).font = { name: POLICE, size: 10, bold: !vacataire, ...(vacataire ? { italic: true, color: { argb: COULEURS.gris } } : {}) };
+      marquerMutualise(ligne, formateur);
 
       // Une heure supplémentaire se voit d'un coup d'œil.
       semaines.forEach((_, i) => {

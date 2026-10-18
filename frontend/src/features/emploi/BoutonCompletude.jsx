@@ -1,4 +1,3 @@
-import { useEffect, useRef } from 'react';
 import { ClipboardCheck } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -19,39 +18,18 @@ import { useBilanCompletude } from './useBilanCompletude';
  *    porteur : « panneau à droite, décale la grille ») : le rapport est une
  *    colonne À DROITE DE LA GRILLE, qu'il fait rétrécir — c'est donc la page
  *    qui le dispose et qui tient son état. Le bouton l'ouvre ou le ferme, et
- *    garde l'ouverture automatique.
+ *    ne l'ouvre plus de lui-même (2026-10-18).
  */
 export default function BoutonCompletude({ semaine, ouvert = false, onOuvrir }) {
   const bilan = useBilanCompletude(semaine);
 
   /*
-   * ═══ ⚠️ LE RAPPORT S'OUVRE DE LUI-MÊME, UNE FOIS PAR SEMAINE ═══
-   * Le bilan se recalcule après chaque enregistrement. Sans mémoire de la
-   * dernière semaine VUE, le panneau se rouvrirait à chaque sauvegarde de la
-   * même semaine — y compris à l'instant où l'on vient de le fermer, ce qui le
-   * rendrait impossible à écarter.
-   *
-   * ⚠️ LE REPÈRE SUIT LA DERNIÈRE SEMAINE VUE, conforme ou non. S'il ne
-   *    retenait que les semaines ANNONCÉES, revenir sur une semaine incomplète
-   *    après un détour par une semaine conforme ne la rouvrirait pas.
+   * ⚠️ PLUS D'OUVERTURE AUTOMATIQUE (2026-10-18, demande du porteur : « le
+   * rapport masqué par défaut ») : il s'ouvrait de lui-même, une fois par
+   * semaine, dès que le taux passait sous 100 %. C'est désormais ce bouton seul
+   * qui l'ouvre — la couleur du taux suffit à signaler l'écart. (Le lien
+   * `?rapport=1` de « À traiter » l'ouvre toujours : c'est une demande explicite.)
    */
-  const derniereVue = useRef(null);
-
-  useEffect(() => {
-    const donnees = bilan.data;
-    if (!donnees) return;
-
-    const aChange = derniereVue.current !== donnees.semaine;
-    derniereVue.current = donnees.semaine;
-    if (!aChange) return;
-
-    if (!donnees.planifie) return;
-    if (donnees.total.taux === null || donnees.total.taux >= 100) return;
-
-    onOuvrir?.(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- une fois par semaine, pas à chaque rendu
-  }, [bilan.data]);
-
   /* Rien à comparer, ou lecture impossible : pas d'indicateur du tout. */
   if (!bilan.data?.planifie) return null;
 

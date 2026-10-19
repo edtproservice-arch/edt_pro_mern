@@ -24,6 +24,7 @@ import {
   massesCumulees,
   poserAvecJumelles,
   posesCumulees,
+  separerFusion,
   totalSemaineFusionnee,
 } from 'shared/domain';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
@@ -231,6 +232,28 @@ let pressePapiers = null;
 let grilleActive = null;
 
 /**
+ * Les lignes qui partagent la SEMAINE de `module` : celles de son groupe.
+ *
+ * ═══ ⚠️ LA CAPACITÉ D'UNE SEMAINE EST CELLE D'UN GROUPE (2026-10-19) ═══
+ * « Il ne faut pas limiter le formateur à 20 h la première semaine. » En vue
+ * PAR FORMATEUR, la grille réunit des groupes différents ; le contrôle
+ * additionnait les heures de TOUS ses groupes et les comparait aux jours du
+ * groupe de la ligne saisie. Un groupe de 1ʳᵉ année qui rentre le vendredi
+ * (2 jours ouvrés, 20 h) bloquait donc tout le formateur, alors que ses
+ * groupes de 2ᵉ année ont la semaine entière. Seules comptent les lignes du
+ * même groupe — fusions comprises (« GM101 GM102 » touche GM101).
+ *
+ * En vue par groupe, aucune ligne ne porte de groupe : toutes comptent.
+ */
+function lignesDuGroupe(modules, module) {
+  const siens = separerFusion(module?.groupe ?? '').filter(Boolean);
+  if (siens.length === 0) return modules ?? [];
+  return (modules ?? []).filter((autre) =>
+    separerFusion(autre?.groupe ?? '').some((groupe) => siens.includes(groupe))
+  );
+}
+
+/**
  * Pose une valeur dans une case avec les MÊMES contrôles qu'une saisie à la
  * main (`verifierCellule`) — pour le collage. `partSeule` : n'écrit que ce
  * type, à côté de l'autre (la seconde part d'une case mixte).
@@ -250,7 +273,7 @@ function essayerPose({ planning, modules, module, semaine, heures, type, groupe,
     heures,
     type,
     masses: module.masses,
-    posesSemaine: totalSemaineFusionnee(sansCetteCase, semaine.numero, modules),
+    posesSemaine: totalSemaineFusionnee(sansCetteCase, semaine.numero, lignesDuGroupe(modules, module)),
     autrePart: autre,
     groupe,
   });
@@ -367,7 +390,7 @@ function useOnPoser(planning, onChanger, modules, semainesParDefaut, groupeGrill
       heures: Number(heures),
       type,
       masses,
-      posesSemaine: totalSemaineFusionnee(sansCetteCase, semaine.numero, tous),
+      posesSemaine: totalSemaineFusionnee(sansCetteCase, semaine.numero, lignesDuGroupe(tous, module)),
       autrePart: autrePartDe(tous, courant, module, semaine.numero),
       // Cours du soir : ses valeurs, et pas de synchrone (2026-10-09).
       groupe: module.groupe ?? groupeRef.current ?? null,
@@ -1011,7 +1034,7 @@ export default function GrilleChronogramme({
         masses: cible?.masses,
         // Même garde qu'à la saisie : un glissement ne contourne pas la
         // capacité de la semaine.
-        posesSemaine: totalSemaineFusionnee(sansCetteCase, semaine.numero, modules),
+        posesSemaine: totalSemaineFusionnee(sansCetteCase, semaine.numero, lignesDuGroupe(modules, cible)),
         autrePart: autrePartDe(modules, suivant, cible, semaine.numero),
         groupe: cible?.groupe ?? groupe ?? null,
       });

@@ -247,14 +247,14 @@ export function verifierCellule({
    * La semaine, elle, tient `jours × 10 h`.
    */
   if (posesSemaine !== null) {
-    const capacite = capaciteSemaine(semaine);
+    const capacite = capaciteSemaine(semaine, { rentree: false });
     const cumulSemaine = arrondir(Number(posesSemaine) + valeur);
 
     if (cumulSemaine > capacite) {
       return {
         possible: false,
         plafond: capacite,
-        motif: `${capacite} h au plus dans la semaine (${semaine.joursDisponibles} jour(s) ouvré(s), tous modules confondus) — ${cumulSemaine} h demandées.`,
+        motif: `${capacite} h au plus dans la semaine (${capacite / HEURES_PAR_JOUR} jour(s) ouvré(s), tous modules confondus) — ${cumulSemaine} h demandées.`,
       };
     }
   }
@@ -325,9 +325,22 @@ function arrondir(valeur) {
  * MODULE ne prend pas davantage. La semaine, elle, tient autant que ses jours —
  * six jours ouvrés portent soixante heures.
  */
-export function capaciteSemaine(semaine) {
+export function capaciteSemaine(semaine, { rentree = true } = {}) {
   if (!semaine?.disponible) return 0;
 
-  const jours = Math.max(0, Math.min(JOURS_PAR_SEMAINE, semaine.joursDisponibles ?? 0));
+  /*
+   * ═══ ⚠️ À LA SAISIE, LA RENTRÉE NE RÉDUIT PAS LA SEMAINE (2026-10-19) ═══
+   * « Il ne faut pas limiter à 20 h la première semaine », en vue par groupe
+   * comme par formateur. Un groupe de 1ʳᵉ année qui rentre le vendredi n'a que
+   * deux jours ouvrés : la grille refusait tout au-delà de 20 h. `rentree:
+   * false` rend ces jours à la semaine — fériés, stage et formation, eux, la
+   * réduisent toujours. Ces absences ne se cumulent pas (`semaines.js` prend
+   * la plus grande) : on ne rend que ce que la rentrée retirait EN PLUS du
+   * stage et de la formation. La génération garde la lecture stricte (par
+   * défaut).
+   */
+  const autres = Math.max(semaine.joursStage ?? 0, semaine.joursFormation ?? 0);
+  const rendus = rentree ? 0 : Math.max(0, (semaine.joursRentree ?? 0) - autres);
+  const jours = Math.max(0, Math.min(JOURS_PAR_SEMAINE, (semaine.joursDisponibles ?? 0) + rendus));
   return jours * HEURES_PAR_JOUR;
 }

@@ -528,3 +528,33 @@ export function ouvrirAPartirDe(semaines, premiere) {
       : { ...semaine, disponible: false, joursDisponibles: 0, motif: 'debut_formation' }
   );
 }
+
+/**
+ * ═══ LA SEMAINE DE RENTRÉE N'EST PAS AMPUTÉE (2026-10-19, demande du porteur) ═══
+ * « Il ne faut pas limiter à 20 h la première semaine » — à la saisie, puis
+ * « même chose pour la génération automatique ». Une 1ʳᵉ année qui rentre le
+ * vendredi n'avait que deux jours ouvrés : 20 h au plus pour le groupe, et la
+ * cible de ses formateurs réduite d'autant. La génération lit donc la semaine
+ * ENTIÈRE : on rend les jours que la rentrée retirait.
+ *
+ * ⚠️ SEULEMENT UNE SEMAINE DÉJÀ OUVERTE : une semaine entièrement avant la
+ *    rentrée reste fermée — le groupe n'existe pas encore.
+ * ⚠️ FÉRIÉS ET STAGE RÉDUISENT TOUJOURS : rentrée et stage ne se cumulent pas
+ *    (`semainesChronogramme` prend le plus grand) ; on ne rend que ce que la
+ *    rentrée retirait EN PLUS du stage.
+ *
+ * @param {Array<object>} semaines — celles d'un groupe (`semainesChronogramme`)
+ * @returns {Array<object>}
+ */
+export function sansReductionDeRentree(semaines = []) {
+  return semaines.map((semaine) => {
+    const rentree = semaine?.joursRentree ?? 0;
+    if (!semaine?.disponible || rentree <= 0) return semaine;
+    const rendus = Math.max(0, rentree - (semaine.joursStage ?? 0));
+    return {
+      ...semaine,
+      joursDisponibles: Math.min(JOURS_PAR_SEMAINE, (semaine.joursDisponibles ?? 0) + rendus),
+      joursRentree: 0,
+    };
+  });
+}

@@ -24,6 +24,7 @@ import {
   poseMinimaleModule,
   prioriteGeneration,
   repartirSemestresAuPas,
+  sansReductionDeRentree,
   retirerReserve,
   semainesDuSemestre,
 } from './generation.js';
@@ -364,5 +365,31 @@ describe('stage partiel, formation et congé (2026-10-16)', () => {
   it('une semaine entière d’absence ne vise plus rien', () => {
     expect(cibleDeLaSemaine(30.63, 6, 25)).toBe(0);
     expect(cibleDeLaSemaine(30.63, joursPerdusFormateur({ formation: 6 }), 25)).toBe(0);
+  });
+});
+
+describe('sansReductionDeRentree — la semaine de rentrée compte entière (2026-10-19)', () => {
+  it('rend les jours retirés par la rentrée à une semaine ouverte', () => {
+    const [semaine] = sansReductionDeRentree([
+      { numero: 1, disponible: true, joursDisponibles: 2, joursRentree: 4, joursStage: 0, feries: [] },
+    ]);
+    expect(semaine.joursDisponibles).toBe(6);
+    expect(semaine.joursRentree).toBe(0);
+  });
+
+  it('laisse fermée une semaine entièrement avant la rentrée', () => {
+    const fermee = { numero: 1, disponible: false, joursDisponibles: 0, joursRentree: 6, motif: 'rentree' };
+    expect(sansReductionDeRentree([fermee])[0]).toBe(fermee);
+  });
+
+  it('ne rend pas les jours de stage ni les fériés', () => {
+    const [stage] = sansReductionDeRentree([
+      { numero: 1, disponible: true, joursDisponibles: 1, joursRentree: 3, joursStage: 4, feries: [{}] },
+    ]);
+    expect(stage.joursDisponibles).toBe(1);
+    const [ferie] = sansReductionDeRentree([
+      { numero: 1, disponible: true, joursDisponibles: 1, joursRentree: 4, joursStage: 0, feries: [{}] },
+    ]);
+    expect(ferie.joursDisponibles).toBe(5);
   });
 });

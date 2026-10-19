@@ -18,6 +18,7 @@ import {
   Gavel,
   IdCard,
   Mail,
+  Search,
   Shuffle,
   Stethoscope,
   Ticket,
@@ -25,6 +26,7 @@ import {
   Users, Loader2 } from 'lucide-react';
 import { anneeDuNomGroupe } from 'shared/domain';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -542,9 +544,43 @@ const CATEGORIES = [
   documents: categorie.cles.map((cle) => DOCUMENTS.find((d) => d.cle === cle)),
 }));
 
+/** Sans accents ni majuscules : « reclamation » trouve « Fiche de réclamation ». */
+const normaliser = (texte) =>
+  String(texte ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+/**
+ * ═══ LA RECHERCHE DE DOCUMENTS (2026-10-19, demande du porteur : « une barre
+ * de recherche pour les documents ») ═══ Sur le titre, le résumé et la
+ * catégorie de chaque document ; chaque mot tapé doit s'y trouver. Le document
+ * garde sa catégorie, rappelée sous la carte des résultats.
+ */
+function rechercherDocuments(recherche) {
+  const mots = normaliser(recherche).split(/\s+/).filter(Boolean);
+  if (mots.length === 0) return null;
+  return CATEGORIES.flatMap((categorie) =>
+    categorie.documents
+      .filter((document) => {
+        const texte = normaliser(`${document.titre} ${document.resume ?? ''} ${categorie.titre}`);
+        return mots.every((mot) => texte.includes(mot));
+      })
+      .map((document) => ({ document, categorie: categorie.titre }))
+  );
+}
+
+/** La feuille d'un document : avec sa fenêtre, téléchargée directement, ou à venir. */
+function TuileDocument({ document, pret }) {
+  if (document.choixGroupes) return <DocumentAvecDialogue document={document} attenue={!pret} />;
+  if (document.telecharger) return <DocumentTelechargeable document={document} />;
+  return <FeuilleDocument document={document} attenue={!pret} />;
+}
 
 export default function CartesDocuments({ nombreStagiaires }) {
   const pret = nombreStagiaires > 0;
+  const [recherche, setRecherche] = useState('');
+  const resultats = rechercherDocuments(recherche);
   // La catégorie dépliée — `null` : toutes repliées, en petites tuiles.
   const [ouverte, setOuverte] = useState(null);
   // La catégorie dépliée, partagée pendant le guidage (2026-10-04).
@@ -554,14 +590,49 @@ export default function CartesDocuments({ nombreStagiaires }) {
 
   return (
     <section className="space-y-5">
-      <header className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-sm font-medium">Documents imprimables</h2>
-        <span className="text-xs text-muted-foreground">
-          {pret
-            ? 'Disponibles en Phase 10 — la base est déjà prête.'
-            : 'Importez d’abord votre base Konosys.'}
-        </span>
+      <header className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h2 className="text-sm font-medium">Documents imprimables</h2>
+          {/* Sans base seulement : « Disponibles en Phase 10 » est retiré (2026-10-19, demande du porteur). */}
+          {!pret && <span className="text-xs text-muted-foreground">Importez d’abord votre base Konosys.</span>}
+        </div>
+        <div className="relative w-full sm:w-72">
+          <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            value={recherche}
+            onChange={(evenement) => setRecherche(evenement.target.value)}
+            placeholder="Rechercher un document…"
+            aria-label="Rechercher un document"
+            className="h-8 pl-8 text-xs"
+          />
+        </div>
       </header>
+
+      {/* Pendant une recherche, les catégories cèdent la place à ses résultats. */}
+      {resultats && (
+        <div className="overflow-hidden rounded-xl border">
+          <p className="flex items-center gap-3 border-b px-4 py-2.5">
+            <Search className="size-4 shrink-0 text-muted-foreground" />
+            <span className="text-sm font-medium">Résultats</span>
+            <span className="text-xs text-muted-foreground">
+              {resultats.length} document{resultats.length > 1 ? 's' : ''}
+            </span>
+          </p>
+          {resultats.length === 0 ? (
+            <p className="p-6 text-center text-sm text-muted-foreground">Aucun document ne correspond à « {recherche.trim()} ».</p>
+          ) : (
+            <div className="flex flex-wrap gap-4 p-4">
+              {resultats.map(({ document, categorie }) => (
+                <div key={document.cle} className="flex flex-col items-center gap-1.5">
+                  <TuileDocument document={document} pret={pret} />
+                  <span className="text-[0.65rem] text-muted-foreground">{categorie}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/*
         ⚠️ TOUTES PETITES AU DÉPART, LA CLIQUÉE GRANDIT (2026-09-28, demande du
@@ -570,7 +641,7 @@ export default function CartesDocuments({ nombreStagiaires }) {
         carte — bandeau de titre et petites cartes de documents — et les trois
         autres restent en tuiles dessous. Un clic sur le bandeau replie.
       */}
-      {categorieOuverte && (
+      {!resultats && categorieOuverte && (
         <div
           // ⚠️ `key` : changer de catégorie REMONTE la carte, donc rejoue
           // l'entrée. `motion-reduce` respecte le réglage système « moins
@@ -600,15 +671,9 @@ export default function CartesDocuments({ nombreStagiaires }) {
             ressemblerait à une bannière, pas à une feuille.
           */}
           <div className="flex flex-wrap gap-4 p-4">
-            {categorieOuverte.documents.map((document) =>
-              document.choixGroupes ? (
-                <DocumentAvecDialogue key={document.cle} document={document} attenue={!pret} />
-              ) : document.telecharger ? (
-                <DocumentTelechargeable key={document.cle} document={document} />
-              ) : (
-                <FeuilleDocument key={document.cle} document={document} attenue={!pret} />
-              )
-            )}
+            {categorieOuverte.documents.map((document) => (
+              <TuileDocument key={document.cle} document={document} pret={pret} />
+            ))}
           </div>
         </div>
       )}
@@ -616,6 +681,7 @@ export default function CartesDocuments({ nombreStagiaires }) {
       <div
         className={cn(
           'grid gap-3',
+          resultats && 'hidden',
           categorieOuverte ? 'sm:grid-cols-2' : 'sm:grid-cols-2 lg:grid-cols-3'
         )}
       >

@@ -215,6 +215,29 @@ describe('verifierCellule — le garde de la SEMAINE, tous modules confondus', (
   });
 
   /*
+   * ⚠️ LA RENTRÉE NE BORNE PAS LA SAISIE (2026-10-19) : une 1ʳᵉ année qui
+   * rentre le vendredi n'a que 2 jours ouvrés, et la grille refusait au-delà
+   * de 20 h. Le stage, lui, réduit toujours la semaine.
+   */
+  it('la semaine de rentrée n’est pas limitée à ses jours ouvrés', () => {
+    const rentree = { numero: 1, disponible: true, joursDisponibles: 2, joursRentree: 4, joursStage: 0, motif: null };
+    expect(capaciteSemaine(rentree)).toBe(20);
+    expect(capaciteSemaine(rentree, { rentree: false })).toBe(60);
+    expect(verifierCellule({ ...base, heures: 2.5, semaine: rentree, posesSemaine: 20 }).possible).toBe(true);
+  });
+
+  it('un stage pendant la semaine de rentrée la réduit toujours', () => {
+    const mixte = { numero: 1, disponible: true, joursDisponibles: 2, joursRentree: 3, joursStage: 4, motif: null };
+    expect(capaciteSemaine(mixte, { rentree: false })).toBe(20);
+    expect(verifierCellule({ ...base, heures: 2.5, semaine: mixte, posesSemaine: 20 }).possible).toBe(false);
+  });
+
+  it('une formation du formateur pendant la rentrée la réduit toujours', () => {
+    const formation = { numero: 1, disponible: true, joursDisponibles: 1, joursRentree: 4, joursStage: 0, joursFormation: 5, motif: null };
+    expect(capaciteSemaine(formation, { rentree: false })).toBe(10);
+  });
+
+  /*
    * ⚠️ OMIS, LE CONTRÔLE NE S'APPLIQUE PAS : l'appelant seul sait dédoublonner
    * une séance synchrone mutualisée. Le plafond de cellule, lui, joue toujours.
    */

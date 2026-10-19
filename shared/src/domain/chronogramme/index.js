@@ -95,6 +95,7 @@ export {
   poseMinimaleModule,
   prioriteGeneration,
   repartirSemestresAuPas,
+  sansReductionDeRentree,
   retirerReserve,
   semainesDuSemestre,
 } from './generation.js';

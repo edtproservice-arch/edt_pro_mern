@@ -33,6 +33,7 @@ import {
   SEANCE_SYNCHRONE,
   prioriteGeneration,
   repartirSemestresAuPas,
+  sansReductionDeRentree,
   retirerReserve,
   semainesChronogramme,
   semainesDeLaLigne,
@@ -162,7 +163,10 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
         groupe,
         ouvrirAPartirDe(
           bornerALaFinDeFormation(
-            semainesChronogramme(anneeScolaire, { joursFeries, vacances, stages, groupe, rentrees }),
+            // La semaine de rentrée compte entière (2026-10-19, demande du porteur).
+            sansReductionDeRentree(
+              semainesChronogramme(anneeScolaire, { joursFeries, vacances, stages, groupe, rentrees })
+            ),
             derniereSemaineDuGroupe(groupe)
           ),
           // Groupe PIE : rien avant S3 (2026-10-04).

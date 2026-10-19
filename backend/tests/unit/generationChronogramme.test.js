@@ -483,22 +483,23 @@ describe('règles B, C et D — la cible de chaque semaine', () => {
     expect(cibles.get('100').parSemaine[semaineDu('2026-11-16')]).toBe(25);
   });
 
-  it('D : −5 h par jour avant la rentrée des premières années', () => {
+  it('la semaine de rentrée compte entière : la cible n’est pas réduite (2026-10-19)', () => {
     const { cibles } = construire([affectation('100', 'GM101', 'M101', P, 300, 300)], {
       rentrees: [
         { anneeFormation: 1, date: '2026-09-11' },
         { anneeFormation: 2, date: '2026-09-07' },
       ],
     });
-    // GM101 est une 1ʳᵉ année : rentrée le vendredi, quatre jours perdus —
-    // 25 h − 20 h = 5 h, remontées au minimum de 10 h (600 h affectées).
+    // GM101 est une 1ʳᵉ année : rentrée le vendredi. Les quatre jours d'avant
+    // ne réduisent plus la cible (« ne pas limiter à 20 h la première
+    // semaine ») : elle reste de 25 h. Avant le 2026-10-19 : 10 h.
     const semaine = semainesChronogramme(ANNEE, {
       rentrees: [
         { anneeFormation: 1, date: '2026-09-11' },
         { anneeFormation: 2, date: '2026-09-07' },
       ],
     }).find((s) => s.debut <= '2026-09-11' && '2026-09-11' <= s.fin).numero;
-    expect(cibles.get('100').parSemaine[semaine]).toBe(10);
+    expect(cibles.get('100').parSemaine[semaine]).toBe(25);
   });
 
   it('aucune cible en vacances', () => {

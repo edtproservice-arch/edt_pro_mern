@@ -67,6 +67,8 @@ const SEUIL_PRETE = 95;
 
 /** Un module est « en voie d'achèvement » si sa fin prévue tombe dans ces semaines-ci. */
 const HORIZON_RISQUE = 3;
+/** Les heures que le chronogramme peut laisser de côté (EFM régional) sans être tenu pour incomplet. */
+const MARGE_CHRONOGRAMME = 5;
 
 /** Les statuts des groupes, par écart au rythme régional (en points). */
 const STATUTS = [
@@ -1309,7 +1311,8 @@ function modulesARisque(lignes, plages, courante, intitules, intitulesParGroupe)
   /* ⚠️ VENTILÉ PAR GROUPE : un module n'est achevé que POUR UN GROUPE. */
   return agregerAvancement(lignes, 'module', 'groupes')
     .map((entree) => {
-      const plage = plages[`${entree.ventilation}||${entree.sujet}`]?.prevue;
+      const plagesDuCouple = plages[`${entree.ventilation}||${entree.sujet}`];
+      const plage = plagesDuCouple?.prevue;
       return {
         cle: entree.cle,
         module: entree.sujet,
@@ -1326,10 +1329,23 @@ function modulesARisque(lignes, plages, courante, intitules, intitulesParGroupe)
         realise: entree.realise,
         prevu: entree.prevu,
         fin: plage?.fin ?? null,
+        /* ⚠️ LE CHRONOGRAMME PORTE-T-IL TOUTE LA MASSE ? (2026-10-20, signalé par le
+           porteur : PIE102 · M101, 5 h planifiées en S2 sur 27,5 h, s'affichait « en
+           retard » avec un objectif « 100 % d'ici S2 ».) Planifié en partie, sa
+           dernière semaine n'est pas la fin du module.
+           ⚠️ UNE MARGE DE 5 H RESTE « EN ENTIER » (2026-10-20, demande du porteur) : le
+           chronogramme laisse souvent 2,5 h ou 5 h de côté pour l'EFM régional. */
+        planifieEnEntier:
+          (plagesDuCouple?.heuresPrevues ?? 0) + MARGE_CHRONOGRAMME + 0.01 >= (entree.prevu ?? 0),
       };
     })
     .filter(
-      (module) => module.groupe && module.fin !== null && module.fin <= courante + HORIZON_RISQUE,
+      (module) =>
+        module.groupe &&
+        module.fin !== null &&
+        module.fin <= courante + HORIZON_RISQUE &&
+        // Un module déjà (presque) achevé reste affiché, quel que soit son chronogramme.
+        (module.planifieEnEntier || (module.taux ?? 0) >= 95),
     )
     .sort(
       (a, b) =>

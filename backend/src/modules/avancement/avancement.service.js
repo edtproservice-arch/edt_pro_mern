@@ -670,15 +670,23 @@ export async function achevementDesModules(etablissementId, anneeScolaire, obser
 
   /* ── Ce que le chronogramme prévoit ──────────────────────────────────── */
   const prevues = new Map();
+  /* Les heures que le chronogramme PLANIFIE, présentiel et synchrone (2026-10-20) :
+     planifié en partie, sa dernière semaine n'est pas la fin du module. */
+  const heuresPrevues = new Map();
   for (const chrono of chronogrammes) {
     const planning = chrono.planning ?? {};
     for (const [module, cellules] of Object.entries(planning)) {
-      const numeros = (cellules ?? [])
-        .filter((cellule) => Number(cellule?.heures) > 0)
-        .map((cellule) => Number(String(cellule.semaine).replace(/^S/iu, '')));
+      const remplies = (cellules ?? []).filter((cellule) => Number(cellule?.heures) > 0);
+      const numeros = remplies.map((cellule) => Number(String(cellule.semaine).replace(/^S/iu, '')));
 
       const plage = plageDeSemaines(numeros);
-      if (plage) prevues.set(cle(chrono.groupe, module), plage);
+      if (plage) {
+        prevues.set(cle(chrono.groupe, module), plage);
+        heuresPrevues.set(
+          cle(chrono.groupe, module),
+          Math.round(remplies.reduce((somme, cellule) => somme + Number(cellule.heures), 0) * 100) / 100
+        );
+      }
     }
   }
 
@@ -717,6 +725,7 @@ export async function achevementDesModules(etablissementId, anneeScolaire, obser
 
     plages[identifiant] = {
       prevue,
+      heuresPrevues: heuresPrevues.get(identifiant) ?? 0,
       posee,
       datesPrevues: datesDeLaPlage(anneeScolaire, prevue, rentrees),
       datesPosees: datesDeLaPlage(anneeScolaire, posee, rentrees),

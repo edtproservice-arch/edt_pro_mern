@@ -168,7 +168,8 @@ export default function TableauDeBordAccueil() {
     [lignes, donnees],
   );
   const risques = useMemo(
-    () => modulesARisque(lignes ?? [], achevement.data?.plages, courante, donnees?.intitules),
+    () =>
+      modulesARisque(lignes ?? [], achevement.data?.plages, courante, donnees?.intitules, donnees?.intitulesParGroupe),
     [lignes, achevement.data, courante, donnees],
   );
   /* ⚠️ LA TUILE COMPTE À PART LES ACHEVÉS (2026-09-29, demande du porteur :
@@ -1302,7 +1303,7 @@ function statutsDesGroupes(lignes, regional) {
  * montrant que des retards laisse croire qu'aucun module ne finit jamais à
  * temps). Les régionaux d'abord, puis par fin prévue.
  */
-function modulesARisque(lignes, plages, courante, intitules) {
+function modulesARisque(lignes, plages, courante, intitules, intitulesParGroupe) {
   if (!plages || courante === null) return [];
 
   /* ⚠️ VENTILÉ PAR GROUPE : un module n'est achevé que POUR UN GROUPE. */
@@ -1313,7 +1314,11 @@ function modulesARisque(lignes, plages, courante, intitules) {
         cle: entree.cle,
         module: entree.sujet,
         groupe: entree.ventilation,
+        /* ⚠️ LA FILIÈRE DU GROUPE D'ABORD (2026-10-20, signalé par le porteur) : « M101 »
+           est « Dessin Assisté par Ordinateur » en AutoCAD et « Innovation et service
+           client » en PIE — par le code seul, tous les M101 prenaient le même nom. */
         intitule:
+          intitulesParGroupe?.[`${entree.ventilation}||${entree.sujet}`] ||
           (intitules && typeof intitules[entree.sujet] === 'string' && intitules[entree.sujet]) ||
           entree.sujet,
         estRegional: entree.estRegional,

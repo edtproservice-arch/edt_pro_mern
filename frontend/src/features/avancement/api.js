@@ -44,10 +44,11 @@ export const exporterAchevement = (corps) =>
 
 /**
  * Le « Calendrier EFM DR » au format du canevas de la Direction Régionale
- * (2026-10-11) — les couples affichés et leur date d'achèvement.
+ * (2026-10-11) — les couples affichés et leur date d'achèvement ; `completer`
+ * y ajoute les modules du programme non planifiés (2026-10-20).
  */
-export const exporterCalendrierEfm = (lignes) =>
-  api.telecharger('/api/v2/avancement/achevement/calendrier-efm', { lignes }, {
+export const exporterCalendrierEfm = (lignes, completer = null) =>
+  api.telecharger('/api/v2/avancement/achevement/calendrier-efm', { lignes, completer }, {
     nomParDefaut: 'calendrier-efm-dr.xlsx',
   });
 

@@ -261,6 +261,13 @@ router.post(
         )
         .min(1)
         .max(5000),
+      // Les modules du programme non planifiés (2026-10-20) — voir le service.
+      completer: z
+        .object({
+          groupes: z.array(z.string().trim().min(1).max(200)).max(2000).nullish(),
+          regional: z.array(z.enum(['oui', 'non'])).default([]),
+        })
+        .nullish(),
     }),
   }),
   async (req, res, next) => {
@@ -269,6 +276,7 @@ router.post(
         etablissementId: req.etablissementId,
         anneeScolaire: req.anneeScolaire,
         lignes: req.body.lignes,
+        completer: req.body.completer ?? null,
       });
       res.setHeader('Content-Type', contentType);
       res.setHeader(

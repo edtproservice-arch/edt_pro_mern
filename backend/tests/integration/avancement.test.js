@@ -847,6 +847,63 @@ describe('POST /avancement/achevement/calendrier-efm — canevas DR (2026-10-11)
     expect(feuille.getCell('W3').value).toBeNull();
   });
 
+  /*
+   * ⚠️ TOUS LES MODULES (2026-10-20, demande du porteur : « export aussi les
+   * modules non planifiés ») : ceux du programme absents de la fenêtre suivent
+   * leur groupe ; désactivés et stages non réactivés restent dehors.
+   */
+  it('ajoute les modules du programme non planifiés, sauf désactivés et stages', async () => {
+    await Base.updateOne(
+      { anneeScolaire: ANNEE },
+      { $set: { groupeFilieres: { GM101: 'GM', GM102: 'GM' }, modulesInactifs: { GM101: ['M104'] } } }
+    );
+    const programme = (codeModule, module, efmRegional = false) => ({
+      secteur: 'Mécanique',
+      codeFiliereDrif: 'GM',
+      codeFiliereCarte: 'GM',
+      anneeFormation: 1,
+      codeModule,
+      module,
+      efmRegional,
+    });
+    await Repartition.create([
+      programme('M101', 'Métrologie'),
+      programme('M102', 'Dessin technique', true),
+      programme('M103', 'Stage en milieu professionnel'),
+      programme('M104', 'Module désactivé'),
+    ]);
+
+    const lire = async (corps) => {
+      const reponse = await request(app)
+        .post('/api/v2/avancement/achevement/calendrier-efm')
+        .set('Cookie', cookies)
+        .send(corps)
+        .responseType('blob');
+      expect(reponse.status).toBe(200);
+      const ExcelJS = (await import('exceljs')).default;
+      const classeur = new ExcelJS.Workbook();
+      await classeur.xlsx.load(reponse.body);
+      const feuille = classeur.worksheets[0];
+      return Array.from({ length: feuille.rowCount - 1 }, (_, i) =>
+        ['K', 'L', 'T', 'V'].map((col) => feuille.getCell(`${col}${i + 2}`).value)
+      );
+    };
+    const lignes = [{ groupe: 'GM101', module: 'M101', estRegional: false, dateAchevement: '2026-12-19' }];
+
+    // Tous les groupes de la base : M102 suit GM101, puis GM102 complet (M104 n'y est pas désactivé).
+    expect(await lire({ lignes, completer: { groupes: null } })).toEqual([
+      ['GM101', 'M101', 'N', 'BRAHIM LOURID'],
+      ['GM101', 'M102', 'O', ''],
+      ['GM102', 'M101', 'N', 'BRAHIM LOURID'],
+      ['GM102', 'M102', 'O', ''],
+      ['GM102', 'M104', 'N', ''],
+    ]);
+    // Les groupes des lignes seulement, et le filtre « Hors régional ».
+    expect(await lire({ lignes, completer: { regional: ['non'] } })).toEqual([['GM101', 'M101', 'N', 'BRAHIM LOURID']]);
+    // Sans `completer`, les lignes envoyées seules.
+    expect(await lire({ lignes })).toHaveLength(1);
+  });
+
   it('refuse une liste vide', async () => {
     const reponse = await request(app)
       .post('/api/v2/avancement/achevement/calendrier-efm')

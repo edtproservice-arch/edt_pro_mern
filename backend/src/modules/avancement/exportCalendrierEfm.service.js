@@ -2,7 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ExcelJS from 'exceljs';
 import { TYPES_COURS } from 'shared/constants';
-import { anneeDuNomGroupe, filieresParGroupe, separerFusion } from 'shared/domain';
+import { anneeDuNomGroupe, estModuleStage, filieresParGroupe, separerFusion } from 'shared/domain';
 import { Base } from '../../models/Base.js';
 import { Etablissement } from '../../models/Etablissement.js';
 import { Repartition } from '../../models/Repartition.js';
@@ -33,6 +33,17 @@ import { chargerCanevasTampon } from '../seances/canevasCache.js';
  *   - « Date Réalisation EFM » : la dernière séance d'EFM déjà passée.
  *
  * ⚠️ TOUT EST CENTRÉ (2026-10-11, demande du porteur).
+ *
+ * ═══ ⚠️ TOUS LES MODULES, PLANIFIÉS OU NON (2026-10-20, demande du porteur :
+ * « export aussi les modules non planifiés, export tous ») ═══ La fenêtre ne
+ * connaît que les couples AFFECTÉS (masse > 0). `completer` ajoute, pour chaque
+ * groupe visé, les modules du programme DRIF de sa filière et de son année qui
+ * n'y sont pas — sans formateur ni date d'achèvement. Les modules désactivés et
+ * les stages non réactivés restent dehors, comme dans tout l'avancement.
+ *   - `completer.groupes` : les groupes à compléter (`null` → tous ceux de la
+ *     base ; absent → ceux des lignes envoyées) ;
+ *   - `completer.regional` : le filtre « Statut régional » de la fenêtre.
+ * Chaque module ajouté suit les lignes de son groupe.
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -46,9 +57,11 @@ const texteHeures = (valeur) => Number(valeur ?? 0).toFixed(2);
 /** « 2026-09-14 » → Date à midi (heure locale) : pas de décalage d'un jour à l'écriture. */
 const enDate = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T12:00:00`) : null);
 
-export async function construireCalendrierEfm({ etablissementId, anneeScolaire, lignes }) {
+export async function construireCalendrierEfm({ etablissementId, anneeScolaire, lignes: lignesEnvoyees, completer = null }) {
   const [base, etablissement, seancesEfm] = await Promise.all([
-    Base.findOne({ etablissementId, anneeScolaire }).select('formateurs affectations groupeFilieres').lean(),
+    Base.findOne({ etablissementId, anneeScolaire })
+      .select('formateurs affectations groupes groupeFilieres modulesInactifs modulesActives')
+      .lean(),
     Etablissement.findById(etablissementId).select('region complexe nom nomAbrege').lean(),
     Seance.find({ etablissementId, anneeScolaire, estEfm: true }).select('groupe module date statut').lean(),
   ]);
@@ -56,6 +69,9 @@ export async function construireCalendrierEfm({ etablissementId, anneeScolaire, 
 
   /* ── La filière de chaque groupe, puis sa ligne DRIF par module ───────── */
   const filieres = filieresParGroupe(base);
+  const lignes = completer
+    ? await avecModulesNonPlanifies(base, filieres, lignesEnvoyees, completer)
+    : lignesEnvoyees;
   const codes = [...new Set(lignes.map((ligne) => ligne.module))];
   const codesFiliere = [...new Set(lignes.map((ligne) => filieres.get(ligne.groupe)).filter(Boolean))];
   const references = await Repartition.find({
@@ -109,7 +125,9 @@ export async function construireCalendrierEfm({ etablissementId, anneeScolaire, 
   const styles = Array.from({ length: NB_COLONNES }, (_, index) =>
     structuredClone(feuille.getRow(2).getCell(index + 1).style ?? {})
   );
-  if (feuille.rowCount > 1) feuille.spliceRows(2, feuille.rowCount - 1);
+  // ⚠️ UNE PAR UNE, DEPUIS LA FIN (2026-10-20) : `spliceRows(2, n)` d'ExcelJS recopiait
+  // la dernière ligne d'exemple au lieu de la retirer — visible dès qu'on n'exportait qu'une ligne.
+  for (let numero = feuille.rowCount; numero >= 2; numero -= 1) feuille.spliceRows(numero, 1);
 
   // L'en-tête aussi : certaines cases du canevas (« DR », « filière »…) ne l'étaient pas.
   for (let colonne = 1; colonne <= NB_COLONNES; colonne += 1) {
@@ -180,4 +198,63 @@ export async function construireCalendrierEfm({ etablissementId, anneeScolaire, 
     nomFichier: `Calendrier_EFM_DR_${anneeTexte}.xlsx`,
     contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   };
+}
+
+/**
+ * Les lignes envoyées, complétées des modules du programme qui n'y sont pas
+ * (voir l'en-tête). L'ordre de l'écran est gardé : les ajouts d'un groupe se
+ * placent après sa dernière ligne, ceux d'un groupe absent viennent à la fin.
+ */
+async function avecModulesNonPlanifies(base, filieres, lignes, { groupes, regional = [] }) {
+  const vises = groupes === null ? (base.groupes ?? []) : (groupes ?? [...new Set(lignes.map((ligne) => ligne.groupe))]);
+  const ensembleDe = (groupe) => (filieres.get(groupe) ? `${filieres.get(groupe)}||${anneeDuNomGroupe(groupe)}` : null);
+
+  const demandes = new Map();
+  for (const groupe of vises) {
+    const filiere = filieres.get(groupe);
+    if (filiere) demandes.set(ensembleDe(groupe), { codeFiliereCarte: filiere, anneeFormation: anneeDuNomGroupe(groupe) });
+  }
+  if (demandes.size === 0) return lignes;
+
+  const references = await Repartition.find({ $or: [...demandes.values()] })
+    .select('codeFiliereCarte anneeFormation codeModule module efmRegional')
+    .sort({ codeModule: 1 })
+    .lean();
+  const programmes = new Map();
+  for (const reference of references) {
+    const code = String(reference.codeModule ?? '').trim();
+    if (code === '') continue;
+    const cle = `${reference.codeFiliereCarte}||${reference.anneeFormation}`;
+    if (!programmes.has(cle)) programmes.set(cle, new Map());
+    if (!programmes.get(cle).has(code.toUpperCase())) programmes.get(cle).set(code.toUpperCase(), { ...reference, codeModule: code });
+  }
+
+  const majuscules = (liste) => new Set((liste ?? []).map((code) => String(code).trim().toUpperCase()));
+  const presents = new Set(lignes.map((ligne) => `${ligne.groupe}||${String(ligne.module).trim().toUpperCase()}`));
+  const ajouts = new Map();
+  for (const groupe of vises) {
+    const desactives = majuscules(base.modulesInactifs?.[groupe]);
+    const reactives = majuscules(base.modulesActives?.[groupe]);
+    for (const [code, reference] of programmes.get(ensembleDe(groupe)) ?? []) {
+      if (presents.has(`${groupe}||${code}`) || desactives.has(code)) continue;
+      if (estModuleStage({ nom: reference.module }) && !reactives.has(code)) continue;
+      const estRegional = Boolean(reference.efmRegional);
+      if (regional.length > 0 && !regional.includes(estRegional ? 'oui' : 'non')) continue;
+      if (!ajouts.has(groupe)) ajouts.set(groupe, []);
+      ajouts.get(groupe).push({ groupe, module: reference.codeModule, intitule: reference.module || null, estRegional, dateAchevement: null });
+      presents.add(`${groupe}||${code}`);
+    }
+  }
+  if (ajouts.size === 0) return lignes;
+
+  const derniere = new Map(lignes.map((ligne, index) => [ligne.groupe, index]));
+  const resultat = [];
+  lignes.forEach((ligne, index) => {
+    resultat.push(ligne);
+    if (derniere.get(ligne.groupe) === index) resultat.push(...(ajouts.get(ligne.groupe) ?? []));
+  });
+  const restants = [...ajouts.keys()].filter((groupe) => !derniere.has(groupe));
+  restants.sort((a, b) => a.localeCompare(b, 'fr', { numeric: true }));
+  for (const groupe of restants) resultat.push(...ajouts.get(groupe));
+  return resultat;
 }

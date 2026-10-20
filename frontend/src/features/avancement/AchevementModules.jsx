@@ -222,7 +222,7 @@ export default function AchevementModules({
               resume={`${acheves} achevé(s) et ${lignesVisibles.length - acheves} en cours, sur ${lignesVisibles.length}.`}
               dateObservee={dateObservee}
             />
-            <CalendrierEfm lignes={lignesVisibles} />
+            <CalendrierEfm lignes={lignesVisibles} filtres={filtresModale} />
           </div>
 
           <Tableau lignes={lignesVisibles} face={face} chargement={lignesTableau.chargement} />
@@ -384,8 +384,13 @@ function Telecharger({ face, lignes, resume, dateObservee }) {
  * transmettre à la Direction Régionale, au format de son canevas — voir
  * `exportCalendrierEfm.service.js`. Les lignes de la fenêtre, filtre compris :
  * filtrer « Hors régional » donne le calendrier des seuls EFM locaux.
+ *
+ * ⚠️ TOUS LES MODULES, PLANIFIÉS OU NON (2026-10-20, demande du porteur) : le
+ * serveur ajoute ceux du programme que la fenêtre ne connaît pas — sans masse
+ * affectée, donc sans formateur ni semestre. Filtrer sur un formateur, un
+ * semestre ou une source autre que « Non planifié » ne les demande donc pas.
  */
-function CalendrierEfm({ lignes }) {
+function CalendrierEfm({ lignes, filtres }) {
   const telechargement = useMutation({
     mutationFn: () =>
       exporterCalendrierEfm(
@@ -395,7 +400,8 @@ function CalendrierEfm({ lignes }) {
           intitule: ligne.intitule ?? null,
           estRegional: Boolean(ligne.estRegional),
           dateAchevement: ligne.dateAchevement ?? null,
-        }))
+        })),
+        completerDuCalendrier(filtres)
       ),
     onError: (erreur) => toast.error('Téléchargement impossible', { description: erreur.message }),
   });
@@ -412,6 +418,26 @@ function CalendrierEfm({ lignes }) {
       {telechargement.isPending ? 'Préparation…' : 'Calendrier EFM DR'}
     </Button>
   );
+}
+
+/**
+ * Quels modules non planifiés ajouter au calendrier, d'après le filtre de la
+ * fenêtre : aucun filtre de groupe → tous les groupes de la base (`null`) ; des
+ * groupes choisis → ceux-là ; un niveau ou un mode → les groupes des lignes
+ * affichées (`undefined`).
+ */
+function completerDuCalendrier(filtres = {}) {
+  const choisis = (cle) => filtres[cle] ?? AUCUNE;
+  if (choisis('formateur').length > 0 || choisis('semestre').length > 0) return null;
+  if (choisis('source').length > 0 && !choisis('source').includes('Non planifié')) return null;
+
+  const groupes =
+    choisis('groupe').length > 0
+      ? choisis('groupe')
+      : choisis('annee').length > 0 || choisis('mode').length > 0
+        ? undefined
+        : null;
+  return { groupes, regional: choisis('regional') };
 }
 
 /** Les sources, dans l'ordre où le filtre les propose. */

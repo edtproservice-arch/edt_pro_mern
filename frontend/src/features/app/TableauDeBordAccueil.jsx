@@ -14,7 +14,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { ArrowUpRight, ChevronLeft, ChevronRight } from 'lucide-react';
+import { AlertTriangle, ArrowUpRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { agregerAvancement, dureeSeance } from 'shared/domain';
 import { Button } from '@/components/ui/button';
 import { chargerContexte, chargerSemaines } from '@/features/emploi/api';
@@ -959,15 +959,30 @@ function CarteModuleTimeline({ module, courante }) {
   const termine = taux >= 100;
   const presqueTermine = taux >= 95;
   const enRetard = taux < 60;
-  const statut = termine ? 'Terminé' : presqueTermine ? 'Presque fini' : enRetard ? 'En retard' : 'En cours';
+  /* ⚠️ CHRONOGRAMME INCOMPLET (2026-10-20) : sa dernière semaine n'est pas la fin du
+     module — ni « en retard », ni objectif « 100 % d'ici Sx », mais « À planifier ». */
+  const incomplet = !presqueTermine && module.planifieEnEntier === false;
+  const statut = termine
+    ? 'Terminé'
+    : presqueTermine
+      ? 'Presque fini'
+      : incomplet
+        ? 'À planifier'
+        : enRetard
+          ? 'En retard'
+          : 'En cours';
   const teinte = presqueTermine
     ? 'hsl(var(--success))'
-    : enRetard
+    : incomplet
+      ? 'hsl(var(--warning))'
+      : enRetard
       ? 'hsl(var(--destructive))'
       : 'hsl(var(--warning))';
   const classesPastille = presqueTermine
     ? 'bg-success/10 text-success'
-    : enRetard
+    : incomplet
+      ? 'bg-warning/15 text-accent-orange-deep'
+      : enRetard
       ? 'bg-destructive/10 text-destructive'
       : 'bg-warning/15 text-accent-orange-deep';
 
@@ -978,7 +993,11 @@ function CarteModuleTimeline({ module, courante }) {
      avant que la semaine de fin ait eu lieu. En complément, une ligne indique
      l'objectif du chronogramme : 100 % des heures prévues D'ICI la semaine de
      fin, puisque c'est justement ce que « fin de plage » signifie. */
-  const infobulle = `${nombre(module.realise ?? 0)} h réalisées / ${nombre(module.prevu ?? 0)} h prévues = ${nombre(taux)} % (S${courante ?? '?'}) — 100 % prévues d'ici S${module.fin}`;
+  const infobulle = `${nombre(module.realise ?? 0)} h réalisées / ${nombre(module.prevu ?? 0)} h prévues = ${nombre(taux)} % (S${courante ?? '?'}) — ${
+    incomplet
+      ? `chronogramme incomplet : ${nombre(module.heuresPlanifiees ?? 0)} h planifiées sur ${nombre(module.prevu ?? 0)} h`
+      : `100 % prévues d'ici S${module.fin}`
+  }`;
 
   return (
     <Link
@@ -1025,10 +1044,17 @@ function CarteModuleTimeline({ module, courante }) {
           les heures y sont dues), donc ce n'est jamais un second taux réel —
           seulement le repère qui donne son sens à la carte posée dans cette
           colonne. Inutile une fois le module réellement achevé. */}
-      {!termine && (
-        <span className="mt-1 block text-[0.6rem] text-muted-foreground">
-          Objectif : 100 % d'ici S{module.fin}
+      {incomplet ? (
+        <span className="mt-1 flex items-center gap-1 text-[0.6rem] font-medium text-accent-orange-deep">
+          <AlertTriangle className="size-3 shrink-0" aria-hidden="true" />
+          Chronogramme incomplet : {nombre(module.heuresPlanifiees ?? 0)}/{nombre(module.prevu ?? 0)} h planifiées
         </span>
+      ) : (
+        !termine && (
+          <span className="mt-1 block text-[0.6rem] text-muted-foreground">
+            Objectif : 100 % d'ici S{module.fin}
+          </span>
+        )
       )}
     </Link>
   );
@@ -1335,6 +1361,7 @@ function modulesARisque(lignes, plages, courante, intitules, intitulesParGroupe)
            dernière semaine n'est pas la fin du module.
            ⚠️ UNE MARGE DE 5 H RESTE « EN ENTIER » (2026-10-20, demande du porteur) : le
            chronogramme laisse souvent 2,5 h ou 5 h de côté pour l'EFM régional. */
+        heuresPlanifiees: plagesDuCouple?.heuresPrevues ?? 0,
         planifieEnEntier:
           (plagesDuCouple?.heuresPrevues ?? 0) + MARGE_CHRONOGRAMME + 0.01 >= (entree.prevu ?? 0),
       };
@@ -1343,9 +1370,9 @@ function modulesARisque(lignes, plages, courante, intitules, intitulesParGroupe)
       (module) =>
         module.groupe &&
         module.fin !== null &&
-        module.fin <= courante + HORIZON_RISQUE &&
-        // Un module déjà (presque) achevé reste affiché, quel que soit son chronogramme.
-        (module.planifieEnEntier || (module.taux ?? 0) >= 95),
+        module.fin <= courante + HORIZON_RISQUE,
+      /* ⚠️ PLANIFIÉ EN PARTIE, IL RESTE AFFICHÉ — AVEC SON REPÈRE (2026-10-20, demande
+         du porteur : « s'affiche mais avec un signe ou un message ») : voir la carte. */
     )
     .sort(
       (a, b) =>

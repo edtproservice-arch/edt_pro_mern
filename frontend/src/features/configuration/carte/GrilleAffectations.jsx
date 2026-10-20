@@ -419,7 +419,8 @@ function MatricePresentiel({
    * groupe dépassent largement ce qu'un partage lui accorde, et doivent donc
    * se désactiver un par un, pas par le fieldset.
    */
-  const restreint = Boolean(useContext(FormateurRestreintCarte));
+  const restriction = useContext(FormateurRestreintCarte);
+  const restreint = Boolean(restriction);
   const espacesParNomFormateur = useContext(EspacesFormateurCarte);
 
   // Tous les groupes du bloc partagent le mode : la clé d'ensemble le porte.
@@ -682,7 +683,18 @@ function MatricePresentiel({
                             espacesParNomFormateur.get(module.formateurPresentiel) ?? []
                           }
                           valeur={module.salles ?? []}
-                          lectureSeule={lectureSeule}
+                          /*
+                            ⚠️ FORMATEUR INVITÉ (2026-10-19) : la salle d'une
+                            case déjà prise par un collègue ne se touche pas,
+                            comme son nom — le serveur refuse pareil
+                            (`verifierEcritureRestreinte`).
+                          */
+                          lectureSeule={
+                            lectureSeule ||
+                            (restreint &&
+                              Boolean(module.formateurPresentiel) &&
+                              module.formateurPresentiel !== restriction.nom)
+                          }
                           onChange={(suivantes) =>
                             onDefinirSalles(groupe.nom, cleModule(module), suivantes)
                           }

@@ -60,6 +60,24 @@ export function seuilHebdomadaire(joursFermes = 0, mhs = SEUIL_HEURES_SUPP) {
   return Math.max(0, mhs - 6 - 5 * (n - 1));
 }
 
+/**
+ * La MASSE HORAIRE d'une semaine, pour le Cumul TH.SUP du mois (2026-10-20, règle du porteur) :
+ * « sans jours fériés = 26 ; avec jours fériés = 26 − 4,334 × le nombre de jours fériés de la
+ * semaine ». 4,334 est un sixième de 26 (arrondi au millième supérieur) : chaque jour fermé retire
+ * un jour ouvré sur six. Pour une MHS de 36 h, le même principe retire 6 h par jour.
+ *
+ * ⚠️ CE N'EST PAS `seuilHebdomadaire` (−6 h puis −5 h), qui reste le seuil des heures supp de
+ * chaque semaine — et donc de ce qui est payé.
+ *
+ * @returns {number|null}  `null` pour un vacataire (pas de MHS)
+ */
+export function masseHebdomadaireCumul(joursFermes = 0, mhs = SEUIL_HEURES_SUPP) {
+  if (!mhs) return null;
+  const n = Math.max(0, Math.floor(Number(joursFermes) || 0));
+  const parJour = Math.ceil((mhs / 6) * 1000) / 1000;
+  return arrondi(Math.max(0, mhs - parJour * n));
+}
+
 /** « AAAA-MM » du jeudi de la semaine qui commence ce lundi (« AAAA-MM-JJ »). */
 export function moisDeLaSemaine(lundi) {
   const jeudi = new Date(`${lundi}T12:00:00`);
@@ -94,16 +112,19 @@ export function quotaHeuresSupp(affecte, statutaire) {
  *   semaines: Array<{numero: number, lundi: string, joursFermes: number, heures: number}>,
  *   quota: number,
  *   mhs?: number|null,
+ *   jusquau?: string|null,
  * }} entree  les semaines de l'année, dans l'ordre, avec les heures du formateur ; `mhs` est sa
- *   masse hebdomadaire statutaire — `null` (vacataire) : aucune heure supplémentaire.
+ *   masse hebdomadaire statutaire — `null` (vacataire) : aucune heure supplémentaire. `jusquau`
+ *   (« AAAA-MM-JJ ») : une semaine qui commence après ce jour n'entre pas dans la masse du mois —
+ *   elle n'a pas encore eu lieu, on ne la compte pas comme un manque.
  * @returns {{
  *   semaines: Array<{numero, lundi, mois, seuil, plafond, heures, brut, paye, cumulMois,
  *     restant, horsPlafond, nonPaye: 'quota'|'plafondMois'|null}>,
- *   mois: Array<{mois, heures, objectif, brut, paye}>,
+ *   mois: Array<{mois, heures, objectif, brut, paye, masse, cumul}>,
  *   totaux: {heures, objectif, brut, paye, quota, restant},
  * }}
  */
-export function calculerHeuresSupp({ semaines = [], quota = 0, mhs = SEUIL_HEURES_SUPP }) {
+export function calculerHeuresSupp({ semaines = [], quota = 0, mhs = SEUIL_HEURES_SUPP, jusquau = null }) {
   const eligible = mhs !== null && mhs !== undefined;
   let restant = Math.max(0, Number(quota) || 0);
   const parMois = new Map();
@@ -119,7 +140,7 @@ export function calculerHeuresSupp({ semaines = [], quota = 0, mhs = SEUIL_HEURE
       ? arrondi(Math.max(0, Math.min(heures, PLAFOND_HEURES_SUPP_SEMAINE) - seuil))
       : 0;
 
-    if (!parMois.has(mois)) parMois.set(mois, { mois, heures: 0, objectif: 0, brut: 0, paye: 0 });
+    if (!parMois.has(mois)) parMois.set(mois, { mois, heures: 0, objectif: 0, brut: 0, paye: 0, masse: 0 });
     const cumul = parMois.get(mois);
 
     const restantAvant = restant;
@@ -132,6 +153,9 @@ export function calculerHeuresSupp({ semaines = [], quota = 0, mhs = SEUIL_HEURE
     cumul.objectif = arrondi(cumul.objectif + (seuil ?? 0));
     cumul.brut = arrondi(cumul.brut + brut);
     cumul.paye = arrondi(cumul.paye + paye);
+    if (eligible && (!jusquau || semaine.lundi <= jusquau)) {
+      cumul.masse = arrondi(cumul.masse + masseHebdomadaireCumul(semaine.joursFermes, mhs));
+    }
 
     detail.push({
       numero: semaine.numero,
@@ -149,7 +173,16 @@ export function calculerHeuresSupp({ semaines = [], quota = 0, mhs = SEUIL_HEURE
     });
   }
 
-  const mois = [...parMois.values()];
+  /*
+   * ═══ LE CUMUL TH.SUP DU MOIS (2026-10-20, règle du porteur) ═══
+   * Total réalisé − masse horaire du mois (la somme des masses de ses semaines déjà commencées).
+   * Positif : des heures au-delà de la masse ; négatif : ce qui manque pour l'atteindre. Un
+   * affichage : le payé, lui, reste calculé semaine par semaine.
+   */
+  const mois = [...parMois.values()].map((m) => ({
+    ...m,
+    cumul: eligible ? arrondi(m.heures - m.masse) : null,
+  }));
   const somme = (cle) => arrondi(mois.reduce((total, m) => total + m[cle], 0));
 
   return {

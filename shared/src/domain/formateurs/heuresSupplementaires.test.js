@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   calculerHeuresSupp,
+  masseHebdomadaireCumul,
   moisDeLaSemaine,
   quotaHeuresSupp,
   regimeFormateur,
@@ -15,6 +16,20 @@ describe('seuilHebdomadaire', () => {
 
   it('part de 36 h pour un formateur à 1260 h', () => {
     expect([0, 1, 2, 3].map((n) => seuilHebdomadaire(n, 36))).toEqual([36, 30, 25, 20]);
+  });
+});
+
+describe('masseHebdomadaireCumul', () => {
+  it('26 h sans jour férié, 26 − 4,334 × jours fériés sinon', () => {
+    expect(masseHebdomadaireCumul(0)).toBe(26);
+    expect(masseHebdomadaireCumul(1)).toBe(21.67);
+    expect(masseHebdomadaireCumul(2)).toBe(17.33);
+    expect(masseHebdomadaireCumul(6)).toBe(0);
+  });
+
+  it('retire 6 h par jour pour une MHS de 36 h, rien pour un vacataire', () => {
+    expect(masseHebdomadaireCumul(1, 36)).toBe(30);
+    expect(masseHebdomadaireCumul(1, null)).toBeNull();
   });
 });
 
@@ -82,7 +97,9 @@ describe('calculerHeuresSupp', () => {
         semaine(8, '2025-10-27', 35), // jeudi 30 octobre
       ],
     });
-    expect(resultat.mois).toEqual([{ mois: '2025-10', heures: 140, objectif: 104, brut: 36, paye: 30 }]);
+    expect(resultat.mois).toEqual([
+      { mois: '2025-10', heures: 140, objectif: 104, brut: 36, paye: 30, masse: 104, cumul: 36 },
+    ]);
     expect(resultat.semaines.map((s) => s.paye)).toEqual([9, 9, 9, 3]);
     expect(resultat.semaines.map((s) => s.cumulMois)).toEqual([9, 18, 27, 30]);
     expect(resultat.semaines.map((s) => s.nonPaye)).toEqual([null, null, null, 'plafondMois']);
@@ -101,6 +118,26 @@ describe('calculerHeuresSupp', () => {
     const resultat = calculerHeuresSupp({ quota: 0, mhs: null, semaines: [semaine(1, '2025-09-01', 40)] });
     expect(resultat.semaines[0]).toMatchObject({ seuil: null, brut: 0, paye: 0, horsPlafond: 0 });
     expect(resultat.totaux).toMatchObject({ heures: 40, objectif: 0, brut: 0 });
+  });
+
+  it('Cumul du mois = total réalisé − masse des semaines commencées', () => {
+    const { mois } = calculerHeuresSupp({
+      quota: 100,
+      jusquau: '2025-10-22',
+      semaines: [
+        semaine(5, '2025-10-06', 30),
+        semaine(6, '2025-10-13', 20, 1), // un férié : masse 21,67
+        semaine(7, '2025-10-20', 5), // commencée
+        semaine(8, '2025-10-27', 0), // pas encore commencée : hors masse
+      ],
+    });
+    // 55 h réalisées − (26 + 21,67 + 26) = −18,67
+    expect(mois[0]).toMatchObject({ heures: 55, masse: 73.67, cumul: -18.67 });
+  });
+
+  it('pas de Cumul pour un vacataire', () => {
+    const { mois } = calculerHeuresSupp({ quota: 0, mhs: null, semaines: [semaine(5, '2025-10-06', 30)] });
+    expect(mois[0].cumul).toBeNull();
   });
 
   it('ne compte ni juillet ni août', () => {

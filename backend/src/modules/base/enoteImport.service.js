@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { construireBase, semaineDansAnnee } from 'shared/domain';
+import { construireBase, semaineDansAnnee, verifierAnneeFichier } from 'shared/domain';
 import { Base } from '../../models/Base.js';
 import { EnoteImport } from '../../models/EnoteImport.js';
 import { HttpError, badRequest, conflict } from '../../lib/httpError.js';
@@ -179,6 +179,37 @@ export async function importer({
 }) {
   // Le nom du fichier voyage jusqu'ici : c'est lui qui dit le format.
   const { entete, lignes } = await lireClasseur(tampon, nomFichier);
+
+  /*
+   * ⚠️ LE FICHIER DOIT ÊTRE DE L'ANNÉE SCOLAIRE DE LA BASE (2026-10-19, demande
+   * du porteur) : colonne B « Année » (2026 ou 2027 pour 2026-2027) ET colonne A
+   * « Date MAJ » (du 01/08/2026 au 31/07/2027) — la colonne B seule laisse
+   * passer un export de mai 2026, qui est encore de 2025-2026. Un export d'une
+   * autre année remplacerait sinon la base en cours, sans un message.
+   */
+  const annee = verifierAnneeFichier(lignes, anneeScolaire, entete);
+  if (!annee.conforme) {
+    const scolaire = annee.admises.join('-');
+    const pluriel = (n) => `${n} ligne${n > 1 ? 's' : ''}`;
+    const motifs = [];
+    if (annee.lignesHorsAnnee > 0) {
+      motifs.push(
+        `la colonne « Année » n'admet que ${annee.admises.join(' ou ')}, elle contient ` +
+          `${annee.horsAnnee.join(', ')} (${pluriel(annee.lignesHorsAnnee)})`
+      );
+    }
+    if (annee.lignesDateHorsPeriode > 0) {
+      motifs.push(
+        `la date de mise à jour (colonne A) doit être entre le ${annee.periode.debut} et le ` +
+          `${annee.periode.fin}, elle est au ${annee.datesHorsPeriode.join(', ')} ` +
+          `(${pluriel(annee.lignesDateHorsPeriode)})`
+      );
+    }
+    throw badRequest(`Ce fichier n'est pas de l'année scolaire ${scolaire} : ${motifs.join(' ; ')}.`, {
+      code: 'ANNEE_SCOLAIRE_INCORRECTE',
+      details: annee,
+    });
+  }
 
   // Les masses horaires déjà saisies font foi : un import ne doit pas les
   // écraser par une valeur déduite. ← parse_base_rows.php:186-195

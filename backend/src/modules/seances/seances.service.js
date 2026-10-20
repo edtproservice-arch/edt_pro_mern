@@ -1881,6 +1881,39 @@ function presenter(seance) {
 const enTexte = (date) => enJour(date);
 
 /**
+ * Ce qui ferme ce jour à cette séance, ou `null`.
+ *
+ * ⚠️ LES MÊMES PORTÉES QUE LA GRILLE : férié et vacances ferment le jour pour
+ *    tous ; un stage ne ferme que SON groupe (chaque membre d'une fusion
+ *    compte) ; une formation — ou une autre indisponibilité déclarée — ne ferme
+ *    que SON formateur, reconnu au matricule d'abord, au nom sinon, jamais sur
+ *    une valeur vide (le défaut du 2026-08-14, voir `probleme.js`).
+ */
+function fermetureDuJour(jour, seance, nomDuFormateur) {
+  if (!jour) return null;
+  const maj = (valeur) => String(valeur ?? '').trim().toUpperCase();
+
+  if (jour.ferie) return `jour férié${jour.ferie.libelle ? ` (${jour.ferie.libelle})` : ''}`;
+  if (jour.vacances) return 'vacances';
+
+  const membres = new Set(separerFusion(seance.groupe).map(maj));
+  const stage = (jour.stages ?? []).find((s) => membres.has(maj(s.groupe)));
+  if (stage) return `${stage.groupe} en stage`;
+
+  const matricule = maj(seance.formateurMatricule);
+  const nom = maj(nomDuFormateur.get(String(seance.formateurMatricule ?? '').trim()));
+  const absence = (jour.formations ?? []).find((formation) => {
+    const surMatricule = maj(formation.matricule);
+    if (surMatricule && matricule) return surMatricule === matricule;
+    const surNom = maj(formation.nom);
+    return Boolean(surNom && nom && surNom === nom);
+  });
+  if (absence) return `formateur indisponible (${(absence.motif || 'Formation').toLowerCase()})`;
+
+  return null;
+}
+
+/**
  * Copie une AUTRE semaine dans celle-ci.
  * ← `importWeekBtn` / `showWeekDropdown()` de emploi.html
  *
@@ -1931,12 +1964,40 @@ export async function importerSemaine(etablissementId, anneeScolaire, valeur, { 
    * les accepter en silence laisserait croire l'import complet. Ce qui n'entre
    * pas est NOMMÉ dans le bilan.
    */
-  const { retenues: passeesLeQuota, refusees } = await filtrerSurQuota(
+  /*
+   * ═══ ⚠️ PAS DE COPIE SUR UN JOUR FERMÉ ═══ (2026-10-19, demande du porteur :
+   * « lors de l'import d'une semaine à l'autre ne permet pas le copiage sur les
+   * jours fériés ou les stages, formations… ».) La semaine visée est lue comme
+   * la grille la montre (`semaine`) : ses fériés, ses vacances, et les stages et
+   * formations de CHAQUE jour. Une séance qui y tomberait est écartée avec son
+   * motif, comme celles qui dépasseraient la masse — le reste est copié.
+   *
+   * ⚠️ AVANT LE QUOTA : une séance écartée ne doit pas consommer la masse
+   *    d'une autre, qui serait alors refusée à sa place.
+   */
+  const [etatCible, baseFormateurs] = await Promise.all([
+    semaine(etablissementId, anneeScolaire, cible),
+    Base.findOne({ etablissementId, anneeScolaire }).select('formateurs').lean(),
+  ]);
+  const joursCible = new Map((etatCible.jours ?? []).map((jour) => [jour.jour, jour]));
+  const nomDuFormateur = new Map(
+    (baseFormateurs?.formateurs ?? []).map((f) => [String(f.matricule ?? '').trim(), f.nomComplet])
+  );
+  const fermees = [];
+  const ouvertes = [];
+  for (const seance of aCopier) {
+    const fermeture = fermetureDuJour(joursCible.get(seance.jour), seance, nomDuFormateur);
+    if (fermeture) fermees.push({ seance, motif: `${seance.jour} ${seance.seance} — ${fermeture}` });
+    else ouvertes.push(seance);
+  }
+
+  const { retenues: passeesLeQuota, refusees: refuseesQuota } = await filtrerSurQuota(
     etablissementId,
     anneeScolaire,
-    aCopier,
+    ouvertes,
     cible
   );
+  const refusees = [...fermees, ...refuseesQuota];
 
   /*
    * ═══ ⚠️ ET LE GEL DE RENTRÉE AUSSI ═══ (2026-09-03.)

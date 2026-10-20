@@ -3,12 +3,16 @@
  *
  * ← includes/parse_base_rows.php:148-157
  *
- * Le fichier compte 51 colonnes ; l'import n'en lit que 16. Elles sont
+ * Le fichier compte 51 colonnes ; l'import n'en lit que 18. Elles sont
  * repérées par leur NOM quand l'en-tête est disponible, et par leur INDEX
  * sinon — certains fichiers arrivent sans ligne d'en-tête, et les index sont
  * alors la seule prise.
  */
 export const COLONNES = {
+  /** Colonne A : date de l'export, contrôlée contre l'année scolaire. */
+  dateMaj: { index: 0, nom: 'Date MAJ' },
+  /** Colonne B : année du fichier, contrôlée contre l'année scolaire. */
+  annee: { index: 1, nom: 'Année' },
   codeFiliere: { index: 4, nom: 'Code Filière' },
   groupe: { index: 8, nom: 'Groupe' },
   fusionGroupe: { index: 12, nom: 'FusionGroupe' },

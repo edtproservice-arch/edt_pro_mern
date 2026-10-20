@@ -261,6 +261,7 @@ export function FenetreHeuresSupp({ onFermer }) {
                     formateurs={formateurs}
                     semaines={calendrier.filter((s) => s.mois === moisAffiche)}
                     mois={moisAffiche}
+                    realiseAu={donnees?.realiseAu}
                   />
                 </TabsContent>
                 <LegendeMutualises formateurs={formateurs} />
@@ -541,7 +542,29 @@ function SyntheseAnnuelle({ formateurs, moisTravailles }) {
 
 /* ─── Un mois ────────────────────────────────────────────────────────────── */
 
-function EtatDuMois({ formateurs, semaines, mois }) {
+/**
+ * Le TH.SUP d'une semaine, NÉGATIF compris (2026-10-20, demande du porteur) : l'écart entre les
+ * heures réalisées et le seuil de la semaine. Positif, ce sont les heures supp (plafonnées à 35 h) ;
+ * négatif, ce qui manque pour atteindre le seuil. Ce n'est qu'un affichage : un écart négatif ne
+ * retire rien aux heures supp des autres semaines.
+ *
+ * @returns {number|null}  `null` : pas d'écart à montrer — vacataire, ou semaine pas encore commencée
+ */
+function ecartSemaine(formateur, semaine, valeurs, realiseAu) {
+  if (!formateur.mhs) return null;
+  if (realiseAu && semaine.lundi > realiseAu.date) return null;
+  const seuil = seuilHebdomadaire(semaine.joursFermes, formateur.mhs);
+  const heuresSemaine = valeurs?.heures ?? 0;
+  return heuresSemaine < seuil ? heuresSemaine - seuil : valeurs?.brut ?? 0;
+}
+
+const afficherEcart = (ecart) => {
+  if (ecart === null) return '';
+  if (ecart < 0) return `−${decimales(-ecart)}`;
+  return decimales(ecart);
+};
+
+function EtatDuMois({ formateurs, semaines, mois, realiseAu }) {
   const parFormateur = useMemo(
     () => new Map(formateurs.map((f) => [f, new Map(f.semaines.map((s) => [s.numero, s]))])),
     [formateurs]
@@ -596,13 +619,33 @@ function EtatDuMois({ formateurs, semaines, mois }) {
                       {decimales(valeurs?.heures)}
                     </CarteCumul>
                   </TableCell>,
-                  <TableCell key={`${s.numero}-s`} className={cn(cellule, serre, valeurs?.brut && valeurHs)}>
-                    {heuresOuVide(valeurs?.brut)}
+                  <TableCell
+                    key={`${s.numero}-s`}
+                    className={cn(
+                      cellule,
+                      serre,
+                      valeurs?.brut > 0 && valeurHs,
+                      ecartSemaine(f, s, valeurs, realiseAu) < 0 && 'text-red-600 dark:text-red-400'
+                    )}
+                  >
+                    {afficherEcart(ecartSemaine(f, s, valeurs, realiseAu))}
                   </TableCell>,
                 ];
               })}
               <TableCell className={cn(cellule, separation, 'font-medium')}>{decimales(m?.heures)}</TableCell>
-              <TableCell className={cellule}>{heures(m?.brut)}</TableCell>
+              {/*
+                Cumul TH.SUP (2026-10-20, règle du porteur) : total réalisé − masse horaire du mois
+                (26 h par semaine, − 4,334 h par jour férié). Négatif en rouge, comme le TH.SUP.
+              */}
+              <TableCell
+                className={cn(
+                  cellule,
+                  m?.cumul > 0 && valeurHs,
+                  m?.cumul < 0 && 'text-red-600 dark:text-red-400'
+                )}
+              >
+                {afficherEcart(m?.cumul ?? null)}
+              </TableCell>
               <TableCell className={cn(cellule, valeurPaye)}>{heures(m?.paye)}</TableCell>
               <TableCell className={cellule}>{heures(f.totaux.quota)}</TableCell>
               <TableCell className={cn(cellule, resteFinDeMois(f, mois) > 0 && valeurHs)}>

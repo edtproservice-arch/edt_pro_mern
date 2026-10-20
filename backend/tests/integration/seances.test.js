@@ -3048,3 +3048,52 @@ describe('Module vide — emploi délié seulement (2026-10-14)', () => {
     expect(reponse.body.error?.code ?? reponse.body.code).toBe('AFFECTATION_ABSENTE');
   });
 });
+
+describe('Import d’une semaine — pas de copie sur un jour fermé (2026-10-19)', () => {
+  const CIBLE = '2026-W4';
+
+  /** Les dates réelles de la semaine visée, telles que la grille les donne. */
+  const datesDe = async (semaine) =>
+    (await request(app).get(`/api/v2/seances/${semaine}`).set('Cookie', cookies)).body.jours;
+
+  const importer = () =>
+    request(app)
+      .post(`/api/v2/seances/${CIBLE}/importer`)
+      .set('Cookie', cookies)
+      .send({ depuis: SEMAINE });
+
+  it('écarte la séance d’un groupe en stage, copie les autres', async () => {
+    await poser({ jour: 'Lundi', seance: 'S1', groupe: 'GM101', module: 'M101' });
+    await poser({ jour: 'Mardi', seance: 'S1', groupe: 'GM102', module: 'M102', salle: 'B02' });
+
+    const jours = await datesDe(CIBLE);
+    const lundi = jours.find((j) => j.jour === 'Lundi').date;
+    await Etablissement.updateOne(
+      { _id: etablissement.id },
+      { $set: { stages: [{ groupe: 'GM101', debut: lundi, fin: lundi }] } }
+    );
+
+    const reponse = await importer();
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.refusees ?? reponse.body.bilan?.refusees).toEqual(
+      expect.arrayContaining([expect.objectContaining({ motif: expect.stringContaining('en stage') })])
+    );
+    const copiees = await Seance.find({ etablissementId: etablissement.id, semaine: CIBLE }).lean();
+    expect(copiees.map((s) => s.groupe)).toEqual(['GM102']);
+  });
+
+  it('écarte une séance posée un jour de vacances', async () => {
+    await poser({ jour: 'Lundi', seance: 'S1', groupe: 'GM101', module: 'M101' });
+    const jours = await datesDe(CIBLE);
+    const lundi = jours.find((j) => j.jour === 'Lundi').date;
+    await Etablissement.updateOne(
+      { _id: etablissement.id },
+      { $set: { 'calendrier.vacances': [{ libelle: 'Test', debut: lundi, fin: lundi }] } }
+    );
+
+    const reponse = await importer();
+    // Rien ne peut être copié : l'import le dit, et la semaine visée reste vide.
+    expect(reponse.status).toBe(409);
+    expect(await Seance.countDocuments({ etablissementId: etablissement.id, semaine: CIBLE })).toBe(0);
+  });
+});

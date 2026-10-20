@@ -45,6 +45,7 @@ async function classeurEnote(lignes, { avecEntete = true } = {}) {
 
 /** Ligne e-note minimale, colonnes placées à leurs index réels. */
 function ligneEnote({
+  annee = '2026',
   codeFiliere = 'DEVOWFS_S',
   groupe = 'DEV101',
   fusion = '',
@@ -57,6 +58,7 @@ function ligneEnote({
   mhp = '60',
 } = {}) {
   const ligne = new Array(51).fill('');
+  ligne[1] = annee;
   ligne[4] = codeFiliere;
   ligne[8] = groupe;
   ligne[12] = fusion;
@@ -380,6 +382,47 @@ describe('Import e-note — refus', () => {
 
     expect(reponse.status).toBe(400);
     expect(reponse.body.code).toBe('FICHIER_NON_RECONNU');
+  });
+
+  it("REFUSE un fichier d'une autre année scolaire, sans toucher à la base", async () => {
+    // Base 2026-2027 : la colonne B n'admet que 2026 ou 2027.
+    const fichier = await classeurEnote([ligneEnote(), ligneEnote({ groupe: 'DEV102', annee: '2025' })]);
+
+    const reponse = await request(app)
+      .post('/api/v2/base/import')
+      .set('Cookie', cookies)
+      .attach('fichier', fichier, 'AvancementProgramme2025.xlsx');
+
+    expect(reponse.status).toBe(400);
+    expect(reponse.body.code).toBe('ANNEE_SCOLAIRE_INCORRECTE');
+    expect(reponse.body.message).toContain('2025');
+    expect(await Base.findOne({ etablissementId: etablissement.id, anneeScolaire: 2026 })).toBeNull();
+  });
+
+  it("REFUSE un export de l'année passée même si la colonne B dit 2026", async () => {
+    const ancienne = ligneEnote();
+    ancienne[0] = '15/05/2026 09:30:00';
+    const fichier = await classeurEnote([ancienne]);
+
+    const reponse = await request(app)
+      .post('/api/v2/base/import')
+      .set('Cookie', cookies)
+      .attach('fichier', fichier, 'AvancementProgramme.xlsx');
+
+    expect(reponse.status).toBe(400);
+    expect(reponse.body.code).toBe('ANNEE_SCOLAIRE_INCORRECTE');
+    expect(reponse.body.message).toContain('15/05/2026');
+  });
+
+  it("accepte les deux années civiles de l'année scolaire", async () => {
+    const fichier = await classeurEnote([ligneEnote(), ligneEnote({ groupe: 'DEV102', annee: '2027' })]);
+
+    const reponse = await request(app)
+      .post('/api/v2/base/import')
+      .set('Cookie', cookies)
+      .attach('fichier', fichier, 'AvancementProgramme2026.xlsx');
+
+    expect(reponse.status).toBe(201);
   });
 
   it('refuse un import sans fichier', async () => {

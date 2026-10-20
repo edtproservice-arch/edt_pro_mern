@@ -24,3 +24,4 @@ export { massesHoraires, arrondir, COLONNES_MASSES } from './massesHoraires.js';
 
 export { construireBase, cleGroupeLigne, emailDeduit, estVacataire } from './parseBase.js';
 export { COLONNES, ENTETES_ENOTE, indexColonne, resoudreColonnes } from './colonnes.js';
+export { verifierAnneeFichier } from './anneeFichier.js';

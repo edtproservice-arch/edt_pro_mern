@@ -24,6 +24,7 @@ export {
   REGIMES_STATUTAIRES,
   SEUIL_HEURES_SUPP,
   calculerHeuresSupp,
+  masseHebdomadaireCumul,
   moisCompteHeuresSupp,
   moisDeLaSemaine,
   quotaHeuresSupp,

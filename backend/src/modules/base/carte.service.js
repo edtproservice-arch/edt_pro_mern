@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import {
   carteVersLignesEnote,
+  cleModule,
   construireBase,
   emailDeduit,
   modulesInactifs,
@@ -9,6 +10,7 @@ import {
   nomsGroupesDeLaCarte,
   resoudreHomonymes,
 } from 'shared/domain';
+import { TYPES_COURS } from 'shared/constants';
 import { Base } from '../../models/Base.js';
 import { EnoteImport } from '../../models/EnoteImport.js';
 import { Stagiaire } from '../../models/Stagiaire.js';
@@ -120,6 +122,15 @@ function cleAffectation(affectation) {
 }
 
 /**
+ * `sallesAffectations` lu sur un document Mongoose (une `Map`) ou sur l'objet
+ * simple que produit `sallesParAffectation` — salles triées, pour comparer.
+ */
+function entreesSalles(salles) {
+  const entrees = salles instanceof Map ? [...salles.entries()] : Object.entries(salles ?? {});
+  return new Map(entrees.map(([cle, liste]) => [cle, [...(liste ?? [])].sort()]));
+}
+
+/**
  * Un formateur invité en partage ne peut que RÉCLAMER une case encore vide,
  * ou se retirer d'une case qu'il a lui-même prise — jamais toucher celle d'un
  * collègue, ni créer ou retirer un groupe (2026-09-27, demande du porteur).
@@ -141,7 +152,13 @@ function cleAffectation(affectation) {
  * @param {string} identifiantFormateur  Le matricule du compte restreint — voir
  *   le garde-fou ci-dessous quand il ne désigne personne dans la carte.
  */
-function verifierEcritureRestreinte({ existante, groupes, affectations, identifiantFormateur }) {
+function verifierEcritureRestreinte({
+  existante,
+  groupes,
+  affectations,
+  sallesAffectations = {},
+  identifiantFormateur,
+}) {
   const soi = String(identifiantFormateur ?? '').trim();
 
   const refuser = () => {
@@ -173,6 +190,34 @@ function verifierEcritureRestreinte({ existante, groupes, affectations, identifi
     if (soi !== '' && valeurAvant === undefined && valeurApres === soi) continue;
     if (soi !== '' && valeurAvant === soi && valeurApres === undefined) continue;
     refuser();
+  }
+
+  /*
+   * ═══ LA SALLE D'UNE CASE PRISE PAR UN COLLÈGUE NE SE TOUCHE PAS NON PLUS
+   * (2026-10-19, demande du porteur) ═══ Elle est rangée à part des
+   * affectations (`sallesAffectations`), la boucle ci-dessus ne la voyait donc
+   * pas : un formateur invité pouvait laisser le nom du collègue intact et
+   * changer l'atelier où ce collègue enseigne. Permis seulement sur une case
+   * encore sans formateur, ou sur la sienne — d'après la carte AVANT.
+   */
+  const titulaireAvant = new Map(
+    (existante?.affectations ?? [])
+      .filter((a) => a.type === TYPES_COURS.PRESENTIEL)
+      .map((a) => [cleModule(a.groupe, a.module), a.formateur])
+  );
+  const sallesAvant = entreesSalles(existante?.sallesAffectations);
+  const sallesApres = entreesSalles(sallesAffectations);
+  for (const cle of new Set([...sallesAvant.keys(), ...sallesApres.keys()])) {
+    const avantTexte = (sallesAvant.get(cle) ?? []).join('|');
+    const apresTexte = (sallesApres.get(cle) ?? []).join('|');
+    if (avantTexte === apresTexte) continue;
+    const titulaire = titulaireAvant.get(cle);
+    if (titulaire === undefined || (soi !== '' && titulaire === soi)) continue;
+    throw new HttpError(
+      403,
+      "Ce partage ne permet pas de modifier la salle d'un module déjà affecté à un collègue.",
+      { code: 'AFFECTATION_RESTREINTE' }
+    );
   }
 
   const groupesAvant = new Set(existante?.groupes ?? []);
@@ -439,6 +484,7 @@ export async function enregistrerCarte({
           existante: precedente,
           groupes,
           affectations: structure.affectations,
+          sallesAffectations: sallesParAffectation(carte),
           identifiantFormateur: identifiantFormateurRestreint,
         });
       }

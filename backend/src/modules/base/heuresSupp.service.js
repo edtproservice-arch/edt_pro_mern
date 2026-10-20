@@ -189,6 +189,8 @@ export async function heuresSupplementaires(
     const calcul = calculerHeuresSupp({
       quota,
       mhs: regime.mhs,
+      // Le Cumul du mois ne compte la masse que des semaines déjà commencées.
+      jusquau: maintenant.date,
       semaines: semainesComptees.map((semaine) => ({ ...semaine, heures: parSemaine.get(semaine.numero) ?? 0 })),
     });
 

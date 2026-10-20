@@ -13,7 +13,8 @@ import { heuresSupplementaires } from './heuresSupp.service.js';
  *   Quota HS | Reste du quota
  *
  * TH.R = heures réalisées ; TH.SUP = heures supplémentaires réalisées (entre le seuil et 35 h) ;
- * Cumul = leur somme sur le mois ; Plafond = ce qui est payé (30 h par mois au plus, et dans la
+ * Cumul = total réalisé − masse horaire du mois (26 h par semaine commencée, − 4,334 h par jour
+ * férié — règle du porteur du 2026-10-20 ; négatif en rouge) ; Plafond = ce qui est payé (30 h par mois au plus, et dans la
  * limite du quota) ; Quota HS = le quota de l'année ; Reste du quota = ce qu'il reste à payer sur
  * l'année À LA FIN DE CE MOIS. Les semaines sont celles dont le JEUDI tombe dans le mois — la
  * règle du calcul.
@@ -177,6 +178,22 @@ const POLICE = 'Calibri';
 // Deux décimales, mais « 0 » tout court pour un zéro — comme les colonnes Cumul et Plafond.
 const FORMAT_HEURES = '0.00';
 const FORMAT_CUMUL = '0.00;-0.00;0';
+// TH.SUP : négatif en rouge, avec le signe moins (2026-10-20, demande du porteur).
+const FORMAT_ECART = '0.00;[Red]-0.00;0.00';
+const ROUGE = 'FFC00000';
+
+/**
+ * Le TH.SUP d'une semaine, NÉGATIF compris — la même règle que l'écran (`ecartSemaine` de
+ * `HeuresSupp.jsx`) : les heures supp si le seuil est atteint, sinon ce qui manque pour l'atteindre.
+ * Un simple affichage : le Cumul, le Plafond et le quota ne comptent que les heures supp.
+ *
+ * @returns {number|null}  `null` : case vide — vacataire, ou semaine pas encore commencée
+ */
+function ecartSemaine(semaine, realiseAu) {
+  if (!semaine || semaine.seuil === null || semaine.seuil === undefined) return null;
+  if (realiseAu && semaine.lundi > realiseAu.date) return null;
+  return semaine.heures < semaine.seuil ? semaine.heures - semaine.seuil : semaine.brut;
+}
 
 /** « AAAA-MM-JJ » + n jours, à midi : un changement d'heure ne fait pas glisser le jour. */
 function decaler(jour, jours) {
@@ -533,11 +550,11 @@ export async function construireEtatMensuelHeuresSupp(etablissementId, anneeScol
       const valeurs = [matricule, formateur.nom, formateur.mhs ?? 'Vac.'];
       for (const semaine of semaines) {
         const s = detail.get(formateur).get(semaine.numero);
-        valeurs.push(s?.heures ?? 0, s?.brut ? s.brut : null);
+        valeurs.push(s?.heures ?? 0, ecartSemaine(s, realiseAu));
       }
       valeurs.push(
         moisFormateur?.heures ?? 0,
-        moisFormateur?.brut ?? 0,
+        moisFormateur?.cumul ?? null,
         moisFormateur?.paye ?? 0,
         formateur.totaux.quota,
         resteFinDeMois
@@ -574,12 +591,20 @@ export async function construireEtatMensuelHeuresSupp(etablissementId, anneeScol
       // Une heure supplémentaire se voit d'un coup d'œil.
       semaines.forEach((_, i) => {
         const cellule = ligne.getCell(PREMIERE_SEMAINE + i * 2 + 1);
-        if (cellule.value) {
+        cellule.numFmt = FORMAT_ECART;
+        if (cellule.value > 0) {
           cellule.fill = plein(COULEURS.hs);
           cellule.font = { name: POLICE, size: 10, bold: true, color: { argb: COULEURS.hsTexte } };
+        } else if (cellule.value < 0) {
+          cellule.font = { name: POLICE, size: 10, color: { argb: ROUGE } };
         }
       });
       ligne.getCell(colTotal).font = { name: POLICE, size: 10, bold: true };
+      // Le Cumul peut être négatif — ce qui manque pour atteindre la masse du mois.
+      const cumul = ligne.getCell(colCumul);
+      cumul.numFmt = FORMAT_ECART;
+      if (cumul.value < 0) cumul.font = { name: POLICE, size: 10, color: { argb: ROUGE } };
+      else if (cumul.value > 0) cumul.font = { name: POLICE, size: 10, bold: true, color: { argb: COULEURS.hsTexte } };
       ligne.getCell(colPlafond).fill = plein(COULEURS.paye);
       ligne.getCell(colPlafond).font = { name: POLICE, size: 10, bold: true };
       ligne.getCell(colReste).font = { name: POLICE, size: 10, bold: true, color: { argb: COULEURS.marine } };

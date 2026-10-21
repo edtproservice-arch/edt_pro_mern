@@ -233,12 +233,21 @@ export async function avancement(etablissementId, anneeScolaire, observation = n
       : seance.date && new Date(seance.date) <= borne
   );
 
+  /*
+   * ⚠️ LES SEULS GROUPES DE LA CARTE (2026-10-21, signalé par le porteur : « GE101
+   * n'existe pas dans la carte mais s'affiche en filtre et en tableau »). Une
+   * affectation peut survivre au renommage de son groupe — « GE101 » devenu
+   * « GE101 (GC) » et « GE101 (GE) » — et la carte, qui ne montre que ses groupes,
+   * ne la laisse plus voir ni corriger. Sans liste de groupes (base ancienne), rien
+   * n'est écarté.
+   */
+  const groupesDeLaCarte = new Set((base.groupes ?? []).map((groupe) => String(groupe).trim()));
   const lignesEdtpro = lignesDepuisAffectations(
     base.affectations ?? [],
     new Map(heuresPosees(seancesObservees)),
     nomDuFormateur,
     base.groupeModes ?? {}
-  );
+  ).filter((ligne) => groupesDeLaCarte.size === 0 || groupesDeLaCarte.has(ligne.groupe));
   const lignesEnote = lireAvancementEnote(importe);
 
   /*

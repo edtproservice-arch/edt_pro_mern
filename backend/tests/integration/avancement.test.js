@@ -180,6 +180,24 @@ describe('GET /avancement — la face eDTpro', () => {
   });
 
   /*
+   * ⚠️ UN GROUPE HORS CARTE N'APPARAÎT PAS (2026-10-21) : une affectation qui a
+   * survécu au renommage de son groupe (« GE101 » devenu « GE101 (GC) ») n'est plus
+   * visible dans la carte, et ne doit pas l'être davantage dans l'avancement.
+   */
+  it('écarte les affectations d’un groupe absent de la carte', async () => {
+    await Base.updateOne(
+      { anneeScolaire: ANNEE },
+      {
+        $push: {
+          affectations: { formateur: '9863', groupe: 'GM199', module: 'M101', type: TYPES_COURS.PRESENTIEL, s1Heures: 30 },
+        },
+      }
+    );
+    const groupes = parAxe((await lire()).body.faces.edtpro, 'groupe');
+    expect(groupes.map((g) => g.sujet)).toEqual(['GM101', 'GM102']);
+  });
+
+  /*
    * ⚠️ LES AFFECTATIONS PORTENT LE MATRICULE, PAS LE NOM. L'axe formateur
    * afficherait « 9863 » sans la table de correspondance — et l'existant
    * documente ce défaut précis : « la masse horaire planifiée ressortait à zéro

@@ -333,8 +333,27 @@ export default function PageAvancement() {
   const regional = requete.data?.regional ?? null;
   /* Le nom lisible de chaque module, résolu par le serveur depuis la
      répartition DRIF : `Base.affectations` ne garde que le code. */
-  const intitules = requete.data?.intitules ?? {};
+  const intitulesParCode = requete.data?.intitules ?? AUCUN_INTITULE;
   const intitulesParGroupe = requete.data?.intitulesParGroupe ?? AUCUN_INTITULE;
+  /*
+   * ⚠️ LE NOM D'UN CODE SE LIT DANS LA FILIÈRE DES GROUPES AFFICHÉS (2026-10-21,
+   * signalé par le porteur : M202 de GEOESA202 s'affichait « Techniques de vente et
+   * négociation », l'intitulé d'une autre filière). `intitules` ne connaît qu'UN
+   * nom par code ; sur les lignes retenues, chaque groupe apporte celui de sa
+   * filière. Plusieurs filières sous un même code : leurs noms, séparés par « / ».
+   */
+  const intitules = useMemo(() => {
+    const noms = new Map();
+    for (const ligne of retenues) {
+      const nom = intitulesParGroupe[`${ligne.groupe}||${ligne.module}`];
+      if (!nom) continue;
+      if (!noms.has(ligne.module)) noms.set(ligne.module, new Set());
+      noms.get(ligne.module).add(nom);
+    }
+    const resultat = { ...intitulesParCode };
+    for (const [code, ensemble] of noms) resultat[code] = [...ensemble].join(' / ');
+    return resultat;
+  }, [retenues, intitulesParCode, intitulesParGroupe]);
 
   /* Les courbes ne valent que là où les sujets se comparent — cf.
      `GrapheAvancement`. Calculées ici parce que la LÉGENDE, qui doit les

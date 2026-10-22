@@ -532,6 +532,37 @@ describe('GET /consultation/avancement — formateur', () => {
     // Sa seule masse statutaire, jamais celle d'un collègue.
     expect(Object.keys(reponse.body.statutaires)).not.toContain('AHMED CHERKAOUI');
   });
+
+  /*
+   * ⚠️ L'INTITULÉ DE LA FILIÈRE DE SON GROUPE (2026-10-22) : le même code porte un
+   * autre module dans une autre filière, et le nom « par code » de l'établissement
+   * prenait celui de la première filière venue.
+   */
+  it('nomme ses modules dans la filière de son groupe', async () => {
+    // Un collègue enseigne M101 à GM102, d'une AUTRE filière — et sa ligne vient en premier.
+    await Base.updateOne(
+      { anneeScolaire: ANNEE },
+      {
+        $set: { groupeFilieres: { GM101: 'GM_CARTE', GM102: 'AA_X' } },
+        $push: {
+          affectations: {
+            $each: [{ formateur: '4211', groupe: 'GM102', module: 'M101', type: TYPES_COURS.PRESENTIEL, s1Heures: 20 }],
+            $position: 0,
+          },
+        },
+      }
+    );
+    await Repartition.create([
+      { codeFiliereDrif: 'AA_X', codeFiliereCarte: 'AA_X', secteur: 'Autre', anneeFormation: 1, codeModule: 'M101', module: 'Techniques de vente' },
+      { codeFiliereDrif: 'GM_CARTE', codeFiliereCarte: 'GM_CARTE', secteur: 'Génie Mécanique', anneeFormation: 1, codeModule: 'M101', module: 'Métrologie' },
+    ]);
+
+    const reponse = await request(app).get('/api/v2/consultation/avancement').set('Cookie', cookiesFormateur);
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.intitules.M101).toBe('Métrologie');
+    expect(reponse.body.intitulesParGroupe).toEqual({ 'GM101||M101': 'Métrologie' });
+  });
 });
 
 describe('GET /consultation/avancement — stagiaire', () => {

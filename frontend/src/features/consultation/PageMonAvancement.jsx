@@ -228,6 +228,9 @@ export default function PageMonAvancement() {
                 */
                 colonneComplement={complement === 'formateurs' ? 'Formateur' : null}
                 intitules={requete.data?.intitules ?? {}}
+                intitulesParGroupe={requete.data?.intitulesParGroupe ?? {}}
+                /* Le nom complet à côté du code (2026-10-22, demande du porteur). */
+                intituleEnClair
               />
             )}
           </>

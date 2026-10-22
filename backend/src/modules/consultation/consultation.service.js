@@ -207,6 +207,7 @@ export async function avancementFormateur(etablissementId, anneeScolaire, observ
 
   return {
     ...complet,
+    ...intitulesDesLignes(complet, [...complet.faces.edtpro, ...complet.faces.enote].filter(estMoi)),
     // ⚠️ Sa MASSE STATUTAIRE seule : celle des autres formateurs ne le regarde
     // pas, et la table entière révélerait la charge de tout l'établissement.
     statutaires: monNom in complet.statutaires ? { [monNom]: complet.statutaires[monNom] } : {},
@@ -215,6 +216,31 @@ export async function avancementFormateur(etablissementId, anneeScolaire, observ
       enote: complet.faces.enote.filter(estMoi),
     },
   };
+}
+
+/**
+ * Les intitulés de SES lignes, dans la filière de chaque groupe (2026-10-22,
+ * signalé par le porteur : M107 de GM101 s'affichait sous le nom d'une autre
+ * filière). `intitules` de l'avancement ne garde qu'un nom par code — celui de la
+ * première filière de l'établissement ; ici, chaque code prend celui de SES
+ * groupes (plusieurs filières : leurs noms séparés par « / »), et
+ * `intitulesParGroupe` se réduit à ses couples.
+ */
+function intitulesDesLignes(complet, lignes) {
+  const parGroupe = complet.intitulesParGroupe ?? {};
+  const noms = new Map();
+  const siens = {};
+  for (const ligne of lignes) {
+    const cle = cleGroupeModule(ligne.groupe, ligne.module);
+    const nom = parGroupe[cle];
+    if (!nom) continue;
+    siens[cle] = nom;
+    if (!noms.has(ligne.module)) noms.set(ligne.module, new Set());
+    noms.get(ligne.module).add(nom);
+  }
+  const intitules = { ...(complet.intitules ?? {}) };
+  for (const [code, ensemble] of noms) intitules[code] = [...ensemble].join(' / ');
+  return { intitules, intitulesParGroupe: siens };
 }
 
 /** L'avancement d'UN stagiaire : les lignes de son ou ses groupes. */
@@ -229,6 +255,7 @@ export async function avancementStagiaire(etablissementId, anneeScolaire, observ
 
   return {
     ...complet,
+    ...intitulesDesLignes(complet, [...complet.faces.edtpro, ...complet.faces.enote].filter(estMonGroupe)),
     // Les masses statutaires des formateurs ne concernent pas un stagiaire.
     statutaires: {},
     faces: {

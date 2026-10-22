@@ -24,6 +24,12 @@ export default function TableauAvancement({
   entete,
   axe,
   intitules = {},
+  /* Le nom par `groupe||module` (2026-10-22) : prioritaire quand la ligne est
+     ventilée par groupe — le même code porte un autre module dans une autre filière. */
+  intitulesParGroupe = {},
+  /* Le nom complet écrit à côté du code (2026-10-22, demande du porteur pour les
+     sessions formateur et stagiaire), plutôt qu'au seul survol. */
+  intituleEnClair = false,
   /**
    * ⚠️ `detaille` — LES BADGES DANS LEUR FORME LONGUE : « EFM régional » /
    * « Local » en pastille bordée plutôt que l'étoile seule, et « Semestre 1 » /
@@ -70,6 +76,8 @@ export default function TableauAvancement({
   cartesSous = 'md',
 }) {
   const parModule = axe === 'module';
+  const intituleDe = (ligne) =>
+    (ligne.ventilation && intitulesParGroupe[`${ligne.ventilation}||${ligne.sujet}`]) || intitules[ligne.sujet];
 
   /*
    * ═══ ⚠️ `TableauTriable`, PAS UN TABLEAU ÉCRIT ICI ═══ (2026-09-05, demande
@@ -88,6 +96,8 @@ export default function TableauAvancement({
     {
       id: 'sujet',
       entete,
+      // Le nom complet en clair s'enroule : la colonne ne s'étire pas sur une ligne.
+      enroule: intituleEnClair,
       tri: (ligne) => ligne.sujet ?? '',
       rendu: (ligne) => (
         <span className="font-medium">
@@ -104,13 +114,22 @@ export default function TableauAvancement({
             Affectations.
           */}
           <CarteAuSurvol
-            actif={parModule && Boolean(intitules[ligne.sujet])}
+            actif={parModule && Boolean(intituleDe(ligne))}
             enveloppe="inline-block"
             largeur="w-72"
-            contenu={() => <FicheModule ligne={ligne} intitule={intitules[ligne.sujet]} />}
+            contenu={() => <FicheModule ligne={ligne} intitule={intituleDe(ligne)} />}
           >
             {ligne.sujet}
           </CarteAuSurvol>
+
+          {/* SOUS le code, et il RETOURNE À LA LIGNE (2026-10-22, demande du porteur) :
+              écrit à côté, un long intitulé élargissait la colonne jusqu'à faire
+              défiler le tableau horizontalement. */}
+          {intituleEnClair && parModule && intituleDe(ligne) && (
+            <span className="mt-0.5 block max-w-80 whitespace-normal text-xs font-normal leading-snug text-muted-foreground">
+              {intituleDe(ligne)}
+            </span>
+          )}
 
           {/*
             ⚠️ LA VENTILATION EST NOMMÉE, sans quoi deux lignes « EGQ107 » se

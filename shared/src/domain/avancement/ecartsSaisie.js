@@ -25,6 +25,13 @@ import { lundiPremiereSemaine } from '../planning/anneeScolaire.js';
  * précédent (inclus) au jour du dépôt (exclu) — les séances du jour même n'ont
  * en général pas encore été saisies au moment de l'export.
  *
+ * ⚠️ LE DÉPÔT S'ARRÊTE À SON EXPORT, PAS À SON IMPORT (2026-10-22, signalé par
+ * le porteur : FOUAD NOUZRI à 40 h d'EDT en S6 pour 25 h dans la grille). Un
+ * fichier « AvancementProgramme…_25_09_2026_13_58_48 » importé le 27/09 ne
+ * contient rien après le 25/09 : borner la fenêtre au jour de l'import comptait
+ * côté EDT des séances qu'e-note ne pouvait pas encore porter. Le jour d'export
+ * se lit dans le nom du fichier ; à défaut, le jour de l'import.
+ *
  * ⚠️ LE PRÉSENTIEL ET LE SYNCHRONE S'ADDITIONNENT : la grille ne distingue les
  * deux que par la salle, et le formateur saisit les deux dans e-note. Une séance
  * synchrone MUTUALISÉE ne compte qu'une fois — e-note la porte sur chaque
@@ -75,6 +82,7 @@ export function ecartsDeSaisie({
   });
 
   /* ── eDTpro : les séances tenues dans la fenêtre de chaque dépôt ───────── */
+  const unParCreneau = creneauUnique();
   for (const seance of seances) {
     if (!realisee(seance)) continue;
 
@@ -84,7 +92,7 @@ export function ecartsDeSaisie({
     if (index === -1) continue;
 
     const { cle, nom } = identite(seance.formateurMatricule);
-    if (!cle) continue;
+    if (!cle || !unParCreneau(cle, jour, seance.seance)) continue;
     const cellule = ligneDe(cle, nom).cellules[index];
     cellule.edt = arrondir(cellule.edt + dureeSeance(seance.seance));
   }
@@ -101,7 +109,7 @@ export function ecartsDeSaisie({
       debut: debut ? jourLocal(debut) : null,
       fin: jourLocal(fin),
       fichier: depot.nomFichier ?? '',
-      importeLe: jourLocal(depot.jour),
+      importeLe: jourLocal(depot.importe),
     };
   });
 
@@ -187,11 +195,13 @@ export function detailEcartDeSaisie({
   }
 
   /* ── eDTpro : les séances du formateur dans la fenêtre ─────────────────── */
+  const unParCreneau = creneauUnique();
   for (const seance of seances) {
     if (!realisee(seance)) continue;
     const jour = debutDuJour(seance.date);
     if (jour >= fin || (debut && jour < debut)) continue;
     if (identite(seance.formateurMatricule).cle !== cle) continue;
+    if (!unParCreneau(cle, jour, seance.seance)) continue;
 
     const ligne = ligneDe(String(seance.groupe ?? '').trim(), String(seance.module ?? '').trim());
     const heures = dureeSeance(seance.seance);
@@ -256,13 +266,53 @@ function retenirDepots(imports, anneeScolaire, rentrees) {
   const parSemaine = new Map();
   imports
     .filter((depot) => depot?.importeLe)
-    .map((depot) => ({ ...depot, jour: debutDuJour(depot.importeLe) }))
-    .sort((a, b) => a.jour - b.jour)
+    .map((depot) => ({ ...depot, importe: debutDuJour(depot.importeLe) }))
+    .sort((a, b) => a.importe - b.importe)
     .forEach((depot) => {
-      const semaine = semaineDansAnnee(anneeScolaire, depot.jour, rentrees).numero;
+      const semaine = semaineDansAnnee(anneeScolaire, depot.importe, rentrees).numero;
       parSemaine.set(semaine, { ...depot, semaine });
     });
-  return [...parSemaine.values()].sort((a, b) => a.semaine - b.semaine);
+
+  /* `jour` borne la fenêtre : le jour d'EXPORT du fichier. ⚠️ JAMAIS EN
+     ARRIÈRE du dépôt précédent — un vieux fichier réimporté rendrait une
+     fenêtre à l'envers. */
+  let borne = null;
+  return [...parSemaine.values()]
+    .sort((a, b) => a.semaine - b.semaine)
+    .map((depot) => {
+      const exporte = jourDExport(depot.nomFichier);
+      let jour = exporte && exporte <= depot.importe ? exporte : depot.importe;
+      if (borne && jour < borne) jour = borne;
+      borne = jour;
+      return { ...depot, jour };
+    });
+}
+
+/**
+ * Le jour d'export inscrit par e-note dans le nom du fichier :
+ * « AvancementProgramme2026_EOS0_25_09_2026_13_58_48.xlsx » → 25/09/2026.
+ * `null` si le fichier a été renommé.
+ */
+function jourDExport(nomFichier) {
+  const m = String(nomFichier ?? '').match(/_(\d{2})_(\d{2})_(\d{4})_\d{2}_\d{2}_\d{2}(?:\D|$)/);
+  if (!m) return null;
+  const date = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/**
+ * ⚠️ UNE SÉANCE PAR FORMATEUR ET PAR CRÉNEAU : un formateur n'est pas à deux
+ * endroits à la fois. Une séance enregistrée en double — par groupe d'un
+ * ensemble, ou restée d'une version précédente de la grille — gonflait l'EDT.
+ */
+function creneauUnique() {
+  const vus = new Set();
+  return (cle, jour, creneau) => {
+    const code = `${cle}|${jourLocal(jour)}|${creneau}`;
+    if (vus.has(code)) return false;
+    vus.add(code);
+    return true;
+  };
 }
 
 /**

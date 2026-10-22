@@ -220,10 +220,16 @@ function Frise({ semaines, periodes, parPeriode, manqueParPeriode, recherche, on
                       S{semaine.numero}
                       {dernier && <span className="font-normal text-muted-foreground">· dernier dépôt</span>}
                     </span>
+                    {/* ⚠️ LA PÉRIODE COMPARÉE, PAS LA SEMAINE CIVILE (2026-10-22) : elle
+                        va d'un export e-note au suivant et peut couvrir plus d'une
+                        semaine — afficher le lundi–samedi faisait lire l'EDT comme
+                        celui de la seule semaine. */}
                     <span className="block truncate text-[0.65rem] text-muted-foreground">
-                      {date(semaine.debut)} – {date(semaine.fin)}
-                      {periode && periode.depuisSemaine < semaine.numero &&
-                        ` · saisie depuis S${periode.depuisSemaine}`}
+                      {periode
+                        ? periode.debut
+                          ? `séances du ${date(periode.debut)} au ${date(periode.fin)}`
+                          : `séances jusqu’au ${date(periode.fin)}`
+                        : `${date(semaine.debut)} – ${date(semaine.fin)}`}
                     </span>
                   </span>
                   <span className="flex shrink-0 items-center gap-1">
@@ -267,9 +273,9 @@ function Frise({ semaines, periodes, parPeriode, manqueParPeriode, recherche, on
       </div>
 
       <p className="text-xs text-muted-foreground">
-        E-note : heures saisies depuis le dépôt précédent · EDT : heures des séances réalisées
-        (terminées) sur la même période, absences et surveillances d’EFM exclues, rattrapages
-        compris · Écart = E-note − EDT.
+        E-note : heures saisies entre l’export e-note précédent et celui de la colonne · EDT :
+        heures des séances réalisées (terminées) sur cette même période, indiquée sous chaque
+        semaine, absences et surveillances d’EFM exclues, rattrapages compris · Écart = E-note − EDT.
       </p>
     </div>
   );

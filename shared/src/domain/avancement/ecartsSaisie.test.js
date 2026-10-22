@@ -65,6 +65,42 @@ describe('ecartsDeSaisie', () => {
     expect(lignes[0].cellules[1]).toEqual({ enote: 5, edt: 5, ecart: 0 });
   });
 
+  it('arrête la fenêtre au jour d’export inscrit dans le nom du fichier, pas à l’import', () => {
+    const imports = [
+      { importeLe: new Date('2026-09-07T09:00:00'), lignes: [] },
+      {
+        importeLe: new Date('2026-09-19T09:00:00'),
+        nomFichier: 'AvancementProgramme2026_EOS0_15_09_2026_13_58_48.xlsx',
+        lignes: [],
+      },
+    ];
+    const seances = [
+      seance('2026-09-14', 'M1'),
+      seance('2026-09-16', 'M1'), // après l'export : e-note ne peut pas encore la porter
+      seance('2026-09-18', 'M1'),
+    ];
+
+    const { periodes, formateurs: lignes } = ecartsDeSaisie({ imports, seances, formateurs, anneeScolaire: 2026 });
+
+    expect(periodes[1]).toMatchObject({ debut: '2026-09-07', fin: '2026-09-14', importeLe: '2026-09-19' });
+    expect(lignes[0].cellules[1].edt).toBe(2.5);
+  });
+
+  it('ne compte qu’une séance par formateur et par créneau', () => {
+    const { formateurs: lignes } = ecartsDeSaisie({
+      imports: [{ importeLe: new Date('2026-09-14T09:00:00'), lignes: [] }],
+      seances: [
+        seance('2026-09-08', 'M1', { groupe: 'G1' }),
+        seance('2026-09-08', 'M1', { groupe: 'G2' }),
+        seance('2026-09-08', 'M1', { groupe: 'G1', seance: 'S2' }),
+      ],
+      formateurs,
+      anneeScolaire: 2026,
+    });
+
+    expect(lignes[0].cellules[0].edt).toBe(5);
+  });
+
   it('ne compte qu’une fois le synchrone d’un ensemble fusionné', () => {
     const synchrone = { matriculeSynchrone: 'M2', formateurSynchrone: 'BENNANI OMAR', realiseSynchrone: 4 };
     const { formateurs: lignes } = ecartsDeSaisie({

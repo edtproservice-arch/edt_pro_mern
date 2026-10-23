@@ -220,16 +220,10 @@ function Frise({ semaines, periodes, parPeriode, manqueParPeriode, recherche, on
                       S{semaine.numero}
                       {dernier && <span className="font-normal text-muted-foreground">· dernier dépôt</span>}
                     </span>
-                    {/* ⚠️ LA PÉRIODE COMPARÉE, PAS LA SEMAINE CIVILE (2026-10-22) : elle
-                        va d'un export e-note au suivant et peut couvrir plus d'une
-                        semaine — afficher le lundi–samedi faisait lire l'EDT comme
-                        celui de la seule semaine. */}
                     <span className="block truncate text-[0.65rem] text-muted-foreground">
-                      {periode
-                        ? periode.debut
-                          ? `séances du ${date(periode.debut)} au ${date(periode.fin)}`
-                          : `séances jusqu’au ${date(periode.fin)}`
-                        : `${date(semaine.debut)} – ${date(semaine.fin)}`}
+                      {date(semaine.debut)} – {date(semaine.fin)}
+                      {periode && periode.depuisSemaine < semaine.numero &&
+                        ` · saisie depuis S${periode.depuisSemaine}`}
                     </span>
                   </span>
                   <span className="flex shrink-0 items-center gap-1">
@@ -261,6 +255,7 @@ function Frise({ semaines, periodes, parPeriode, manqueParPeriode, recherche, on
                       <CarteFormateur
                         key={formateur.cle}
                         formateur={formateur}
+                        exporteLe={periode.exporteLe}
                         onOuvrir={() => onOuvrir({ ...formateur, semaine: semaine.numero })}
                       />
                     ))
@@ -273,16 +268,18 @@ function Frise({ semaines, periodes, parPeriode, manqueParPeriode, recherche, on
       </div>
 
       <p className="text-xs text-muted-foreground">
-        E-note : heures saisies entre l’export e-note précédent et celui de la colonne · EDT :
-        heures des séances réalisées (terminées) sur cette même période, indiquée sous chaque
-        semaine, absences et surveillances d’EFM exclues, rattrapages compris · Écart = E-note − EDT.
+        E-note : heures saisies depuis le dépôt précédent · EDT : heures des séances réalisées
+        (terminées) de la semaine, absences et surveillances d’EFM exclues, rattrapages compris ·
+        Écart = E-note − EDT, approché si l’export e-note n’est pas fait en fin de semaine · Manque
+        cumulé : tout ce qui est saisi depuis la rentrée moins tout ce qui est réalisé avant le jour
+        de l’export.
       </p>
     </div>
   );
 }
 
 /** Une carte : l'écart en tête, puis le nom et le détail E-note / EDT. */
-function CarteFormateur({ formateur, onOuvrir }) {
+function CarteFormateur({ formateur, exporteLe, onOuvrir }) {
   return (
     <button
       type="button"
@@ -297,6 +294,19 @@ function CarteFormateur({ formateur, onOuvrir }) {
         <span className="block truncate font-medium leading-snug">{formateur.nom}</span>
         <span className="block text-[0.65rem] tabular-nums text-muted-foreground">
           E-note {nombre(formateur.enote)} h · EDT {nombre(formateur.edt)} h
+        </span>
+        {/* ⚠️ LE MANQUE CUMULÉ (2026-10-23, choix du porteur) : juste quel que soit
+            le jour d'export, là où l'écart de la semaine n'est qu'approché. */}
+        <span
+          className={cn(
+            'block text-[0.65rem] tabular-nums',
+            formateur.manque < 0 ? 'font-medium text-destructive' : 'text-muted-foreground'
+          )}
+          title={`Depuis la rentrée : E-note ${nombre(formateur.enoteCumul)} h · EDT réalisé ${nombre(formateur.edtCumul)} h`}
+        >
+          {formateur.manque < 0
+            ? `Manque cumulé au ${date(exporteLe)} : ${nombre(-formateur.manque)} h`
+            : `À jour au ${date(exporteLe)}`}
         </span>
       </span>
     </button>

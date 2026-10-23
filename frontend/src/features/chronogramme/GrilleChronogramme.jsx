@@ -26,6 +26,8 @@ import {
   posesCumulees,
   separerFusion,
   totalSemaineFusionnee,
+  MOTIF_REAFFECTATION,
+  MOTIF_REALISE,
 } from 'shared/domain';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import {
@@ -51,6 +53,7 @@ import {
   FOND_FORMATION as FOND_FORMATION_COMMUN,
   FOND_PRESENTIEL as FOND_PRESENTIEL_COMMUN,
   FOND_FORMATION_PARTIEL,
+  FOND_REAFFECTATION,
   FOND_STAGE_PARTIEL,
   FOND_STAGE as FOND_STAGE_COMMUN,
   FOND_SYNCHRONE as FOND_SYNCHRONE_COMMUN,
@@ -426,7 +429,14 @@ export default function GrilleChronogramme({
    * deux vues — l'existant s'en tient là aussi, avec un seul générateur de
    * tableau pour les deux modes (profil-principal.js:5589).
    */
-  colonne = { titre: 'Formateur', valeur: (module) => module.formateurs?.join(' · ') },
+  colonne = {
+    titre: 'Formateur',
+    // Module réaffecté (2026-10-22) : « ALAMI (S1–S7, terminé) », « BENNANI (depuis S8) ».
+    valeur: (module) =>
+      [module.formateurs?.join(' · '), module.noteFormateur && `(${module.noteFormateur})`]
+        .filter(Boolean)
+        .join(' '),
+  },
   /*
    * Repère du pied de grille. 30 h sature un GROUPE (6 jours × 5 séances) ; un
    * FORMATEUR, lui, a sa masse statutaire — 24 h le plus souvent. Colorer 30 h
@@ -2123,6 +2133,8 @@ function fondDeLaCellule(cellule, semaine) {
   if (semaine.motif === 'rentree') return ' ' + FOND_AVANT_RENTREE;
   if (semaine.motif === 'stage') return ' ' + FOND_STAGE;
   if (semaine.motif === 'formation') return ' ' + FOND_FORMATION;
+  // Module réaffecté (2026-10-22) : la semaine est sur la ligne de l'autre formateur.
+  if (semaine.motif === MOTIF_REAFFECTATION || semaine.motif === MOTIF_REALISE) return ' ' + FOND_REAFFECTATION;
   /*
    * ⚠️ UNE SEMAINE SEULEMENT AMPUTÉE PREND LA TEINTE PLUS CLAIRE (2026-08-26,
    * demande du porteur). Trois jours de stage laissent trois jours ouverts : la

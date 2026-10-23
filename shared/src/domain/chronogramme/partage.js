@@ -1,5 +1,6 @@
 import { TYPES, celluleDepuisParts, partsDeCellule } from './planning.js';
 import { cleLigne } from './fusion.js';
+import { cellulesDeLaLigne, fusionnerLigne } from './reaffectation.js';
 
 /**
  * Le module PARTAGÉ PAR TYPE : l'un assure le présentiel, l'autre le synchrone.
@@ -121,7 +122,11 @@ export function planningDesLignes(planning = {}, lignes = []) {
   const table = {};
   for (const ligne of lignes) {
     const source = planning?.[ligne.cleSource ?? cleLigne(ligne)] ?? {};
-    table[cleLigne(ligne)] = ligne.typeSeul ? cellulesDuType(source, ligne.typeSeul) : source;
+    // Une ligne bornée à ses semaines — module réaffecté (2026-10-22) — ne montre qu'elles ;
+    // celle d'un ancien titulaire, les heures qu'il a FAITES, lues dans l'emploi (2026-10-23).
+    if (ligne.realise) table[cleLigne(ligne)] = ligne.realise;
+    else if (ligne.plage) table[cleLigne(ligne)] = cellulesDeLaLigne(source, ligne);
+    else table[cleLigne(ligne)] = ligne.typeSeul ? cellulesDuType(source, ligne.typeSeul) : source;
   }
   return table;
 }
@@ -143,6 +148,19 @@ export function planningDepuisLignes(plat = {}, lignes = [], planning = {}) {
   for (const ligne of lignes) {
     const cleSource = ligne.cleSource ?? cleLigne(ligne);
     const cellules = plat?.[cleLigne(ligne)] ?? {};
+
+    /*
+     * ⚠️ MODULE RÉAFFECTÉ (2026-10-22) : la ligne n'écrit que SES semaines. Les
+     *    autres — celles de l'ancien ou du nouveau formateur — repartent de ce
+     *    qui est déjà réécrit, jamais de cette ligne qui ne les montre pas.
+     */
+    // Les heures faites d'un ancien titulaire se lisent dans l'emploi : rien à réécrire.
+    if (ligne.realise) continue;
+
+    if (ligne.plage) {
+      suivant[cleSource] = fusionnerLigne(suivant[cleSource] ?? {}, cellules, ligne);
+      continue;
+    }
 
     if (!ligne.typeSeul) {
       suivant[cleSource] = cellules;

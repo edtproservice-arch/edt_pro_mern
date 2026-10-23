@@ -22,6 +22,7 @@ import {
   pese,
 } from './cascadeGroupes.js';
 import { conditionVersion, versionPerimee } from '../../lib/versionOptimiste.js';
+import { journaliser as journaliserReaffectations } from '../chronogramme/reaffectations.service.js';
 
 /**
  * Enregistrement d'une carte d'établissement construite à la main (F3, F13).
@@ -258,6 +259,8 @@ export async function enregistrerCarte({
    * ici — c'est `exigerDroitPage` et le rôle du compte qui en décident.
    */
   identifiantFormateurRestreint = null,
+  /** Le compte qui enregistre — l'auteur des réaffectations au journal (2026-10-22). */
+  auteur = null,
 }) {
   const lignes = carteVersLignesEnote(carte, anneeScolaire);
 
@@ -564,6 +567,21 @@ export async function enregistrerCarte({
         ],
         { session }
       );
+
+      /*
+       * ═══ LE JOURNAL DES RÉAFFECTATIONS (2026-10-22, demande du porteur) ═══
+       * La base est remplacée en entier : c'est ici seulement, entre
+       * `precedente` et la nouvelle, qu'un changement de titulaire se voit. Dans
+       * la même transaction — une carte refusée ne journalise rien.
+       */
+      await journaliserReaffectations({
+        etablissementId,
+        anneeScolaire,
+        avant: precedente?.affectations ?? [],
+        apres: structure.affectations,
+        auteur,
+        session,
+      });
 
       base = creee;
     });

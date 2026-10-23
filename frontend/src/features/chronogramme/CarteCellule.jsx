@@ -1,9 +1,10 @@
-import { Briefcase, CalendarClock, GraduationCap, Gauge, Palmtree } from 'lucide-react';
+import { ArrowRightLeft, Briefcase, CalendarClock, GraduationCap, Gauge, Palmtree } from 'lucide-react';
 import { PLAFOND_CELLULE, plafondSemaine } from 'shared/domain';
 import CarteAuSurvol from '@/components/common/CarteAuSurvol';
 import {
   FOND_AVANT_RENTREE,
   FOND_FORMATION,
+  FOND_REAFFECTATION,
   FOND_STAGE,
 } from '@/components/common/apparenceGrille';
 import { cn } from '@/lib/utils';
@@ -94,6 +95,22 @@ const MOTIFS = {
     fond: FOND_FORMATION,
     titre: 'Formateur en congé ou en formation toute la semaine',
     phrase: 'La personne est absente les six jours.',
+  },
+  // Module réaffecté en cours d'année (2026-10-22).
+  reaffectation: {
+    icone: ArrowRightLeft,
+    fond: FOND_REAFFECTATION,
+    titre: 'Semaine de l’autre formateur',
+    phrase:
+      'Le module a changé de formateur en cours d’année : cette semaine se lit et se saisit sur la ligne de l’autre formateur.',
+  },
+  // Les heures faites par l'ancien titulaire, lues dans l'emploi (2026-10-23).
+  realise: {
+    icone: ArrowRightLeft,
+    fond: FOND_REAFFECTATION,
+    titre: 'Heures faites par l’ancien formateur',
+    phrase:
+      'Lues dans l’emploi du temps : elles se corrigent dans l’emploi, et sont retirées de la masse du nouveau formateur.',
   },
   masse: {
     icone: Gauge,

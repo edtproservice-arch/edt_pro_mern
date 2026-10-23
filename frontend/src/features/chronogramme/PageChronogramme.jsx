@@ -24,6 +24,7 @@ import {
   planningDesLignes,
   partsDeCellule,
   poserAvecJumelles,
+  scinderParReaffectation,
   scinderParType,
   semainesDeLaLigne,
 } from 'shared/domain';
@@ -53,6 +54,7 @@ import {
 } from './api';
 import GrilleChronogramme, { FOND_FORMATION, FOND_STAGE, LegendeRattrapage } from './GrilleChronogramme';
 import VueFormateur from './VueFormateur';
+import JournalReaffectations from './JournalReaffectations';
 import SectionGrille, { OUVERTES_AU_DEPART } from './SectionGrille';
 import { useCaseCiblee } from './useCaseCiblee';
 import BoutonDupliquer from './BoutonDupliquer';
@@ -1292,9 +1294,21 @@ function SectionGroupe({
    * props inégales et la mémoïsation ne retenait rien. Mesuré : ouvrir la liste
    * d'UNE cellule coûtait encore 879 ms.
    */
-  const lignes = useMemo(
+  /*
+   * ═══ MODULE RÉAFFECTÉ EN COURS D'ANNÉE (2026-10-22, demande du porteur) ═══
+   * Une ligne par ancien titulaire, bornée aux semaines qu'il a faites, puis
+   * celle du titulaire actuel, qui commence après la bascule. Leurs masses se
+   * lisent dans le planning : il entre donc dans le calcul — mais seuls les
+   * modules réaffectés deviennent de nouveaux objets, les autres restent les
+   * mêmes et la mémoïsation des cellules tient.
+   */
+  const lignesTypees = useMemo(
     () => (requete?.data ? scinderParType(modulesAvecFormations(requete.data)) : []),
     [requete?.data]
+  );
+  const lignes = useMemo(
+    () => scinderParReaffectation(lignesTypees, planning ?? {}, requete?.data?.semaines ?? []),
+    [lignesTypees, planning, requete?.data?.semaines]
   );
 
   /*
@@ -1307,7 +1321,7 @@ function SectionGroupe({
    * ⚠️ SANS MODULE PARTAGÉ, RIEN N'EST RECONSTRUIT : mêmes modules, même
    * planning, la mémoïsation des cellules est intacte.
    */
-  const partage = lignes.some((ligne) => ligne.typeSeul);
+  const partage = lignes.some((ligne) => ligne.typeSeul || ligne.plage);
   /*
    * ⚠️ PLUS DE VERROU ENTRE LES DEUX PARTS (2026-10-01) : une semaine portée
    * par l'un accueille aussi l'autre, en case mixte.
@@ -1373,17 +1387,26 @@ function SectionGroupe({
           Affectations » : un module sans formateur n&apos;y figure pas encore.
         </Alerte>
       ) : (
-        <GrilleChronogramme
-          modules={modulesPrepares}
-          semaines={requete.data.semaines}
-          planning={planningAffiche}
-          onChanger={surChangement}
-          lectureSeule={lectureSeule}
-          groupe={groupe}
-          onOuverture={onOuverture}
-          // Semaines d'absence et de rattrapage de ce groupe (2026-09-14).
-          marques={requete.data.marques}
-        />
+        <div className="space-y-2">
+          {/* La trace des modules réaffectés en cours d'année (2026-10-22). */}
+          <JournalReaffectations
+            groupe={groupe}
+            lignes={modulesPrepares}
+            semaines={requete.data.semaines}
+            lectureSeule={lectureSeule}
+          />
+          <GrilleChronogramme
+            modules={modulesPrepares}
+            semaines={requete.data.semaines}
+            planning={planningAffiche}
+            onChanger={surChangement}
+            lectureSeule={lectureSeule}
+            groupe={groupe}
+            onOuverture={onOuverture}
+            // Semaines d'absence et de rattrapage de ce groupe (2026-09-14).
+            marques={requete.data.marques}
+          />
+        </div>
       )}
     </SectionGrille>
   );

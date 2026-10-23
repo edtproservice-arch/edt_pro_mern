@@ -11,6 +11,7 @@ import * as service from './chronogramme.service.js';
 import * as completude from './completude.service.js';
 import * as completer from '../generation/completer.service.js';
 import * as generation from './generation.service.js';
+import * as reaffectations from './reaffectations.service.js';
 import { exigerDroitPage } from '../partages/exigerDroitPage.js';
 import { annoncerModification } from '../tempsReel/annonces.js';
 
@@ -590,6 +591,42 @@ router.get('/:groupe', lire, validate({ params: nomGroupe }), async (req, res, n
  * sert de référence au « planifié » de l'avancement, et la génération d'emploi
  * du temps le lit — d'où un droit explicite, jamais le seul rôle.
  */
+/**
+ * ═══ LA BASCULE D'UN MODULE RÉAFFECTÉ, FIXÉE À LA MAIN (2026-10-22) ═══
+ * Par défaut, la dernière semaine de l'ancien titulaire se lit dans l'emploi du
+ * temps ; quand celui-ci se trompe (séances mal saisies), on la fixe ici.
+ * `derniereSemaine: null` la rend à l'emploi.
+ */
+const basculeSchema = z.object({
+  groupe: z.string().trim().min(1).max(60),
+  module: z.string().trim().min(1).max(40),
+  type: z.enum(['P', 'S']),
+  ancien: z.string().trim().min(1).max(80),
+  derniereSemaine: z.number().int().min(1).max(60).nullable(),
+  // « Ce n'était pas une réaffectation » : un remplaçant pris pour l'ancien titulaire (2026-10-23).
+  ignoree: z.boolean().optional(),
+});
+
+router.put(
+  '/reaffectations/bascule',
+  modifier,
+  validate({ body: basculeSchema }),
+  async (req, res, next) => {
+    try {
+      const resultat = await reaffectations.fixerBascule(
+        req.etablissementId,
+        req.anneeScolaire,
+        req.body,
+        req.utilisateur._id
+      );
+      res.json({ success: true, ...resultat });
+      annoncerModification(req, 'chronogramme', { action: 'reaffectation', groupe: req.body.groupe });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 router.put(
   '/:groupe',
   modifier,

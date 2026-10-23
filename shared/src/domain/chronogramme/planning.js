@@ -151,6 +151,9 @@ const REFUS = {
   rentree: 'Ce groupe n’a pas encore fait sa rentrée.',
   stage: 'Ce groupe est en stage cette semaine.',
   formation: 'Le formateur est en formation cette semaine.',
+  // Module réaffecté (2026-10-22) : la semaine est sur la ligne de l'autre formateur.
+  reaffectation: 'Cette semaine revient à l’autre formateur du module (réaffectation) : saisissez-la sur sa ligne.',
+  realise: 'Ce sont les heures faites par l’ancien formateur, lues dans l’emploi du temps : corrigez-les dans l’emploi.',
 };
 
 function motifDeRefus(semaine) {

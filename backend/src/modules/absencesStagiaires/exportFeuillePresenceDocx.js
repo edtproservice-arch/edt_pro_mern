@@ -63,6 +63,11 @@ export const MODELES = {
     tableListe: 3,
     ligne: (s) => [s.matricule, `${s.nom} ${s.prenom}`.trim()],
   },
+  /* ⚠️ NOUVEAU CANEVAS (2026-10-22, `Feuille_Presence_CC_EFM.docx`) : le bloc central
+     ajoute les contrôles 1 à 6, Écrit / Oral / TP, Inscrits / Présents et l'horaire
+     « Du … Au … » — tout à la main ; l'en-tête et la liste gardent leurs cases. Sa
+     marge du bas (0,25 cm) passe à 3,3 cm, la hauteur du pied « Surveillants » :
+     Word l'agrandissait seul, LibreOffice (le PDF) y faisait chevaucher la liste. */
   'cc-efm': {
     chemin: canevas('feuillePresenceCcEfm.docx'),
     nomFichier: 'Presence_CC_EFM',

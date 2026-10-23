@@ -10,7 +10,7 @@
 import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 
-import { semainesChronogramme } from 'shared/domain';
+import { cleReaffectation, semainesChronogramme } from 'shared/domain';
 import { TYPES_COURS } from 'shared/constants';
 
 import {
@@ -536,6 +536,43 @@ describe('les modes', () => {
     expect(lot.plafonds[3]).toBeUndefined();
     expect(lot.plafonds[4]).toBe(10);
     expect(construit.probleme.formateurs[0].charges).toEqual({ 3: 10 });
+  });
+});
+
+describe('module réaffecté : les semaines de l’ancien titulaire sont protégées (2026-10-23)', () => {
+  // M101 de GM101 : « 300 » l'a fait jusqu'en S3 (5 h en S2, 5 h en S3, d'après l'emploi), « 100 » le reprend.
+  const reaffectations = new Map([
+    [
+      cleReaffectation('GM101', 'M101', 'P'),
+      [{ ancien: '300', nom: 'ANCIEN', derniereSemaine: 3, realise: { 2: 5, 3: 5 } }],
+    ],
+  ]);
+  const plannings = { GM101: { M101: { 2: { heures: 5, type: 'P' }, 6: { heures: 10, type: 'P' } } } };
+
+  it('« Tout refaire » garde ses cases, et n’efface que celles du titulaire', () => {
+    const construit = construire([affectation('100', 'GM101', 'M101', P, 60)], { plannings, reaffectations });
+    expect(construit.conserves.GM101).toEqual({ M101: { 2: { P: 5, S: 0 } } });
+    expect(construit.partsRemplacees).toBe(1);
+  });
+
+  it('le titulaire ne reçoit rien avant la bascule, et seulement ce qui reste', () => {
+    const { probleme } = construire([affectation('100', 'GM101', 'M101', P, 60)], { plannings, reaffectations });
+    const [lot] = probleme.taches[0].lots;
+    // 60 h moins les 10 h faites par l'ancien.
+    expect(lot.heures).toBe(50);
+    expect(Object.keys(lot.plafonds).map(Number).every((numero) => numero > 3)).toBe(true);
+  });
+
+  it('« Compléter » ne compte pas ses cases comme celles du titulaire', () => {
+    const { probleme } = construire(
+      [affectation('100', 'GM101', 'M101', P, 60)],
+      { plannings, reaffectations },
+      { mode: 'completer' }
+    );
+    const [lot] = probleme.taches[0].lots;
+    // 60 − 10 (fait par l'ancien, emploi) − 10 (déjà posé en S6 pour le titulaire).
+    expect(lot.heures).toBe(40);
+    expect(lot.plafonds[2]).toBeUndefined();
   });
 });
 

@@ -3,7 +3,14 @@ import {
   TYPES,
   anneeDuNomGroupe,
   celluleDepuisParts,
+  cellulesDeLaLigne,
   cellulesDuType,
+  cellulesRealisees,
+  cleReaffectation,
+  dejaFaitPar,
+  massesDeLaLigne,
+  planningDesLignes,
+  scinderParReaffectation,
   partsDeCellule,
   chargesHebdomadaires,
   dateRentree,
@@ -33,6 +40,7 @@ import { joursFeries as joursFeriesEtablissement } from '../calendrier/calendrie
 import { obtenir as calendrierNational } from '../calendrierNational/calendrierNational.service.js';
 import { inviter as inviterSurPage } from '../partages/partages.service.js';
 import { envoyer as envoyerMessage } from '../messagerie/messagerie.service.js';
+import { reaffectationsDeLAnnee, reaffectationsDuModule } from './reaffectations.service.js';
 
 /**
  * Vacances RÉELLES d'un établissement : celles du réseau, moins celles qu'il a
@@ -83,6 +91,68 @@ export function nomDuFormateur(base, cle) {
     (candidat) => String(candidat.matricule ?? '').trim() === cle
   );
   return formateur?.nomComplet ?? cle;
+}
+
+/**
+ * La ligne du TITULAIRE d'un module repris en cours d'année (2026-10-22) : elle
+ * ne commence qu'après la bascule de son dernier prédécesseur, et sa masse est
+ * celle du module moins ce que les anciens ont fait (`massesDeLaLigne`, côté
+ * écran, avec le planning du groupe).
+ *
+ * ⚠️ UN SEUL TYPE REPRIS : la ligne se scinde par type — le synchrone que la
+ *    personne assurait déjà ne commence pas, lui, à la bascule du présentiel.
+ */
+function bornerTitulaire(ligne, reaffectations) {
+  const types = ligne.typeSeul
+    ? [ligne.typeSeul]
+    : [TYPES.PRESENTIEL, TYPES.SYNCHRONE].filter(
+        (type) => (type === TYPES.SYNCHRONE ? ligne.masses.synchrone : ligne.masses.presentiel) > 0
+      );
+  const parType = types.map((type) => reaffectations.get(cleReaffectation(ligne.groupe, ligne.code, type)) ?? []);
+  if (parType.every((anciens) => anciens.length === 0)) return [ligne];
+
+  const borner = (seule, anciens, typesDeLaLigne) =>
+    anciens.length === 0
+      ? seule
+      : {
+          ...seule,
+          plage: { de: anciens[anciens.length - 1].derniereSemaine + 1, a: null },
+          massesTotales: seule.masses,
+          reprisDe: anciens,
+          // Ce que les anciens ont FAIT, lu dans l'emploi (2026-10-23) : retiré de sa masse.
+          dejaFait: dejaFaitPar(
+            typesDeLaLigne.flatMap((type) =>
+              (reaffectations.get(cleReaffectation(ligne.groupe, ligne.code, type)) ?? []).map((ancien) => ({
+                ...ancien,
+                realiseParType: { [type]: ancien.realise ?? {} },
+              }))
+            ),
+            typesDeLaLigne
+          ),
+        };
+  const signature = (anciens) => anciens.map((a) => `${a.ancien}@${a.derniereSemaine}`).join('|');
+
+  if (types.length > 1 && signature(parType[0]) !== signature(parType[1])) {
+    return types.map((type, rang) => {
+      const estS = type === TYPES.SYNCHRONE;
+      return borner(
+        {
+          ...ligne,
+          suffixe: `#${type}`,
+          typeSeul: type,
+          masses: {
+            presentiel: estS ? 0 : ligne.masses.presentiel,
+            synchrone: estS ? ligne.masses.synchrone : 0,
+          },
+          formateursPresentiel: estS ? [] : ligne.formateursPresentiel,
+          formateursSynchrone: estS ? ligne.formateursSynchrone : [],
+        },
+        parType[rang],
+        [type]
+      );
+    });
+  }
+  return [borner(ligne, parType.find((anciens) => anciens.length > 0), types)];
 }
 
 /**
@@ -242,6 +312,12 @@ export function modulesDuGroupe(base, groupe, intitules = new Map(), contexte = 
       // Même règle que les badges de la grille d'affectations, pas une seconde
       // écriture : S1 seul, S2 seul, ou annuel.
       semestre: module.s1 > 0 && module.s2 > 0 ? 'annuel' : module.s1 > 0 ? 'S1' : 'S2',
+      /*
+       * Les anciens titulaires, par type (2026-10-22) — `null` sans
+       * réaffectation. L'écran en tire une ligne par ancien
+       * (`scinderParReaffectation`).
+       */
+      reaffectations: reaffectationsDuModule(contexte.reaffectations, groupe, module.code),
     }))
     .sort((a, b) => a.code.localeCompare(b.code, 'fr'));
 }
@@ -469,6 +545,8 @@ export async function obtenir(etablissementId, anneeScolaire, groupe) {
     modules: modulesDuGroupe(base, groupe, await intitulesModules(base, groupe), {
       semaines,
       formations: etablissement?.formations ?? [],
+      // Les modules réaffectés en cours d'année (2026-10-22).
+      reaffectations: await reaffectationsDeLAnnee(etablissementId, anneeScolaire, base),
     }),
     semaines,
     planning: chrono ? depuisMongo(chrono.planning) : {},
@@ -493,6 +571,23 @@ export async function listerFormateurs(etablissementId, anneeScolaire) {
     const cle = String(affectation.formateur ?? '').trim();
     if (cle === '') continue;
     comptes.set(cle, (comptes.get(cle) ?? 0) + 1);
+  }
+
+  /*
+   * ⚠️ L'ANCIEN TITULAIRE D'UN MODULE RÉAFFECTÉ RESTE DANS LA LISTE (2026-10-22),
+   *    même sans plus aucune affectation : sa grille porte les heures qu'il a
+   *    faites. Ces modules-là comptent dans son nombre.
+   */
+  const connus = new Set([...comptes.keys()].map((cle) => cle.toUpperCase()));
+  for (const anciens of (await reaffectationsDeLAnnee(etablissementId, anneeScolaire, base)).values()) {
+    for (const { ancien } of anciens) {
+      const existant = [...comptes.keys()].find((cle) => cle.toUpperCase() === ancien);
+      if (existant) comptes.set(existant, comptes.get(existant) + 1);
+      else if (!connus.has(ancien)) {
+        connus.add(ancien);
+        comptes.set(ancien, 1);
+      }
+    }
   }
 
   return [...comptes]
@@ -834,7 +929,36 @@ export async function obtenirParFormateur(etablissementId, anneeScolaire, format
     }
   }
 
-  if (parCle.size === 0) {
+  /*
+   * ═══ MODULES RÉAFFECTÉS (2026-10-22, demande du porteur) ═══
+   * Les modules que cette personne a QUITTÉS en cours d'année restent dans sa
+   * grille, bornés aux semaines qu'elle a faites : ses heures sont les siennes,
+   * même si le module est désormais à un autre. Ceux qu'elle a REPRIS ne
+   * commencent, eux, qu'après la bascule (`bornerTitulaire`).
+   */
+  const reaffectations = await reaffectationsDeLAnnee(etablissementId, anneeScolaire, base);
+  const nomsGroupes = new Map((base.groupes ?? []).map((nom) => [String(nom).trim().toUpperCase(), nom]));
+  const anciennes = [];
+  for (const [cle, anciens] of reaffectations) {
+    const [groupeMajuscules, codeMajuscules, type] = cle.split('||');
+    const groupe = nomsGroupes.get(groupeMajuscules);
+    if (!groupe) continue;
+    anciens.forEach((ancien, rang) => {
+      if (!correspond(ancien.ancien)) return;
+      const module = modulesDuGroupe(base, groupe).find((m) => m.code.toUpperCase() === codeMajuscules);
+      if (!module) return;
+      groupes.add(groupe);
+      anciennes.push({
+        groupe,
+        module,
+        type,
+        ancien,
+        plage: { de: rang > 0 ? anciens[rang - 1].derniereSemaine + 1 : 1, a: ancien.derniereSemaine },
+      });
+    });
+  }
+
+  if (parCle.size === 0 && anciennes.length === 0) {
     throw notFound(`Aucun module affecté à « ${formateur} »`, { code: 'FORMATEUR_SANS_MODULE' });
   }
 
@@ -904,10 +1028,10 @@ export async function obtenirParFormateur(etablissementId, anneeScolaire, format
 
   // ⚠️ PAR (GROUPE, MODULE) : un formateur enseigne souvent dans plusieurs
   // filières, où le même code ne désigne pas le même module.
-  const intitules = await intitulesParGroupe(
-    base,
-    [...parCle.values()].map((ligne) => ({ groupe: ligne.groupe, module: ligne.code }))
-  );
+  const intitules = await intitulesParGroupe(base, [
+    ...[...parCle.values()].map((ligne) => ({ groupe: ligne.groupe, module: ligne.code })),
+    ...anciennes.map((ligne) => ({ groupe: ligne.groupe, module: ligne.module.code })),
+  ]);
 
   const plannings = await Chronogramme.find({
     etablissementId,
@@ -947,7 +1071,38 @@ export async function obtenirParFormateur(etablissementId, anneeScolaire, format
         typeSeul: typeSeul(ligne, autresTypes.get(`${ligne.groupe}||${ligne.code}`)),
         semestre: ligne.s1 > 0 && ligne.s2 > 0 ? 'annuel' : ligne.s1 > 0 ? 'S1' : 'S2',
       }))
-      .sort((a, b) => a.groupe.localeCompare(b.groupe, 'fr') || a.code.localeCompare(b.code, 'fr')),
+      .flatMap((ligne) => bornerTitulaire(ligne, reaffectations))
+      .concat(
+        anciennes.map(({ groupe, module, type, ancien, plage }) => {
+          const nom = nomDuFormateur(base, String(formateur).trim());
+          return {
+            groupe,
+            code: module.code,
+            // Une clé à part : la même personne peut garder le synchrone d'un module dont elle a quitté le présentiel.
+            suffixe: `#R${type}`,
+            intitule: intitules.get(cleGroupeModule(groupe, module.code)) ?? '',
+            masses: { presentiel: 0, synchrone: 0 },
+            estRegional: module.estRegional,
+            formateursPresentiel: type === TYPES.PRESENTIEL ? [nom] : [],
+            formateursSynchrone: type === TYPES.SYNCHRONE ? [nom] : [],
+            fusionSynchrone: module.fusionSynchrone,
+            partageAvec: module.formateurs,
+            typeSeul: type,
+            plage,
+            termine: true,
+            reaffectation: ancien,
+            // Les heures qu'il a FAITES, lues dans l'emploi (2026-10-23).
+            realise: cellulesRealisees({ [type]: ancien.realise ?? {} }),
+            semestre: module.semestre,
+          };
+        })
+      )
+      .sort(
+        (a, b) =>
+          a.groupe.localeCompare(b.groupe, 'fr') ||
+          a.code.localeCompare(b.code, 'fr') ||
+          Number(Boolean(b.termine)) - Number(Boolean(a.termine))
+      ),
     plannings: Object.fromEntries(
       plannings.map((chrono) => [chrono.groupe, depuisMongo(chrono.planning)])
     ),
@@ -1033,6 +1188,7 @@ export async function charge(etablissementId, anneeScolaire) {
   const lignes = [];
   const groupesIgnores = [];
   let groupesLus = 0;
+  const reaffectations = await reaffectationsDeLAnnee(etablissementId, anneeScolaire, base);
 
   for (const chrono of plannings) {
     const modules = modulesDuGroupe(base, chrono.groupe);
@@ -1068,6 +1224,32 @@ export async function charge(etablissementId, anneeScolaire) {
         const duType = cellulesDuType(cellules, type);
         if (Object.keys(duType).length === 0) continue;
 
+        /*
+         * ═══ MODULE RÉAFFECTÉ (2026-10-22) : CHACUN SES SEMAINES ═══
+         * Jusqu'à sa bascule, les heures sont celles de l'ANCIEN titulaire —
+         * il les a faites. Les attribuer au nouveau gonflait sa charge et
+         * vidait celle de l'autre.
+         */
+        const anciens = reaffectations.get(cleReaffectation(chrono.groupe, module.code, type)) ?? [];
+        let debut = 1;
+        for (const ancien of anciens) {
+          // Ses heures FAITES, lues dans l'emploi (2026-10-23) — à défaut, le planning de sa plage.
+          const part = ancien.realise
+            ? cellulesRealisees({ [type]: ancien.realise })
+            : cellulesDeLaLigne(duType, { plage: { de: debut, a: ancien.derniereSemaine } });
+          debut = ancien.derniereSemaine + 1;
+          if (Object.keys(part).length === 0) continue;
+          lignes.push({
+            groupe: chrono.groupe,
+            module: module.code,
+            formateur: ancien.nom,
+            ensemble: module.fusionSynchrone || chrono.groupe,
+            planning: part,
+          });
+        }
+        const duTitulaire = anciens.length > 0 ? cellulesDeLaLigne(duType, { plage: { de: debut, a: null } }) : duType;
+        if (Object.keys(duTitulaire).length === 0) continue;
+
         // Sans titulaire connu, la ligne compte pour le GROUPE mais pour
         // personne : c'est ce que fait `calculerCharges` d'un formateur vide.
         for (const formateur of titulaires.length > 0 ? titulaires : ['']) {
@@ -1076,7 +1258,7 @@ export async function charge(etablissementId, anneeScolaire) {
             module: module.code,
             formateur,
             ensemble: module.fusionSynchrone || chrono.groupe,
-            planning: duType,
+            planning: duTitulaire,
           });
         }
       }
@@ -1103,14 +1285,22 @@ export async function exporter(etablissementId, anneeScolaire, { mode, sujets })
        * même clé `groupe||module` que l'écran. Sans cette mise à plat, deux
        * groupes suivant le même module se retrouveraient sur la même ligne.
        */
+      /*
+       * ═══ MODULE RÉAFFECTÉ (2026-10-23) : COUPÉ À LA BASCULE, COMME À L'ÉCRAN ═══
+       * L'ancien titulaire n'a que ses semaines, avec les heures FAITES (lues
+       * dans l'emploi) ; le nouveau, les siennes, et la masse qui reste.
+       */
       const plat = {};
-      for (const ligne of grille.lignes) {
-        plat[`${ligne.groupe}||${ligne.code}`] = grille.plannings[ligne.groupe]?.[ligne.code] ?? {};
-      }
+      const modules = grille.lignes.map((ligne) => {
+        const cle = `${ligne.groupe}||${ligne.code}${ligne.suffixe ?? ''}`;
+        const cellules = grille.plannings[ligne.groupe]?.[ligne.code] ?? {};
+        plat[cle] = ligne.realise ?? (ligne.plage ? cellulesDeLaLigne(cellules, ligne) : cellules);
+        return { ...ligne, cle, ...(ligne.plage ? { masses: massesDeLaLigne(ligne, cellules) } : {}) };
+      });
 
       feuilles.push({
         sujet: grille.nom || sujet,
-        modules: grille.lignes.map((ligne) => ({ ...ligne, cle: `${ligne.groupe}||${ligne.code}` })),
+        modules,
         planning: plat,
         semaines: grille.semaines,
         stagesParGroupe: grille.stagesParGroupe,
@@ -1119,10 +1309,14 @@ export async function exporter(etablissementId, anneeScolaire, { mode, sujets })
     }
 
     const grille = await obtenir(etablissementId, anneeScolaire, sujet);
+    // Le module réaffecté : une ligne par titulaire, chacun ses semaines (2026-10-23).
+    const modules = scinderParReaffectation(grille.modules, grille.planning, grille.semaines);
     feuilles.push({
       sujet,
-      modules: grille.modules,
-      planning: grille.planning,
+      modules,
+      planning: modules.some((module) => module.plage)
+        ? planningDesLignes(grille.planning, modules)
+        : grille.planning,
       semaines: grille.semaines,
       stagesParGroupe: {},
     });

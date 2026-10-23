@@ -40,10 +40,12 @@ export {
 export { SEMAINES_DE_SERVICE, masseAnnuelle, masseHebdomadaire } from './masses.js';
 
 export {
+  CASE_AUTRE_TITULAIRE,
   ENTETES_FORMATEUR,
   ENTETES_GROUPE,
   ENTETES_MASSES,
   FEUILLES_TECHNIQUES,
+  MARQUE_TERMINE,
   VALEURS_AUTORISEES,
   VALEURS_AUTORISEES_CDS,
   entetes,
@@ -143,3 +145,22 @@ export {
   planningReplie,
   scinderParType,
 } from './partage.js';
+
+export {
+  MOTIF_REAFFECTATION,
+  MOTIF_REALISE,
+  SEMAINES_MIN_ANCIEN,
+  cellulesDeLaLigne,
+  cellulesRealisees,
+  dejaFaitPar,
+  changementsDeTitulaire,
+  cleReaffectation,
+  dansLaPlage,
+  detecterReaffectations,
+  fermerHorsPlage,
+  fusionnerLigne,
+  libellePlage,
+  massesDeLaLigne,
+  scinderParReaffectation,
+  typeChronogramme,
+} from './reaffectation.js';

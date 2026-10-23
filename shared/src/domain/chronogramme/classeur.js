@@ -92,6 +92,20 @@ export const FEUILLES_TECHNIQUES = ['valeurs', 'charge groupes', 'charge formate
 export const entetes = (mode) => (mode === 'formateur' ? ENTETES_FORMATEUR : ENTETES_GROUPE);
 
 /**
+ * ═══ LA LIGNE DE L'ANCIEN TITULAIRE D'UN MODULE RÉAFFECTÉ (2026-10-23) ═══
+ * Sa colonne « Type » porte « P · terminé » : ses heures sont lues dans
+ * l'emploi du temps, en lecture seule — la relecture du classeur l'ignore.
+ */
+export const MARQUE_TERMINE = 'terminé';
+
+/**
+ * La case d'une semaine qui revient à L'AUTRE titulaire (2026-10-23) : « — ».
+ * Vide, elle effacerait à la relecture les heures de l'ancien formateur ; le
+ * tiret dit « rien à lire ici ».
+ */
+export const CASE_AUTRE_TITULAIRE = '—';
+
+/**
  * Les lignes d'une feuille, dans l'ordre où elles s'écrivent.
  *
  * Un module donne UNE ligne « P », et une ligne « S » seulement s'il prévoit des
@@ -117,6 +131,13 @@ export function lignesClasseur(modules, planning = {}, mode = 'groupe') {
       regional: module.estRegional ? 'X' : '',
       formateurs: (module.formateurs ?? []).join(' · '),
       cle,
+      /*
+       * Module réaffecté (2026-10-23) : la ligne ne vaut que pour SES semaines
+       * (`plage`) ; celle de l'ancien titulaire (`termine`) est en lecture seule.
+       */
+      plage: module.plage ?? null,
+      termine: Boolean(module.termine),
+      noteFormateur: module.noteFormateur ?? '',
     };
 
     /*
@@ -165,6 +186,13 @@ export function lignesClasseur(modules, planning = {}, mode = 'groupe') {
     }
   }
 
+  for (const ligne of lignes) {
+    // « P · terminé » : la relecture reconnaît la ligne de l'ancien titulaire et l'écarte.
+    ligne.libelleType = ligne.termine ? `${ligne.type} · ${MARQUE_TERMINE}` : ligne.type;
+    if (ligne.noteFormateur) ligne.formateurs = `${ligne.formateurs} (${ligne.noteFormateur})`;
+  }
+
+  // ⚠️ Tri STABLE : la ligne de l'ancien titulaire reste avant celle du titulaire.
   return mode === 'formateur'
     ? lignes.sort((a, b) => a.groupe.localeCompare(b.groupe, 'fr') || a.code.localeCompare(b.code, 'fr'))
     : lignes;
@@ -327,6 +355,13 @@ export function lireFeuilleChronogramme(feuille, referentiel) {
     let typeLigne = TYPES.PRESENTIEL;
     if (colonneType !== null) {
       const brut = cellule(rang, colonneType).toUpperCase();
+      /*
+       * ⚠️ « P · terminé » : l'ancien titulaire d'un module réaffecté
+       *    (2026-10-23). Ses heures viennent de l'emploi du temps — les relire
+       *    les écrirait dans le chronogramme, et ses cases vides effaceraient
+       *    celles du nouveau titulaire. La ligne est écartée sans bruit.
+       */
+      if (brut.includes(MARQUE_TERMINE.toUpperCase())) continue;
       if (brut !== TYPES.PRESENTIEL && brut !== TYPES.SYNCHRONE) {
         refus.push(`ligne ${numeroLigne} : type « ${brut} » non reconnu (attendu P ou S)`);
         continue;
@@ -340,6 +375,9 @@ export function lireFeuilleChronogramme(feuille, referentiel) {
     for (const [colonne, semaine] of colonnesSemaine) {
       const brut = cellule(rang, colonne);
       const base = `${groupe}||${code}||${semaine}`;
+
+      // La semaine de l'autre titulaire d'un module réaffecté : rien à lire, rien à effacer.
+      if (brut === CASE_AUTRE_TITULAIRE) continue;
 
       if (brut === '') {
         /*

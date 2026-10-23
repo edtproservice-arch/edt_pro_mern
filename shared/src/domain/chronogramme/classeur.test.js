@@ -467,6 +467,34 @@ describe('aller-retour export → import', () => {
   });
 });
 
+describe('module réaffecté — l’export coupé à la bascule (2026-10-23)', () => {
+  // M102 de GM101 : l'ancien titulaire a fait 2,5 h en S1 (emploi), le nouveau prend la suite dès S2.
+  const lignesModules = [
+    { ...MODULES[1], formateurs: ['LAASSAL'], plage: { de: 1, a: 1 }, termine: true, noteFormateur: 'S1–S1, terminé', masses: { presentiel: 2.5, synchrone: 0 }, cle: 'M102#R0' },
+    { ...MODULES[1], formateurs: ['AAJLIYE'], plage: { de: 2, a: null }, noteFormateur: 'depuis S2', masses: { presentiel: 17.5, synchrone: 0 } },
+  ];
+  const planning = { 'M102#R0': { 1: { heures: 2.5, type: 'P' } }, M102: { 3: { heures: 5, type: 'P' } } };
+
+  it('l’ancien titulaire est marqué « terminé », chacun nommé avec sa période', () => {
+    const [ancien, titulaire] = lignesClasseur(lignesModules, planning);
+    expect(ancien).toMatchObject({ libelleType: 'P · terminé', termine: true, heures: { 1: 2.5 }, prevu: 2.5 });
+    expect(ancien.formateurs).toBe('LAASSAL (S1–S1, terminé)');
+    expect(titulaire).toMatchObject({ libelleType: 'P', prevu: 17.5, heures: { 3: 5 } });
+  });
+
+  it('la relecture écarte la ligne « terminé », et « — » n’efface rien', () => {
+    const corps = [
+      ligne(['M102', 'Bases de données', 'A', 'X', 'LAASSAL', 'P · terminé'], { 1: 2.5 }),
+      ligne(['M102', 'Bases de données', 'A', 'X', 'AAJLIYE', 'P'], { 1: '—', 3: 5 }),
+    ];
+    const relu = lireFeuilleChronogramme(feuille({ corps }), referentiel);
+    expect(relu.refus).toEqual([]);
+    expect(remplies(relu.cellules)).toEqual([{ groupe: 'GM101', code: 'M102', semaine: 3, heures: 5, type: 'P' }]);
+    // La S1 — celle de l'ancien — n'est ni écrite ni effacée.
+    expect(relu.cellules.some((c) => c.semaine === 1)).toBe(false);
+  });
+});
+
 describe('import — les valeurs de la grille (2026-10-09)', () => {
   const referentielSoir = {
     groupes: new Map([['GM101', 'GM101'], ['GM101 (CDS)', 'GM101 (CDS)']]),

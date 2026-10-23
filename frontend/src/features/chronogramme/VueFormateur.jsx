@@ -1,8 +1,13 @@
 import { useMemo } from 'react';
 import {
   TYPES,
+  cellulesDeLaLigne,
   cellulesDuType,
+  fermerHorsPlage,
+  fusionnerLigne,
   fusionnerType,
+  libellePlage,
+  massesDeLaLigne,
   semainesDeLaLigne,
 } from 'shared/domain';
 import Alerte from '@/components/common/Alerte';
@@ -63,8 +68,13 @@ export default function VueFormateur({
 
     return donnees.lignes.map((ligne) => ({
       ...ligne,
-      cle: `${ligne.groupe}||${ligne.code}`,
-      semaines: semainesDeLaLigne(donnees.semaines, {
+      // `suffixe` : module réaffecté (2026-10-22) — la ligne d'un module quitté
+      // ou scindé par type ne doit pas prendre la clé d'une autre.
+      cle: `${ligne.groupe}||${ligne.code}${ligne.suffixe ?? ''}`,
+      noteFormateur: ligne.plage
+        ? `${libellePlage(ligne.plage)}${ligne.termine ? ', terminé' : ''}`
+        : undefined,
+      semaines: fermerHorsPlage(semainesDeLaLigne(donnees.semaines, {
         stage: donnees.stagesParGroupe?.[ligne.groupe] ?? [],
         formation: donnees.formationSemaines ?? [],
         /*
@@ -75,7 +85,7 @@ export default function VueFormateur({
          */
         rentree: donnees.rentreesParGroupe?.[ligne.groupe]?.semaines ?? [],
         rentreeLe: donnees.rentreesParGroupe?.[ligne.groupe]?.date ?? null,
-      }),
+      }), ligne.plage, { realise: Boolean(ligne.realise) }),
     }));
   }, [donnees]);
 
@@ -158,8 +168,12 @@ export default function VueFormateur({
        * ⚠️ MODULE PARTAGÉ PAR TYPE (2026-10-01) : la personne n'assure que le
        * présentiel — ou que le synchrone — et un collègue l'autre part. Ses
        * cellules seules entrent dans SA grille, ses totaux et son écart.
+       * ⚠️ MODULE RÉAFFECTÉ (2026-10-22) : de même, ses seules SEMAINES.
        */
-      table[ligne.cle] = ligne.typeSeul ? cellulesDuType(cellules, ligne.typeSeul) : cellules;
+      // L'ancien titulaire : ses heures FAITES, lues dans l'emploi (2026-10-23).
+      if (ligne.realise) table[ligne.cle] = ligne.realise;
+      else if (ligne.plage) table[ligne.cle] = cellulesDeLaLigne(cellules, ligne);
+      else table[ligne.cle] = ligne.typeSeul ? cellulesDuType(cellules, ligne.typeSeul) : cellules;
     }
     return table;
   }, [lignes, plannings]);
@@ -169,7 +183,21 @@ export default function VueFormateur({
    * celle-ci cohabitent dans une case mixte. Les lignes sont rendues telles
    * quelles — la mémoïsation des cellules tient.
    */
-  const lignesAffichees = lignes;
+  /*
+   * ═══ MODULE RÉAFFECTÉ (2026-10-22) : LA MASSE SE LIT DANS LE PLANNING ═══
+   * L'ancien titulaire a pour masse ce qu'il a fait ; le nouveau, le module
+   * moins cela. Seules ces lignes-là sont recalculées à chaque saisie — les
+   * autres restent les mêmes objets, et la mémoïsation des cellules tient.
+   */
+  const lignesAffichees = useMemo(
+    () =>
+      lignes.map((ligne) =>
+        ligne.plage
+          ? { ...ligne, masses: massesDeLaLigne(ligne, plannings?.[ligne.groupe]?.[ligne.code] ?? {}) }
+          : ligne
+      ),
+    [lignes, plannings]
+  );
 
   /**
    * Et le chemin inverse, à chaque saisie.
@@ -188,12 +216,17 @@ export default function VueFormateur({
     let refusees = 0;
 
     for (const ligne of lignes) {
+      // Les heures faites d'un ancien titulaire viennent de l'emploi : rien à réécrire.
+      if (ligne.realise) continue;
       let cellules = nouveauPlat[ligne.cle];
       const courant = { ...(suivants[ligne.groupe] ?? {}) };
 
       // ⚠️ Même logique pour la part du collègue : elle repart du planning du
-      // groupe, jamais de l'écran qui ne la montre pas.
-      if (ligne.typeSeul) {
+      // groupe, jamais de l'écran qui ne la montre pas. Les semaines de l'autre
+      // titulaire d'un module réaffecté aussi (2026-10-22).
+      if (ligne.plage) {
+        cellules = fusionnerLigne(courant[ligne.code] ?? {}, cellules ?? {}, ligne);
+      } else if (ligne.typeSeul) {
         const fusion = fusionnerType(courant[ligne.code] ?? {}, cellules ?? {}, ligne.typeSeul);
         cellules = fusion.cellules;
         refusees += fusion.refusees;
@@ -230,7 +263,8 @@ export default function VueFormateur({
   }
 
   const partages = lignes.filter((ligne) => ligne.partageAvec?.length > 0 && !ligne.typeSeul);
-  const partagesParType = lignes.filter((ligne) => ligne.typeSeul);
+  const partagesParType = lignes.filter((ligne) => ligne.typeSeul && !ligne.plage);
+  const reaffectees = lignes.filter((ligne) => ligne.plage);
   const libelleType = (type) => (type === TYPES.SYNCHRONE ? 'synchrone' : 'présentiel');
 
   /*
@@ -267,11 +301,27 @@ export default function VueFormateur({
         </Alerte>
       )}
 
+      {reaffectees.length > 0 && (
+        <Alerte type="info" titre="Modules réaffectés en cours d'année">
+          {reaffectees
+            .map((ligne) =>
+              ligne.termine
+                ? `${ligne.code} (${ligne.groupe}) : assuré jusqu’en S${ligne.plage.a}, repris par ${ligne.partageAvec?.join(', ') || 'un autre formateur'}`
+                : `${ligne.code} (${ligne.groupe}) : repris de ${ligne.reprisDe?.map((a) => a.nom).join(', ')} à partir de S${ligne.plage.de}`
+            )
+            .join(' · ')}
+          . Chacun garde ses semaines : ses heures, sa charge et son écart ne comptent que celles-là.
+        </Alerte>
+      )}
+
       <GrilleChronogramme
         modules={lignesAffichees}
         semaines={semaines}
         planning={plat}
-        colonne={{ titre: 'Groupe', valeur: (ligne) => ligne.groupe }}
+        colonne={{
+          titre: 'Groupe',
+          valeur: (ligne) => (ligne.noteFormateur ? `${ligne.groupe} (${ligne.noteFormateur})` : ligne.groupe),
+        }}
         lectureSeule={lectureSeule}
         onOuverture={onOuverture}
         marques={marques ?? donnees.marques}

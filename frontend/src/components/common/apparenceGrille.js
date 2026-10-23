@@ -66,6 +66,13 @@ export const FOND_STAGE = 'bg-zinc-300/80';
 export const FOND_FORMATION = 'bg-zinc-300/80';
 
 /**
+ * Module réaffecté (2026-10-22) : la semaine appartient à l'AUTRE ligne du
+ * module — celle de l'ancien ou du nouveau formateur. Plus clair que les
+ * absences : rien n'est fermé pour le groupe, la saisie se fait juste ailleurs.
+ */
+export const FOND_REAFFECTATION = 'bg-muted/70';
+
+/**
  * ═══ ⚠️ AVANT LA RENTRÉE : LE GRIS DES ABSENCES, PAS LE BLEU DES VACANCES ═══
  * (2026-09-02.) Le bleu dit « l'établissement est fermé » — il vaut pour tout le
  * monde. Ici l'établissement est OUVERT : ce sont les stagiaires d'une année qui

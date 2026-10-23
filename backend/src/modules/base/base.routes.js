@@ -391,6 +391,8 @@ router.post(
          */
         identifiantFormateurRestreint:
           req.utilisateur.role === ROLES.FORMATEUR ? req.utilisateur.identifiant : null,
+        // Qui a réaffecté un module : le journal le retient (2026-10-22).
+        auteur: req.utilisateur._id,
       });
       res.status(201).json({ success: true, ...resultat });
       annoncerBase(req, 'enregistrer-carte');

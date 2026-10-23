@@ -6,6 +6,8 @@ import {
   NOMBRE_SEMAINES,
   VALEURS_AUTORISEES,
   VALEURS_AUTORISEES_CDS,
+  CASE_AUTRE_TITULAIRE,
+  dansLaPlage,
   estGroupeDuSoir,
   entetes,
   lignesClasseur,
@@ -54,6 +56,8 @@ const TEINTES = {
   synchrone: 'FFEDE9FE',
   ferme: 'FFFECACA',
   stage: 'FFCFFAFE',
+  // Module réaffecté (2026-10-23) : semaines de l'autre titulaire, heures de l'ancien.
+  reaffecte: 'FFF3F4F6',
 };
 
 /**
@@ -278,10 +282,12 @@ function ecrireFeuilleSujet(classeur, ctx) {
     );
     const excel = feuille.getRow(rang);
 
+    // « P · terminé » : la ligne de l'ancien titulaire d'un module réaffecté (2026-10-23).
+    const libelleType = ligne.libelleType ?? ligne.type;
     const fixes =
       mode === 'groupe'
-        ? [ligne.code, ligne.intitule, ligne.semestre, ligne.regional, ligne.formateurs, ligne.type]
-        : [ligne.groupe, ligne.code, ligne.intitule, ligne.semestre, ligne.regional, ligne.type];
+        ? [ligne.code, ligne.intitule, ligne.semestre, ligne.regional, ligne.formateurs, libelleType]
+        : [ligne.groupe, ligne.code, ligne.intitule, ligne.semestre, ligne.regional, libelleType];
 
     fixes.forEach((valeur, index) => {
       const cellule = excel.getCell(index + 1);
@@ -309,9 +315,34 @@ function ecrireFeuilleSujet(classeur, ctx) {
        */
       const ferme = !semaine.disponible || enStage.has(semaine.numero);
 
-      if (ferme) {
+      /*
+       * ═══ MODULE RÉAFFECTÉ (2026-10-23) ═══
+       *   · la semaine de L'AUTRE titulaire : « — », verrouillée — vide, elle
+       *     effacerait ses heures à la relecture ;
+       *   · la ligne de l'ANCIEN titulaire : ses heures faites, lues dans
+       *     l'emploi, verrouillées — mais elles comptent dans sa charge.
+       */
+      const autreTitulaire = ligne.plage && !dansLaPlage(semaine.numero, ligne.plage);
+      const historique = ligne.termine && !autreTitulaire;
+
+      if (autreTitulaire) {
+        cellule.value = CASE_AUTRE_TITULAIRE;
+        cellule.font = { size: 9, color: { argb: 'FF9CA3AF' } };
+        remplir(cellule, TEINTES.reaffecte);
+        cellule.protection = { locked: true };
+      } else if (ferme && !historique) {
         remplir(cellule, enStage.has(semaine.numero) ? TEINTES.stage : TEINTES.ferme);
         cellule.protection = { locked: true };
+      } else if (historique) {
+        remplir(cellule, TEINTES.reaffecte);
+        cellule.protection = { locked: true };
+        const adresse = { feuille: feuille.name, adresse: `${lettre(colonne)}${rang}` };
+        if (heures) {
+          pousser(sources.groupes, `${mode === 'groupe' ? sujet : ligne.groupe}||${semaine.numero}`, adresse);
+          for (const titulaire of ligne.titulaires ?? []) {
+            if (titulaire) pousser(sources.formateurs, `${titulaire}||${semaine.numero}`, { ...adresse, ensemble: ligne.ensemble ?? '' });
+          }
+        }
       } else {
         if (heures) remplir(cellule, ligne.type === 'S' ? TEINTES.synchrone : TEINTES.presentiel);
         cellule.protection = { locked: false };

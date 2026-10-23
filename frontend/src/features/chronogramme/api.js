@@ -13,6 +13,22 @@ export function chargerChronogramme(groupe) {
   return api.get(`/api/v2/chronogrammes/${encodeURIComponent(groupe)}`);
 }
 
+/**
+ * Fixe à la main la dernière semaine de l'ancien titulaire d'un module réaffecté
+ * (2026-10-22) — `derniereSemaine: null` la rend à l'emploi du temps.
+ */
+export function fixerBasculeReaffectation({ groupe, module, type, ancien, derniereSemaine, ignoree = false }) {
+  return api.put('/api/v2/chronogrammes/reaffectations/bascule', {
+    groupe,
+    module,
+    type,
+    ancien,
+    derniereSemaine,
+    // « Ce n'était pas une réaffectation » : un remplaçant pris pour l'ancien titulaire.
+    ignoree,
+  });
+}
+
 /** Formateurs de l'année, pour le sélecteur du mode formateur. */
 export function chargerFormateursChronogramme() {
   return api.get('/api/v2/chronogrammes/par-formateur');

@@ -7,6 +7,7 @@ import {
   PRIORITE_METIER_FORMATION,
   SEMAINES_METIER_FORMATION,
   bornerALaFinDeFormation,
+  cleReaffectation,
   derniereSemaineDuGroupe,
   estGroupeDuSoir,
   estGroupePIE,
@@ -53,6 +54,7 @@ import { cleGroupeModule, intitulesParGroupe } from '../../lib/intitulesModules.
 import { joursFeries as joursFeriesEtablissement } from '../calendrier/calendrier.service.js';
 import { obtenir as calendrierNational } from '../calendrierNational/calendrierNational.service.js';
 import { resoudreChronogramme } from '../generation/solveur.client.js';
+import { reaffectationsDeLAnnee } from './reaffectations.service.js';
 import {
   depuisMongo,
   formateurDeCle,
@@ -145,6 +147,8 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
     intitules = new Map(),
     // formateur → ses indisponibilités déclarées (`AutoGenConfig.contraintes`).
     indisponibilites = new Map(),
+    // Les modules réaffectés en cours d'année (`reaffectationsDeLAnnee`, 2026-10-23).
+    reaffectations = new Map(),
   } = donnees;
   const completer = mode === MODES.COMPLETER;
 
@@ -246,6 +250,18 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
     for (const groupe of tache.groupes) couvertes.add(`${cleCase(groupe, tache.module)}||${tache.type}`);
   }
 
+  /*
+   * ═══ LES SEMAINES DE L'ANCIEN TITULAIRE SONT PROTÉGÉES (2026-10-23, demande
+   * du porteur) ═══ Un module réaffecté en cours d'année a deux parts : jusqu'à
+   * la bascule, celle de l'ancien formateur — il l'a faite. La génération n'y
+   * touche plus : ses cases ne sont pas effacées (« Tout refaire »), le nouveau
+   * titulaire n'y reçoit rien, et ce que l'ancien a FAIT (lu dans l'emploi) est
+   * retiré de ce qu'il reste à planifier.
+   */
+  const anciensDe = (groupe, module, type) => reaffectations.get(cleReaffectation(groupe, module, type)) ?? [];
+  const basculeDe = (groupe, module, type) =>
+    Math.max(0, ...anciensDe(groupe, module, type).map((ancien) => ancien.derniereSemaine));
+
   // ─── 2. Ce qu'on garde des plannings actuels ───
   const groupesTouches = [...new Set([...taches.values()].flatMap((t) => t.groupes))].sort();
   const conserves = {};
@@ -259,7 +275,12 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
         const parts = partsDeCellule(cellule);
         for (const type of [TYPES.PRESENTIEL, TYPES.SYNCHRONE]) {
           if (parts[type] <= 0) continue;
-          if (!completer && couvertes.has(`${cleCase(groupe, module)}||${type}`)) {
+          if (
+            !completer &&
+            couvertes.has(`${cleCase(groupe, module)}||${type}`) &&
+            // Les semaines de l'ancien titulaire restent (2026-10-23).
+            Number(semaine) > basculeDe(groupe, module, type)
+          ) {
             partsRemplacees += 1;
             groupesVides.add(groupe);
             continue;
@@ -320,10 +341,32 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
       new Map(semainesDeLaLigne(semainesDe(groupe), { formation }).map((s) => [s.numero, s]))
     );
 
+    /*
+     * Module réaffecté (2026-10-23) : jusqu'à `bascule`, les semaines sont à
+     * l'ancien titulaire. `faitAvant` : ce qu'il y a fait, lu dans l'emploi —
+     * à défaut, ce que le chronogramme y porte.
+     */
+    const bascule = Math.max(0, ...tache.groupes.map((groupe) => basculeDe(groupe, tache.module, tache.type)));
+    const faitAvant = new Map();
+    for (const groupe of tache.groupes) {
+      for (const ancien of anciensDe(groupe, tache.module, tache.type)) {
+        for (const [numero, heures] of Object.entries(ancien.realise ?? {})) {
+          // Une séance mutualisée vaut pour chaque groupe : elle ne compte qu'une fois.
+          faitAvant.set(Number(numero), Math.max(faitAvant.get(Number(numero)) ?? 0, Number(heures) || 0));
+        }
+      }
+    }
+    if (bascule > 0 && faitAvant.size === 0) {
+      for (let numero = 1; numero <= bascule; numero += 1) {
+        const heures = Math.max(...tache.groupes.map((groupe) => conserve(groupe, tache.module, numero, tache.type)));
+        if (heures > 0) faitAvant.set(numero, heures);
+      }
+    }
+
     // Ce que la tâche porte déjà, semaine par semaine (mode « compléter »).
     const deja = new Map();
     if (completer) {
-      for (let numero = 1; numero <= semainesCommunes.length; numero += 1) {
+      for (let numero = bascule + 1; numero <= semainesCommunes.length; numero += 1) {
         const heures = Math.max(
           ...tache.groupes.map((groupe) => conserve(groupe, tache.module, numero, tache.type))
         );
@@ -341,7 +384,7 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
     );
     reserveRegionale += reserve.retenu * tache.groupes.length;
 
-    const totalDeja = [...deja.values()].reduce((somme, h) => somme + h, 0);
+    const totalDeja = [...deja.values(), ...faitAvant.values()].reduce((somme, h) => somme + h, 0);
     let resteTotal = Math.max(0, reserve.s1 + reserve.s2 - totalDeja);
 
     const lots = [];
@@ -364,7 +407,7 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
         Math.min(...lignes.map((ligne) => plafondSemaine(ligne.get(numero))));
       const fenetre = semainesCommunes
         .map((semaine) => semaine.numero)
-        .filter((numero) => plafondLigne(numero) > 0)
+        .filter((numero) => numero > bascule && plafondLigne(numero) > 0)
         .slice(0, SEMAINES_METIER_FORMATION);
       const plafondModule = Math.min(
         plafondHebdomadaireModule(aPoser, SEMAINES_METIER_FORMATION),
@@ -386,7 +429,7 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
         ]) {
       if (heures <= 0) continue;
       const dejaFenetre = semainesDuSemestre(semestre).reduce(
-        (somme, numero) => somme + (deja.get(numero) ?? 0),
+        (somme, numero) => somme + (deja.get(numero) ?? 0) + (faitAvant.get(numero) ?? 0),
         0
       );
       // ⚠️ Jamais plus que ce qui manque AU TOTAL : des heures saisies hors de
@@ -420,6 +463,8 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
 
       const plafonds = {};
       for (const numero of fenetre) {
+        // Les semaines de l'ancien titulaire : rien pour le nouveau (2026-10-23).
+        if (numero <= bascule) continue;
         const plafond = Math.min(plafondLigne(numero), plafondModule);
         const libre = plafond - (deja.get(numero) ?? 0);
         if (libre > 0) plafonds[numero] = libre;
@@ -905,6 +950,8 @@ export async function generer(etablissementId, anneeScolaire, { mode = MODES.REM
           c.indisponibilites ?? [],
         ])
       ),
+      // Les semaines de l'ancien titulaire d'un module réaffecté sont protégées (2026-10-23).
+      reaffectations: await reaffectationsDeLAnnee(etablissementId, anneeScolaire, base),
     },
     { mode }
   );

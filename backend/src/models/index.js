@@ -61,5 +61,7 @@ export { HorairesSeances } from './HorairesSeances.js';
 export { Partage } from './Partage.js';
 /* La dernière écriture de chaque page — « Modifié il y a… » (2026-09-13). */
 export { ModificationPage } from './ModificationPage.js';
+/* Le journal des réaffectations de modules en cours d'année (2026-10-22). */
+export { Reaffectation } from './Reaffectation.js';
 /* Les traces de génération automatique — le corpus d'entraînement (F6 · d). */
 export { TraceGeneration, STATUTS_TRACE, CAUSES_FIGEAGE } from './TraceGeneration.js';

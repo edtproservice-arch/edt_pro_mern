@@ -63,5 +63,7 @@ export { Partage } from './Partage.js';
 export { ModificationPage } from './ModificationPage.js';
 /* Le journal des réaffectations de modules en cours d'année (2026-10-22). */
 export { Reaffectation } from './Reaffectation.js';
+/* Les demandes de documents signés des stagiaires — attestation… (2026-10-23). */
+export { DemandeDocument, TYPES_DEMANDE, STATUTS_DEMANDE } from './DemandeDocument.js';
 /* Les traces de génération automatique — le corpus d'entraînement (F6 · d). */
 export { TraceGeneration, STATUTS_TRACE, CAUSES_FIGEAGE } from './TraceGeneration.js';

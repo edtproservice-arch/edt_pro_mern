@@ -16,6 +16,32 @@ export const chargerAvancementConsultation = (date = null) =>
 
 export const chargerAffectationsConsultation = () => api.get('/api/v2/consultation/affectations');
 
+/** La page « Documents » du formateur (2026-10-23) : ses groupes, puis la feuille CC/EFM de ceux-ci. */
+export const chargerDocumentsConsultation = () => api.get('/api/v2/consultation/documents');
+
+/**
+ * La page « Documents » du stagiaire (2026-10-23) : SA carte et SA demande de duplicata
+ * se téléchargent ; l'attestation de poursuite se DEMANDE (signée et cachetée).
+ */
+export const chargerMesDocumentsStagiaire = () => api.get('/api/v2/consultation/mes-documents');
+
+export const telechargerMaCarte = (format) =>
+  api.telecharger('/api/v2/consultation/mes-documents/carte', { format, adresse: window.location.origin }, {
+    nomParDefaut: `carte-stagiaire.${format}`,
+  });
+
+export const telechargerMonDuplicata = (format) =>
+  api.telecharger('/api/v2/consultation/mes-documents/duplicata', { format }, {
+    nomParDefaut: `demande-duplicata.${format}`,
+  });
+
+export const demanderDocument = (type) => api.post('/api/v2/consultation/demandes', { type });
+
+export const exporterPresenceCcEfmConsultation = ({ format, groupes }) =>
+  api.telecharger('/api/v2/consultation/documents/presence-cc-efm', { format, groupes }, {
+    nomParDefaut: `feuille-presence-cc-efm.${format}`,
+  });
+
 /** Les groupes du stagiaire connecté — son groupe principal, plus une FQ éventuelle. */
 export const chargerGroupesConsultation = () => api.get('/api/v2/consultation/groupes');
 

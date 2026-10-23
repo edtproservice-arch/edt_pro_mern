@@ -23,6 +23,7 @@ import messagerieRoutes from './modules/messagerie/messagerie.routes.js';
 import annoncesRoutes from './modules/annonces/annonces.routes.js';
 import propositionsRoutes from './modules/propositions/propositions.routes.js';
 import consultationRoutes from './modules/consultation/consultation.routes.js';
+import demandesDocumentsRoutes from './modules/demandesDocuments/demandesDocuments.routes.js';
 import calendrierRoutes from './modules/calendrier/calendrier.routes.js';
 import repartitionsRoutes from './modules/repartitions/repartitions.routes.js';
 import repartitionsAdminRoutes from './modules/repartitions/repartitions.admin.routes.js';
@@ -159,6 +160,7 @@ export function createApp() {
   app.use('/api/v2/annonces', annoncesRoutes);
   app.use('/api/v2/propositions', propositionsRoutes); // F10 → Phase 9 (b)
   app.use('/api/v2/consultation', consultationRoutes); // F14 → Phase 10
+  app.use('/api/v2/demandes-documents', demandesDocumentsRoutes); // demandes de documents signés (2026-10-23)
   // …
 
   app.use(notFoundHandler);

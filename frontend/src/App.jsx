@@ -51,6 +51,7 @@ import ConfigurationPage from '@/features/configuration/ConfigurationPage';
 import AccueilRouteur from '@/features/app/AccueilRouteur';
 import PageMonEmploi from '@/features/consultation/PageMonEmploi';
 import PageMesAffectations from '@/features/consultation/PageMesAffectations';
+import PageMesDocuments from '@/features/consultation/PageMesDocuments';
 import PageMonProgramme from '@/features/consultation/PageMonProgramme';
 import PageMonAvancement from '@/features/consultation/PageMonAvancement';
 import PageMesAbsences from '@/features/consultation/PageMesAbsences';
@@ -351,6 +352,15 @@ export default function App() {
               element={
                 <GardeRole roles={[ROLES.STAGIAIRE]}>
                   <PageMonProgramme />
+                </GardeRole>
+              }
+            />
+            {/* Ses documents : le formateur pour SES groupes, le stagiaire à SON nom (2026-10-23). */}
+            <Route
+              path="mes-documents"
+              element={
+                <GardeRole roles={[ROLES.FORMATEUR, ROLES.STAGIAIRE]}>
+                  <PageMesDocuments />
                 </GardeRole>
               }
             />

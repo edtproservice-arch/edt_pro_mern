@@ -174,6 +174,8 @@ export const NAVIGATION_FORMATEUR = [
   { titre: 'Emploi', titrePage: 'Mon emploi du temps', url: '/app/mon-emploi', icone: CalendarRange, phase: 10 },
   { titre: 'Affectations', titrePage: 'Mes affectations', url: '/app/mes-affectations', icone: Network, phase: 10 },
   { titre: 'Avancement', titrePage: "Suivi de l'avancement", url: '/app/mon-avancement', icone: TrendingUp, phase: 10 },
+  // Ses documents à télécharger, pour ses groupes (2026-10-23, demande du porteur).
+  { titre: 'Documents', titrePage: 'Mes documents', url: '/app/mes-documents', icone: FileText, phase: 10 },
   // Ses formations déclarées par la direction (2026-10-10, demande du porteur).
   { titre: 'Congés et formations', titrePage: 'Mes congés et formations', url: '/app/mes-formations', icone: GraduationCap, phase: 10 },
   // Sa propre section de « Compte », déplacée dans une page à elle (2026-09-24, demande du porteur).
@@ -198,6 +200,8 @@ export const NAVIGATION_STAGIAIRE = [
   { titre: 'Avancement', titrePage: "Suivi de l'avancement", url: '/app/mon-avancement', icone: TrendingUp, phase: 10 },
   // Les stages de ses groupes, déclarés par la direction (2026-10-10, demande du porteur).
   { titre: 'Stages', titrePage: 'Mes stages', url: '/app/mes-stages', icone: Briefcase, phase: 10 },
+  // Sa carte, son duplicata, et l'attestation à demander (2026-10-23, demande du porteur).
+  { titre: 'Documents', titrePage: 'Mes documents', url: '/app/mes-documents', icone: FileText, phase: 10 },
   // Sa note de discipline et ses absences, déplacées de « Compte » (2026-09-24, demande du porteur).
   { titre: 'Absences', titrePage: 'Mes absences', url: '/app/mes-absences', icone: UserX, phase: 10 },
 ];

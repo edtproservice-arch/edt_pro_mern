@@ -266,6 +266,28 @@ export async function avancementStagiaire(etablissementId, anneeScolaire, observ
 }
 
 /**
+ * Les groupes d'UN formateur — ceux de ses affectations, présentiel ou synchrone
+ * (un libellé fusionné compte pour chacun de ses groupes), parmi les groupes de la
+ * carte (2026-10-23 : la page « Documents » du formateur ne lui propose qu'eux).
+ *
+ * @returns {Promise<string[]>} triés
+ */
+export async function groupesDuFormateur(etablissementId, anneeScolaire, matricule) {
+  const base = await Base.findOne({ etablissementId, anneeScolaire }).select('groupes affectations').lean();
+  if (!base) return [];
+
+  const carte = new Set((base.groupes ?? []).map((groupe) => String(groupe).trim()));
+  const groupes = new Set();
+  for (const affectation of base.affectations ?? []) {
+    if (String(affectation.formateur ?? '').trim() !== matricule) continue;
+    for (const groupe of separerFusion(affectation.groupe)) {
+      if (carte.size === 0 || carte.has(groupe)) groupes.add(groupe);
+    }
+  }
+  return [...groupes].sort((a, b) => a.localeCompare(b, 'fr', { numeric: true }));
+}
+
+/**
  * Les affectations d'UN formateur : ce qu'il enseigne, et combien d'heures.
  * ← le panneau « affectationFormateur.html », réduit à une lecture — la carte
  * elle-même ne se modifie que depuis « Paramètres → Affectations ».

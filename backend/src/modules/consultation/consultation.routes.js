@@ -13,6 +13,10 @@ import * as absencesFormateurs from '../absences/absences.service.js';
 import * as discipline from '../absencesStagiaires/discipline.service.js';
 import * as calendrierService from '../calendrier/calendrier.service.js';
 import { Etablissement } from '../../models/Etablissement.js';
+import { construireFeuillePresence } from '../absencesStagiaires/exportFeuillePresence.service.js';
+import { adresseDeLaRequete, construireCartesStagiaires } from '../absencesStagiaires/exportCarteStagiaire.service.js';
+import * as demandesDocuments from '../demandesDocuments/demandesDocuments.service.js';
+import { TYPES_DEMANDE } from '../../models/DemandeDocument.js';
 
 /**
  * Sessions consultatives — formateur & stagiaire (F14).
@@ -199,6 +203,151 @@ router.get('/affectations', requireRole(ROLES.FORMATEUR), async (req, res, next)
     next(error);
   }
 });
+
+/**
+ * ═══ LA PAGE « DOCUMENTS » DU FORMATEUR (2026-10-23, demande du porteur) ═══
+ * Les documents qui le concernent, pour SES groupes seulement — d'abord la feuille
+ * de présence CC/EFM. `/absences-stagiaires/presence/:modele` reste à l'encadrement :
+ * elle accepte n'importe quel groupe. Ici, chaque groupe demandé doit être l'un des
+ * siens. (La version vierge passe par `/absences-stagiaires/documents-vierges`,
+ * déjà ouverte au formateur : elle ne dit rien de personne.)
+ */
+router.get('/documents', requireRole(ROLES.FORMATEUR), async (req, res, next) => {
+  try {
+    const groupes = await service.groupesDuFormateur(req.etablissementId, req.anneeScolaire, monIdentite(req));
+    res.json({ success: true, groupes });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post(
+  '/documents/presence-cc-efm',
+  requireRole(ROLES.FORMATEUR),
+  validate({
+    body: z.object({
+      format: z.enum(['docx', 'pdf']),
+      groupes: z.array(z.string().trim().min(1).max(200)).min(1).max(100),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const siens = new Set(
+        await service.groupesDuFormateur(req.etablissementId, req.anneeScolaire, monIdentite(req))
+      );
+      const etrangers = req.body.groupes.filter((groupe) => !siens.has(groupe));
+      if (etrangers.length > 0) {
+        throw forbidden('Ces groupes ne sont pas les vôtres', { code: 'GROUPE_ETRANGER', details: { groupes: etrangers } });
+      }
+
+      const { tampon, nomFichier, contentType } = await construireFeuillePresence(
+        req.etablissementId,
+        req.anneeScolaire,
+        'cc-efm',
+        req.body
+      );
+      res.setHeader('Content-Type', contentType);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="export"; filename*=UTF-8''${encodeURIComponent(nomFichier)}`
+      );
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+      res.send(tampon);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * ═══ LA PAGE « DOCUMENTS » DU STAGIAIRE (2026-10-23, demande du porteur) ═══
+ *   - sa carte de stagiaire et sa demande de duplicata du diplôme : téléchargées
+ *     directement, à SON nom seulement (le matricule vient du jeton) ;
+ *   - l'attestation de poursuite de formation : DEMANDÉE, parce qu'elle doit être
+ *     signée et cachetée — l'administration la traite (`/demandes-documents`).
+ */
+const envoyerFichier = (res, { tampon, nomFichier, contentType }) => {
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Content-Disposition', `attachment; filename="export"; filename*=UTF-8''${encodeURIComponent(nomFichier)}`);
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+  res.send(tampon);
+};
+
+router.get('/mes-documents', requireRole(ROLES.STAGIAIRE), async (req, res, next) => {
+  try {
+    const matricule = monIdentite(req);
+    res.json({ success: true, demandes: await demandesDocuments.demandesDuStagiaire(req.etablissementId, matricule) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post(
+  '/mes-documents/carte',
+  requireRole(ROLES.STAGIAIRE),
+  validate({ body: z.object({ format: z.enum(['docx', 'pdf']), adresse: z.string().trim().max(200).optional() }) }),
+  async (req, res, next) => {
+    try {
+      const matricule = monIdentite(req);
+      const { groupes } = await service.groupesDuStagiaire(req.etablissementId, req.anneeScolaire, matricule);
+      // ⚠️ JAMAIS `renouveler` : sa carte imprimée reste valable.
+      envoyerFichier(
+        res,
+        await construireCartesStagiaires(req.etablissementId, req.anneeScolaire, {
+          format: req.body.format,
+          groupes,
+          matricules: [matricule],
+          adresse: adresseDeLaRequete(req, req.body.adresse),
+        })
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.post(
+  '/mes-documents/duplicata',
+  requireRole(ROLES.STAGIAIRE),
+  validate({ body: z.object({ format: z.enum(['docx', 'pdf']) }) }),
+  async (req, res, next) => {
+    try {
+      const matricule = monIdentite(req);
+      const { groupes } = await service.groupesDuStagiaire(req.etablissementId, req.anneeScolaire, matricule);
+      envoyerFichier(
+        res,
+        await construireFeuillePresence(req.etablissementId, req.anneeScolaire, 'duplicata', {
+          format: req.body.format,
+          groupes,
+          matricules: [matricule],
+        })
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.post(
+  '/demandes',
+  requireRole(ROLES.STAGIAIRE),
+  validate({ body: z.object({ type: z.enum(TYPES_DEMANDE) }) }),
+  async (req, res, next) => {
+    try {
+      const matricule = monIdentite(req);
+      const { groupePrincipal } = await service.groupesDuStagiaire(req.etablissementId, req.anneeScolaire, matricule);
+      const demande = await demandesDocuments.demander(req.etablissementId, req.anneeScolaire, {
+        type: req.body.type,
+        matricule,
+        nomComplet: req.utilisateur.nomComplet,
+        groupe: groupePrincipal ?? '',
+      });
+      res.status(201).json({ success: true, demande });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 /**
  * « Mes absences » — la section de la page Compte (2026-09-23).

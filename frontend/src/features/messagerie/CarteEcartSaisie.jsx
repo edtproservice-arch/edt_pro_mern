@@ -10,8 +10,8 @@ import { nombre } from '@/lib/nombres';
  * Rien à afficher pour un message qui n'en porte pas.
  */
 export default function CarteEcartSaisie({ message }) {
-  const etat = message.ecartSaisie;
-  if (!etat) return null;
+  if (!message.ecartSaisie) return null;
+  const etat = dansLeSensActuel(message.ecartSaisie);
 
   return (
     <section className="mx-4 mb-4 shrink-0 space-y-3 rounded-lg border bg-muted/20 p-3">
@@ -38,4 +38,19 @@ export default function CarteEcartSaisie({ message }) {
       ))}
     </section>
   );
+}
+
+/**
+ * ⚠️ LES MESSAGES D'AVANT LE 2026-10-23 portaient l'écart e-note − EDT (un
+ * manque était négatif) ; la formule du porteur est désormais EDT − e-note.
+ * Sans le marqueur `sens`, on retourne les signes pour les afficher comme les
+ * nouveaux.
+ */
+function dansLeSensActuel(etat) {
+  if (etat.sens === 'edt-moins-enote') return etat;
+  return {
+    ...etat,
+    ecart: -etat.ecart,
+    lignes: (etat.lignes ?? []).map((ligne) => ({ ...ligne, ecart: -ligne.ecart })),
+  };
 }

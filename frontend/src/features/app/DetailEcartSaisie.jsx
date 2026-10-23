@@ -48,8 +48,9 @@ export default function DetailEcartSaisie({ carte, onFermer }) {
   useEffect(() => reset(), [carte?.cle, carte?.semaine, reset]);
 
   const lignes = requete.data?.lignes ?? [];
-  const enManque = lignes.filter((ligne) => ligne.ecart < 0);
-  const aJour = lignes.filter((ligne) => ligne.ecart >= 0);
+  // ⚠️ ÉCART = EDT − E-NOTE (2026-10-23) : positif = manque.
+  const enManque = lignes.filter((ligne) => ligne.ecart > 0);
+  const aJour = lignes.filter((ligne) => ligne.ecart <= 0);
 
   return (
     <Sheet open={Boolean(carte)} onOpenChange={(ouvert) => !ouvert && onFermer()}>
@@ -68,7 +69,7 @@ export default function DetailEcartSaisie({ carte, onFermer }) {
             {requete.data &&
               ` · séances du ${requete.data.debut ? dateCourte(requete.data.debut) : 'début d’année'} au ${dateCourte(requete.data.fin)}`}
             {carte && ` · E-note ${nombre(carte.enote)} h · EDT ${nombre(carte.edt)} h`}
-            {carte?.manque < 0 && ` · manque cumulé ${nombre(-carte.manque)} h`}
+            {carte?.manque > 0 && ` · manque cumulé ${nombre(carte.manque)} h`}
           </SheetDescription>
           {/* ⚠️ LE MESSAGE EST COMPOSÉ PAR LE SERVEUR, depuis le même calcul que ce
               panneau : le formateur lit ce que le directeur voit ici. */}

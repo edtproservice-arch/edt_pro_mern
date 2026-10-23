@@ -71,6 +71,23 @@ export default function FicheCompte({ compte, onOpenChange }) {
                 <Ligne libelle="Établissements" valeur={compte.nombreEtablissements} />
               </Section>
 
+              {/* Chaque établissement en clair : nom complet, nom abrégé, complexe et région (2026-10-23). */}
+              {compte.etablissementsDetail?.length > 0 && (
+                <>
+                  <Separator />
+                  <Section titre={compte.etablissementsDetail.length > 1 ? 'Établissements' : 'Établissement'}>
+                    {compte.etablissementsDetail.map((etablissement) => (
+                      <div key={etablissement.id} className="space-y-2 rounded-lg border p-3">
+                        <Ligne libelle="Nom complet" valeur={etablissement.nom} />
+                        <Ligne libelle="Nom abrégé" valeur={etablissement.nomAbrege || '—'} />
+                        {etablissement.complexe && <Ligne libelle="Complexe" valeur={etablissement.complexe} />}
+                        {etablissement.region && <Ligne libelle="Région" valeur={etablissement.region} />}
+                      </div>
+                    ))}
+                  </Section>
+                </>
+              )}
+
               <Separator />
 
               <Section titre="Activité">
@@ -103,7 +120,8 @@ function Ligne({ libelle, valeur }) {
   return (
     <div className="flex justify-between gap-4 text-sm">
       <dt className="shrink-0 text-muted-foreground">{libelle}</dt>
-      <dd className="text-right font-medium">{valeur}</dd>
+      {/* `break-words` : un nom d'établissement OFPPT dépasse souvent la largeur de la fiche. */}
+      <dd className="min-w-0 break-words text-right font-medium">{valeur}</dd>
     </div>
   );
 }

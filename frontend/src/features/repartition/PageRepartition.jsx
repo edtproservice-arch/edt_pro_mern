@@ -248,7 +248,12 @@ export default function PageRepartition() {
             {/* ⚠️ TROIS PAR RANGÉE : à six commandes, quatre colonnes en
                 laisseraient deux seules sur une seconde rangée à moitié vide —
                 et la filière, dont le libellé est long, n'aurait pas de place. */}
-            <div className="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {/* ⚠️ TOUTE LA LARGEUR SUR MOBILE (2026-10-23, signalé par le porteur) : à
+                côté des boutons, la grille se réduisait à son contenu et chaque
+                liste se coupait à « Tous le… ». Elle prend désormais sa rangée
+                entière (`basis-full`) ; les boutons passent dessous. Ce n'est
+                qu'à `lg` qu'elle partage la rangée avec eux. */}
+            <div className="grid w-full min-w-0 flex-1 basis-full grid-cols-1 gap-3 sm:grid-cols-2 lg:basis-0 lg:grid-cols-3">
               <div className="space-y-1">
                 <Etiquette>Recherche</Etiquette>
                 <div className="relative">
@@ -330,12 +335,12 @@ export default function PageRepartition() {
               />
             </div>
 
-            <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={() => setImportOuvert(true)}>
+            <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto">
+              <Button variant="outline" className="flex-1 sm:flex-none" onClick={() => setImportOuvert(true)}>
                 <Upload />
                 Importer un classeur
               </Button>
-              <Button onClick={() => setEnEdition({ ligne: null })}>
+              <Button className="flex-1 sm:flex-none" onClick={() => setEnEdition({ ligne: null })}>
                 <Plus />
                 Ajouter
               </Button>

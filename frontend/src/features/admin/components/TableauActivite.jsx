@@ -63,6 +63,8 @@ import { libelleRole, LIBELLES_ROLE } from './roles';
  * sortie ; sans lui, on ne pourrait plus revenir à la liste complète.
  */
 const TOUS = '__tous__';
+// Le tri quand « Trier par » est laissé à sa valeur d'ouverture : les comptes en ligne d'abord.
+const TRI_PAR_DEFAUT = 'activite';
 
 const FILTRES = [
   {
@@ -114,9 +116,15 @@ const FILTRES = [
   {
     cle: 'tri',
     libelle: 'Trier par',
-    tous: 'Inscription',
+    /*
+     * ⚠️ « EN LIGNE D'ABORD » PAR DÉFAUT (2026-10-23, demande du porteur) : on
+     * ouvre ce tableau pour voir QUI est là. L'entrée par défaut (`TOUS`) vaut
+     * donc `activite` — voir `TRI_PAR_DEFAUT` — et « Inscription » devient une
+     * option comme les autres.
+     */
+    tous: 'En ligne d’abord',
     options: [
-      { valeur: 'activite', libelle: 'En ligne d’abord' },
+      { valeur: 'inscription', libelle: 'Inscription' },
       { valeur: 'temps', libelle: 'Temps passé' },
       { valeur: 'connexion', libelle: 'Dernière connexion' },
     ],
@@ -147,7 +155,7 @@ export default function TableauActivite() {
 
   const requete = useQuery({
     queryKey: ['admin-activite', recherche, filtres],
-    queryFn: () => chargerUtilisateurs({ ...filtres, recherche, parPage: 50 }),
+    queryFn: () => chargerUtilisateurs({ ...filtres, tri: filtres.tri ?? TRI_PAR_DEFAUT, recherche, parPage: 50 }),
     retry: false,
     /*
      * ⚠️ « EN LIGNE » SE PÉRIME EN 75 SECONDES : une liste figée annoncerait
@@ -345,6 +353,14 @@ export default function TableauActivite() {
               {
                 id: 'utilisateur',
                 entete: 'Utilisateur',
+                /*
+                 * ⚠️ UNE LARGEUR FIXE (2026-10-23, corrigé à la demande du porteur :
+                 * « le nom d'utilisateur ne s'affiche pas ») : la colonne sans
+                 * largeur reçoit le RESTE de `table-fixed`, et l'Établissement
+                 * élargi ne lui en laissait presque rien. C'est désormais
+                 * l'Établissement, qui passe à la ligne, qui absorbe le reste.
+                 */
+                largeur: 'w-60',
                 tri: (ligne) => ligne.nomComplet ?? '',
                 rendu: (ligne) => <CelluleUtilisateur compte={ligne} />,
               },
@@ -362,15 +378,25 @@ export default function TableauActivite() {
               {
                 id: 'etablissement',
                 entete: 'Établissement',
-                largeur: 'w-48',
+                // Sans largeur : elle prend ce qui reste, et son texte passe à la ligne.
                 tri: (ligne) => ligne.etablissements?.[0] ?? '',
                 // ⚠️ UN COMPTE PEUT EN AVOIR PLUSIEURS : un directeur en gère
                 // parfois deux. Les joindre plutôt que n'en montrer qu'un.
-                rendu: (ligne) => (
-                  <span className="block truncate text-sm text-muted-foreground">
-                    {ligne.etablissements?.length ? ligne.etablissements.join(' · ') : '—'}
-                  </span>
-                ),
+                // ⚠️ LE NOM ENTIER, SUR PLUSIEURS LIGNES (2026-10-23, demande du
+                // porteur) : tronqué, « CENTRE DE FORMATIO… » ne distinguait plus
+                // aucun établissement — ils commencent presque tous pareil.
+                rendu: (ligne) =>
+                  ligne.etablissements?.length ? (
+                    <span className="block space-y-0.5 whitespace-normal break-words text-sm leading-snug text-muted-foreground">
+                      {ligne.etablissements.map((nom) => (
+                        <span key={nom} className="block">
+                          {nom}
+                        </span>
+                      ))}
+                    </span>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">—</span>
+                  ),
               },
               {
                 id: 'derniereConnexion',

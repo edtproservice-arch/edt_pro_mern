@@ -64,13 +64,21 @@ export default function DialogueChoixGroupes({
   champs = null,
   parStagiaire = false,
   vierge = null,
+  /* Les groupes proposés, fournis par l'appelant (2026-10-23 : la page « Documents » du
+     formateur, limitée à SES groupes) — sans eux, ceux de l'établissement. */
+  groupesFournis = null,
 }) {
   const [enVierge, setEnVierge] = useState(false);
   const [valeurs, setValeurs] = useState(() =>
     Object.fromEntries((champs ?? []).map((champ) => [champ.nom, champ.defaut ?? '']))
   );
   const anneeChoisie = useAnneeActive();
-  const contexte = useQuery({ queryKey: ['emploi', 'contexte'], queryFn: chargerContexte, retry: false, enabled: ouvert });
+  const contexte = useQuery({
+    queryKey: ['emploi', 'contexte'],
+    queryFn: chargerContexte,
+    retry: false,
+    enabled: ouvert && !groupesFournis,
+  });
   const semaines = useQuery({
     queryKey: ['emploi', 'semaines'],
     queryFn: chargerSemaines,
@@ -107,7 +115,8 @@ export default function DialogueChoixGroupes({
     }
   );
 
-  const groupes = (contexte.data?.groupes ?? []).filter((groupe) => !groupesAdmis || groupesAdmis(groupe));
+  const tousLesGroupes = groupesFournis ?? contexte.data?.groupes ?? [];
+  const groupes = tousLesGroupes.filter((groupe) => !groupesAdmis || groupesAdmis(groupe));
   const groupesIdentites = contexte.data?.groupesIdentites ?? {};
   const facettes = useMemo(() => facettesDesGroupes(groupes, groupesIdentites), [groupes, groupesIdentites]);
   const retenus = useMemo(() => {
@@ -175,7 +184,7 @@ export default function DialogueChoixGroupes({
           <DialogDescription className="sr-only">{description}</DialogDescription>
         </DialogHeader>
 
-        {contexte.isLoading ? (
+        {!groupesFournis && contexte.isLoading ? (
           <p className="text-sm text-muted-foreground">Chargement des groupes…</p>
         ) : (
           <div className="space-y-4">
@@ -193,7 +202,7 @@ export default function DialogueChoixGroupes({
 
             {!enVierge && (
               <>
-                {groupes.length === 0 && (contexte.data?.groupes ?? []).length > 0 && (
+                {groupes.length === 0 && tousLesGroupes.length > 0 && (
                   <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">{videGroupes}</p>
                 )}
                 <div className="space-y-1.5">

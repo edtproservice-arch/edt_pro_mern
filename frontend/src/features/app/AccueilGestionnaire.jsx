@@ -4,6 +4,7 @@ import { recupererSession } from '@/features/auth/api';
 import { Etat, LiensRapides, Salutation } from './AccueilApp';
 import StatistiquesAbsencesDiscipline from './StatistiquesAbsencesDiscipline';
 import AVenirPeriodes from './AVenirPeriodes';
+import DemandesDocuments from '@/features/demandesDocuments/DemandesDocuments';
 
 /**
  * ═══ L'ACCUEIL DU GESTIONNAIRE ═══ (2026-09-29, demande du porteur : « une
@@ -45,6 +46,8 @@ export default function AccueilGestionnaire() {
   return (
     <div className="mx-auto max-w-4xl space-y-10 py-4">
       <Salutation nom={session.data.utilisateur.nomComplet} />
+      {/* Les demandes de documents des stagiaires — l'attestation à signer (2026-10-23). */}
+      <DemandesDocuments />
       <StatistiquesAbsencesDiscipline />
       {/* Sous ses statistiques (2026-10-10, demande du porteur), comme « À venir »
           sous les tuiles du directeur. ⚠️ Sans lien : Stages et Formations ne

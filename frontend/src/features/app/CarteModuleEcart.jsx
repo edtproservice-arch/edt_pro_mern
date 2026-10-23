@@ -11,7 +11,8 @@ import { cn } from '@/lib/utils';
  * pour que les deux ne divergent pas.
  */
 export default function CarteModuleEcart({ ligne }) {
-  const manque = ligne.ecart < 0;
+  // ⚠️ ÉCART = EDT − E-NOTE (2026-10-23) : positif = manque.
+  const manque = ligne.ecart > 0;
   return (
     <div className="rounded-lg border bg-background">
       <div className="flex items-start justify-between gap-3 border-b px-3 py-2">

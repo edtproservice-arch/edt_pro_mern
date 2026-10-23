@@ -115,8 +115,9 @@ export async function listerUtilisateurs({
       .sort(ordre)
       .skip((page - 1) * parPage)
       .limit(parPage)
-      /* Le nom de l'établissement, pour la colonne du tableau d'activité. */
-      .populate('etablissementIds', 'nom'),
+      /* Le nom de l'établissement, pour la colonne du tableau d'activité ; le nom
+         abrégé, le complexe et la région pour la fiche du compte (2026-10-23). */
+      .populate('etablissementIds', 'nom nomAbrege complexe region'),
   ]);
 
   return {
@@ -733,5 +734,18 @@ function presenterPourAdmin(utilisateur) {
     etablissements: utilisateur.etablissementIds
       .map((e) => e?.nom)
       .filter((nom) => typeof nom === 'string'),
+    /*
+     * La FICHE du compte (2026-10-23, demande du porteur : « nom complet et nom
+     * abrégé ») : chaque établissement en clair, plutôt qu'un simple compte.
+     */
+    etablissementsDetail: utilisateur.etablissementIds
+      .filter((e) => typeof e?.nom === 'string')
+      .map((e) => ({
+        id: String(e._id),
+        nom: e.nom,
+        nomAbrege: e.nomAbrege || '',
+        complexe: e.complexe || '',
+        region: e.region || '',
+      })),
   };
 }

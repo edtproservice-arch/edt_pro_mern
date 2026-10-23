@@ -765,7 +765,7 @@ export default function CartesDocuments({ nombreStagiaires }) {
  * Une petite feuille A4 : coin corné, icône, titre, traits de texte, et en pied
  * `pied` — « Phase 10 » tant que le document n'est pas produit.
  */
-function FeuilleDocument({ document: { titre, resume, icone: Icone }, attenue = false, pied = 'Phase 10', className }) {
+export function FeuilleDocument({ document: { titre, resume, icone: Icone }, attenue = false, pied = 'Phase 10', className }) {
   return (
     <span
       className={cn(
@@ -814,7 +814,7 @@ function FeuilleDocument({ document: { titre, resume, icone: Icone }, attenue = 
  * Un document DÉJÀ PRODUIT : la feuille se clique et propose Word ou PDF.
  * ⚠️ PAS ATTÉNUÉ SANS BASE KONOSYS : un billet vierge ne lit aucun stagiaire.
  */
-function DocumentTelechargeable({ document }) {
+export function DocumentTelechargeable({ document }) {
   const telechargement = useMutation({
     mutationFn: document.telecharger,
     onError: (erreur) => toast.error('Téléchargement impossible', { description: erreur.message }),
@@ -867,7 +867,7 @@ function DocumentTelechargeable({ document }) {
  */
 const LIBELLES_FORMAT = { docx: 'Word', pdf: 'PDF', xlsx: 'Excel' };
 
-function DocumentAvecDialogue({ document, attenue }) {
+export function DocumentAvecDialogue({ document, attenue }) {
   const [ouvert, setOuvert] = useState(false);
   // La fenêtre de CE document, partagée pendant le guidage (2026-10-04) — enveloppée :
   // un état partagé est un objet, une liste ou une chaîne, jamais un booléen nu.

@@ -8,6 +8,7 @@ import { Seance } from '../../src/models/Seance.js';
 import { Stagiaire } from '../../src/models/Stagiaire.js';
 import { Repartition } from '../../src/models/Repartition.js';
 import { RefreshToken } from '../../src/models/RefreshToken.js';
+import { Message } from '../../src/models/Message.js';
 import { ROLES, STATUTS_COMPTE, TYPES_COURS } from 'shared/constants';
 
 vi.mock('../../src/config/mailer.js', () => ({
@@ -562,6 +563,146 @@ describe('GET /consultation/avancement — formateur', () => {
     expect(reponse.status).toBe(200);
     expect(reponse.body.intitules.M101).toBe('Métrologie');
     expect(reponse.body.intitulesParGroupe).toEqual({ 'GM101||M101': 'Métrologie' });
+  });
+});
+
+describe('/consultation/documents — la page « Documents » du formateur (2026-10-23)', () => {
+  it('ne propose que SES groupes', async () => {
+    const reponse = await request(app).get('/api/v2/consultation/documents').set('Cookie', cookiesFormateur);
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.groupes).toEqual(['GM101']);
+  });
+
+  it('refuse la feuille CC/EFM d’un groupe qui n’est pas le sien', async () => {
+    const reponse = await request(app)
+      .post('/api/v2/consultation/documents/presence-cc-efm')
+      .set('Cookie', cookiesFormateur)
+      .send({ format: 'docx', groupes: ['GM101', 'GM102'] });
+    expect(reponse.status).toBe(403);
+    expect(reponse.body.code).toBe('GROUPE_ETRANGER');
+  });
+
+  it('télécharge la feuille CC/EFM de son groupe', async () => {
+    const reponse = await request(app)
+      .post('/api/v2/consultation/documents/presence-cc-efm')
+      .set('Cookie', cookiesFormateur)
+      .send({ format: 'docx', groupes: ['GM101'] })
+      .responseType('blob');
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers['content-type']).toContain('wordprocessingml');
+  });
+
+  it('reste fermée au stagiaire', async () => {
+    const reponse = await request(app).get('/api/v2/consultation/documents').set('Cookie', cookiesStagiaire);
+    expect(reponse.status).toBe(403);
+  });
+});
+
+describe('la page « Documents » du stagiaire (2026-10-23)', () => {
+  it('télécharge SA carte et SA demande de duplicata, sans rien choisir', async () => {
+    for (const chemin of ['carte', 'duplicata']) {
+      const reponse = await request(app)
+        .post(`/api/v2/consultation/mes-documents/${chemin}`)
+        .set('Cookie', cookiesStagiaire)
+        .send({ format: 'docx' })
+        .responseType('blob');
+      expect(reponse.status).toBe(200);
+      expect(reponse.headers['content-type']).toContain('wordprocessingml');
+    }
+  });
+
+  it('reste fermée au formateur', async () => {
+    const reponse = await request(app)
+      .post('/api/v2/consultation/mes-documents/carte')
+      .set('Cookie', cookiesFormateur)
+      .send({ format: 'docx' });
+    expect(reponse.status).toBe(403);
+  });
+
+  /*
+   * ⚠️ L'ATTESTATION SE DEMANDE : signée et cachetée, elle passe par l'administration —
+   * en attente → acceptée → prête → remise, ou rejetée avec un motif.
+   */
+  it('suit le circuit de l’attestation : demande, acceptation, prête, remise', async () => {
+    const demander = () =>
+      request(app).post('/api/v2/consultation/demandes').set('Cookie', cookiesStagiaire).send({ type: 'attestation-poursuite' });
+
+    const creee = await demander();
+    expect(creee.status).toBe(201);
+    expect(creee.body.demande).toMatchObject({ statut: 'en_attente', matricule: 'CEF001', groupe: 'GM101' });
+    // Une seule demande ouverte à la fois.
+    expect((await demander()).status).toBe(409);
+
+    const aTraiter = await request(app).get('/api/v2/demandes-documents').set('Cookie', cookiesDirecteur);
+    expect(aTraiter.status).toBe(200);
+    expect(aTraiter.body.demandes).toHaveLength(1);
+    const id = aTraiter.body.demandes[0]._id;
+
+    const geste = (action, motif) =>
+      request(app).patch(`/api/v2/demandes-documents/${id}`).set('Cookie', cookiesDirecteur).send({ action, motif });
+    // Pas « prête » avant d'être acceptée.
+    expect((await geste('prete')).status).toBe(400);
+    expect((await geste('accepter')).body.demande.statut).toBe('acceptee');
+    expect((await geste('prete')).body.demande.statut).toBe('prete');
+
+    const vue = await request(app).get('/api/v2/consultation/mes-documents').set('Cookie', cookiesStagiaire);
+    expect(vue.body.demandes[0]).toMatchObject({ statut: 'prete', traiteePar: 'Directeur Test' });
+
+    expect((await geste('remise')).body.demande.statut).toBe('remise');
+    // Remise : il peut en redemander une.
+    expect((await demander()).status).toBe(201);
+    // Le gestionnaire voit combien de fois il l'a demandée (2026-10-23).
+    const listes = (await request(app).get('/api/v2/demandes-documents').set('Cookie', cookiesDirecteur)).body.demandes;
+    expect(listes.map((d) => d.nombreDemandes)).toEqual([2, 2]);
+  });
+
+  it('rejette avec un motif, que le stagiaire lit', async () => {
+    await request(app).post('/api/v2/consultation/demandes').set('Cookie', cookiesStagiaire).send({ type: 'attestation-poursuite' });
+    const id = (await request(app).get('/api/v2/demandes-documents').set('Cookie', cookiesDirecteur)).body.demandes[0]._id;
+    await request(app)
+      .patch(`/api/v2/demandes-documents/${id}`)
+      .set('Cookie', cookiesDirecteur)
+      .send({ action: 'rejeter', motif: 'Dossier incomplet' });
+
+    const vue = await request(app).get('/api/v2/consultation/mes-documents').set('Cookie', cookiesStagiaire);
+    expect(vue.body.demandes[0]).toMatchObject({ statut: 'rejetee', motif: 'Dossier incomplet' });
+  });
+
+  /* « Prête » arrive aussi dans sa messagerie (2026-10-23), signé du gestionnaire. */
+  it('prévient le stagiaire par la messagerie quand le gestionnaire la signale prête', async () => {
+    await User.create({
+      nomComplet: 'Gestionnaire Test',
+      email: 'gestionnaire@edtpro.ma',
+      motDePasse: MOT_DE_PASSE,
+      role: ROLES.GESTIONNAIRE,
+      statut: STATUTS_COMPTE.APPROUVE,
+      estVerifie: true,
+      etablissementIds: [etablissement.id],
+    });
+    const cookiesGestionnaire = (
+      await request(app).post('/api/v2/auth/connexion').send({ identifiant: 'gestionnaire@edtpro.ma', motDePasse: MOT_DE_PASSE })
+    ).headers['set-cookie'];
+
+    await request(app).post('/api/v2/consultation/demandes').set('Cookie', cookiesStagiaire).send({ type: 'attestation-poursuite' });
+    const id = (await request(app).get('/api/v2/demandes-documents').set('Cookie', cookiesGestionnaire)).body.demandes[0]._id;
+    for (const action of ['accepter', 'prete']) {
+      const reponse = await request(app)
+        .patch(`/api/v2/demandes-documents/${id}`)
+        .set('Cookie', cookiesGestionnaire)
+        .send({ action });
+      expect(reponse.status).toBe(200);
+    }
+
+    const stagiaire = await User.findOne({ identifiant: 'CEF001' });
+    const messages = await Message.find({ destinataireId: stagiaire._id }).lean();
+    expect(messages).toHaveLength(1);
+    expect(messages[0].sujet).toBe('Votre attestation de poursuite de formation est prête');
+    expect(messages[0].corps).toContain('Gestionnaire Test');
+  });
+
+  it('ferme le traitement des demandes au stagiaire', async () => {
+    const reponse = await request(app).get('/api/v2/demandes-documents').set('Cookie', cookiesStagiaire);
+    expect(reponse.status).toBe(403);
   });
 });
 

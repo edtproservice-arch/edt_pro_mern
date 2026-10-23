@@ -193,7 +193,10 @@ export default function PageReseau() {
           </BandeCartes>
 
           <div className="flex flex-wrap items-end justify-between gap-3">
-            <div className="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-3">
+            {/* ⚠️ TOUTE LA LARGEUR SUR MOBILE (2026-10-23), comme Répartition : à côté
+                du bouton, la grille se réduisait à son contenu et les listes se
+                coupaient. Elle ne partage sa rangée qu'à partir de `lg`. */}
+            <div className="grid w-full min-w-0 flex-1 basis-full grid-cols-1 gap-3 sm:grid-cols-3 lg:basis-0">
               <div className="space-y-1">
                 <Etiquette>Recherche</Etiquette>
                 <div className="relative">
@@ -226,7 +229,7 @@ export default function PageReseau() {
               />
             </div>
 
-            <Button onClick={() => setEnEdition({ etablissement: null })}>
+            <Button className="w-full sm:w-auto" onClick={() => setEnEdition({ etablissement: null })}>
               <Plus />
               Ajouter un établissement
             </Button>

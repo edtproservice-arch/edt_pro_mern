@@ -63,8 +63,8 @@ describe('ecartsDeSaisie', () => {
     expect(lignes).toHaveLength(1);
     expect(lignes[0].nom).toBe('ALAMI SARA');
     // S1–S3 : quatre séances de 2,5 h ; l'absence ne compte pas. Au 14/09, deux tenues pour 5 h saisies.
-    expect(lignes[0].cellules[0]).toMatchObject({ enote: 5, edt: 10, ecart: -5, enoteCumul: 5, edtCumul: 5, manque: 0 });
-    expect(lignes[0].cellules[1]).toMatchObject({ enote: 5, edt: 2.5, ecart: 2.5, enoteCumul: 10, edtCumul: 10, manque: 0 });
+    expect(lignes[0].cellules[0]).toMatchObject({ enote: 5, edt: 10, ecart: 5, enoteCumul: 5, edtCumul: 5, manque: 0 });
+    expect(lignes[0].cellules[1]).toMatchObject({ enote: 5, edt: 2.5, ecart: -2.5, enoteCumul: 10, edtCumul: 10, manque: 0 });
   });
 
   it('arrête le cumul au jour d’export inscrit dans le nom du fichier, pas à l’import', () => {
@@ -85,7 +85,7 @@ describe('ecartsDeSaisie', () => {
     const { periodes, formateurs: lignes } = ecartsDeSaisie({ imports, seances, formateurs, anneeScolaire: 2026 });
 
     expect(periodes[1]).toMatchObject({ debut: '2026-09-14', fin: '2026-09-19', exporteLe: '2026-09-15', importeLe: '2026-09-19' });
-    expect(lignes[0].cellules[1]).toMatchObject({ edt: 7.5, edtCumul: 2.5, manque: -2.5 });
+    expect(lignes[0].cellules[1]).toMatchObject({ edt: 7.5, edtCumul: 2.5, manque: 2.5 });
   });
 
   it('ne compte qu’une séance par formateur et par créneau', () => {
@@ -120,7 +120,7 @@ describe('ecartsDeSaisie', () => {
       anneeScolaire: 2026,
     });
 
-    expect(lignes[0]).toMatchObject({ nom: 'BENNANI OMAR', cellules: [{ enote: 4, edt: 0, ecart: 4 }] });
+    expect(lignes[0]).toMatchObject({ nom: 'BENNANI OMAR', cellules: [{ enote: 4, edt: 0, ecart: -4 }] });
   });
 
   it('retient le dernier dépôt d’une même semaine', () => {
@@ -160,7 +160,7 @@ describe('ecartsDeSaisie', () => {
 
     expect(detail).toMatchObject({ semaine: 3, debut: '2026-09-14', fin: '2026-09-19' });
     expect(detail.lignes).toHaveLength(2);
-    expect(detail.lignes[0]).toMatchObject({ groupe: 'G1', module: 'M101', enote: 2.5, edt: 5, ecart: -2.5 });
+    expect(detail.lignes[0]).toMatchObject({ groupe: 'G1', module: 'M101', enote: 2.5, edt: 5, ecart: 2.5 });
     expect(detail.lignes[0].seances.map((s) => s.date)).toEqual(['2026-09-15', '2026-09-16']);
     expect(detail.lignes[1]).toMatchObject({ enote: 2.5, edt: 2.5, ecart: 0 });
     expect(detailEcartDeSaisie({ imports, seances, formateurs, anneeScolaire: 2026, cle: 'M1', semaine: 9 })).toBeNull();

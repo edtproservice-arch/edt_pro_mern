@@ -35,8 +35,10 @@ const LARGEUR_COLONNE = 288;
  * semaine, règle de l'import), une carte par formateur en MANQUE de saisie,
  * le plus gros manque en tête.
  *
- * E-note : ce que le formateur a saisi depuis le dépôt précédent ; EDT : ce que
- * la grille lui donnait sur la même période ; écart = E-note − EDT (négatif = manque).
+ * ⚠️ DEUX COLONNES SEULEMENT, EN CUMUL DEPUIS S1 (2026-10-23, demande du
+ * porteur) : la semaine du dernier dépôt e-note (S) et la précédente (S−1).
+ * Écart = avancement e-note − EDT réalisé de S1 à la semaine de la colonne ;
+ * négatif = manque, positif = avance — les deux s'affichent, pas les écarts nuls.
  */
 /**
  * La requête de la frise, partagée avec la tuile de l'accueil : la même clé,
@@ -75,8 +77,8 @@ export default function EcartsSaisie() {
     return periodes.map((_, index) =>
       formateurs
         .map((formateur) => ({ cle: formateur.cle, nom: formateur.nom, ...formateur.cellules[index] }))
-        // ⚠️ ÉCART = E-NOTE − EDT (2026-10-23, formule du porteur) : négatif = manque.
-        .filter((ligne) => ligne.ecart < 0)
+        // ⚠️ NÉGATIFS ET POSITIFS (2026-10-23) : le plus gros manque en tête, les avances ensuite.
+        .filter((ligne) => ligne.ecart !== 0)
         .sort((a, b) => a.ecart - b.ecart || a.nom.localeCompare(b.nom, 'fr'))
     );
   }, [requete.data, periodes, recherche]);
@@ -194,6 +196,7 @@ function Frise({ semaines, periodes, parPeriode, manqueParPeriode, recherche, on
           {semaines.map((semaine, index) => {
             const periode = semaine.periode === null ? null : periodes[semaine.periode];
             const formateurs = semaine.periode === null ? [] : (parPeriode[semaine.periode] ?? []);
+            const enManque = formateurs.filter((formateur) => formateur.ecart < 0).length;
             const dernier = index === semaines.length - 1;
             return (
               <div
@@ -219,18 +222,23 @@ function Frise({ semaines, periodes, parPeriode, manqueParPeriode, recherche, on
                     >
                       {dernier && <span className="size-1.5 rounded-full bg-primary" aria-hidden="true" />}
                       S{semaine.numero}
-                      {dernier && <span className="font-normal text-muted-foreground">· dernier dépôt</span>}
+                      <span className="font-normal text-muted-foreground">
+                        · {dernier ? 'semaine en cours' : 'semaine précédente'}
+                      </span>
                     </span>
                     <span className="block truncate text-[0.65rem] text-muted-foreground">
-                      {date(semaine.debut)} – {date(semaine.fin)}
-                      {periode && periode.depuisSemaine < semaine.numero &&
-                        ` · saisie depuis S${periode.depuisSemaine}`}
+                      {periode
+                        ? `EDT réalisé de S1 à S${semaine.numero} · ${date(periode.debut)} – ${date(periode.fin)}`
+                        : `${date(semaine.debut)} – ${date(semaine.fin)}`}
                     </span>
                   </span>
                   <span className="flex shrink-0 items-center gap-1">
-                    {formateurs.length > 0 && (
-                      <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-destructive/15 text-[0.65rem] font-semibold tabular-nums text-destructive">
-                        {formateurs.length}
+                    {enManque > 0 && (
+                      <span
+                        className="flex size-5 shrink-0 items-center justify-center rounded-full bg-destructive/15 text-[0.65rem] font-semibold tabular-nums text-destructive"
+                        title="Formateurs en manque de saisie"
+                      >
+                        {enManque}
                       </span>
                     )}
                     {/* ⚠️ LE TOTAL NON FILTRÉ : l'envoi part à TOUS les formateurs en
@@ -249,14 +257,13 @@ function Frise({ semaines, periodes, parPeriode, manqueParPeriode, recherche, on
                     </p>
                   ) : formateurs.length === 0 ? (
                     <p className="px-1 py-6 text-center text-[0.7rem] text-muted-foreground">
-                      Aucun manque de saisie
+                      Aucun écart de saisie
                     </p>
                   ) : (
                     formateurs.map((formateur) => (
                       <CarteFormateur
                         key={formateur.cle}
                         formateur={formateur}
-                        exporteLe={periode.exporteLe}
                         onOuvrir={() => onOuvrir({ ...formateur, semaine: semaine.numero })}
                       />
                     ))
@@ -269,45 +276,38 @@ function Frise({ semaines, periodes, parPeriode, manqueParPeriode, recherche, on
       </div>
 
       <p className="text-xs text-muted-foreground">
-        E-note : heures saisies depuis le dépôt précédent · EDT : heures des séances réalisées
-        (terminées) de la semaine, absences et surveillances d’EFM exclues, rattrapages compris ·
-        Écart = E-note saisie − EDT réalisé (négatif = manque), approché si l’export e-note n’est
-        pas fait en fin de semaine · Manque cumulé : tout ce qui est saisi depuis la rentrée moins
-        tout ce qui est réalisé avant le jour de l’export.
+        E-note : avancement saisi depuis la rentrée, au dernier dépôt · EDT : heures des séances
+        réalisées (terminées) de S1 à la semaine de la colonne, absences et surveillances d’EFM
+        exclues, rattrapages compris · Écart = E-note − EDT : négatif = manque de saisie, positif =
+        avance.
       </p>
     </div>
   );
 }
 
-/** Une carte : l'écart en tête, puis le nom et le détail E-note / EDT. */
-function CarteFormateur({ formateur, exporteLe, onOuvrir }) {
+/** Une carte : l'écart en tête — rouge s'il manque, vert s'il est en avance —, puis le nom et le détail. */
+function CarteFormateur({ formateur, onOuvrir }) {
+  const manque = formateur.ecart < 0;
   return (
     <button
       type="button"
       onClick={onOuvrir}
       className="flex w-full items-center gap-2.5 rounded-lg border bg-background px-2.5 py-2 text-left text-xs transition-colors hover:bg-muted/40"
-      title="Voir les séances à vérifier"
+      title="Voir le détail par module"
     >
-      <span className="flex h-6 min-w-12 shrink-0 items-center justify-center rounded-full bg-destructive/10 px-1.5 text-[0.7rem] font-semibold tabular-nums text-destructive">
+      <span
+        className={cn(
+          'flex h-6 min-w-12 shrink-0 items-center justify-center rounded-full px-1.5 text-[0.7rem] font-semibold tabular-nums',
+          manque ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success'
+        )}
+      >
+        {manque ? '' : '+'}
         {nombre(formateur.ecart)} h
       </span>
       <span className="min-w-0">
         <span className="block truncate font-medium leading-snug">{formateur.nom}</span>
         <span className="block text-[0.65rem] tabular-nums text-muted-foreground">
           E-note {nombre(formateur.enote)} h · EDT {nombre(formateur.edt)} h
-        </span>
-        {/* ⚠️ LE MANQUE CUMULÉ (2026-10-23, choix du porteur) : juste quel que soit
-            le jour d'export, là où l'écart de la semaine n'est qu'approché. */}
-        <span
-          className={cn(
-            'block text-[0.65rem] tabular-nums',
-            formateur.manque < 0 ? 'font-medium text-destructive' : 'text-muted-foreground'
-          )}
-          title={`Depuis la rentrée : E-note ${nombre(formateur.enoteCumul)} h · EDT réalisé ${nombre(formateur.edtCumul)} h`}
-        >
-          {formateur.manque < 0
-            ? `Manque cumulé au ${date(exporteLe)} : ${nombre(formateur.manque)} h`
-            : `À jour au ${date(exporteLe)}`}
         </span>
       </span>
     </button>

@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/sheet';
 import { chargerDetailEcartSaisie, envoyerEcartSaisie } from '@/features/avancement/api';
 import { nombre } from '@/lib/nombres';
+import { cn } from '@/lib/utils';
 import CarteModuleEcart, { dateCourte } from './CarteModuleEcart';
 
 /**
@@ -59,7 +60,13 @@ export default function DetailEcartSaisie({ carte, onFermer }) {
           <SheetTitle className="flex items-center gap-2">
             {carte?.nom}
             {carte && (
-              <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-semibold tabular-nums text-destructive">
+              <span
+                className={cn(
+                  'rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums',
+                  carte.ecart < 0 ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success'
+                )}
+              >
+                {carte.ecart > 0 && '+'}
                 {nombre(carte.ecart)} h
               </span>
             )}
@@ -69,7 +76,6 @@ export default function DetailEcartSaisie({ carte, onFermer }) {
             {requete.data &&
               ` · séances du ${requete.data.debut ? dateCourte(requete.data.debut) : 'début d’année'} au ${dateCourte(requete.data.fin)}`}
             {carte && ` · E-note ${nombre(carte.enote)} h · EDT ${nombre(carte.edt)} h`}
-            {carte?.manque < 0 && ` · manque cumulé ${nombre(carte.manque)} h`}
           </SheetDescription>
           {/* ⚠️ LE MESSAGE EST COMPOSÉ PAR LE SERVEUR, depuis le même calcul que ce
               panneau : le formateur lit ce que le directeur voit ici. */}

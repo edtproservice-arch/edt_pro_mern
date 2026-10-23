@@ -17,22 +17,18 @@ import { lundiPremiereSemaine } from '../planning/anneeScolaire.js';
  * seule base e-note par semaine » (`enoteImport.service.js`), qui fait de
  * chaque dépôt un point hebdomadaire.
  *
- * ═══ DEUX MESURES PAR CARTE (2026-10-23, choix du porteur : « les deux ») ═══
- * 1. L'ÉCART DE LA SEMAINE : EDT = les séances réalisées de la SEMAINE CIVILE
- *    du dépôt, du lundi au samedi — les 25 h que montre la grille — et, quand
- *    des semaines n'ont pas eu de dépôt, de toutes celles depuis le précédent
- *    (« saisie depuis S1 »). E-note = la différence de cumul entre les deux
- *    dépôts. ⚠️ APPROCHÉ : il n'est exact que si e-note est exportée chaque
- *    semaine au même moment ; un export du mardi déborde sur la semaine voisine.
- * 2. LE MANQUE CUMULÉ, lui, est juste quel que soit le jour d'export : le
- *    réalisé e-note depuis la rentrée, moins les séances eDTpro réalisées
- *    AVANT LE JOUR DE L'EXPORT — celles du jour même n'ont en général pas
- *    encore été saisies.
+ * ═══ ⚠️ DEUX COLONNES, EN CUMUL DEPUIS S1 (2026-10-23, demande du porteur) ═══
+ * « affiche seulement la semaine en cours et la semaine en cours − 1, lorsque
+ * j'insère une base e-note » :
+ *   S−1 : avancement e-note − EDT réalisé de S1 à S−1 ;
+ *   S   : avancement e-note − EDT réalisé de S1 à S.
+ * La semaine en cours est celle du DERNIER dépôt ; l'avancement e-note, son
+ * cumul depuis la rentrée — le même pour les deux colonnes. Un écart NÉGATIF
+ * est un manque de saisie, un écart POSITIF une avance ; les deux s'affichent.
  *
- * ═══ ⚠️ LA FORMULE DU PORTEUR (2026-10-23) ═══
- * ÉCART S7 = (avancement e-note S7 − avancement e-note S6) − EDT réalisé S7.
- * Un écart NÉGATIF est un MANQUE de saisie (« rends l'écart négatif ») ; le
- * manque cumulé suit le même sens (e-note cumulé − EDT réalisé cumulé).
+ * ⚠️ LA COLONNE S RETIENT TOUTES LES SÉANCES RÉALISÉES DE LA SEMAINE, même
+ * tenues après l'export : c'est la formule demandée. Celle de S−1 est la juste
+ * mesure du retard quand l'export est fait en cours de semaine.
  *
  * ⚠️ LE CUMUL S'ARRÊTE À L'EXPORT, PAS À L'IMPORT (2026-10-22, signalé par le
  * porteur). Un fichier « AvancementProgramme…_25_09_2026_13_58_48 » importé le
@@ -53,7 +49,8 @@ import { lundiPremiereSemaine } from '../planning/anneeScolaire.js';
  * @param {Array} params.formateurs — `Base.formateurs`
  * @param {number} params.anneeScolaire
  * @param {Array} [params.rentrees]
- * @returns {{periodes: Array, formateurs: Array}}
+ * @returns {{semaines: Array, periodes: Array, formateurs: Array}} une période
+ *   par colonne — S−1 puis S —, `formateurs[].cellules` dans le même ordre
  */
 export function ecartsDeSaisie({
   imports = [],
@@ -66,107 +63,65 @@ export function ecartsDeSaisie({
 }) {
   const realisee = estRealisee(maintenant, horaires);
   const identite = indexerFormateurs(formateurs);
-  const retenus = retenirDepots(imports, anneeScolaire, rentrees);
+  const depot = retenirDepots(imports, anneeScolaire, rentrees).at(-1);
+  if (!depot) return { semaines: [], periodes: [], formateurs: [] };
 
-  const semainesCiviles = fenetresCiviles(retenus, anneeScolaire, rentrees);
+  const colonnes = colonnesDuDepot(depot, anneeScolaire, rentrees);
 
   const lignesParFormateur = new Map();
   const ligneDe = (cle, nom) => {
     if (!lignesParFormateur.has(cle)) {
-      lignesParFormateur.set(cle, {
-        cle,
-        nom,
-        cellules: retenus.map(() => ({ enote: 0, edt: 0, ecart: 0, enoteCumul: 0, edtCumul: 0, manque: 0 })),
-      });
+      lignesParFormateur.set(cle, { cle, nom, cellules: colonnes.map(() => ({ enote: 0, edt: 0, ecart: 0 })) });
     }
     return lignesParFormateur.get(cle);
   };
 
-  /* ── E-note : le cumul de chaque dépôt, puis la différence ─────────────── */
-  let precedent = new Map();
-  retenus.forEach((depot, index) => {
-    const cumul = cumulEnote(depot.lignes ?? [], identite);
-    for (const cle of new Set([...cumul.keys(), ...precedent.keys()])) {
-      const actuel = cumul.get(cle) ?? { heures: 0, nom: precedent.get(cle)?.nom };
-      const avant = precedent.get(cle)?.heures ?? 0;
-      const cellule = ligneDe(cle, actuel.nom).cellules[index];
-      cellule.enote = arrondir(actuel.heures - avant);
-      cellule.enoteCumul = arrondir(actuel.heures);
-    }
-    precedent = cumul;
-  });
+  /* ── E-note : l'avancement du dernier dépôt, depuis la rentrée ─────────── */
+  for (const [cle, { heures, nom }] of cumulEnote(depot.lignes ?? [], identite)) {
+    for (const cellule of ligneDe(cle, nom).cellules) cellule.enote = arrondir(heures);
+  }
 
-  /* ── eDTpro : les séances de la SEMAINE CIVILE de chaque dépôt, et le cumul
-     réalisé à la date de son export ──────────────────────────────────────── */
+  /* ── eDTpro : le réalisé de S1 à la fin de chaque colonne ──────────────── */
   const unParCreneau = creneauUnique();
   for (const seance of seances) {
     if (!realisee(seance)) continue;
-
     const jour = debutDuJour(seance.date);
     const { cle, nom } = identite(seance.formateurMatricule);
     if (!cle || !unParCreneau(cle, jour, seance.seance)) continue;
 
     const heures = dureeSeance(seance.seance);
-    const index = semainesCiviles.findIndex(({ debut, fin }) => jour >= debut && jour < fin);
-    const premierCumul = retenus.findIndex((depot) => jour < depot.jour);
-    if (index === -1 && premierCumul === -1) continue;
-
-    const cellules = ligneDe(cle, nom).cellules;
-    if (index !== -1) cellules[index].edt = arrondir(cellules[index].edt + heures);
-    if (premierCumul !== -1) {
-      // Les exports ne reculent jamais : la séance compte dans tous les cumuls suivants.
-      for (let k = premierCumul; k < cellules.length; k++) {
-        cellules[k].edtCumul = arrondir(cellules[k].edtCumul + heures);
-      }
-    }
+    colonnes.forEach((colonne, index) => {
+      if (jour >= colonne.fin) return;
+      const cellule = ligneDe(cle, nom).cellules[index];
+      cellule.edt = arrondir(cellule.edt + heures);
+    });
   }
-
-  const periodes = retenus.map((depot, index) => {
-    const samedi = new Date(semainesCiviles[index].fin);
-    samedi.setDate(samedi.getDate() - 2);
-    return {
-      semaine: depot.semaine,
-      /* Les semaines SANS dépôt qui précèdent celle-ci : leur saisie est comptée
-         ici, faute de point intermédiaire dans e-note. */
-      depuisSemaine: index === 0 ? 1 : retenus[index - 1].semaine + 1,
-      debut: jourLocal(semainesCiviles[index].debut),
-      fin: jourLocal(samedi),
-      fichier: depot.nomFichier ?? '',
-      importeLe: jourLocal(depot.importe),
-      // Le jour où s'arrête le cumul : celui de l'export e-note.
-      exporteLe: jourLocal(depot.jour),
-    };
-  });
-
-  /* Toutes les semaines de S1 au dernier dépôt, avec leurs dates — une colonne
-     chacune, qu'un dépôt y ait eu lieu ou non. */
-  const derniere = retenus.at(-1)?.semaine ?? 0;
-  const semaines = Array.from({ length: derniere }, (_, i) => {
-    const numero = i + 1;
-    const lundi = lundiPremiereSemaine(anneeScolaire, rentrees);
-    lundi.setDate(lundi.getDate() + i * 7);
-    const samedi = new Date(lundi);
-    samedi.setDate(samedi.getDate() + 5);
-    const periode = retenus.findIndex((depot) => depot.semaine === numero);
-    return {
-      numero,
-      debut: jourLocal(lundi),
-      fin: jourLocal(samedi),
-      periode: periode === -1 ? null : periode,
-    };
-  });
 
   const lignes = [...lignesParFormateur.values()]
     .map((ligne) => {
-      for (const cellule of ligne.cellules) {
-        cellule.ecart = arrondir(cellule.enote - cellule.edt);
-        cellule.manque = arrondir(cellule.enoteCumul - cellule.edtCumul);
-      }
+      for (const cellule of ligne.cellules) cellule.ecart = arrondir(cellule.enote - cellule.edt);
       return ligne;
     })
     // Un formateur sans aucune heure, ni d'un côté ni de l'autre, n'a rien à dire.
     .filter((ligne) => ligne.cellules.some((cellule) => cellule.enote !== 0 || cellule.edt !== 0))
     .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+
+  const premierLundi = jourLocal(lundiDe(1, anneeScolaire, rentrees));
+  const periodes = colonnes.map((colonne) => ({
+    semaine: colonne.numero,
+    depuisSemaine: 1,
+    debut: premierLundi,
+    fin: jourLocal(colonne.samedi),
+    fichier: depot.nomFichier ?? '',
+    importeLe: jourLocal(depot.importe),
+    exporteLe: jourLocal(depot.jour),
+  }));
+  const semaines = colonnes.map((colonne, index) => ({
+    numero: colonne.numero,
+    debut: jourLocal(colonne.lundi),
+    fin: jourLocal(colonne.samedi),
+    periode: index,
+  }));
 
   return { semaines, periodes, formateurs: lignes };
 }
@@ -177,11 +132,10 @@ export function ecartsDeSaisie({
  *
  * ⚠️ E-NOTE NE DIT PAS QUELLE SÉANCE A ÉTÉ SAISIE — seulement des heures par
  * (groupe, module). Le détail descend donc à ce grain : pour chaque groupe et
- * module du formateur, ce qu'il a saisi sur la période, ce que la grille
- * portait, et les séances de la grille qui le composent. Les séances d'un
- * couple en écart négatif sont celles qui restent, au moins en partie, à saisir.
+ * module du formateur, son avancement e-note, le réalisé de la grille de S1 à
+ * la semaine de la colonne, et les séances qui le composent.
  *
- * @returns {{semaine, debut, fin, lignes: Array}|null} `null` sans dépôt cette semaine
+ * @returns {{semaine, debut, fin, lignes: Array}|null} `null` hors des deux colonnes
  */
 export function detailEcartDeSaisie({
   imports = [],
@@ -196,12 +150,10 @@ export function detailEcartDeSaisie({
 }) {
   const realisee = estRealisee(maintenant, horaires);
   const identite = indexerFormateurs(formateurs);
-  const retenus = retenirDepots(imports, anneeScolaire, rentrees);
-  const index = retenus.findIndex((depot) => depot.semaine === semaine);
-  if (index === -1) return null;
-
-  // ⚠️ LA MÊME SEMAINE CIVILE que la carte : sinon le détail ne retomberait pas sur son EDT.
-  const { debut, fin } = fenetresCiviles(retenus, anneeScolaire, rentrees)[index];
+  const depot = retenirDepots(imports, anneeScolaire, rentrees).at(-1);
+  if (!depot) return null;
+  const colonne = colonnesDuDepot(depot, anneeScolaire, rentrees).find((c) => c.numero === semaine);
+  if (!colonne) return null;
 
   const lignes = new Map();
   const ligneDe = (groupe, module) => {
@@ -212,22 +164,17 @@ export function detailEcartDeSaisie({
     return lignes.get(code);
   };
 
-  /* ── E-note : la différence de cumul, couple par couple ────────────────── */
-  const actuel = cumulParCouple(retenus[index].lignes ?? [], identite, cle);
-  const avant = index === 0 ? new Map() : cumulParCouple(retenus[index - 1].lignes ?? [], identite, cle);
-  for (const code of new Set([...actuel.keys(), ...avant.keys()])) {
-    const reference = actuel.get(code) ?? avant.get(code);
-    ligneDe(reference.groupe, reference.module).enote = arrondir(
-      (actuel.get(code)?.heures ?? 0) - (avant.get(code)?.heures ?? 0)
-    );
+  /* ── E-note : l'avancement du dernier dépôt, couple par couple ─────────── */
+  for (const { groupe, module, heures } of cumulParCouple(depot.lignes ?? [], identite, cle).values()) {
+    ligneDe(groupe, module).enote = arrondir(heures);
   }
 
-  /* ── eDTpro : les séances du formateur dans la fenêtre ─────────────────── */
+  /* ── eDTpro : les séances réalisées du formateur, de S1 à la colonne ───── */
   const unParCreneau = creneauUnique();
   for (const seance of seances) {
     if (!realisee(seance)) continue;
     const jour = debutDuJour(seance.date);
-    if (jour >= fin || (debut && jour < debut)) continue;
+    if (jour >= colonne.fin) continue;
     if (identite(seance.formateurMatricule).cle !== cle) continue;
     if (!unParCreneau(cle, jour, seance.seance)) continue;
 
@@ -243,13 +190,10 @@ export function detailEcartDeSaisie({
     });
   }
 
-  const finAffichee = new Date(fin);
-  finAffichee.setDate(finAffichee.getDate() - 2); // le samedi
-
   return {
     semaine,
-    debut: debut ? jourLocal(debut) : null,
-    fin: jourLocal(finAffichee),
+    debut: jourLocal(lundiDe(1, anneeScolaire, rentrees)),
+    fin: jourLocal(colonne.samedi),
     lignes: [...lignes.values()]
       .map((ligne) => ({
         ...ligne,
@@ -259,6 +203,27 @@ export function detailEcartDeSaisie({
       .filter((ligne) => ligne.enote !== 0 || ligne.edt !== 0)
       .sort((a, b) => a.ecart - b.ecart || a.groupe.localeCompare(b.groupe, 'fr')),
   };
+}
+
+/**
+ * Les deux colonnes du dernier dépôt : S−1 (si elle existe) puis S, la
+ * semaine de l'import. `fin` est le lundi qui suit la semaine, exclu.
+ */
+function colonnesDuDepot(depot, anneeScolaire, rentrees) {
+  return [depot.semaine - 1, depot.semaine]
+    .filter((numero) => numero >= 1)
+    .map((numero) => {
+      const lundi = lundiDe(numero, anneeScolaire, rentrees);
+      const samedi = new Date(lundi);
+      samedi.setDate(samedi.getDate() + 5);
+      return { numero, lundi, samedi, fin: lundiDe(numero + 1, anneeScolaire, rentrees) };
+    });
+}
+
+function lundiDe(numero, anneeScolaire, rentrees) {
+  const date = lundiPremiereSemaine(anneeScolaire, rentrees);
+  date.setDate(date.getDate() + (numero - 1) * 7);
+  return debutDuJour(date);
 }
 
 /**
@@ -314,22 +279,6 @@ function retenirDepots(imports, anneeScolaire, rentrees) {
       borne = jour;
       return { ...depot, jour };
     });
-}
-
-/**
- * Pour chaque dépôt, ses semaines civiles : du lundi de la première semaine
- * sans dépôt qui le précède au lundi qui suit la sienne (exclu).
- */
-function fenetresCiviles(retenus, anneeScolaire, rentrees) {
-  const lundi = (numero) => {
-    const date = lundiPremiereSemaine(anneeScolaire, rentrees);
-    date.setDate(date.getDate() + (numero - 1) * 7);
-    return debutDuJour(date);
-  };
-  return retenus.map((depot, index) => ({
-    debut: lundi(index === 0 ? 1 : retenus[index - 1].semaine + 1),
-    fin: lundi(depot.semaine + 1),
-  }));
 }
 
 /**

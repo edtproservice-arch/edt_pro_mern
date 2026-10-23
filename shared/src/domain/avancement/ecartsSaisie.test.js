@@ -29,16 +29,16 @@ const seance = (date, formateurMatricule, champs = {}) => ({
 });
 
 describe('ecartsDeSaisie', () => {
-  it('compare le saisi entre deux dépôts aux séances de la semaine civile, et rend le manque cumulé', () => {
-    // S1 = 31/08 ; S3 = 14–19/09 ; S4 = 21–26/09.
+  // S1 = 31/08 ; S2 = 07–12/09 ; S3 = 14–19/09 ; S4 = 21–26/09.
+  it('rend S−1 et S : avancement e-note du dernier dépôt − EDT réalisé depuis S1', () => {
     const imports = [
       {
         importeLe: new Date('2026-09-14T09:00:00'),
         lignes: [ligne({ matriculePresentiel: 'M1', formateurPresentiel: 'ALAMI SARA', realisePresentiel: 5 })],
       },
       {
-        importeLe: new Date('2026-09-21T09:00:00'),
-        lignes: [ligne({ matriculePresentiel: 'M1', formateurPresentiel: 'ALAMI SARA', realisePresentiel: 10 })],
+        importeLe: new Date('2026-09-23T09:00:00'),
+        lignes: [ligne({ matriculePresentiel: 'M1', formateurPresentiel: 'ALAMI SARA', realisePresentiel: 12.5 })],
       },
     ];
     const seances = [
@@ -47,45 +47,46 @@ describe('ecartsDeSaisie', () => {
       seance('2026-09-15', 'M1'),
       seance('2026-09-16', 'M1'),
       seance('2026-09-17', 'M1', { statut: 'absent' }),
-      seance('2026-09-21', 'M1'), // le jour de l'export : dans la semaine S4, hors cumul
+      seance('2026-09-21', 'M1'),
+      seance('2026-09-22', 'M1'),
+      seance('2026-09-28', 'M1'), // S5 : hors des deux colonnes
     ];
 
-    const { periodes, formateurs: lignes } = ecartsDeSaisie({
+    const { semaines, periodes, formateurs: lignes } = ecartsDeSaisie({
       imports,
       seances,
       formateurs,
       anneeScolaire: 2026,
     });
 
-    expect(periodes).toHaveLength(2);
-    expect(periodes[0]).toMatchObject({ debut: '2026-08-31', fin: '2026-09-19', depuisSemaine: 1 });
-    expect(periodes[1]).toMatchObject({ debut: '2026-09-21', fin: '2026-09-26', exporteLe: '2026-09-21' });
+    expect(semaines.map((s) => [s.numero, s.debut, s.periode])).toEqual([
+      [3, '2026-09-14', 0],
+      [4, '2026-09-21', 1],
+    ]);
+    expect(periodes[1]).toMatchObject({ semaine: 4, debut: '2026-08-31', fin: '2026-09-26' });
     expect(lignes).toHaveLength(1);
     expect(lignes[0].nom).toBe('ALAMI SARA');
-    // S1–S3 : quatre séances de 2,5 h ; l'absence ne compte pas. Au 14/09, deux tenues pour 5 h saisies.
-    expect(lignes[0].cellules[0]).toMatchObject({ enote: 5, edt: 10, ecart: -5, enoteCumul: 5, edtCumul: 5, manque: 0 });
-    expect(lignes[0].cellules[1]).toMatchObject({ enote: 5, edt: 2.5, ecart: 2.5, enoteCumul: 10, edtCumul: 10, manque: 0 });
+    // S3 : 4 séances depuis S1 (l'absence ne compte pas) ; S4 : 6.
+    expect(lignes[0].cellules).toEqual([
+      { enote: 12.5, edt: 10, ecart: 2.5 },
+      { enote: 12.5, edt: 15, ecart: -2.5 },
+    ]);
   });
 
-  it('arrête le cumul au jour d’export inscrit dans le nom du fichier, pas à l’import', () => {
-    const imports = [
-      { importeLe: new Date('2026-09-07T09:00:00'), lignes: [] },
-      {
-        importeLe: new Date('2026-09-19T09:00:00'),
-        nomFichier: 'AvancementProgramme2026_EOS0_15_09_2026_13_58_48.xlsx',
-        lignes: [],
-      },
-    ];
-    const seances = [
-      seance('2026-09-14', 'M1'),
-      seance('2026-09-16', 'M1'), // après l'export : e-note ne peut pas encore la porter
-      seance('2026-09-18', 'M1'),
-    ];
+  it('lit le jour d’export dans le nom du fichier', () => {
+    const { periodes } = ecartsDeSaisie({
+      imports: [
+        {
+          importeLe: new Date('2026-09-19T09:00:00'),
+          nomFichier: 'AvancementProgramme2026_EOS0_15_09_2026_13_58_48.xlsx',
+          lignes: [],
+        },
+      ],
+      formateurs,
+      anneeScolaire: 2026,
+    });
 
-    const { periodes, formateurs: lignes } = ecartsDeSaisie({ imports, seances, formateurs, anneeScolaire: 2026 });
-
-    expect(periodes[1]).toMatchObject({ debut: '2026-09-14', fin: '2026-09-19', exporteLe: '2026-09-15', importeLe: '2026-09-19' });
-    expect(lignes[0].cellules[1]).toMatchObject({ edt: 7.5, edtCumul: 2.5, manque: -2.5 });
+    expect(periodes.at(-1)).toMatchObject({ exporteLe: '2026-09-15', importeLe: '2026-09-19' });
   });
 
   it('ne compte qu’une séance par formateur et par créneau', () => {
@@ -100,7 +101,7 @@ describe('ecartsDeSaisie', () => {
       anneeScolaire: 2026,
     });
 
-    expect(lignes[0].cellules[0].edt).toBe(5);
+    expect(lignes[0].cellules.at(-1).edt).toBe(5);
   });
 
   it('ne compte qu’une fois le synchrone d’un ensemble fusionné', () => {
@@ -120,7 +121,7 @@ describe('ecartsDeSaisie', () => {
       anneeScolaire: 2026,
     });
 
-    expect(lignes[0]).toMatchObject({ nom: 'BENNANI OMAR', cellules: [{ enote: 4, edt: 0, ecart: 4 }] });
+    expect(lignes[0]).toMatchObject({ nom: 'BENNANI OMAR', cellules: [{ enote: 4, ecart: 4 }, { enote: 4, ecart: 4 }] });
   });
 
   it('retient le dernier dépôt d’une même semaine', () => {
@@ -133,10 +134,24 @@ describe('ecartsDeSaisie', () => {
       anneeScolaire: 2026,
     });
 
-    expect(periodes.map((periode) => periode.fichier)).toEqual(['b.xlsx']);
+    expect(periodes.map((periode) => periode.fichier)).toEqual(['b.xlsx', 'b.xlsx']);
   });
 
-  it('détaille une carte par groupe et module, avec les séances de la grille', () => {
+  it('n’a qu’une colonne au dépôt de S1, et rien sans dépôt', () => {
+    const { semaines } = ecartsDeSaisie({
+      imports: [{ importeLe: new Date('2026-09-01T09:00:00'), lignes: [] }],
+      formateurs,
+      anneeScolaire: 2026,
+    });
+    expect(semaines.map((s) => s.numero)).toEqual([1]);
+    expect(ecartsDeSaisie({ imports: [], formateurs, anneeScolaire: 2026 })).toEqual({
+      semaines: [],
+      periodes: [],
+      formateurs: [],
+    });
+  });
+
+  it('détaille une carte par groupe et module, en cumul depuis S1', () => {
     const imports = [
       { importeLe: new Date('2026-09-07T09:00:00'), lignes: [] },
       {
@@ -149,21 +164,25 @@ describe('ecartsDeSaisie', () => {
       },
     ];
     const seances = [
+      seance('2026-09-08', 'M1', { groupe: 'G1', module: 'M101' }),
       seance('2026-09-15', 'M1', { groupe: 'G1', module: 'M101', jour: 'Mardi' }),
       seance('2026-09-16', 'M1', { groupe: 'G1', module: 'M101', jour: 'Mercredi', seance: 'S2' }),
       seance('2026-09-17', 'M1', { groupe: 'G3 G2', module: 'M101', salle: 'TEAMS' }),
       seance('2026-09-17', 'M2', { groupe: 'G1', module: 'M101' }),
-      seance('2026-09-08', 'M1', { groupe: 'G1', module: 'M101' }), // S2 : hors de la semaine S3
     ];
 
     const detail = detailEcartDeSaisie({ imports, seances, formateurs, anneeScolaire: 2026, cle: 'M1', semaine: 3 });
 
-    expect(detail).toMatchObject({ semaine: 3, debut: '2026-09-14', fin: '2026-09-19' });
+    expect(detail).toMatchObject({ semaine: 3, debut: '2026-08-31', fin: '2026-09-19' });
     expect(detail.lignes).toHaveLength(2);
-    expect(detail.lignes[0]).toMatchObject({ groupe: 'G1', module: 'M101', enote: 2.5, edt: 5, ecart: -2.5 });
-    expect(detail.lignes[0].seances.map((s) => s.date)).toEqual(['2026-09-15', '2026-09-16']);
+    expect(detail.lignes[0]).toMatchObject({ groupe: 'G1', module: 'M101', enote: 2.5, edt: 7.5, ecart: -5 });
+    expect(detail.lignes[0].seances.map((s) => s.date)).toEqual(['2026-09-08', '2026-09-15', '2026-09-16']);
     expect(detail.lignes[1]).toMatchObject({ enote: 2.5, edt: 2.5, ecart: 0 });
-    expect(detailEcartDeSaisie({ imports, seances, formateurs, anneeScolaire: 2026, cle: 'M1', semaine: 9 })).toBeNull();
+
+    // S−1 : seule la séance de S2 est réalisée.
+    const precedente = detailEcartDeSaisie({ imports, seances, formateurs, anneeScolaire: 2026, cle: 'M1', semaine: 2 });
+    expect(precedente.lignes.map((l) => l.ecart)).toEqual([0, 2.5]);
+    expect(detailEcartDeSaisie({ imports, seances, formateurs, anneeScolaire: 2026, cle: 'M1', semaine: 1 })).toBeNull();
   });
 
   it('ne compte que les séances réalisées — terminées, non absentes, hors EFM', () => {
@@ -182,23 +201,5 @@ describe('ecartsDeSaisie', () => {
     });
 
     expect(lignes[0].cellules[0].edt).toBe(5);
-  });
-
-  it('rend une colonne par semaine, dépôt ou non', () => {
-    const { semaines, periodes } = ecartsDeSaisie({
-      imports: [
-        { importeLe: new Date('2026-09-01T09:00:00'), lignes: [] },
-        { importeLe: new Date('2026-09-16T09:00:00'), lignes: [] },
-      ],
-      formateurs,
-      anneeScolaire: 2026,
-    });
-
-    expect(semaines.map((s) => [s.numero, s.debut, s.periode])).toEqual([
-      [1, '2026-08-31', 0],
-      [2, '2026-09-07', null],
-      [3, '2026-09-14', 1],
-    ]);
-    expect(periodes[1]).toMatchObject({ semaine: 3, depuisSemaine: 2 });
   });
 });

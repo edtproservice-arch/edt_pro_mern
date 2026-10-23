@@ -16,6 +16,9 @@ const GRIS_ENTETE = 'FFFAFAFA';
 const COULEURS_MARQUE = { absence: 'FFB91C1C', retard: 'FFC2650C' };
 const NB_COLONNES = 3 + 6 * 4;
 
+/** Le gris des cases d'un jour férié (2026-10-23) — le même que le Word. */
+const FOND_FERIE = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9D9D9' } };
+
 /**
  * ⚠️ DEUX SEMAINES D'ABSENCE DE SUITE (2026-09-29, demande du porteur) — même
  * règle et mêmes couleurs que `exportFeuilleAbsenceDocx.js` (`ligne.rouge`).
@@ -42,7 +45,9 @@ function nomOnglet(groupe) {
   return groupe.replace(/[*?:\\/[\]]/g, '-').slice(0, 31);
 }
 
-function remplirFeuille(feuille, { etablissement, groupe, filiere, anneeLabel, anneeScolaire, semaine, lignes, formateurs }) {
+function remplirFeuille(feuille, { etablissement, groupe, filiere, anneeLabel, anneeScolaire, semaine, lignes, formateurs, feries }) {
+  const ferie = (colonne) => Boolean(feries?.[Math.floor(colonne / 4)]);
+
   feuille.getCell(1, 1).value = 'Feuille d’Absence Hebdomadaire';
   feuille.mergeCells(1, 1, 1, NB_COLONNES);
   feuille.getCell(1, 1).font = { bold: true, size: 14 };
@@ -67,7 +72,7 @@ function remplirFeuille(feuille, { etablissement, groupe, filiere, anneeLabel, a
     const colonneDebut = 4 + jourIndex * 4;
     feuille.mergeCells(5, colonneDebut, 5, colonneDebut + 3);
     const enteteJour = feuille.getCell(5, colonneDebut);
-    enteteJour.value = `${JOURS_ABBREGES[jour]} ${dates[jourIndex]}`;
+    enteteJour.value = `${JOURS_ABBREGES[jour]} ${dates[jourIndex]}${feries?.[jourIndex] ? ' · Férié' : ''}`;
     enteteJour.font = { bold: true };
     enteteJour.alignment = { horizontal: 'center' };
     enteteJour.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRIS_ENTETE } };
@@ -90,7 +95,7 @@ function remplirFeuille(feuille, { etablissement, groupe, filiere, anneeLabel, a
 
     ligne.marques.forEach((marque, colonne) => {
       const cellule = rangee.getCell(4 + colonne);
-      if (marque) {
+      if (marque && !ferie(colonne)) {
         cellule.value = marque === 'retard' ? 'R' : 'A';
         cellule.font = { bold: true, color: { argb: COULEURS_MARQUE[marque] ?? COULEURS_MARQUE.absence } };
       }
@@ -135,10 +140,27 @@ function remplirFeuille(feuille, { etablissement, groupe, filiere, anneeLabel, a
   ligneFormateurs.height = 90;
   (formateurs ?? []).forEach((nom, colonne) => {
     const cellule = ligneFormateurs.getCell(4 + colonne);
-    if (!nom) return;
+    if (!nom || ferie(colonne)) return;
     cellule.value = nom;
     cellule.alignment = { horizontal: 'center', vertical: 'middle', textRotation: 90 };
     cellule.font = { size: 11 };
+  });
+
+  /*
+   * ⚠️ UN JOUR FÉRIÉ = UN SEUL BLOC (2026-10-23, même règle que le Word) : ses
+   * quatre colonnes fusionnées du premier stagiaire à la ligne « Formateurs »,
+   * le nom du férié à la verticale au milieu.
+   */
+  (feries ?? []).forEach((jourFerie, jour) => {
+    if (!jourFerie) return;
+    const colonne = 4 + jour * 4;
+    feuille.mergeCells(7, colonne, derniereLigne, colonne + 3);
+    const bloc = feuille.getCell(7, colonne);
+    bloc.value = `Jour férié — ${jourFerie.intitule}`;
+    bloc.font = { bold: true, size: 11 };
+    bloc.alignment = { horizontal: 'center', vertical: 'middle', textRotation: 90, wrapText: true };
+    bloc.fill = FOND_FERIE;
+    bloc.border = bordureTout;
   });
 
   feuille.getCell(derniereLigne + 4, 1).value = 'Surveillant Général :';
@@ -153,7 +175,7 @@ function remplirFeuille(feuille, { etablissement, groupe, filiere, anneeLabel, a
 }
 
 export async function construireXlsxFeuilleAbsence(donnees) {
-  const { etablissement, anneeScolaire, semaine, feuilles } = donnees;
+  const { etablissement, anneeScolaire, semaine, feuilles, feries } = donnees;
 
   const classeur = new ExcelJS.Workbook();
   const nomsPris = new Set();
@@ -173,7 +195,7 @@ export async function construireXlsxFeuilleAbsence(donnees) {
       pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
       views: [{ state: 'frozen', ySplit: 6 }],
     });
-    remplirFeuille(feuille, { etablissement, anneeScolaire, semaine, ...feuilleDonnees });
+    remplirFeuille(feuille, { etablissement, anneeScolaire, semaine, feries, ...feuilleDonnees });
   });
 
   const tampon = Buffer.from(await classeur.xlsx.writeBuffer());

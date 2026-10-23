@@ -29,7 +29,23 @@ import { nombre } from '@/lib/nombres';
  * formateur de la séance manquée) et `modulesAffectes`. Retards exclus.
  */
 export default function RepartitionAbsences({ repartition, affectations = [] }) {
-  const [filtres, setFiltres] = useState({ groupe: [], formateur: [] });
+  /*
+   * ⚠️ FILTRÉ D'EMBLÉE SUR LE GROUPE LE PLUS ABSENT (2026-10-24, demande du
+   * porteur) : `null` tant qu'on n'a rien touché — c'est alors ce groupe-là.
+   * Dès le premier choix, y compris « Effacer le filtre », le choix fait foi.
+   */
+  const [filtresChoisis, setFiltres] = useState(null);
+  const groupeLePlusAbsent = useMemo(() => {
+    const parGroupe = new Map();
+    for (const ligne of repartition) {
+      if (ligne.groupe) parGroupe.set(ligne.groupe, (parGroupe.get(ligne.groupe) ?? 0) + ligne.n);
+    }
+    return [...parGroupe].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'fr'))[0]?.[0] ?? null;
+  }, [repartition]);
+  const filtres = useMemo(
+    () => filtresChoisis ?? { groupe: groupeLePlusAbsent ? [groupeLePlusAbsent] : [], formateur: [] },
+    [filtresChoisis, groupeLePlusAbsent]
+  );
 
   const retenues = useMemo(
     () => repartition.filter((ligne) => correspond(ligne, filtres)),
@@ -123,12 +139,13 @@ function RadarAbsences({ titre, axes, cle }) {
       </p>
       <div className="mx-auto h-80 max-w-xl">
         <ResponsiveContainer width="100%" height="100%">
-          <RadarChart data={axes} outerRadius="68%">
+          {/* Les noms de formateurs, plus longs que les codes de module, ont besoin de marge autour du cercle. */}
+          <RadarChart data={axes} outerRadius={cle === 'formateur' ? '56%' : '68%'}>
             <PolarGrid stroke="hsl(var(--border))" />
             <PolarAngleAxis
               dataKey="nom"
               tickFormatter={(nom, index) => (libellesReduits && !axes[index]?.total ? '' : nom)}
-              tick={{ fontSize: axes.length > 16 ? 9 : 11, fill: 'hsl(var(--muted-foreground))' }}
+              tick={{ fontSize: axes.length > 16 || cle === 'formateur' ? 9 : 11, fill: 'hsl(var(--muted-foreground))' }}
             />
             <Tooltip content={<Infobulle cle={cle} />} />
             <Radar
@@ -223,7 +240,7 @@ function Infobulle({ active, payload, cle }) {
         .slice()
         .sort((a, b) => b.n - a.n)
         .map((source) => (
-          <div key={`${source.groupe}||${source.formateur}`} className="mt-1.5">
+          <div key={`${source.groupe}||${source.module}||${source.formateur}`} className="mt-1.5">
             {/* Sous un module : le groupe et son formateur ; sous un formateur : le groupe et le module. */}
             <p className="font-medium">
               {source.groupe || SANS.groupe} ·{' '}

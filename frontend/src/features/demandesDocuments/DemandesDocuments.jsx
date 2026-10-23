@@ -38,8 +38,15 @@ import {
  */
 export default function DemandesDocuments() {
   const requete = useQuery({ queryKey: ['demandes-documents'], queryFn: chargerDemandesDocuments, retry: false });
-  const demandes = requete.data?.demandes ?? [];
   const [aRejeter, setARejeter] = useState(null);
+  const [toutVoir, setToutVoir] = useState(false);
+
+  /* ⚠️ CE QUI ATTEND UN GESTE D'ABORD : l'aperçu de l'accueil ne doit pas cacher
+     une demande en attente derrière des demandes déjà remises. Tri stable : à
+     statut égal, l'ordre du serveur est gardé. */
+  const demandes = [...(requete.data?.demandes ?? [])].sort(
+    (a, b) => Number(!STATUTS_OUVERTS.includes(a.statut)) - Number(!STATUTS_OUVERTS.includes(b.statut))
+  );
 
   if (demandes.length === 0) return null;
   const ouvertes = demandes.filter((demande) => STATUTS_OUVERTS.includes(demande.statut));
@@ -53,14 +60,76 @@ export default function DemandesDocuments() {
         <span className="text-xs text-muted-foreground">
           {enAttente > 0 ? `${enAttente} en attente` : `${ouvertes.length} en cours`}
         </span>
+        {/* ⚠️ « VOIR TOUT » AU-DELÀ DE L'APERÇU (2026-10-24, demande du porteur :
+            « s'il y a beaucoup de demandes, un bouton voir tout qui ouvre un modal »). */}
+        {demandes.length > APERCU && (
+          <Button variant="link" size="sm" className="ml-auto h-auto p-0 text-xs" onClick={() => setToutVoir(true)}>
+            Voir tout ({demandes.length})
+          </Button>
+        )}
       </header>
       <ul className="divide-y rounded-lg border">
-        {demandes.map((demande) => (
+        {demandes.slice(0, APERCU).map((demande) => (
           <LigneDemande key={demande._id} demande={demande} onRejeter={() => setARejeter(demande)} />
         ))}
       </ul>
       <DialogueRejet demande={aRejeter} onFermer={() => setARejeter(null)} />
+      <DialogueToutes demandes={demandes} ouvert={toutVoir} onFermer={() => setToutVoir(false)} />
     </section>
+  );
+}
+
+/** Combien de demandes l'accueil montre avant « Voir tout ». */
+const APERCU = 5;
+
+/**
+ * Toutes les demandes, dans une fenêtre qui défile — avec les mêmes gestes que
+ * l'aperçu, et une recherche par nom, matricule ou groupe.
+ *
+ * ⚠️ LE REJET S'OUVRE DANS CETTE FENÊTRE-CI : un second dialogue rendu à côté,
+ * hors de son arbre, se disputerait le focus avec celui-ci.
+ */
+function DialogueToutes({ demandes, ouvert, onFermer }) {
+  const [recherche, setRecherche] = useState('');
+  const [aRejeter, setARejeter] = useState(null);
+
+  const filtre = recherche.trim().toLowerCase();
+  const visibles = filtre
+    ? demandes.filter((demande) =>
+        [demande.nomComplet, demande.matricule, demande.groupe].some((valeur) =>
+          String(valeur ?? '').toLowerCase().includes(filtre)
+        )
+      )
+    : demandes;
+
+  return (
+    <Dialog open={ouvert} onOpenChange={(etat) => !etat && onFermer()}>
+      <DialogContent className="flex max-h-[85vh] flex-col gap-3 sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Demandes de documents</DialogTitle>
+          <DialogDescription>
+            {demandes.length} demande(s) — les demandes closes restent visibles sept jours.
+          </DialogDescription>
+        </DialogHeader>
+        <Input
+          value={recherche}
+          onChange={(evenement) => setRecherche(evenement.target.value)}
+          placeholder="Rechercher un stagiaire, un matricule ou un groupe…"
+          aria-label="Rechercher une demande"
+          className="h-8 text-sm"
+        />
+        <ul className="min-h-0 flex-1 divide-y overflow-y-auto rounded-lg border scrollbar-fine">
+          {visibles.length === 0 ? (
+            <li className="px-4 py-6 text-center text-sm text-muted-foreground">Aucune demande ne correspond.</li>
+          ) : (
+            visibles.map((demande) => (
+              <LigneDemande key={demande._id} demande={demande} onRejeter={() => setARejeter(demande)} />
+            ))
+          )}
+        </ul>
+        <DialogueRejet demande={aRejeter} onFermer={() => setARejeter(null)} />
+      </DialogContent>
+    </Dialog>
   );
 }
 

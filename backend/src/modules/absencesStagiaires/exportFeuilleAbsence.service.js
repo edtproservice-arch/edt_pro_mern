@@ -66,6 +66,14 @@ import { construirePdfFeuilleAbsence } from './exportFeuilleAbsencePdf.js';
  * la fois. Le canevas porte déjà `<w:textDirection w:val="btLr"/>` sur
  * chacune de ses 24 cases : le nom s'y écrit à la verticale sans rien à
  * ajouter côté greffe, voir `exportFeuilleAbsenceDocx.js`.
+ *
+ * ═══ ⚠️ LES JOURS FÉRIÉS (2026-10-23, demande du porteur : « ajoute aussi le
+ * jour férié en Feuille d'Absence Hebdomadaire ») ═══ Lus dans la MÊME grille
+ * (`jours[].ferie`) — celle qui ferme la colonne dans « Faire l'appel », avec
+ * les ajustements de l'établissement. L'en-tête du jour porte « Férié », et
+ * ses quatre colonnes ne font qu'un bloc gris, du premier stagiaire à la ligne
+ * Formateurs, où son nom s'écrit à la verticale (2026-10-23, « après
+ * fusionner » — l'encart Semaine ne le nomme plus).
  */
 export async function construireExportFeuilleAbsence(etablissementId, anneeScolaire, options) {
   const { format, groupes, semaine } = options;
@@ -93,6 +101,12 @@ export async function construireExportFeuilleAbsence(etablissementId, anneeScola
 
   const nomDuStagiaire = (s) => [s.nom, s.prenom].filter(Boolean).join(' ').trim() || s.matricule;
   const joursOuvres = JOURS.slice(0, 6);
+
+  // Le férié de chacun des six jours — `{date, intitule}` ou `null`.
+  const feries = joursOuvres.map((jour) => {
+    const journee = (grille.jours ?? []).find((j) => j.jour === jour);
+    return journee?.ferie ? { date: journee.date, intitule: journee.ferie.intitule ?? 'Jour férié' } : null;
+  });
 
   const nomsFormateurs = new Map();
   for (const f of base?.formateurs ?? []) {
@@ -184,7 +198,7 @@ export async function construireExportFeuilleAbsence(etablissementId, anneeScola
     throw badRequest('Aucun stagiaire dans les groupes demandés', { code: 'GROUPE_VIDE' });
   }
 
-  const donnees = { etablissement: etablissement ?? {}, anneeScolaire, semaine, feuilles };
+  const donnees = { etablissement: etablissement ?? {}, anneeScolaire, semaine, feuilles, feries };
 
   if (format === 'docx') return construireDocxFeuilleAbsence(donnees);
   if (format === 'xlsx') return construireXlsxFeuilleAbsence(donnees);

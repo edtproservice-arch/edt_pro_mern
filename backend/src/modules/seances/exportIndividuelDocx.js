@@ -5,7 +5,7 @@ import { contenuLigne } from 'shared/domain';
 import { JOURS } from 'shared/constants';
 import { dateFr } from './exportGlobalTexte.js';
 import { nomFichierIndividuel } from './exportIndividuelTexte.js';
-import { celluleDeuxParagraphes, celluleDonnee, celluleTexteSimple, echapperXml } from './xmlCellules.js';
+import { celluleDeuxParagraphes, celluleDonnee, celluleFeriee, celluleTexteSimple, echapperXml, texteFerie } from './xmlCellules.js';
 import { chargerCanevasTampon } from './canevasCache.js';
 import { assemblerLigne, avecHauteurMinimale, extraireLignes, extraireTableaux, remplacerBalise } from './xmlTableaux.js';
 
@@ -68,7 +68,7 @@ const MOITIES = [
 ];
 
 /** Les trois lignes (Groupe/Module/Espace…) d'UN jour, créneau par créneau. */
-function construireLignesJour(gabaritPlein, gabaritCreux, jour, casesJour, lignes, nomsFormateurs) {
+function construireLignesJour(gabaritPlein, gabaritCreux, jour, casesJour, lignes, nomsFormateurs, ferie = null) {
   const moitieVide = MOITIES.map(
     ({ debut }) => casesJour[debut].seances.length === 0 && casesJour[debut + 1].seances.length === 0
   );
@@ -86,6 +86,22 @@ function construireLignesJour(gabaritPlein, gabaritCreux, jour, casesJour, ligne
       // Espace) — plus du texte figé du canevas, qui ne vaut que sur l'axe
       // formateur d'origine.
       neuves[1] = celluleTexteSimple(neuves[1], ligneNom);
+
+      /*
+       * ⚠️ UN JOUR FÉRIÉ NE RESTE PAS VIDE (2026-10-23, demande du porteur) : ses
+       * quatre créneaux et ses trois lignes se fondent en UNE case teintée — la
+       * première ligne porte « JOUR FÉRIÉ » et l'intitulé.
+       */
+      if (ferie) {
+        neuves.push(
+          celluleFeriee(pleines.slice(2, 6), {
+            fusion: rang === 0 ? 'restart' : 'continue',
+            texte: texteFerie(ferie),
+            taille: TAILLE_TEXTE_DONNEE,
+          })
+        );
+        return assemblerLigne(avecHauteurMinimale(gabaritPlein[rang].avantPremierTc, HAUTEUR_LIGNE_NORMALE), neuves);
+      }
 
       MOITIES.forEach(({ debut, indexGabaritCreux }, indexMoitie) => {
         if (moitieVide[indexMoitie]) {
@@ -129,7 +145,7 @@ function agrandirParagraphe(xml, repere, demiPoints) {
 }
 
 /** UNE PAGE — le triplet titre/identité/grille d'un seul sujet, depuis un gabarit vierge. */
-function construirePage(modelePage, { etablissement, anneeScolaire, semaineDebut, entete, lignes, creneaux, page, nomsFormateurs, horaireDuCreneau }) {
+function construirePage(modelePage, { etablissement, anneeScolaire, semaineDebut, entete, lignes, creneaux, page, nomsFormateurs, horaireDuCreneau, jours = [] }) {
   let xml = modelePage;
 
   // ⚠️ LE TITRE SUIT L'AXE LUI AUSSI — « Emploi du Temps Formateur » ne vaut
@@ -197,7 +213,8 @@ function construirePage(modelePage, { etablissement, anneeScolaire, semaineDebut
 
   const nouveauxBlocsJours = JOURS.map((jour) => {
     const casesJour = page.cases.filter((c) => c.jour === jour);
-    return construireLignesJour(gabaritActif, gabaritCreux, jour, casesJour, lignes, nomsFormateurs);
+    const ferie = jours.find((j) => j.jour === jour)?.ferie ?? null;
+    return construireLignesJour(gabaritActif, gabaritCreux, jour, casesJour, lignes, nomsFormateurs, ferie);
   }).join('');
 
   const preambule = tableauPlanning.contenu.slice(0, tableauPlanning.contenu.indexOf(ligneCreneaux.avantPremierTc));
@@ -206,7 +223,7 @@ function construirePage(modelePage, { etablissement, anneeScolaire, semaineDebut
 }
 
 export async function construireDocxIndividuel(donnees) {
-  const { etablissement, anneeScolaire, semaineDebut, entete, lignes, creneaux, pages, nomsFormateurs, horaireDuCreneau } =
+  const { etablissement, anneeScolaire, semaineDebut, entete, lignes, creneaux, pages, nomsFormateurs, horaireDuCreneau, jours } =
     donnees;
 
   const tampon = await chargerCanevasTampon(CHEMIN_CANEVAS);
@@ -238,6 +255,7 @@ export async function construireDocxIndividuel(donnees) {
       page,
       nomsFormateurs,
       horaireDuCreneau,
+      jours,
     })
   );
 

@@ -1,22 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Award, FileSignature, IdCard, Loader2 } from 'lucide-react';
+import { Award, FileSignature, Loader2 } from 'lucide-react';
 import CadreReglage from '@/features/parametres/CadreReglage';
 import { DocumentTelechargeable, FeuilleDocument } from '@/features/documents/CartesDocuments';
 import { LIBELLES_DEMANDE, STATUTS, STATUTS_OUVERTS, dateCourte } from '@/features/demandesDocuments/api';
 import { cn } from '@/lib/utils';
-import { chargerMesDocumentsStagiaire, demanderDocument, telechargerMaCarte, telechargerMonDuplicata } from './api';
+import { chargerMesDocumentsStagiaire, demanderDocument, telechargerMonDuplicata } from './api';
 
 /**
  * ═══ LES DOCUMENTS DU STAGIAIRE (2026-10-23, demande du porteur) ═══
- *   - sa CARTE de stagiaire et sa DEMANDE DE DUPLICATA du diplôme : à son nom,
- *     téléchargées directement ;
+ *   - sa DEMANDE DE DUPLICATA du diplôme : à son nom, téléchargée directement
+ *     (la carte de stagiaire en est RETIRÉE le 2026-10-23, demande du porteur :
+ *     elle reste remise par l'administration) ;
  *   - l'ATTESTATION DE POURSUITE DE FORMATION : elle doit être signée et cachetée,
  *     il la DEMANDE. L'administration l'accepte ou la rejette depuis son accueil,
  *     puis la signale prête — il vient alors la retirer.
  */
 const TELECHARGEABLES = [
-  { cle: 'carte', titre: 'Carte de stagiaire', resume: 'Votre badge, avec son QR', icone: IdCard, telecharger: telechargerMaCarte },
   {
     cle: 'duplicata',
     titre: 'Demande de duplicata du diplôme',

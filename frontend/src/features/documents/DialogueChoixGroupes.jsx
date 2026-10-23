@@ -284,6 +284,7 @@ export default function DialogueChoixGroupes({
                     <p className="text-xs font-medium text-muted-foreground">Semaine</p>
                     <NavigationSemaine
                       semaine={semaine}
+                      cleGuidage={`document-${titre ?? ""}`}
                       onChanger={setSemaine}
                       anneeScolaire={anneeScolaire}
                       remplies={semaines.data?.semaines ?? []}

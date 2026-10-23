@@ -20,15 +20,10 @@ export const chargerAffectationsConsultation = () => api.get('/api/v2/consultati
 export const chargerDocumentsConsultation = () => api.get('/api/v2/consultation/documents');
 
 /**
- * La page « Documents » du stagiaire (2026-10-23) : SA carte et SA demande de duplicata
- * se téléchargent ; l'attestation de poursuite se DEMANDE (signée et cachetée).
+ * La page « Documents » du stagiaire (2026-10-23) : SA demande de duplicata
+ * se télécharge ; l'attestation de poursuite se DEMANDE (signée et cachetée).
  */
 export const chargerMesDocumentsStagiaire = () => api.get('/api/v2/consultation/mes-documents');
-
-export const telechargerMaCarte = (format) =>
-  api.telecharger('/api/v2/consultation/mes-documents/carte', { format, adresse: window.location.origin }, {
-    nomParDefaut: `carte-stagiaire.${format}`,
-  });
 
 export const telechargerMonDuplicata = (format) =>
   api.telecharger('/api/v2/consultation/mes-documents/duplicata', { format }, {

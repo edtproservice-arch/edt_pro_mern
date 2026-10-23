@@ -3,7 +3,19 @@ import { useLocation } from 'react-router-dom';
 import { ecouterGuidage, envoyerGuidage } from '@/lib/tempsReel';
 import { ancrer, fractionDefilement, zoneGuidage } from './positions';
 import { cheminRecu, defilementRecu } from './echo';
-import { champDe, cliquableDe, declencheurDe, decrire, etatBarre, etatDe, fenetresOuvertes } from './gestes';
+import {
+  champDe,
+  cliquableDe,
+  declencheurDe,
+  decrire,
+  enEdition,
+  etatBarre,
+  etatDe,
+  FENETRES,
+  fenetresNouvelles,
+  fenetresOuvertes,
+  marquerEdition,
+} from './gestes';
 
 /**
  * Le guidage, côté ADMINISTRATEUR EN COLLABORATION (2026-10-03, demande du
@@ -203,16 +215,34 @@ export function useGuidageEmetteur({ actif, annonceur = false }) {
       // ⚠️ DÉCRIT AVANT L'EFFET : le clic peut démonter l'élément (un menu qui se ferme).
       const signature = element ? decrire(element) : null;
       const declencheur = element ? declencheurDe(element) : null;
+      /*
+       * ═══ DANS UNE ZONE D'ÉDITION, UN CLIC N'EST REJOUÉ QUE S'IL OUVRE UNE FENÊTRE
+       * (2026-10-23, signalé par le porteur : « pas tous les modals s'affichent en
+       * partage ») ═══ « Charge formateurs », « Importer »… ouvrent leur fenêtre par
+       * un simple bouton, qu'aucun attribut ne désigne comme « ouvrant ». Ouvrir est
+       * un geste d'AFFICHAGE : on le reconnaît après coup — une fenêtre est apparue.
+       * Ce qui ne fait que modifier reste chez soi (la page s'enregistre seule).
+       */
+      const edition = element ? enEdition(element) : false;
+      const avant = edition ? new Set(document.querySelectorAll(FENETRES)) : null;
       plusTard(() => {
         const aEcrit = derniereEcriture >= instant;
+        let ouvre = !edition;
+        if (edition) {
+          const nouvelles = fenetresNouvelles(avant);
+          ouvre = nouvelles.length > 0;
+          // La fenêtre ouverte depuis l'édition EN devient une, ici comme chez l'autre.
+          marquerEdition(nouvelles);
+        }
         const geste =
-          signature && !aEcrit
+          signature && !aEcrit && ouvre
             ? {
                 action,
                 ...signature,
                 ...(modifs ? { modifs } : {}),
                 etat: element.isConnected ? etatDe(element) : null,
                 ...(declencheur ? { declencheur } : {}),
+                ...(edition ? { edition: true } : {}),
               }
             : null;
         envoyerGuidage({ type: 'guide-geste', geste, ...etatCommun() });

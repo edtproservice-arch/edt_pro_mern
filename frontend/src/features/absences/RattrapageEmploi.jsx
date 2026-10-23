@@ -161,6 +161,7 @@ export default function RattrapageEmploi({ absence, choisi, onChoisir }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <NavigationSemaine
           semaine={semaine}
+          cleGuidage={`rattrapage-${absence.id}`}
           anneeScolaire={contexte.data?.anneeScolaire}
           remplies={semaines.data?.semaines ?? []}
           courante={semaines.data?.courante}

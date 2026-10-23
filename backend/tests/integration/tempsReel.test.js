@@ -800,7 +800,7 @@ describe('guidage', () => {
     expect((await directeur.attendre(type('guide-defilement'))).y).toBe(0.3);
 
     // Les gestes (2026-10-04) : la bascule e-note, la barre latérale.
-    const geste = { action: 'clic', portee: 'contenu', genre: 'switch', texte: '', rang: 0, etat: 'true' };
+    const geste = { action: 'clic', portee: 'contenu', genre: 'switch', texte: '', rang: 0, etat: 'true', edition: true };
     admin.envoyer({ type: 'guide-geste', geste, fenetres: 0, barre: 'collapsed' });
     expect(await directeur.attendre(type('guide-geste'))).toMatchObject({ geste, fenetres: 0, barre: 'collapsed' });
     // Une écriture faite chez l'admin (« Délier ») : le directeur doit relire ses données.
@@ -931,5 +931,23 @@ describe('référentiel', () => {
 
     expect(await directeur.attendre(type('referentiel'))).toEqual({ type: 'referentiel', codeModule: 'M101' });
     expect((await formateur.attendre(type('referentiel'))).codeModule).toBe('M101');
+  });
+});
+
+/*
+ * ═══ LE DÉBIT (2026-10-23) ═══ Un écran guidé envoie en même temps curseurs,
+ * défilement, états et gestes : 40 messages/s coupaient la socket en pleine
+ * démonstration. La borne est à 100 — un client normal passe, un client fou non.
+ */
+describe('débit', () => {
+  it('laisse passer une rafale d’un écran guidé, et coupe un client défaillant', async () => {
+    const directeur = await rejoindre(await seConnecter('directeur@edtpro.ma'));
+    const position = { cle: 'x', x: 0.5, y: 0.5 };
+    for (let i = 0; i < 80; i += 1) directeur.envoyer({ type: 'curseur', page: 'emploi', position });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(directeur.ws.readyState).toBe(WebSocket.OPEN);
+
+    for (let i = 0; i < 150; i += 1) directeur.envoyer({ type: 'curseur', page: 'emploi', position });
+    expect((await directeur.fermeture).code).toBe(FERMETURES_TEMPS_REEL.TROP_DE_MESSAGES);
   });
 });

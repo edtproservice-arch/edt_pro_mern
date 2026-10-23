@@ -58,6 +58,13 @@ const EVENEMENTS_ACTIVITE = [
   'dragover',
   'drop',
   'input',
+  /*
+   * ⚠️ ÊTRE GUIDÉ EST UNE ACTIVITÉ (2026-10-23, signalé par le porteur : « parfois
+   * il se déconnecte »). Celui qui SUIT une démonstration ne touche à rien : sans
+   * ce signal, il était déconnecté au bout de cinq minutes, en pleine formation.
+   * `Guidage` l'émet à chaque mouvement reçu de l'autre écran.
+   */
+  'guidage-activite',
 ];
 
 const VERIFICATION_INACTIVITE_MS = 10_000;

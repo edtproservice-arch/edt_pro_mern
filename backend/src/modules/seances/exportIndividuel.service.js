@@ -97,6 +97,8 @@ export async function construireExportIndividuel(etablissementId, anneeScolaire,
     entete: AXES_CONSULTATION[axe].libelle,
     lignes: AXES_CONSULTATION[axe].lignes,
     creneaux: SEANCES_JOUR,
+    // Les jours de la semaine — leurs fériés se dessinent dans la grille (2026-10-23).
+    jours: grille.jours,
     pages,
     nomsFormateurs,
     horaireDuCreneau,

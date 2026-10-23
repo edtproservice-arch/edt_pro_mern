@@ -4,7 +4,19 @@ import { useQueryClient } from '@tanstack/react-query';
 import { MousePointer2 } from 'lucide-react';
 import { ecouterGuidage, envoyerGuidage } from '@/lib/tempsReel';
 import { appliquerDefilement, desancrer, zoneGuidage } from './positions';
-import { cliquer, echap, etatBarre, etatDe, fenetresOuvertes, presser, retrouver, saisir } from './gestes';
+import {
+  cliquer,
+  echap,
+  etatBarre,
+  etatDe,
+  FENETRES,
+  fenetresNouvelles,
+  fenetresOuvertes,
+  marquerEdition,
+  presser,
+  retrouver,
+  saisir,
+} from './gestes';
 import { noterCheminRecu } from './echo';
 import { useGuidageEmetteur } from './useGuidageEmetteur';
 import { definirGuidageActif, recevoirEtat } from './useEtatPartage';
@@ -29,6 +41,15 @@ import { afficherMessage, observerMessages } from './messages';
  * écran déjà en e-note ne repasse pas en eDTpro parce qu'on lui redit « e-note ».
  */
 function rejouerGeste({ geste, fenetres, barre }) {
+  /*
+   * Un clic venu d'une zone d'édition n'arrive que parce qu'il OUVRE une fenêtre :
+   * celle qu'il ouvre ici devient zone d'édition, comme chez l'émetteur (2026-10-23).
+   */
+  if (geste?.edition) {
+    const avant = new Set(document.querySelectorAll(FENETRES));
+    setTimeout(() => marquerEdition(fenetresNouvelles(avant)), 150);
+  }
+
   if (geste?.action === 'double') {
     const element = retrouver(geste);
     if (element) cliquer(element, { modifs: geste.modifs ?? '', double: true });
@@ -102,6 +123,8 @@ export default function Guidage({ admin = false }) {
   useEffect(
     () =>
       ecouterGuidage((message) => {
+        // Suivre l'autre écran compte comme une activité : pas de déconnexion pour inactivité.
+        if (message.type?.startsWith('guide-')) window.dispatchEvent(new Event('guidage-activite'));
         const aller = (chemin) => {
           if (!chemin?.startsWith('/app')) return;
           if (chemin === `${window.location.pathname}${window.location.search}`) return;

@@ -38,7 +38,7 @@ const LARGEUR_COLONNE = 288;
  * ⚠️ UNE COLONNE PAR SEMAINE, EN CUMUL DEPUIS S1 (2026-10-23, demande du
  * porteur) : de S1 à la semaine du dernier dépôt e-note.
  * Écart = avancement e-note − EDT réalisé de S1 à la semaine de la colonne ;
- * négatif = manque, positif = avance — les deux s'affichent, pas les écarts nuls.
+ * négatif = manque ; seuls les manques s'affichent (2026-10-23, « annule les valeurs positives »).
  */
 /**
  * La requête de la frise, partagée avec la tuile de l'accueil : la même clé,
@@ -77,8 +77,8 @@ export default function EcartsSaisie() {
     return periodes.map((_, index) =>
       formateurs
         .map((formateur) => ({ cle: formateur.cle, nom: formateur.nom, ...formateur.cellules[index] }))
-        // ⚠️ NÉGATIFS ET POSITIFS (2026-10-23) : le plus gros manque en tête, les avances ensuite.
-        .filter((ligne) => ligne.ecart !== 0)
+        // ⚠️ LES MANQUES SEULS (2026-10-23, « annule les valeurs positives en vert ») : le plus gros en tête.
+        .filter((ligne) => ligne.ecart < 0)
         .sort((a, b) => a.ecart - b.ecart || a.nom.localeCompare(b.nom, 'fr'))
     );
   }, [requete.data, periodes, recherche]);
@@ -255,7 +255,7 @@ function Frise({ semaines, periodes, parPeriode, manqueParPeriode, recherche, on
                     </p>
                   ) : formateurs.length === 0 ? (
                     <p className="px-1 py-6 text-center text-[0.7rem] text-muted-foreground">
-                      Aucun écart de saisie
+                      Aucun manque de saisie
                     </p>
                   ) : (
                     formateurs.map((formateur) => (
@@ -276,8 +276,8 @@ function Frise({ semaines, periodes, parPeriode, manqueParPeriode, recherche, on
       <p className="text-xs text-muted-foreground">
         E-note : avancement saisi depuis la rentrée, au dernier dépôt · EDT : heures des séances
         réalisées (terminées) de S1 à la semaine de la colonne, absences et surveillances d’EFM
-        exclues, rattrapages compris · Écart = E-note − EDT : négatif = manque de saisie, positif =
-        avance.
+        exclues, rattrapages compris · Écart = E-note − EDT : seuls les formateurs en manque de
+        saisie (écart négatif) sont affichés.
       </p>
     </div>
   );

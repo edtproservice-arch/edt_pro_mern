@@ -599,8 +599,8 @@ describe('/consultation/documents — la page « Documents » du formateur (2026
 });
 
 describe('la page « Documents » du stagiaire (2026-10-23)', () => {
-  it('télécharge SA carte et SA demande de duplicata, sans rien choisir', async () => {
-    for (const chemin of ['carte', 'duplicata']) {
+  it('télécharge SA demande de duplicata, sans rien choisir', async () => {
+    for (const chemin of ['duplicata']) {
       const reponse = await request(app)
         .post(`/api/v2/consultation/mes-documents/${chemin}`)
         .set('Cookie', cookiesStagiaire)
@@ -611,9 +611,17 @@ describe('la page « Documents » du stagiaire (2026-10-23)', () => {
     }
   });
 
-  it('reste fermée au formateur', async () => {
+  it('ne propose plus la carte de stagiaire (2026-10-23)', async () => {
     const reponse = await request(app)
       .post('/api/v2/consultation/mes-documents/carte')
+      .set('Cookie', cookiesStagiaire)
+      .send({ format: 'docx' });
+    expect(reponse.status).toBe(404);
+  });
+
+  it('reste fermée au formateur', async () => {
+    const reponse = await request(app)
+      .post('/api/v2/consultation/mes-documents/duplicata')
       .set('Cookie', cookiesFormateur)
       .send({ format: 'docx' });
     expect(reponse.status).toBe(403);

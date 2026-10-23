@@ -39,8 +39,14 @@ const TAILLE_MAX = 16 * 1024;
  * les 50 ms, soit 20 par seconde : 40 laisse la marge, et au-delà le client est
  * défaillant — ou malveillant. Sans borne, une seule socket suffirait à occuper
  * le processus qui sert aussi toute l'API.
+ *
+ * ⚠️ 100 DEPUIS LE GUIDAGE (2026-10-23, signalé par le porteur : « parfois il se
+ * déconnecte »). Un écran guidé envoie EN MÊME TEMPS le curseur de la grille
+ * (20/s), celui du guidage (~16/s), le défilement (~8/s), ses états partagés et
+ * ses gestes : 40 était franchi en pleine démonstration, et la socket fermée.
+ * 100 garde la protection contre un client fou, sans couper un client normal.
  */
-const MESSAGES_PAR_SECONDE = 40;
+const MESSAGES_PAR_SECONDE = 100;
 
 /**
  * Lit un cookie dans l'en-tête brut. La poignée de main WebSocket ne passe pas

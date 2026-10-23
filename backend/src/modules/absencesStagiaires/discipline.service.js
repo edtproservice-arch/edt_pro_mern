@@ -9,6 +9,8 @@ import {
   sanctionComportement,
 } from 'shared/domain';
 import { AbsenceStagiaire } from '../../models/AbsenceStagiaire.js';
+import { Base } from '../../models/Base.js';
+import { cleGroupeModule, intitulesParGroupe } from '../../lib/intitulesModules.js';
 import { IndisciplineStagiaire } from '../../models/IndisciplineStagiaire.js';
 import { Stagiaire } from '../../models/Stagiaire.js';
 import { badRequest, notFound } from '../../lib/httpError.js';
@@ -185,6 +187,8 @@ export async function tableauDeBord(etablissementId, anneeScolaire) {
     dernieresIndisciplines,
     dernieresAbsences,
     dernieresRetards,
+    repartition,
+    base,
   ] = await Promise.all([
       AbsenceStagiaire.aggregate([
         { $match: correspondance },
@@ -237,7 +241,44 @@ export async function tableauDeBord(etablissementId, anneeScolaire) {
         .limit(5)
         .select('matricule nomComplet groupe date module justifiee')
         .lean(),
+      /*
+       * ⚠️ OÙ LES STAGIAIRES S'ABSENTENT (2026-10-23, demande du porteur : « sous
+       * forme de graphe chaque groupe ou les formateurs (module) pour voir
+       * exactement où les stagiaires s'absentent ») : les absences — retards
+       * exclus — par groupe, module et formateur de la séance manquée. Une
+       * agrégation, quel que soit le nombre de groupes.
+       */
+      AbsenceStagiaire.aggregate([
+        { $match: { ...correspondance, typeAbsence: { $ne: TYPES_ABSENCE.RETARD } } },
+        {
+          $group: {
+            _id: { groupe: '$groupe', module: '$module', formateur: '$formateurMatricule' },
+            n: { $sum: 1 },
+            nonJustifiees: { $sum: { $cond: ['$justifiee', 0, 1] } },
+            // Qui a manqué — le radar les nomme au survol (2026-10-23, demande du porteur).
+            stagiaires: { $push: { matricule: '$matricule', nom: '$nomComplet', justifiee: '$justifiee' } },
+          },
+        },
+      ]),
+      Base.findOne({ etablissementId, anneeScolaire }).select('formateurs affectations groupes groupeFilieres').lean(),
     ]);
+
+  /* ⚠️ L'INTITULÉ DANS LA FILIÈRE DU GROUPE (2026-10-23, « affiche le nom
+     complet du module ») : un même code change de sens d'une filière à l'autre. */
+  const affectes = modulesAffectes(base, new Map());
+  const intitules = await intitulesParGroupe(base, [
+    ...repartition.map(({ _id }) => ({ groupe: _id.groupe, module: _id.module })),
+    ...affectes,
+  ]);
+  const intituleDe = (groupe, module) => intitules.get(cleGroupeModule(groupe, module)) ?? '';
+
+  // Le matricule du formateur de la séance → son nom, comme la feuille d'absence.
+  const nomsFormateurs = new Map();
+  for (const f of base?.formateurs ?? []) {
+    for (const cle of [f.matricule, f.nomUnique, f.nomComplet]) {
+      if (String(cle ?? '').trim()) nomsFormateurs.set(String(cle).trim(), f.nomComplet);
+    }
+  }
 
   let absencesJ = 0;
   let absencesNJ = 0;
@@ -286,7 +327,49 @@ export async function tableauDeBord(etablissementId, anneeScolaire) {
     groupesAbsences: parGroupeAbsences.map((g) => ({ groupe: g._id, n: g.n })),
     groupesRetards: parGroupeRetards.map((g) => ({ groupe: g._id, n: g.n })),
     groupesIndisciplines: parGroupeIndisciplines.map((g) => ({ groupe: g._id, n: g.n })),
+    repartitionAbsences: repartition.map(({ _id, n, nonJustifiees, stagiaires }) => ({
+      groupe: _id.groupe ?? '',
+      module: _id.module ?? '',
+      intitule: intituleDe(_id.groupe, _id.module),
+      stagiaires: parStagiaire(stagiaires),
+      formateur: nomsFormateurs.get(String(_id.formateur ?? '').trim()) ?? String(_id.formateur ?? '').trim(),
+      n,
+      nonJustifiees,
+    })),
+    /*
+     * ⚠️ TOUS LES MODULES AFFECTÉS, MÊME SANS ABSENCE (2026-10-23, demande du
+     * porteur : « affiche tous les modules même s'il n'y a pas d'absence ») :
+     * le radar pose un axe par module du groupe ou du formateur filtré, à zéro
+     * quand personne n'y a manqué. Un couple (groupe, module, formateur) une
+     * fois, présentiel et synchrone confondus.
+     */
+    modulesAffectes: modulesAffectes(base, nomsFormateurs).map((affectation) => ({
+      ...affectation,
+      intitule: intituleDe(affectation.groupe, affectation.module),
+    })),
   };
+}
+
+/** Les absences d'une case, par stagiaire : le plus absent d'abord. */
+function parStagiaire(marquages) {
+  const parMatricule = new Map();
+  for (const { matricule, nom, justifiee } of marquages ?? []) {
+    const stagiaire = parMatricule.get(matricule) ?? { matricule, nom: nom || matricule, n: 0, nonJustifiees: 0 };
+    stagiaire.n += 1;
+    if (!justifiee) stagiaire.nonJustifiees += 1;
+    parMatricule.set(matricule, stagiaire);
+  }
+  return [...parMatricule.values()].sort((a, b) => b.n - a.n || a.nom.localeCompare(b.nom, 'fr'));
+}
+
+function modulesAffectes(base, nomsFormateurs) {
+  const vus = new Map();
+  for (const affectation of base?.affectations ?? []) {
+    const formateur = nomsFormateurs.get(String(affectation.formateur ?? '').trim()) ?? affectation.formateur;
+    const cle = `${affectation.groupe}||${affectation.module}||${formateur}`;
+    if (!vus.has(cle)) vus.set(cle, { groupe: affectation.groupe, module: affectation.module, formateur });
+  }
+  return [...vus.values()];
 }
 
 async function stagiaireDeLAnnee(etablissementId, anneeScolaire, matricule) {

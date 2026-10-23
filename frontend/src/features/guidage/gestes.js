@@ -158,12 +158,33 @@ export function cliquableDe(cible) {
   const element = bouton && ecoute ? (bouton.contains(ecoute) ? ecoute : bouton) : bouton ?? ecoute;
   if (!element || element.closest(IGNORER) || element.closest('a[href]')) return null;
   if (element.matches('input[type="password"]')) return null;
-  if (element.closest(EDITION) && !estAffichage(element)) return null;
-  // Une liste, un menu ou une fenêtre OUVERTS DEPUIS une zone d'édition sont montés
-  // ailleurs (portail) : c'est leur déclencheur qui dit d'où ils viennent.
-  if (ouvertDepuisEdition(element)) return null;
   return element;
 }
+
+/**
+ * Un clic qui MODIFIERAIT dans une zone d'édition — à ne rejouer que s'il ouvre
+ * une fenêtre (voir `useGuidageEmetteur`, 2026-10-23).
+ *
+ * ⚠️ Une liste, un menu ou une fenêtre OUVERTS DEPUIS une zone d'édition sont
+ * montés ailleurs (portail) : c'est leur déclencheur qui dit d'où ils viennent.
+ */
+export function enEdition(element) {
+  return (Boolean(element.closest(EDITION)) && !estAffichage(element)) || ouvertDepuisEdition(element);
+}
+
+/** Les fenêtres superposées présentes à l'écran. */
+export const FENETRES = '[role="dialog"],[role="alertdialog"],[role="menu"],[role="listbox"]';
+
+/**
+ * Une fenêtre ouverte DEPUIS une zone d'édition en devient une : ce qu'on y
+ * modifie ne se rejoue pas plus que dans la page qui l'a ouverte.
+ */
+export function marquerEdition(fenetres) {
+  for (const fenetre of fenetres) fenetre.setAttribute('data-guidage-edition', '');
+}
+
+/** Les fenêtres apparues depuis un instantané pris avant le clic. */
+export const fenetresNouvelles = (avant) => [...document.querySelectorAll(FENETRES)].filter((f) => !avant.has(f));
 
 function ouvertDepuisEdition(element) {
   const flottant = element.closest('[role="listbox"],[role="menu"],[role="dialog"],[role="alertdialog"]');

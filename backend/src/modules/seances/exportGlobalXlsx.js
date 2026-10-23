@@ -18,6 +18,26 @@ const VIOLET_DISTANCE = 'FFF0E4FA';
 const bordureFine = { style: 'thin', color: { argb: 'FF999999' } };
 const bordureTout = { top: bordureFine, left: bordureFine, bottom: bordureFine, right: bordureFine };
 
+/**
+ * ═══ LE JOUR FÉRIÉ (2026-10-23, demande du porteur) ═══ Une plage de cases fondue
+ * en une seule, teintée comme dans le Word, qui dit « JOUR FÉRIÉ » et l'intitulé.
+ */
+const FOND_FERIE = 'FFFDE9D9';
+const TEXTE_FERIE = 'FF9A3412';
+
+function caseFeriee(feuille, { haut, gauche, bas, droite }, ferie) {
+  for (let ligne = haut; ligne <= bas; ligne += 1) {
+    for (let colonne = gauche; colonne <= droite; colonne += 1) feuille.getCell(ligne, colonne).value = null;
+  }
+  feuille.mergeCells(haut, gauche, bas, droite);
+  const cellule = feuille.getCell(haut, gauche);
+  cellule.value = ['JOUR FÉRIÉ', ferie?.intitule || ferie?.libelle || ''].filter(Boolean).join('\n');
+  cellule.font = { bold: true, size: 10, color: { argb: TEXTE_FERIE } };
+  cellule.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+  cellule.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: FOND_FERIE } };
+  cellule.border = bordureTout;
+}
+
 export async function construireXlsxGlobal(donnees) {
   const { entete, lignes, creneaux, jours, assemblees, libelleDuSujet, nomsFormateurs, horaireDuCreneau } = donnees;
 
@@ -114,6 +134,16 @@ export async function construireXlsxGlobal(donnees) {
     feuille.getCell(premiereLigne, 1).border = bordureTout;
 
     ligneCourante += lignes.length;
+  }
+
+  // Les colonnes d'un jour férié : une case, sur toutes les lignes de sujets.
+  if (ligneCourante > 4) {
+    JOURS.forEach((jour, index) => {
+      const ferie = jours?.find((j) => j.jour === jour)?.ferie;
+      if (!ferie) return;
+      const gauche = 4 + index * creneaux.length;
+      caseFeriee(feuille, { haut: 4, gauche, bas: ligneCourante - 1, droite: gauche + creneaux.length - 1 }, ferie);
+    });
   }
 
   feuille.getColumn(1).width = 6;

@@ -4,7 +4,7 @@ import JSZip from 'jszip';
 import { contenuLigne } from 'shared/domain';
 import { JOURS } from 'shared/constants';
 import { dateFr, entetePluriel, nomFichierExport } from './exportGlobalTexte.js';
-import { celluleDeuxParagraphes, celluleDonnee, celluleTexteSimple, echapperXml } from './xmlCellules.js';
+import { celluleDeuxParagraphes, celluleDonnee, celluleFeriee, celluleTexteSimple, echapperXml, texteFerie } from './xmlCellules.js';
 import { chargerCanevasTampon } from './canevasCache.js';
 import { assemblerLigne, avecHauteurMinimale, extraireTableaux, extraireLignes, remplacerBalise } from './xmlTableaux.js';
 
@@ -41,7 +41,7 @@ const CHEMIN_CANEVAS = path.join(__dirname, 'canevas', 'emploiGlobalFormateur.do
 const LABELS_TYPE = { Groupe: 'GROUPE', Module: 'MODULE', Espace: 'ESPACE', Formateur: 'FORMATEUR' };
 
 /** Le triplet Groupe/Module/Salle d'UN sujet, cloné depuis les trois gabarits. */
-function construireLignesSujet({ gabarits, libelle, lignes, cases, nomsFormateurs }) {
+function construireLignesSujet({ gabarits, libelle, lignes, cases, nomsFormateurs, feries = [], premierSujet = false, parJour = 4 }) {
   const nomComplet = String(libelle ?? '').trim();
   const espace = nomComplet.indexOf(' ');
   const ligne1 = espace === -1 ? nomComplet : nomComplet.slice(0, espace);
@@ -67,6 +67,25 @@ function construireLignesSujet({ gabarits, libelle, lignes, cases, nomsFormateur
         );
       }
 
+      /*
+       * ⚠️ LES JOURS FÉRIÉS (2026-10-23, demande du porteur) : leurs colonnes ne restent
+       * pas vides — UNE case teintée par jour, fondue sur toutes les lignes de sujets ;
+       * la toute première ligne porte « JOUR FÉRIÉ » et l'intitulé. De droite à gauche,
+       * pour que les positions des jours suivants ne bougent pas.
+       */
+      for (const { index, ferie } of [...feries].reverse()) {
+        const debut = 3 + index * parJour;
+        neuves.splice(
+          debut,
+          parJour,
+          celluleFeriee(neuves.slice(debut, debut + parJour), {
+            fusion: premierSujet && rang === 0 ? 'restart' : 'continue',
+            texte: texteFerie(ferie),
+            taille: 14,
+          })
+        );
+      }
+
       return assemblerLigne(avantPremierTc, neuves);
     })
     .join('');
@@ -85,7 +104,13 @@ export async function construireDocxGlobal(donnees) {
     libelleDuSujet,
     nomsFormateurs,
     horaireDuCreneau,
+    jours = [],
   } = donnees;
+
+  // Les jours fériés de la semaine, par leur rang dans la grille (Lundi = 0).
+  const feries = JOURS.map((jour, index) => ({ index, ferie: jours.find((j) => j.jour === jour)?.ferie ?? null })).filter(
+    ({ ferie }) => ferie
+  );
 
   const tampon = await chargerCanevasTampon(CHEMIN_CANEVAS);
   const zip = await JSZip.loadAsync(tampon);
@@ -226,13 +251,16 @@ export async function construireDocxGlobal(donnees) {
   );
 
   const nouvellesLignes = assemblees
-    .map((ligneSujet) =>
+    .map((ligneSujet, indexSujet) =>
       construireLignesSujet({
         gabarits,
         libelle: libelleDuSujet(ligneSujet.sujet),
         lignes,
         cases: ligneSujet.cases,
         nomsFormateurs,
+        feries,
+        premierSujet: indexSujet === 0,
+        parJour: creneaux.length,
       })
     )
     .join('');

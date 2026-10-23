@@ -19,6 +19,26 @@ const VIOLET_DISTANCE = 'FFF0E4FA';
 const bordureFine = { style: 'thin', color: { argb: 'FF999999' } };
 const bordureTout = { top: bordureFine, left: bordureFine, bottom: bordureFine, right: bordureFine };
 
+/**
+ * ═══ LE JOUR FÉRIÉ (2026-10-23, demande du porteur) ═══ Une plage de cases fondue
+ * en une seule, teintée comme dans le Word, qui dit « JOUR FÉRIÉ » et l'intitulé.
+ */
+const FOND_FERIE = 'FFFDE9D9';
+const TEXTE_FERIE = 'FF9A3412';
+
+function caseFeriee(feuille, { haut, gauche, bas, droite }, ferie) {
+  for (let ligne = haut; ligne <= bas; ligne += 1) {
+    for (let colonne = gauche; colonne <= droite; colonne += 1) feuille.getCell(ligne, colonne).value = null;
+  }
+  feuille.mergeCells(haut, gauche, bas, droite);
+  const cellule = feuille.getCell(haut, gauche);
+  cellule.value = ['JOUR FÉRIÉ', ferie?.intitule || ferie?.libelle || ''].filter(Boolean).join('\n');
+  cellule.font = { bold: true, size: 10, color: { argb: TEXTE_FERIE } };
+  cellule.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+  cellule.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: FOND_FERIE } };
+  cellule.border = bordureTout;
+}
+
 /** Le nom d'un onglet Excel : 31 caractères au plus, aucun des sept signes interdits. */
 function nomFeuille(libelle, dejaPris) {
   const propre = String(libelle ?? '').replace(/[[\]*/\\?:]/g, ' ').trim().slice(0, 31) || 'Sujet';
@@ -37,7 +57,7 @@ function nomFeuille(libelle, dejaPris) {
   return candidat;
 }
 
-function remplirFeuille(feuille, { entete, lignes, creneaux, page, nomsFormateurs, horaireDuCreneau, anneeScolaire, semaineDebut }) {
+function remplirFeuille(feuille, { entete, lignes, creneaux, page, nomsFormateurs, horaireDuCreneau, anneeScolaire, semaineDebut, jours = [] }) {
   const nbColonnes = 2 + creneaux.length;
   const milieu = Math.ceil(nbColonnes / 2);
 
@@ -107,6 +127,12 @@ function remplirFeuille(feuille, { entete, lignes, creneaux, page, nomsFormateur
       });
     });
 
+    // Un jour férié : ses créneaux et ses lignes en une seule case (2026-10-23).
+    const ferie = jours.find((j) => j.jour === jour)?.ferie;
+    if (ferie) {
+      caseFeriee(feuille, { haut: premiereLigne, gauche: 3, bas: premiereLigne + lignes.length - 1, droite: nbColonnes }, ferie);
+    }
+
     feuille.mergeCells(premiereLigne, 1, premiereLigne + lignes.length - 1, 1);
     const celluleJour = feuille.getCell(premiereLigne, 1);
     celluleJour.value = jour;
@@ -125,7 +151,7 @@ function remplirFeuille(feuille, { entete, lignes, creneaux, page, nomsFormateur
 }
 
 export async function construireXlsxIndividuel(donnees) {
-  const { anneeScolaire, semaineDebut, entete, lignes, creneaux, pages, nomsFormateurs, horaireDuCreneau } = donnees;
+  const { anneeScolaire, semaineDebut, entete, lignes, creneaux, pages, nomsFormateurs, horaireDuCreneau, jours } = donnees;
 
   const classeur = new ExcelJS.Workbook();
   const nomsPris = new Set();
@@ -135,7 +161,7 @@ export async function construireXlsxIndividuel(donnees) {
       pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
       views: [{ state: 'frozen', ySplit: 4 }],
     });
-    remplirFeuille(feuille, { entete, lignes, creneaux, page, nomsFormateurs, horaireDuCreneau, anneeScolaire, semaineDebut });
+    remplirFeuille(feuille, { entete, lignes, creneaux, page, nomsFormateurs, horaireDuCreneau, anneeScolaire, semaineDebut, jours });
   }
 
   const tampon = Buffer.from(await classeur.xlsx.writeBuffer());

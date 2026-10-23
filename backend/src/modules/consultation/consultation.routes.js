@@ -14,7 +14,6 @@ import * as discipline from '../absencesStagiaires/discipline.service.js';
 import * as calendrierService from '../calendrier/calendrier.service.js';
 import { Etablissement } from '../../models/Etablissement.js';
 import { construireFeuillePresence } from '../absencesStagiaires/exportFeuillePresence.service.js';
-import { adresseDeLaRequete, construireCartesStagiaires } from '../absencesStagiaires/exportCarteStagiaire.service.js';
 import * as demandesDocuments from '../demandesDocuments/demandesDocuments.service.js';
 import { TYPES_DEMANDE } from '../../models/DemandeDocument.js';
 
@@ -261,8 +260,9 @@ router.post(
 
 /**
  * ═══ LA PAGE « DOCUMENTS » DU STAGIAIRE (2026-10-23, demande du porteur) ═══
- *   - sa carte de stagiaire et sa demande de duplicata du diplôme : téléchargées
- *     directement, à SON nom seulement (le matricule vient du jeton) ;
+ *   - sa demande de duplicata du diplôme : téléchargée directement, à SON nom
+ *     seulement (le matricule vient du jeton). La carte de stagiaire en est
+ *     retirée (2026-10-23, demande du porteur) : l'administration la remet ;
  *   - l'attestation de poursuite de formation : DEMANDÉE, parce qu'elle doit être
  *     signée et cachetée — l'administration la traite (`/demandes-documents`).
  */
@@ -281,30 +281,6 @@ router.get('/mes-documents', requireRole(ROLES.STAGIAIRE), async (req, res, next
     next(error);
   }
 });
-
-router.post(
-  '/mes-documents/carte',
-  requireRole(ROLES.STAGIAIRE),
-  validate({ body: z.object({ format: z.enum(['docx', 'pdf']), adresse: z.string().trim().max(200).optional() }) }),
-  async (req, res, next) => {
-    try {
-      const matricule = monIdentite(req);
-      const { groupes } = await service.groupesDuStagiaire(req.etablissementId, req.anneeScolaire, matricule);
-      // ⚠️ JAMAIS `renouveler` : sa carte imprimée reste valable.
-      envoyerFichier(
-        res,
-        await construireCartesStagiaires(req.etablissementId, req.anneeScolaire, {
-          format: req.body.format,
-          groupes,
-          matricules: [matricule],
-          adresse: adresseDeLaRequete(req, req.body.adresse),
-        })
-      );
-    } catch (error) {
-      next(error);
-    }
-  }
-);
 
 router.post(
   '/mes-documents/duplicata',

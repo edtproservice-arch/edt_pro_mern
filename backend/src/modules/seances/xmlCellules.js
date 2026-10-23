@@ -99,3 +99,53 @@ export function celluleDonnee(tcModele, texte, aDistance, taille = 8) {
 
   return tc.replace(/<w:p\b[\s\S]*?<\/w:p>/, paragraphe);
 }
+
+/**
+ * ═══ LE JOUR FÉRIÉ (2026-10-23, demande du porteur : « que les colonnes du jour
+ * férié ne restent pas vides ») ═══ Les cases d'un jour férié deviennent UNE case
+ * fusionnée — sur sa largeur (`gridSpan`) ET sur sa hauteur (`vMerge`) — teintée,
+ * qui dit « JOUR FÉRIÉ » et son intitulé.
+ *
+ * @param {string[]} tcs — les cases d'origine, de gauche à droite, sur UNE ligne :
+ *   leurs largeurs s'additionnent, la bordure gauche est celle de la première, la
+ *   droite celle de la dernière.
+ * @param {{ fusion: 'restart'|'continue'|null, texte?: string[], taille?: number }} options
+ *   `fusion` : la première ligne de la case porte le texte (`restart`), les
+ *   suivantes s'y fondent (`continue`) ; `null` sur une case d'une seule ligne.
+ */
+export const COULEURS_FERIE = { fond: 'FDE9D9', texte: '9A3412' };
+
+export function celluleFeriee(tcs, { fusion = null, texte = [], taille = 14 } = {}) {
+  const premiere = tcs[0];
+  const derniere = tcs[tcs.length - 1];
+  const nombre = (tc, motif) => Number(motif.exec(tc)?.[1] ?? 0);
+  const largeur = tcs.reduce((somme, tc) => somme + nombre(tc, /<w:tcW w:w="(\d+)"/), 0);
+  const colonnes = tcs.reduce((somme, tc) => somme + (nombre(tc, /<w:gridSpan w:val="(\d+)"/) || 1), 0);
+
+  const bordures = /<w:tcBorders>([\s\S]*?)<\/w:tcBorders>/.exec(premiere)?.[1] ?? '';
+  const droite = /<w:right [^>]*\/>/.exec(/<w:tcBorders>([\s\S]*?)<\/w:tcBorders>/.exec(derniere)?.[1] ?? '')?.[0];
+  const borduresFusion = droite ? bordures.replace(/<w:right [^>]*\/>/, droite) : bordures;
+  const marges = /<w:tcMar>[\s\S]*?<\/w:tcMar>/.exec(premiere)?.[0] ?? '';
+
+  const tcPr =
+    `<w:tcPr><w:tcW w:w="${largeur}" w:type="dxa"/>` +
+    (colonnes > 1 ? `<w:gridSpan w:val="${colonnes}"/>` : '') +
+    (fusion ? `<w:vMerge${fusion === 'restart' ? ' w:val="restart"' : ''}/>` : '') +
+    (borduresFusion ? `<w:tcBorders>${borduresFusion}</w:tcBorders>` : '') +
+    `<w:shd w:val="clear" w:color="auto" w:fill="${COULEURS_FERIE.fond}"/>${marges}<w:vAlign w:val="center"/></w:tcPr>`;
+
+  const run = (ligne, gras) =>
+    `<w:r><w:rPr>${gras ? '<w:b/><w:bCs/>' : ''}<w:color w:val="${COULEURS_FERIE.texte}"/><w:sz w:val="${taille}"/><w:szCs w:val="${taille}"/></w:rPr><w:t xml:space="preserve">${echapperXml(ligne)}</w:t></w:r>`;
+  const ecrit = fusion !== 'continue' && texte.length > 0;
+  const paragraphes = ecrit
+    ? texte
+        .filter((ligne) => String(ligne ?? '').trim() !== '')
+        .map((ligne, index) => `<w:p><w:pPr><w:spacing w:before="0" w:after="0"/><w:jc w:val="center"/></w:pPr>${run(ligne, index === 0)}</w:p>`)
+        .join('')
+    : '<w:p><w:pPr><w:spacing w:before="0" w:after="0"/><w:jc w:val="center"/></w:pPr></w:p>';
+
+  return `<w:tc>${tcPr}${paragraphes}</w:tc>`;
+}
+
+/** Le texte d'une case fériée : « JOUR FÉRIÉ », puis l'intitulé quand il est connu. */
+export const texteFerie = (ferie) => ['JOUR FÉRIÉ', ferie?.intitule || ferie?.libelle || ''];

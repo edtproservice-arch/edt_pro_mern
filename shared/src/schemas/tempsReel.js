@@ -181,6 +181,8 @@ export const messageTempsReelSchema = z.discriminatedUnion('type', [
           action: z.enum(['clic', 'double', 'saisie']),
           // Les touches tenues pendant le clic — Ctrl, Maj, Alt, Méta (2026-10-04).
           modifs: z.string().regex(/^[csam]{0,4}$/).optional(),
+          // Venu d'une zone d'édition, et rejoué parce qu'il ouvre une fenêtre (2026-10-23).
+          edition: z.boolean().optional(),
           portee: z.enum(['document', 'contenu', 'barre', 'panneau', 'dialogue', 'menu']),
           genre: z.string().max(40),
           texte: z.string().max(120),

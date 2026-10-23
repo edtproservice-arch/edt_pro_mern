@@ -149,11 +149,20 @@ function ouvrir() {
      * ⚠️ LE CODE DE FERMETURE DÉCIDE DE LA SUITE — c'est la seule chose que le
      * navigateur sache d'une socket refusée, il ne voit pas le statut HTTP.
      */
-    if (
-      evenement.code === FERMETURES_TEMPS_REEL.COMPTE_REFUSE ||
-      evenement.code === FERMETURES_TEMPS_REEL.TROP_DE_MESSAGES
-    ) {
+    if (evenement.code === FERMETURES_TEMPS_REEL.COMPTE_REFUSE) {
       publier({ statut: 'arrete' });
+      return;
+    }
+
+    /*
+     * ⚠️ TROP DE MESSAGES : ON REPART, APRÈS UNE PAUSE (2026-10-23). S'arrêter pour
+     * de bon privait l'écran de toute collaboration — et le guidage de son public —
+     * jusqu'au rechargement, pour un pic passager (une démonstration animée). La
+     * pause progressive des reconnexions évite de reboucler sur le même pic.
+     */
+    if (evenement.code === FERMETURES_TEMPS_REEL.TROP_DE_MESSAGES) {
+      tentative = Math.max(tentative, 2);
+      planifierReconnexion();
       return;
     }
 

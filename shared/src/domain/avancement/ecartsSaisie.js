@@ -17,13 +17,11 @@ import { lundiPremiereSemaine } from '../planning/anneeScolaire.js';
  * seule base e-note par semaine » (`enoteImport.service.js`), qui fait de
  * chaque dépôt un point hebdomadaire.
  *
- * ═══ ⚠️ DEUX COLONNES, EN CUMUL DEPUIS S1 (2026-10-23, demande du porteur) ═══
- * « affiche seulement la semaine en cours et la semaine en cours − 1, lorsque
- * j'insère une base e-note » :
- *   S−1 : avancement e-note − EDT réalisé de S1 à S−1 ;
- *   S   : avancement e-note − EDT réalisé de S1 à S.
+ * ═══ ⚠️ UNE COLONNE PAR SEMAINE, EN CUMUL DEPUIS S1 (2026-10-23, demande du
+ * porteur : « affiche toutes les semaines précédentes » avec la même formule) ═══
+ *   Sk : avancement e-note − EDT réalisé de S1 à Sk, pour k de 1 à S.
  * La semaine en cours est celle du DERNIER dépôt ; l'avancement e-note, son
- * cumul depuis la rentrée — le même pour les deux colonnes. Un écart NÉGATIF
+ * cumul depuis la rentrée — le même pour toutes les colonnes. Un écart NÉGATIF
  * est un manque de saisie, un écart POSITIF une avance ; les deux s'affichent.
  *
  * ⚠️ LA COLONNE S RETIENT TOUTES LES SÉANCES RÉALISÉES DE LA SEMAINE, même
@@ -50,7 +48,7 @@ import { lundiPremiereSemaine } from '../planning/anneeScolaire.js';
  * @param {number} params.anneeScolaire
  * @param {Array} [params.rentrees]
  * @returns {{semaines: Array, periodes: Array, formateurs: Array}} une période
- *   par colonne — S−1 puis S —, `formateurs[].cellules` dans le même ordre
+ *   par colonne — de S1 à S —, `formateurs[].cellules` dans le même ordre
  */
 export function ecartsDeSaisie({
   imports = [],
@@ -135,7 +133,7 @@ export function ecartsDeSaisie({
  * module du formateur, son avancement e-note, le réalisé de la grille de S1 à
  * la semaine de la colonne, et les séances qui le composent.
  *
- * @returns {{semaine, debut, fin, lignes: Array}|null} `null` hors des deux colonnes
+ * @returns {{semaine, debut, fin, lignes: Array}|null} `null` hors des colonnes
  */
 export function detailEcartDeSaisie({
   imports = [],
@@ -206,18 +204,15 @@ export function detailEcartDeSaisie({
 }
 
 /**
- * Les deux colonnes du dernier dépôt : S−1 (si elle existe) puis S, la
- * semaine de l'import. `fin` est le lundi qui suit la semaine, exclu.
+ * Les colonnes du dernier dépôt : de S1 à S, la semaine de l'import. `fin` est le lundi qui suit la semaine, exclu.
  */
 function colonnesDuDepot(depot, anneeScolaire, rentrees) {
-  return [depot.semaine - 1, depot.semaine]
-    .filter((numero) => numero >= 1)
-    .map((numero) => {
-      const lundi = lundiDe(numero, anneeScolaire, rentrees);
-      const samedi = new Date(lundi);
-      samedi.setDate(samedi.getDate() + 5);
-      return { numero, lundi, samedi, fin: lundiDe(numero + 1, anneeScolaire, rentrees) };
-    });
+  return Array.from({ length: Math.max(0, depot.semaine) }, (_, i) => i + 1).map((numero) => {
+    const lundi = lundiDe(numero, anneeScolaire, rentrees);
+    const samedi = new Date(lundi);
+    samedi.setDate(samedi.getDate() + 5);
+    return { numero, lundi, samedi, fin: lundiDe(numero + 1, anneeScolaire, rentrees) };
+  });
 }
 
 function lundiDe(numero, anneeScolaire, rentrees) {

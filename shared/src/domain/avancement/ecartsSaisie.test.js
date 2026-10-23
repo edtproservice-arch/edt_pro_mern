@@ -30,7 +30,7 @@ const seance = (date, formateurMatricule, champs = {}) => ({
 
 describe('ecartsDeSaisie', () => {
   // S1 = 31/08 ; S2 = 07–12/09 ; S3 = 14–19/09 ; S4 = 21–26/09.
-  it('rend S−1 et S : avancement e-note du dernier dépôt − EDT réalisé depuis S1', () => {
+  it('rend une colonne par semaine de S1 à S : avancement e-note du dernier dépôt − EDT réalisé depuis S1', () => {
     const imports = [
       {
         importeLe: new Date('2026-09-14T09:00:00'),
@@ -60,14 +60,18 @@ describe('ecartsDeSaisie', () => {
     });
 
     expect(semaines.map((s) => [s.numero, s.debut, s.periode])).toEqual([
-      [3, '2026-09-14', 0],
-      [4, '2026-09-21', 1],
+      [1, '2026-08-31', 0],
+      [2, '2026-09-07', 1],
+      [3, '2026-09-14', 2],
+      [4, '2026-09-21', 3],
     ]);
-    expect(periodes[1]).toMatchObject({ semaine: 4, debut: '2026-08-31', fin: '2026-09-26' });
+    expect(periodes[3]).toMatchObject({ semaine: 4, debut: '2026-08-31', fin: '2026-09-26' });
     expect(lignes).toHaveLength(1);
     expect(lignes[0].nom).toBe('ALAMI SARA');
-    // S3 : 4 séances depuis S1 (l'absence ne compte pas) ; S4 : 6.
+    // S2 : 2 séances depuis S1 ; S3 : 4 (l'absence ne compte pas) ; S4 : 6.
     expect(lignes[0].cellules).toEqual([
+      { enote: 12.5, edt: 0, ecart: 12.5 },
+      { enote: 12.5, edt: 5, ecart: 7.5 },
       { enote: 12.5, edt: 10, ecart: 2.5 },
       { enote: 12.5, edt: 15, ecart: -2.5 },
     ]);
@@ -121,7 +125,7 @@ describe('ecartsDeSaisie', () => {
       anneeScolaire: 2026,
     });
 
-    expect(lignes[0]).toMatchObject({ nom: 'BENNANI OMAR', cellules: [{ enote: 4, ecart: 4 }, { enote: 4, ecart: 4 }] });
+    expect(lignes[0]).toMatchObject({ nom: 'BENNANI OMAR', cellules: [{ enote: 4, ecart: 4 }, { enote: 4, ecart: 4 }, { enote: 4, ecart: 4 }] });
   });
 
   it('retient le dernier dépôt d’une même semaine', () => {
@@ -134,7 +138,7 @@ describe('ecartsDeSaisie', () => {
       anneeScolaire: 2026,
     });
 
-    expect(periodes.map((periode) => periode.fichier)).toEqual(['b.xlsx', 'b.xlsx']);
+    expect(periodes.map((periode) => periode.fichier)).toEqual(['b.xlsx', 'b.xlsx', 'b.xlsx']); // S1 à S3
   });
 
   it('n’a qu’une colonne au dépôt de S1, et rien sans dépôt', () => {
@@ -182,7 +186,7 @@ describe('ecartsDeSaisie', () => {
     // S−1 : seule la séance de S2 est réalisée.
     const precedente = detailEcartDeSaisie({ imports, seances, formateurs, anneeScolaire: 2026, cle: 'M1', semaine: 2 });
     expect(precedente.lignes.map((l) => l.ecart)).toEqual([0, 2.5]);
-    expect(detailEcartDeSaisie({ imports, seances, formateurs, anneeScolaire: 2026, cle: 'M1', semaine: 1 })).toBeNull();
+    expect(detailEcartDeSaisie({ imports, seances, formateurs, anneeScolaire: 2026, cle: 'M1', semaine: 4 })).toBeNull(); // après le dernier dépôt
   });
 
   it('ne compte que les séances réalisées — terminées, non absentes, hors EFM', () => {
@@ -200,6 +204,6 @@ describe('ecartsDeSaisie', () => {
       maintenant: { date: '2026-09-11', heure: '07:00' },
     });
 
-    expect(lignes[0].cellules[0].edt).toBe(5);
+    expect(lignes[0].cellules[1].edt).toBe(5); // S2, entre S−2 = S1 et S = S3
   });
 });

@@ -66,7 +66,6 @@ export default function DetailEcartSaisie({ carte, onFermer }) {
                   carte.ecart < 0 ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success'
                 )}
               >
-                {carte.ecart > 0 && '+'}
                 {nombre(carte.ecart)} h
               </span>
             )}

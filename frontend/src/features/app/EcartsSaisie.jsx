@@ -35,8 +35,8 @@ const LARGEUR_COLONNE = 288;
  * semaine, règle de l'import), une carte par formateur en MANQUE de saisie,
  * le plus gros manque en tête.
  *
- * ⚠️ DEUX COLONNES SEULEMENT, EN CUMUL DEPUIS S1 (2026-10-23, demande du
- * porteur) : la semaine du dernier dépôt e-note (S) et la précédente (S−1).
+ * ⚠️ UNE COLONNE PAR SEMAINE, EN CUMUL DEPUIS S1 (2026-10-23, demande du
+ * porteur) : de S1 à la semaine du dernier dépôt e-note.
  * Écart = avancement e-note − EDT réalisé de S1 à la semaine de la colonne ;
  * négatif = manque, positif = avance — les deux s'affichent, pas les écarts nuls.
  */
@@ -222,9 +222,7 @@ function Frise({ semaines, periodes, parPeriode, manqueParPeriode, recherche, on
                     >
                       {dernier && <span className="size-1.5 rounded-full bg-primary" aria-hidden="true" />}
                       S{semaine.numero}
-                      <span className="font-normal text-muted-foreground">
-                        · {dernier ? 'semaine en cours' : 'semaine précédente'}
-                      </span>
+                      {dernier && <span className="font-normal text-muted-foreground">· semaine en cours</span>}
                     </span>
                     <span className="block truncate text-[0.65rem] text-muted-foreground">
                       {periode
@@ -301,7 +299,6 @@ function CarteFormateur({ formateur, onOuvrir }) {
           manque ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success'
         )}
       >
-        {manque ? '' : '+'}
         {nombre(formateur.ecart)} h
       </span>
       <span className="min-w-0">

@@ -886,8 +886,8 @@ export async function envoyerEcartSaisieATous(etablissementId, anneeScolaire, di
   const index = semaines.find((s) => s.numero === semaine)?.periode ?? null;
   if (index === null) throw notFound('Aucune base e-note déposée cette semaine', { code: 'DEPOT_ABSENT' });
 
-  // ⚠️ ÉCART = EDT − E-NOTE (2026-10-23) : positif, c'est un manque.
-  const enManque = formateurs.filter((formateur) => formateur.cellules[index]?.ecart > 0);
+  // ⚠️ ÉCART = E-NOTE − EDT (2026-10-23) : négatif, c'est un manque.
+  const enManque = formateurs.filter((formateur) => formateur.cellules[index]?.ecart < 0);
   const envoyes = [];
   const echecs = [];
 
@@ -950,7 +950,7 @@ export async function envoyerEcartSaisie(
     });
   }
 
-  const enManque = detail.lignes.filter((ligne) => ligne.ecart > 0);
+  const enManque = detail.lignes.filter((ligne) => ligne.ecart < 0);
   if (enManque.length === 0) {
     throw badRequest(`${nom} n’a aucun manque de saisie en S${semaine}.`, { code: 'AUCUN_ECART' });
   }
@@ -984,9 +984,6 @@ export async function envoyerEcartSaisie(
       enote: total('enote'),
       edt: total('edt'),
       ecart: total('ecart'),
-      /* ⚠️ LE SENS DE L'ÉCART (2026-10-23) : EDT − e-note, positif = manque. Les
-         messages plus anciens, sans ce marqueur, portaient e-note − EDT. */
-      sens: 'edt-moins-enote',
       /* Les modules EN MANQUE seulement : c'est ce que le formateur doit reprendre. */
       lignes: enManque,
     },

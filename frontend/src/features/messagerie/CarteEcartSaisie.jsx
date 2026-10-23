@@ -41,13 +41,13 @@ export default function CarteEcartSaisie({ message }) {
 }
 
 /**
- * ⚠️ LES MESSAGES D'AVANT LE 2026-10-23 portaient l'écart e-note − EDT (un
- * manque était négatif) ; la formule du porteur est désormais EDT − e-note.
- * Sans le marqueur `sens`, on retourne les signes pour les afficher comme les
- * nouveaux.
+ * ⚠️ L'ÉCART SE LIT E-NOTE − EDT, un manque est NÉGATIF (2026-10-23, demande du
+ * porteur). Les messages envoyés pendant la courte période où la formule était
+ * inversée portent le marqueur `sens: 'edt-moins-enote'` : on retourne leurs
+ * signes pour les afficher comme les autres.
  */
 function dansLeSensActuel(etat) {
-  if (etat.sens === 'edt-moins-enote') return etat;
+  if (etat.sens !== 'edt-moins-enote') return etat;
   return {
     ...etat,
     ecart: -etat.ecart,

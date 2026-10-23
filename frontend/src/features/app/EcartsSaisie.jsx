@@ -36,7 +36,7 @@ const LARGEUR_COLONNE = 288;
  * le plus gros manque en tête.
  *
  * E-note : ce que le formateur a saisi depuis le dépôt précédent ; EDT : ce que
- * la grille lui donnait sur la même période ; écart = EDT − E-note (positif = manque).
+ * la grille lui donnait sur la même période ; écart = E-note − EDT (négatif = manque).
  */
 /**
  * La requête de la frise, partagée avec la tuile de l'accueil : la même clé,
@@ -55,7 +55,7 @@ export function useEcartsSaisie() {
 export function enManqueAuDernierDepot(donnees) {
   const dernier = (donnees?.periodes?.length ?? 0) - 1;
   if (dernier < 0) return null;
-  return (donnees.formateurs ?? []).filter((formateur) => formateur.cellules[dernier]?.ecart > 0).length;
+  return (donnees.formateurs ?? []).filter((formateur) => formateur.cellules[dernier]?.ecart < 0).length;
 }
 
 export default function EcartsSaisie() {
@@ -75,9 +75,9 @@ export default function EcartsSaisie() {
     return periodes.map((_, index) =>
       formateurs
         .map((formateur) => ({ cle: formateur.cle, nom: formateur.nom, ...formateur.cellules[index] }))
-        // ⚠️ ÉCART = EDT − E-NOTE (2026-10-23, formule du porteur) : positif = manque.
-        .filter((ligne) => ligne.ecart > 0)
-        .sort((a, b) => b.ecart - a.ecart || a.nom.localeCompare(b.nom, 'fr'))
+        // ⚠️ ÉCART = E-NOTE − EDT (2026-10-23, formule du porteur) : négatif = manque.
+        .filter((ligne) => ligne.ecart < 0)
+        .sort((a, b) => a.ecart - b.ecart || a.nom.localeCompare(b.nom, 'fr'))
     );
   }, [requete.data, periodes, recherche]);
 
@@ -86,7 +86,7 @@ export default function EcartsSaisie() {
     () =>
       periodes.map(
         (_, index) =>
-          (requete.data?.formateurs ?? []).filter((formateur) => formateur.cellules[index]?.ecart > 0).length
+          (requete.data?.formateurs ?? []).filter((formateur) => formateur.cellules[index]?.ecart < 0).length
       ),
     [requete.data, periodes]
   );
@@ -271,9 +271,9 @@ function Frise({ semaines, periodes, parPeriode, manqueParPeriode, recherche, on
       <p className="text-xs text-muted-foreground">
         E-note : heures saisies depuis le dépôt précédent · EDT : heures des séances réalisées
         (terminées) de la semaine, absences et surveillances d’EFM exclues, rattrapages compris ·
-        Écart = EDT réalisé − E-note saisie (positif = manque), approché si l’export e-note n’est
-        pas fait en fin de semaine · Manque cumulé : tout ce qui est réalisé avant le jour de
-        l’export moins tout ce qui est saisi depuis la rentrée.
+        Écart = E-note saisie − EDT réalisé (négatif = manque), approché si l’export e-note n’est
+        pas fait en fin de semaine · Manque cumulé : tout ce qui est saisi depuis la rentrée moins
+        tout ce qui est réalisé avant le jour de l’export.
       </p>
     </div>
   );
@@ -301,11 +301,11 @@ function CarteFormateur({ formateur, exporteLe, onOuvrir }) {
         <span
           className={cn(
             'block text-[0.65rem] tabular-nums',
-            formateur.manque > 0 ? 'font-medium text-destructive' : 'text-muted-foreground'
+            formateur.manque < 0 ? 'font-medium text-destructive' : 'text-muted-foreground'
           )}
           title={`Depuis la rentrée : E-note ${nombre(formateur.enoteCumul)} h · EDT réalisé ${nombre(formateur.edtCumul)} h`}
         >
-          {formateur.manque > 0
+          {formateur.manque < 0
             ? `Manque cumulé au ${date(exporteLe)} : ${nombre(formateur.manque)} h`
             : `À jour au ${date(exporteLe)}`}
         </span>

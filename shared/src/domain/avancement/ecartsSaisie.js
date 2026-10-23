@@ -29,10 +29,10 @@ import { lundiPremiereSemaine } from '../planning/anneeScolaire.js';
  *    AVANT LE JOUR DE L'EXPORT — celles du jour même n'ont en général pas
  *    encore été saisies.
  *
- * ═══ ⚠️ LA FORMULE DU PORTEUR (2026-10-23) : ÉCART = EDT − E-NOTE ═══
- * « pour la S7 = edt pro réalisé S7 − (avancement e-note S7 − avancement
- * e-note S6) ». Un écart POSITIF est un MANQUE de saisie ; le manque cumulé
- * suit le même sens (EDT réalisé cumulé − e-note cumulé).
+ * ═══ ⚠️ LA FORMULE DU PORTEUR (2026-10-23) ═══
+ * ÉCART S7 = (avancement e-note S7 − avancement e-note S6) − EDT réalisé S7.
+ * Un écart NÉGATIF est un MANQUE de saisie (« rends l'écart négatif ») ; le
+ * manque cumulé suit le même sens (e-note cumulé − EDT réalisé cumulé).
  *
  * ⚠️ LE CUMUL S'ARRÊTE À L'EXPORT, PAS À L'IMPORT (2026-10-22, signalé par le
  * porteur). Un fichier « AvancementProgramme…_25_09_2026_13_58_48 » importé le
@@ -159,8 +159,8 @@ export function ecartsDeSaisie({
   const lignes = [...lignesParFormateur.values()]
     .map((ligne) => {
       for (const cellule of ligne.cellules) {
-        cellule.ecart = arrondir(cellule.edt - cellule.enote);
-        cellule.manque = arrondir(cellule.edtCumul - cellule.enoteCumul);
+        cellule.ecart = arrondir(cellule.enote - cellule.edt);
+        cellule.manque = arrondir(cellule.enoteCumul - cellule.edtCumul);
       }
       return ligne;
     })
@@ -253,11 +253,11 @@ export function detailEcartDeSaisie({
     lignes: [...lignes.values()]
       .map((ligne) => ({
         ...ligne,
-        ecart: arrondir(ligne.edt - ligne.enote),
+        ecart: arrondir(ligne.enote - ligne.edt),
         seances: ligne.seances.sort((a, b) => a.date.localeCompare(b.date) || a.creneau.localeCompare(b.creneau)),
       }))
       .filter((ligne) => ligne.enote !== 0 || ligne.edt !== 0)
-      .sort((a, b) => b.ecart - a.ecart || a.groupe.localeCompare(b.groupe, 'fr')),
+      .sort((a, b) => a.ecart - b.ecart || a.groupe.localeCompare(b.groupe, 'fr')),
   };
 }
 

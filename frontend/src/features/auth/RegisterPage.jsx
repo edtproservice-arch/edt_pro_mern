@@ -12,7 +12,6 @@ import SelecteurEtablissement from './components/SelecteurEtablissement';
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -120,7 +119,6 @@ export default function RegisterPage() {
                     <FormControl>
                       <Input type="tel" autoComplete="tel" placeholder="0612345678" {...field} />
                     </FormControl>
-                    <FormDescription>Facultatif</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}

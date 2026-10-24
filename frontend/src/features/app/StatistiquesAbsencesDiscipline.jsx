@@ -102,7 +102,13 @@ export function SectionGroupesAbsents({ d, chargement, visible = true }) {
   return (
     <div className="space-y-4 duration-300 animate-in fade-in-0 zoom-in-95 slide-in-from-top-3 motion-reduce:animate-none">
       <GroupesAbsences groupes={d?.groupesAbsences ?? []} chargement={chargement} />
-      {!chargement && <RepartitionAbsences repartition={d?.repartitionAbsences ?? []} affectations={d?.modulesAffectes ?? []} />}
+      {!chargement && (
+        <RepartitionAbsences
+          repartition={d?.repartitionAbsences ?? []}
+          affectations={d?.modulesAffectes ?? []}
+          effectifs={d?.effectifsGroupes ?? []}
+        />
+      )}
       <DernieresAbsences lignes={d?.absences.recentes ?? []} chargement={chargement} />
     </div>
   );

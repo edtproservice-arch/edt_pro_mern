@@ -41,6 +41,13 @@ export default function PanneauFiltres({
    * facettes courtes ; leur choix vit dans le même objet `filtres`.
    */
   supplementaires = [],
+  /*
+   * Une TEINTE PAR VALEUR, propre à l'appelant (2026-10-24) : le radar des
+   * absences colore chaque groupe selon son taux d'absence. `{ cle: (valeur) =>
+   * ({ classe, titre }) | null }` ; `legende` se pose sous les sections.
+   */
+  nuances = {},
+  legende = null,
 }) {
   const extras = supplementaires.filter((facette) => facette.valeurs.length > 1);
   const actifs =
@@ -183,12 +190,15 @@ export default function PanneauFiltres({
                     choisies={filtres[cle]}
                     onBasculer={basculer}
                     pleineLargeur={LISTE_VERTICALE.has(cle)}
+                    nuance={nuances[cle]}
                   />
                 </div>
               </Section>
             </div>
           ))}
         </div>
+
+        {legende && <div className="mt-3">{legende}</div>}
 
         {/*
           ⚠️ CE QUE LE FILTRE FAIT, ÉCRIT EN TOUTES LETTRES — comme
@@ -231,7 +241,7 @@ function Section({ libelle, indice, children }) {
   );
 }
 
-function Jetons({ cle, valeurs = [], choisies = [], onBasculer, pleineLargeur = false }) {
+function Jetons({ cle, valeurs = [], choisies = [], onBasculer, pleineLargeur = false, nuance }) {
   return valeurs.map((valeur) => (
     <Jeton
       key={valeur}
@@ -240,23 +250,27 @@ function Jetons({ cle, valeurs = [], choisies = [], onBasculer, pleineLargeur = 
       retenu={choisies.includes(valeur)}
       onClick={() => onBasculer(cle, valeur)}
       pleineLargeur={pleineLargeur}
+      teinte={nuance?.(valeur)}
     />
   ));
 }
 
 /** Le jeton d'Édition : un bouton `h-7`, plein quand il est retenu. */
-function Jeton({ valeur, cle, retenu, onClick, pleineLargeur = false }) {
+function Jeton({ valeur, cle, retenu, onClick, pleineLargeur = false, teinte }) {
   return (
     <Button
       variant={retenu ? 'default' : 'outline'}
       size="sm"
       aria-pressed={retenu}
       onClick={onClick}
-      className={
+      title={teinte?.titre}
+      className={cn(
         pleineLargeur
           ? 'h-auto w-full justify-start whitespace-normal py-1 text-left text-[0.7rem] leading-snug'
-          : 'h-7 px-2 text-[0.7rem]'
-      }
+          : 'h-7 px-2 text-[0.7rem]',
+        // Retenu, le jeton reste plein : la sélection prime sur la teinte.
+        !retenu && teinte?.classe
+      )}
     >
       {ETIQUETTES[cle] ? ETIQUETTES[cle](valeur) : valeur}
     </Button>

@@ -28,7 +28,7 @@ import { nombre } from '@/lib/nombres';
  * Source : `repartitionAbsences` du tableau de bord (groupe × module ×
  * formateur de la séance manquée) et `modulesAffectes`. Retards exclus.
  */
-export default function RepartitionAbsences({ repartition, affectations = [] }) {
+export default function RepartitionAbsences({ repartition, affectations = [], effectifs = [] }) {
   /*
    * ⚠️ FILTRÉ D'EMBLÉE SUR LE GROUPE LE PLUS ABSENT (2026-10-24, demande du
    * porteur) : `null` tant qu'on n'a rien touché — c'est alors ce groupe-là.
@@ -71,6 +71,8 @@ export default function RepartitionAbsences({ repartition, affectations = [] }) 
     return { groupe: valeurs('groupe'), formateur: valeurs('formateur') };
   }, [repartition, affectations, filtres]);
 
+  const nuanceGroupe = useMemo(() => nuancesParTaux(repartition, effectifs), [repartition, effectifs]);
+
   const { parModule, parFormateur, total, nonJustifiees } = useMemo(() => {
     const affectees = affectations.filter((ligne) => correspond(ligne, filtres));
     return {
@@ -92,7 +94,13 @@ export default function RepartitionAbsences({ repartition, affectations = [] }) 
           <h2 className="text-sm font-medium">Où les stagiaires s’absentent</h2>
           <p className="text-xs text-muted-foreground">Séances manquées · {portee}</p>
         </div>
-        <PanneauFiltres facettes={facettes} filtres={filtres} onChange={setFiltres} />
+        <PanneauFiltres
+          facettes={facettes}
+          filtres={filtres}
+          onChange={setFiltres}
+          nuances={{ groupe: nuanceGroupe }}
+          legende={<LegendeTaux />}
+        />
       </div>
 
       <div className="mt-2 grid gap-4 lg:grid-cols-2">
@@ -174,6 +182,64 @@ function RadarAbsences({ titre, axes, cle }) {
 }
 
 const SANS = { groupe: 'Sans groupe', formateur: 'Sans formateur' };
+
+/*
+ * ═══ LA COULEUR DU TAUX D'ABSENCE DE CHAQUE GROUPE ═══ (2026-10-24, demande du
+ * porteur : « les badges groupes avec une couleur qui désigne leur taux
+ * d'absence pour faciliter le filtre »).
+ *
+ * ⚠️ LE TAUX EST PAR STAGIAIRE : séances manquées de l'année ÷ effectif. Le
+ * total brut ferait toujours passer un gros groupe pour le plus absent.
+ *
+ * ⚠️ RELATIF AU GROUPE LE PLUS ABSENT, en trois paliers : il n'existe pas de
+ * seuil réglementaire, et un seuil fixe virerait tout au vert en octobre et
+ * tout au rouge en juin. Un groupe sans effectif connu reste neutre.
+ */
+const PALIERS = [
+  { jusqua: 1 / 3, libelle: 'Faible', classe: 'border-success/50 bg-success/10 text-success hover:bg-success/20', pastille: 'bg-success' },
+  { jusqua: 2 / 3, libelle: 'Moyen', classe: 'border-warning/60 bg-warning/15 text-warning hover:bg-warning/25', pastille: 'bg-warning' },
+  { jusqua: Infinity, libelle: 'Élevé', classe: 'border-destructive/50 bg-destructive/10 text-destructive hover:bg-destructive/20', pastille: 'bg-destructive' },
+];
+
+function nuancesParTaux(repartition, effectifs) {
+  const effectifDe = new Map(effectifs.map(({ groupe, effectif }) => [String(groupe).toUpperCase(), effectif]));
+  const manquees = new Map();
+  for (const ligne of repartition) {
+    const cle = String(ligne.groupe).toUpperCase();
+    manquees.set(cle, (manquees.get(cle) ?? 0) + ligne.n);
+  }
+  const taux = new Map();
+  for (const [cle, effectif] of effectifDe) {
+    if (effectif > 0) taux.set(cle, (manquees.get(cle) ?? 0) / effectif);
+  }
+  const maximum = Math.max(0, ...taux.values());
+
+  return (groupe) => {
+    const cle = String(groupe).toUpperCase();
+    if (!taux.has(cle)) return null;
+    const valeur = taux.get(cle);
+    const palier = PALIERS.find((p) => (maximum > 0 ? valeur / maximum : 0) <= p.jusqua);
+    const effectif = effectifDe.get(cle);
+    return {
+      classe: palier.classe,
+      titre: `${palier.libelle} — ${nombre(manquees.get(cle) ?? 0)} séance(s) manquée(s) pour ${nombre(effectif)} stagiaire(s), soit ${valeur.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} par stagiaire`,
+    };
+  };
+}
+
+function LegendeTaux() {
+  return (
+    <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.65rem] text-muted-foreground">
+      <span>Taux d’absence du groupe (séances manquées par stagiaire, comparé au plus absent) :</span>
+      {PALIERS.map((palier) => (
+        <span key={palier.libelle} className="flex items-center gap-1">
+          <span className={`size-2 rounded-full ${palier.pastille}`} />
+          {palier.libelle}
+        </span>
+      ))}
+    </p>
+  );
+}
 
 /** « Rien de coché = tout », un seul choix par facette — la grammaire du filtre d'Avancement. */
 function correspond(ligne, filtres) {

@@ -189,6 +189,7 @@ export async function tableauDeBord(etablissementId, anneeScolaire) {
     dernieresRetards,
     repartition,
     base,
+    effectifs,
   ] = await Promise.all([
       AbsenceStagiaire.aggregate([
         { $match: correspondance },
@@ -261,6 +262,7 @@ export async function tableauDeBord(etablissementId, anneeScolaire) {
         },
       ]),
       Base.findOne({ etablissementId, anneeScolaire }).select('formateurs affectations groupes groupeFilieres').lean(),
+      groupes(etablissementId, anneeScolaire),
     ]);
 
   /* ⚠️ L'INTITULÉ DANS LA FILIÈRE DU GROUPE (2026-10-23, « affiche le nom
@@ -324,6 +326,13 @@ export async function tableauDeBord(etablissementId, anneeScolaire) {
         motif: i.motif,
       })),
     },
+    /*
+     * ⚠️ L'EFFECTIF DE CHAQUE GROUPE (2026-10-24, demande du porteur : « les
+     * badges groupes avec une couleur qui désigne leur taux d'absence ») : le
+     * filtre du radar rapporte les séances manquées au nombre de stagiaires —
+     * sans lui, un groupe de trente paraîtrait toujours plus absent qu'un de dix.
+     */
+    effectifsGroupes: effectifs,
     groupesAbsences: parGroupeAbsences.map((g) => ({ groupe: g._id, n: g.n })),
     groupesRetards: parGroupeRetards.map((g) => ({ groupe: g._id, n: g.n })),
     groupesIndisciplines: parGroupeIndisciplines.map((g) => ({ groupe: g._id, n: g.n })),

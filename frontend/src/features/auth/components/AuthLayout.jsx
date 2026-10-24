@@ -14,7 +14,7 @@ export default function AuthLayout({ titre, sousTitre, largeur = 'max-w-md', chi
       <div className={`w-full ${largeur}`}>
         <div className="mb-6 flex justify-center">
           <Link to="/">
-            <img src="/logo_edtpro.svg" alt="EDT Pro" className="h-[3.75rem] w-auto" />
+            <img src="/logo_edtpro.svg" alt="EDT Pro" className="h-12 w-auto" />
           </Link>
         </div>
 

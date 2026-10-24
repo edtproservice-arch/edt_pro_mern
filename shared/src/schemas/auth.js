@@ -92,13 +92,15 @@ export const verificationCodeSchema = z.object({
   appareil: appareilSchema.optional(),
 });
 
-/** Téléphone marocain : 06/07/05 suivi de 8 chiffres. Facultatif. */
+/**
+ * Téléphone marocain : 06/07/05 suivi de 8 chiffres. OBLIGATOIRE à
+ * l'inscription (décision du porteur, 2026-10-24).
+ */
 const telephoneSchema = z
   .string()
   .trim()
-  .regex(/^0[5-7][0-9]{8}$/, 'Format attendu : 0612345678')
-  .optional()
-  .or(z.literal(''));
+  .min(1, 'Téléphone requis')
+  .regex(/^0[5-7][0-9]{8}$/, 'Format attendu : 0612345678');
 
 /**
  * Inscription — réservée aux directeurs d'EFP.

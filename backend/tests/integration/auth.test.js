@@ -97,6 +97,15 @@ describe('POST /api/v2/auth/inscription', () => {
     expect(reponse.status).toBe(409);
     expect(reponse.body.code).toBe('EMAIL_EXISTANT');
   });
+
+  it('refuse une inscription sans téléphone', async () => {
+    const reponse = await request(app)
+      .post('/api/v2/auth/inscription')
+      .send({ ...INSCRIPTION, telephone: '' });
+
+    expect(reponse.status).toBe(400);
+    expect(await User.countDocuments({ email: INSCRIPTION.email })).toBe(0);
+  });
 });
 
 describe('POST /api/v2/auth/connexion', () => {

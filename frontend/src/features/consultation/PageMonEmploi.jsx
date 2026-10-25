@@ -159,6 +159,8 @@ export default function PageMonEmploi() {
           anneeScolaire={anneeChoisie ?? grille.data?.anneeScolaire}
           remplies={semaines.data?.semaines ?? []}
           courante={semaines.data?.courante}
+          // Une semaine non publiée n'existe pas encore pour eux (2026-10-26) : grisée au calendrier.
+          semainesPermises={semaines.data?.publications ?? []}
         />
 
         {/*

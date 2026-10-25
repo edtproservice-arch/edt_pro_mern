@@ -1,9 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQueries, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { File, FileSpreadsheet, FileText, Loader2 } from 'lucide-react';
 import { facettesDesGroupes, filtrerGroupes, semaineAOuvrir } from 'shared/domain';
-import { Button } from '@/components/ui/button';
+import BoutonFormat from '@/components/common/BoutonFormat';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -14,12 +13,6 @@ import { chargerStagiaires } from './api';
 import NavigationSemaine from '@/features/emploi/NavigationSemaine';
 import { useAnneeActive } from '@/lib/anneeActive';
 import { empreinte, useEtatPartage } from '@/features/guidage/useEtatPartage';
-
-const FORMATS = {
-  docx: { libelle: 'Word', Icone: FileText, couleur: 'text-blue-600' },
-  pdf: { libelle: 'PDF', Icone: File, couleur: 'text-red-600' },
-  xlsx: { libelle: 'Excel', Icone: FileSpreadsheet, couleur: 'text-green-600' },
-};
 
 /**
  * Le choix des GROUPES (et, si le document en dépend, de la SEMAINE) avant de
@@ -296,26 +289,15 @@ export default function DialogueChoixGroupes({
             )}
 
             <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
-              {formats.map((format) => {
-                const { libelle, Icone, couleur } = FORMATS[format];
-                return (
-                  <Button
-                    key={format}
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5"
-                    disabled={!pret}
-                    onClick={() => telechargement.mutate(format)}
-                  >
-                    {telechargement.isPending && telechargement.variables === format ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : (
-                      <Icone className={`size-3.5 ${couleur}`} />
-                    )}
-                    {libelle}
-                  </Button>
-                );
-              })}
+              {formats.map((format) => (
+                <BoutonFormat
+                  key={format}
+                  format={format}
+                  disabled={!pret}
+                  enCours={telechargement.isPending && telechargement.variables === format}
+                  onClick={() => telechargement.mutate(format)}
+                />
+              ))}
             </div>
           </div>
         )}

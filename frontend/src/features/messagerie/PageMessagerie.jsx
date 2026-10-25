@@ -53,6 +53,7 @@ import Redaction from './Redaction';
 import CarteInvitation from '@/features/partages/CarteInvitation';
 import CarteChronogrammeFormateur from '@/features/chronogramme/CarteChronogrammeFormateur';
 import CarteEcartSaisie from './CarteEcartSaisie';
+import CarteReclamation from './CarteReclamation';
 import BoutonProposer from '@/features/propositions/BoutonProposer';
 import CarteProposition from '@/features/propositions/CarteProposition';
 import { IMPORTANCES as IMPORTANCES_ANNONCE } from '@/features/annonces/PageAnnonces';
@@ -976,6 +977,9 @@ function Lecture({
 
         {/* L'état d'écart de saisie e-note, quand le message en porte un (2026-10-01). */}
         <CarteEcartSaisie message={message} />
+
+        {/* La fiche de réclamation d'un formateur, à imprimer (2026-10-26). */}
+        <CarteReclamation message={message} />
 
         {/* La proposition d'emploi du temps d'un formateur (Phase 9 b). */}
         <CarteProposition message={message} />

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fr } from 'date-fns/locale';
 import { ChevronDown } from 'lucide-react';
@@ -58,9 +58,12 @@ export default function SelecteurSemaine({
    * inchangé pour eux.
    */
   completudes = [],
+  /* Voir `NavigationSemaine` : les seules semaines qu'on peut ouvrir — absent, toutes. */
+  semainesPermises = null,
   onChanger,
 }) {
   const [ouvert, setOuvert] = useState(false);
+  const permises = useMemo(() => (semainesPermises ? new Set(semainesPermises) : null), [semainesPermises]);
 
   /*
    * ⚠️ LE CALENDRIER MONTRE FÉRIÉS ET VACANCES. Sans eux, on choisit une semaine
@@ -71,7 +74,7 @@ export default function SelecteurSemaine({
   const feries = useQuery({
     queryKey: ['jours-feries', anneeScolaire],
     queryFn: () => chargerJoursFeries(anneeScolaire),
-    enabled: Boolean(anneeScolaire) && ouvert,
+    enabled: Boolean(anneeScolaire) && ouvert && !semainesPermises,
     retry: false,
   });
 
@@ -133,10 +136,18 @@ export default function SelecteurSemaine({
   const choisir = useCallback(
     (jour) => {
       if (!estDate(jour)) return;
-      onChanger(valeurSemaine(jour, rentrees));
+      const valeur = valeurSemaine(jour, rentrees);
+      if (permises && !permises.has(valeur)) return;
+      onChanger(valeur);
       setOuvert(false);
     },
-    [onChanger, rentrees]
+    [onChanger, rentrees, permises]
+  );
+
+  /* Les jours d'une semaine non permise : grisés et inertes, comme son numéro. */
+  const horsPermises = useCallback(
+    (jour) => Boolean(permises) && estDate(jour) && !permises.has(valeurSemaine(jour, rentrees)),
+    [permises, rentrees]
   );
 
   /*
@@ -161,11 +172,12 @@ export default function SelecteurSemaine({
           bornes={bornes}
           rentrees={rentrees}
           anneeScolaire={anneeScolaire}
+          permises={permises}
           onChoisir={choisir}
         />
       ),
     }),
-    [feriesParDate, semaine, avecSeances, tauxParSemaine, bornes, rentrees, anneeScolaire, choisir]
+    [feriesParDate, semaine, avecSeances, tauxParSemaine, bornes, rentrees, anneeScolaire, permises, choisir]
   );
 
 
@@ -203,6 +215,24 @@ export default function SelecteurSemaine({
 
       {/* Aligné sur le bouton, qui est lui-même au centre de la rangée. */}
       <PopoverContent align="center" collisionPadding={16} className="w-auto p-3">
+        {/*
+          ═══ AVEC DES SEMAINES PERMISES : LEUR LISTE, PAS UN CALENDRIER (2026-10-26,
+          demande du porteur : « au lieu du calendrier, seulement les numéros des
+          semaines publiées avec leurs dates ») ═══ Deux mois de jours dont la
+          plupart sont grisés ne servent à rien à qui ne peut ouvrir qu'une
+          poignée de semaines : on les nomme directement.
+        */}
+        {permises ? (
+          <ListeSemaines
+            semaines={semainesPermises}
+            courante={semaine}
+            rentrees={rentrees}
+            onChoisir={(valeur) => {
+              onChanger(valeur);
+              setOuvert(false);
+            }}
+          />
+        ) : (
         <div className="flex flex-col items-center">
         <Calendar
           locale={fr}
@@ -232,6 +262,7 @@ export default function SelecteurSemaine({
            * page entière au lieu de laisser un jour non sélectionné.
            */
           selected={(jour) => estDate(jour) && valeurSemaine(jour, rentrees) === semaine}
+          disabled={permises ? horsPermises : undefined}
           onDayClick={choisir}
         />
 
@@ -263,8 +294,57 @@ export default function SelecteurSemaine({
             )}
           </div>
         </div>
+        )}
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * Les semaines permises, une par ligne : « S5 · du 5 oct. au 11 oct. », de la plus
+ * ancienne à la plus récente. La semaine ouverte est marquée, et la liste s'ouvre
+ * DESSUS — en fin d'année, elle serait sinon tout en bas, hors de vue.
+ */
+function ListeSemaines({ semaines, courante, rentrees, onChoisir }) {
+  const active = useRef(null);
+  useEffect(() => {
+    active.current?.scrollIntoView({ block: 'center' });
+  }, []);
+
+  const lignes = semaines
+    .map((valeur) => ({ valeur, analyse: analyserSemaine(valeur, rentrees) }))
+    .filter((ligne) => ligne.analyse)
+    .sort((a, b) => a.analyse.debut - b.analyse.debut);
+
+  if (lignes.length === 0) {
+    return <p className="w-64 p-2 text-center text-sm text-muted-foreground">Aucune semaine publiée pour le moment.</p>;
+  }
+
+  return (
+    <div className="w-64 max-w-[calc(100vw-3rem)]">
+      <p className="px-1 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Semaines publiées</p>
+      <div className="max-h-72 space-y-0.5 overflow-y-auto pr-1">
+        {lignes.map(({ valeur, analyse }) => {
+          const estCourante = valeur === courante;
+          return (
+            <button
+              key={valeur}
+              ref={estCourante ? active : undefined}
+              type="button"
+              aria-pressed={estCourante}
+              onClick={() => onChoisir(valeur)}
+              className={cn(
+                'flex w-full items-baseline gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
+                estCourante ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+              )}
+            >
+              <strong className="w-10 shrink-0 tabular-nums">{libelleSemaine(valeur, { court: true })}</strong>
+              <span className={cn('text-xs', !estCourante && 'text-muted-foreground')}>{periodeCourte(analyse)}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -308,6 +388,7 @@ function NumeroSemaine({
   bornes,
   rentrees = [],
   anneeScolaire,
+  permises = null,
   onChoisir,
   // `asChild` n'est pas un attribut DOM et n'a rien à faire sur un `<th>`.
   asChild,
@@ -373,18 +454,21 @@ function NumeroSemaine({
   const horsAnnee =
     (bornes?.startMonth && lundi < bornes.startMonth) ||
     (bornes?.endMonth && lundi > bornes.endMonth);
+  const fermee = Boolean(permises) && !permises.has(valeur);
 
   return (
     <th {...proprietes} className={cn(proprietes.className, 'p-0 align-middle')}>
       <button
         type="button"
-        disabled={horsAnnee}
+        disabled={horsAnnee || fermee}
         onClick={() => onChoisir(lundi)}
         aria-pressed={estCourante}
         title={
           horsAnnee
             ? 'Cette semaine est hors de l’année scolaire active'
-            : `Semaine ${numero}${titrePastille}`
+            : fermee
+              ? `Semaine ${numero} — pas encore publiée`
+              : `Semaine ${numero}${titrePastille}`
         }
         className={cn(
           'relative mx-auto flex h-7 w-7 items-center justify-center rounded-md',

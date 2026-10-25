@@ -37,6 +37,22 @@ export const exporterPresenceCcEfmConsultation = ({ format, groupes }) =>
     nomParDefaut: `feuille-presence-cc-efm.${format}`,
   });
 
+/**
+ * La fiche de réclamation du formateur (2026-10-25) : la séance se choisit dans son
+ * emploi du temps ; ici, ses stagiaires, puis la fiche remplie — une page par stagiaire.
+ */
+export const chargerStagiairesReclamation = (seanceId) =>
+  api.get(`/api/v2/consultation/documents/reclamation/seances/${encodeURIComponent(seanceId)}/stagiaires`);
+
+export const telechargerFicheReclamation = ({ format, ...demande }) =>
+  api.telecharger('/api/v2/consultation/documents/reclamation', { format, ...demande }, {
+    nomParDefaut: `fiche-reclamation.${format}`,
+  });
+
+/** La même fiche, envoyée au directeur et aux gestionnaires par la messagerie, pour impression (2026-10-26). */
+export const envoyerFicheReclamation = (demande) =>
+  api.post('/api/v2/consultation/documents/reclamation/envoyer', demande);
+
 /** Les groupes du stagiaire connecté — son groupe principal, plus une FQ éventuelle. */
 export const chargerGroupesConsultation = () => api.get('/api/v2/consultation/groupes');
 

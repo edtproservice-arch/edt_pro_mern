@@ -777,21 +777,109 @@ function corpsPvDiscipline(gabarit, feuilles, sautDePage) {
  * pointillés du groupe remplacés, le nom ajouté après son libellé.
  */
 function corpsReclamation(gabarit, feuilles, sautDePage, { nommes = false } = {}) {
-  const page = (groupe, nom) =>
-    gabarit.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (paragraphe) =>
-      texteDu(paragraphe).startsWith('Groupe :')
-        ? reecrireRuns(paragraphe, (contenu) =>
-            contenu.startsWith('Groupe :')
-              ? `${remplirPointilles(contenu.replace(/Nom &amp; Prénom : $/, ''), [groupe]).replace(/^Groupe :(?!…)/, 'Groupe : ')}${'\u00a0'.repeat(8)}Nom &amp; Prénom : ${echapperXml(nom)}`
-              : contenu
-          )
-        : paragraphe
-    );
+  const page = (feuille, stagiaire) => {
+    const nom = stagiaire ? `${stagiaire.nom} ${stagiaire.prenom}`.trim() : '';
+    /*
+     * ═══ REMPLIE PAR LE FORMATEUR (2026-10-25, demande du porteur) ═══
+     * `feuille.reclamation` n'existe que depuis « Mes documents » du formateur :
+     * la séance choisie (date, heure, lieu), le formateur connecté, ses deux
+     * saisies — et, par stagiaire, la partie SURVEILLANT tirée de son dossier
+     * (`surveillant`). Sans elle — la direction, l'exemplaire vierge — seuls le
+     * groupe et le nom sont écrits, comme avant.
+     */
+    const r = feuille.reclamation;
+    return gabarit.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (paragraphe) => {
+      const texte = texteDu(paragraphe);
+      if (texte.startsWith('Groupe :')) {
+        return reecrireRuns(paragraphe, (contenu) =>
+          contenu.startsWith('Groupe :')
+            ? `${remplirPointilles(contenu.replace(/Nom &amp; Prénom : $/, ''), [feuille.groupe]).replace(/^Groupe :(?!…)/, 'Groupe : ')}${'\u00a0'.repeat(8)}Nom &amp; Prénom : ${echapperXml(nom)}`
+            : contenu
+        );
+      }
+      if (!r) return paragraphe;
+      if (texte.startsWith('Date &amp; Heure :')) return completerParagraphe(paragraphe, [r.dateHeure], r.lieu);
+      if (texte.startsWith('Nom &amp; Prénom :')) return completerParagraphe(paragraphe, [r.formateur, r.matriculeFormateur]);
+      if (texte.startsWith('Action Non disciplinaire :')) return completerParagraphe(paragraphe, [], r.actionNonDisciplinaire);
+      if (texte.startsWith('Dégâts Immobilier :')) return completerParagraphe(paragraphe, [], r.degats);
+      if (texte.startsWith('Absence :') && stagiaire?.surveillant) {
+        // La valeur porte déjà « Jr » deux fois (non justifiées, justifiées) : celui du canevas s'efface.
+        return completerParagraphe(paragraphe, [stagiaire.surveillant.joursAbsence], stagiaire.surveillant.autresActions, {
+          uniteIncluse: 'Jr',
+        });
+      }
+      return paragraphe;
+    });
+  };
   return feuilles
-    .flatMap((feuille) =>
-      nommes ? feuille.stagiaires.map((s) => page(feuille.groupe, `${s.nom} ${s.prenom}`.trim())) : [page(feuille.groupe, '')]
-    )
+    .flatMap((feuille) => (nommes ? feuille.stagiaires.map((s) => page(feuille, s)) : [page(feuille, null)]))
     .join(sautDePage);
+}
+
+/**
+ * Les pointillés d'un paragraphe reçoivent `valeurs` dans l'ordre, et `suite`
+ * s'écrit après son dernier run (« Lieu : Salle 4 »).
+ *
+ * ⚠️ UNE SUITE DE POINTILLÉS EST UN SEUL CHAMP, MÊME COUPÉE EN PLUSIEURS RUNS :
+ *    Word découpe « Nom & Prénom :………………Matricule » au gré de ses révisions.
+ *    Compter les groupes run par run donnait au nom la première moitié des
+ *    pointillés et le MATRICULE à la seconde — « BRAHIM LOURID9863Matricule : ……… ».
+ *    Chaque « … » reçoit donc le rang de son groupe sur le texte ENTIER du
+ *    paragraphe ; la valeur s'écrit à la place du premier, les autres s'effacent.
+ *
+ * Une valeur vide garde ses pointillés ; un retour à la ligne de `suite` devient
+ * un saut de ligne Word. `uniteIncluse` : l'unité que le canevas écrit après les
+ * pointillés (« ………Jr ») et que la valeur porte déjà — elle s'efface.
+ */
+function completerParagraphe(paragraphe, valeurs = [], suite = '', { uniteIncluse = '' } = {}) {
+  const runs = [...paragraphe.matchAll(RUN)].map((m) => m[2]);
+  let groupe = -1;
+  let dansPointilles = false;
+  const rangs = runs.map((contenu) =>
+    [...contenu].map((caractere) => {
+      if (caractere !== '…') {
+        dansPointilles = false;
+        return -1;
+      }
+      if (!dansPointilles) groupe += 1;
+      dansPointilles = true;
+      return groupe;
+    })
+  );
+
+  const ajout = String(suite ?? '').trim();
+  const ecrits = new Set();
+  let effacerUnite = false;
+  return reecrireRuns(paragraphe, (contenu, rang) => {
+    let texte = '';
+    const caracteres = [...contenu];
+    for (let index = 0; index < caracteres.length; index += 1) {
+      const caractere = caracteres[index];
+      const g = rangs[rang][index];
+      const valeur = g >= 0 ? String(valeurs[g] ?? '').trim() : '';
+      if (g < 0 && effacerUnite && uniteIncluse && caracteres.slice(index).join('').startsWith(uniteIncluse)) {
+        index += [...uniteIncluse].length - 1;
+        effacerUnite = false;
+        continue;
+      }
+      if (g < 0) effacerUnite = false;
+      if (!valeur) {
+        texte += caractere;
+      } else if (!ecrits.has(g)) {
+        ecrits.add(g);
+        texte += ` ${echapperXml(valeur)}`;
+        effacerUnite = Boolean(uniteIncluse);
+        if (!effacerUnite) texte += ' ';
+      }
+    }
+    if (rang === runs.length - 1 && ajout) {
+      texte += ` ${ajout
+        .split(/\r?\n/)
+        .map((ligne) => echapperXml(ligne))
+        .join('</w:t><w:br/><w:t xml:space="preserve">')}`;
+    }
+    return texte;
+  });
 }
 
 /** « 14/10/2026 » — la date de délivrance. */

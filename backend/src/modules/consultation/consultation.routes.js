@@ -9,6 +9,7 @@ import { resolveTenant } from '../../middleware/resolveTenant.js';
 import { forbidden } from '../../lib/httpError.js';
 import * as service from './consultation.service.js';
 import * as ressources from './ressources.service.js';
+import * as reclamation from './reclamation.service.js';
 import * as absencesFormateurs from '../absences/absences.service.js';
 import * as discipline from '../absencesStagiaires/discipline.service.js';
 import * as calendrierService from '../calendrier/calendrier.service.js';
@@ -252,6 +253,88 @@ router.post(
       );
       res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
       res.send(tampon);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/** Les deux saisies de la fiche — action non disciplinaire, dégâts : 256 caractères au plus (2026-10-26, demande du porteur). */
+const MAX_SAISIE_RECLAMATION = 256;
+
+/*
+ * ═══ LA FICHE DE RÉCLAMATION DU FORMATEUR (2026-10-25, demande du porteur) ═══
+ * La séance se choisit dans SON emploi du temps (`/emploi/:semaine`) ; ici, les
+ * stagiaires de cette séance, puis la fiche remplie — voir `reclamation.service.js`.
+ * Le matricule vient du jeton, jamais de la requête.
+ */
+router.get(
+  '/documents/reclamation/seances/:id/stagiaires',
+  requireRole(ROLES.FORMATEUR),
+  validate({ params: z.object({ id: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Identifiant invalide') }) }),
+  async (req, res, next) => {
+    try {
+      const stagiaires = await reclamation.stagiairesDeLaSeance(
+        req.etablissementId,
+        req.anneeScolaire,
+        monIdentite(req),
+        req.params.id
+      );
+      res.json({ success: true, stagiaires });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.post(
+  '/documents/reclamation',
+  requireRole(ROLES.FORMATEUR),
+  validate({
+    body: z.object({
+      format: z.enum(['docx', 'pdf']),
+      seanceId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Identifiant invalide'),
+      matricules: z.array(z.string().trim().min(1).max(40)).min(1).max(60),
+      actionNonDisciplinaire: z.string().trim().max(MAX_SAISIE_RECLAMATION).default(''),
+      degats: z.string().trim().max(MAX_SAISIE_RECLAMATION).default(''),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const fichier = await reclamation.ficheReclamation(
+        req.etablissementId,
+        req.anneeScolaire,
+        { matricule: monIdentite(req), nomComplet: req.utilisateur.nomComplet },
+        req.body
+      );
+      envoyerFichier(res, fichier);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/** La même fiche, ENVOYÉE au directeur et aux gestionnaires par la messagerie (2026-10-26). */
+router.post(
+  '/documents/reclamation/envoyer',
+  requireRole(ROLES.FORMATEUR),
+  validate({
+    body: z.object({
+      seanceId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Identifiant invalide'),
+      matricules: z.array(z.string().trim().min(1).max(40)).min(1).max(60),
+      actionNonDisciplinaire: z.string().trim().max(MAX_SAISIE_RECLAMATION).default(''),
+      degats: z.string().trim().max(MAX_SAISIE_RECLAMATION).default(''),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const bilan = await reclamation.envoyerReclamation(
+        req.etablissementId,
+        req.anneeScolaire,
+        { id: req.utilisateur.id, matricule: monIdentite(req), nomComplet: req.utilisateur.nomComplet },
+        req.body
+      );
+      res.json({ success: true, envoyes: bilan.envoyes, refuses: bilan.refuses });
     } catch (error) {
       next(error);
     }

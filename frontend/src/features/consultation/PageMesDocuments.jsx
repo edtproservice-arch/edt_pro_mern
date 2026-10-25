@@ -8,6 +8,7 @@ import CadreReglage from '@/features/parametres/CadreReglage';
 import { DocumentAvecDialogue } from '@/features/documents/CartesDocuments';
 import { telechargerDocumentVierge } from '@/features/absences/stagiaires/api';
 import { chargerDocumentsConsultation, exporterPresenceCcEfmConsultation } from './api';
+import DocumentReclamation from './DocumentReclamation';
 
 /**
  * ═══ LES DOCUMENTS DU FORMATEUR (2026-10-23, demande du porteur) ═══
@@ -59,10 +60,13 @@ function PageDocumentsFormateur() {
           Vous n’êtes affecté à aucun groupe cette année scolaire : seuls les exemplaires vierges sont disponibles.
         </Alerte>
       )}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {/* Des feuilles de largeur fixe, côte à côte — comme la page Documents du directeur (2026-10-26). */}
+      <div className="flex flex-wrap gap-4">
         {documents.map((document) => (
           <DocumentAvecDialogue key={document.cle} document={document} />
         ))}
+        {/* Remplie depuis une de SES séances (2026-10-25) — sa propre fenêtre. */}
+        <DocumentReclamation />
       </div>
     </CadreReglage>
   );

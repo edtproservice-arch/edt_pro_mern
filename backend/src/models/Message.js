@@ -257,6 +257,19 @@ const messageSchema = new mongoose.Schema(
     ecartSaisie: { type: mongoose.Schema.Types.Mixed, default: null },
 
     /**
+     * La fiche de réclamation d'un formateur, envoyée au directeur et aux
+     * gestionnaires pour impression (2026-10-26, demande du porteur).
+     *
+     * ⚠️ UN INSTANTANÉ DE LA DEMANDE, PAS LE FICHIER : séance (déjà mise en
+     *    phrases), stagiaires, saisies, établissement et année. Le document se
+     *    RECONSTRUIT à l'impression (`imprimerReclamation`) — aucun fichier en
+     *    base, et la partie « Surveillant » donne l'état du dossier au moment
+     *    d'imprimer. `Mixed` et AUCUNE ROUTE PUBLIQUE NE L'ÉCRIT, comme
+     *    `chronogrammeFormateur` : seul `consultation/reclamation.service` le pose.
+     */
+    reclamation: { type: mongoose.Schema.Types.Mixed, default: null },
+
+    /**
      * L'AVIS DE PÉRIODE — stage d'un groupe ou formation d'un formateur — posé
      * automatiquement une semaine avant son début (2026-10-10, demande du porteur).
      * `{type: 'stage'|'formation', cle, sujet, debut, fin}`. `cle` sert de garde

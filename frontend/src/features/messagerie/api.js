@@ -68,6 +68,13 @@ export function effacerMessage(id) {
   return api.delete(`/api/v2/messages/${encodeURIComponent(id)}/definitif`);
 }
 
+/** La fiche de réclamation jointe au message, à imprimer (2026-10-26). */
+export function imprimerReclamation(id, format) {
+  return api.telecharger(`/api/v2/messages/${encodeURIComponent(id)}/reclamation`, { format }, {
+    nomParDefaut: `fiche-reclamation.${format}`,
+  });
+}
+
 /** Vide ma corbeille — même règle, pour tout ce qu'elle contient. */
 export function viderCorbeille() {
   return api.delete('/api/v2/messages/corbeille');

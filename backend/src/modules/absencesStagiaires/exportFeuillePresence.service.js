@@ -1,3 +1,6 @@
+import mongoose from 'mongoose';
+import { TYPES_ABSENCE } from 'shared/constants';
+import { AbsenceStagiaire } from '../../models/AbsenceStagiaire.js';
 import { Base } from '../../models/Base.js';
 import { Etablissement } from '../../models/Etablissement.js';
 import { Stagiaire } from '../../models/Stagiaire.js';
@@ -25,13 +28,14 @@ import { MODELES, construireDocxFeuillePresence, construirePdfFeuillePresence } 
  * HASSANIA » sur les canevas : le nom complet déborderait.
  *
  * @param {'eff' | 'cc-efm' | 'liste' | 'badges-sans' | 'badges-infos' | 'checklist' | 'verification' | 'retrait-definitif' | 'retrait-provisoire' | 'attestation-poursuite' | 'convention' | 'convocation-eff' | 'transfert' | 'pv-discipline' | 'reclamation' | 'duplicata' | 'reorientation' | 'soins'} cleModele
- * @param {{format, groupes, examen?: {date?, debut?, fin?, epreuve?}}} options — `examen` : la convocation à l'EFF
+ * @param {{format, groupes, examen?: {date?, debut?, fin?, epreuve?}, reclamation?: object}} options — `examen` : la
+ *   convocation à l'EFF ; `reclamation` : la fiche remplie par le formateur (séance, saisies — 2026-10-25)
  */
 export async function construireFeuillePresence(
   etablissementId,
   anneeScolaire,
   cleModele,
-  { format, groupes: demandes, examen = null, matricules = null }
+  { format, groupes: demandes, examen = null, matricules = null, reclamation = null }
 ) {
   const modele = MODELES[cleModele];
   if (!modele) throw badRequest(`Feuille de présence « ${cleModele} » inconnue`, { code: 'MODELE_INCONNU' });
@@ -159,6 +163,15 @@ export async function construireFeuillePresence(
     }
   }
 
+  /*
+   * La fiche de réclamation REMPLIE par le formateur (2026-10-25) : la même pour
+   * chaque page, et la partie surveillant tirée du dossier de chaque stagiaire.
+   */
+  if (reclamation) {
+    await ajouterDonneesSurveillant(etablissementId, anneeScolaire, feuilles);
+    for (const feuille of feuilles) feuille.reclamation = reclamation;
+  }
+
   // `nommes` : des stagiaires demandés nommément — la fiche de réclamation sort alors une page par stagiaire.
   const donnees = { anneeScolaire, feuilles, nommes: Boolean(matricules?.length) };
   const nomFichier =
@@ -223,6 +236,62 @@ async function garderCeuxDuConseil(etablissementId, anneeScolaire, feuilles, { t
       .filter(Boolean);
   }
   for (let i = feuilles.length - 1; i >= 0; i -= 1) if (feuilles[i].stagiaires.length === 0) feuilles.splice(i, 1);
+}
+
+/**
+ * ═══ LA PARTIE « SURVEILLANT » DE LA FICHE DE RÉCLAMATION, REMPLIE D'OFFICE
+ * (2026-10-25, demande du porteur) ═══
+ *   - « Absence : … Jr » : les JOURNÉES d'absence de l'année, JUSTIFIÉES
+ *     COMPRISES mais SÉPARÉES (décisions du porteur, 2026-10-25) — des dates
+ *     distinctes, pas des séances : deux séances manquées le même jour font une
+ *     journée. ⚠️ Une journée n'est « justifiée » que si TOUTES ses absences le
+ *     sont : une seule séance non justifiée la range de l'autre côté, et une même
+ *     journée n'est jamais comptée deux fois ;
+ *   - « Autre Action Disciplinaire » : les sanctions déjà encourues, d'assiduité
+ *     et de comportement — la même note que l'onglet « Notes de discipline ».
+ *     « Aucune » quand il n'y en a pas : une case vide se lirait comme oubliée.
+ */
+async function ajouterDonneesSurveillant(etablissementId, anneeScolaire, feuilles) {
+  const matricules = [...new Set(feuilles.flatMap((f) => f.stagiaires.map((s) => s.matricule)))];
+  const [notes, journees] = await Promise.all([
+    notesDesGroupes(etablissementId, anneeScolaire, feuilles.map((f) => f.groupe)),
+    AbsenceStagiaire.aggregate([
+      {
+        $match: {
+          etablissementId: new mongoose.Types.ObjectId(String(etablissementId)),
+          anneeScolaire: Number(anneeScolaire),
+          matricule: { $in: matricules },
+          typeAbsence: TYPES_ABSENCE.ABSENCE,
+        },
+      },
+      {
+        $group: {
+          _id: { matricule: '$matricule', date: '$date' },
+          justifiee: { $min: { $cond: [{ $eq: ['$justifiee', true] }, 1, 0] } },
+        },
+      },
+      { $group: { _id: '$_id.matricule', total: { $sum: 1 }, justifiees: { $sum: '$justifiee' } } },
+    ]),
+  ]);
+
+  const jours = new Map(journees.map((j) => [j._id, { nonJustifiees: j.total - j.justifiees, justifiees: j.justifiees }]));
+  const accorder = (n, mot) => `${n} Jr ${mot}${n > 1 ? 's' : ''}`;
+  const parMatricule = new Map(notes.flatMap((g) => g.stagiaires).map((s) => [s.matricule, s]));
+  for (const feuille of feuilles) {
+    for (const stagiaire of feuille.stagiaires) {
+      const note = parMatricule.get(stagiaire.matricule)?.note;
+      const sanctions = [
+        note?.assiduite?.sanction && `${note.assiduite.sanction.libelle} (assiduité)`,
+        note?.comportement?.sanction && `${note.comportement.sanction.libelle} (comportement)`,
+      ].filter(Boolean);
+      const { nonJustifiees = 0, justifiees = 0 } = jours.get(stagiaire.matricule) ?? {};
+      stagiaire.surveillant = {
+        // « 2 Jr non justifiées, 1 Jr justifiée » — l'unité est dans la valeur, le « Jr » du canevas s'efface.
+        joursAbsence: `${accorder(nonJustifiees, 'non justifiée')}, ${accorder(justifiees, 'justifiée')}`,
+        autresActions: sanctions.join(' ; ') || 'Aucune',
+      };
+    }
+  }
 }
 
 /**

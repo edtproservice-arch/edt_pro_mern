@@ -3,6 +3,7 @@ import { peutEcrire, peutRepondre } from 'shared/domain';
 import { Message } from '../../models/Message.js';
 import { User } from '../../models/User.js';
 import { badRequest, forbidden, notFound } from '../../lib/httpError.js';
+import { construireFeuillePresence } from '../absencesStagiaires/exportFeuillePresence.service.js';
 
 /**
  * Messagerie interne (F10).
@@ -58,6 +59,21 @@ function presenter(message, correspondant, recu) {
     chronogrammeFormateur: message.chronogrammeFormateur ?? null,
     /* L'état d'écart de saisie e-note, quand le message en porte un (2026-10-01). */
     ecartSaisie: message.ecartSaisie ?? null,
+    /*
+     * La fiche de réclamation (2026-10-26) : ce que la carte AFFICHE. L'établissement,
+     * l'année et les matricules restent au serveur — il les relit pour imprimer.
+     */
+    reclamation: message.reclamation
+      ? {
+          dateHeure: message.reclamation.contenu?.dateHeure ?? '',
+          lieu: message.reclamation.contenu?.lieu ?? '',
+          formateur: message.reclamation.contenu?.formateur ?? '',
+          groupes: message.reclamation.groupes ?? [],
+          stagiaires: message.reclamation.stagiaires ?? [],
+          actionNonDisciplinaire: message.reclamation.contenu?.actionNonDisciplinaire ?? '',
+          degats: message.reclamation.contenu?.degats ?? '',
+        }
+      : null,
     /* L'avis automatique d'un stage ou d'une formation (2026-10-10) — sans réponse possible. */
     avisPeriode: message.avisPeriode ?? null,
     /* La copie d'une annonce du bandeau (2026-10-10) : son degré d'importance s'affiche dans le fil. */
@@ -345,6 +361,7 @@ export async function envoyer(
     ecartSaisie = null,
     avisPeriode = null,
     annonce = null,
+    reclamation = null,
   }
 ) {
   const expediteur = await User.findById(expediteurId).select('role etablissementIds').lean();
@@ -394,7 +411,13 @@ export async function envoyer(
     const memeEtablissement = (cible.etablissementIds ?? []).some((id) =>
       (expediteur.etablissementIds ?? []).some((sien) => String(sien) === String(id))
     );
-    const autorise = avisPeriode
+    /*
+     * ⚠️ LA FICHE DE RÉCLAMATION AUSSI (2026-10-26) : le formateur l'adresse au
+     *    gestionnaire, que la matrice ne lui ouvre pas. Même règle que l'avis de
+     *    période — le même établissement, rien de plus —, et seul le service de
+     *    la fiche la pose.
+     */
+    const autorise = avisPeriode || reclamation
       ? memeEtablissement
       : peutRepondre(
           { id: expediteurId, role: expediteur.role, etablissementIds: expediteur.etablissementIds },
@@ -419,6 +442,7 @@ export async function envoyer(
       ecartSaisie,
       avisPeriode,
       annonce,
+      reclamation,
     });
   }
 
@@ -454,6 +478,26 @@ export async function supprimer(utilisateurId, id) {
 
   await message.save();
   return { supprime: true, definitif: false };
+}
+
+/**
+ * La fiche de réclamation jointe à un message, prête à imprimer (2026-10-26).
+ *
+ * ⚠️ RECONSTRUITE DEPUIS L'INSTANTANÉ, avec l'établissement et l'année QU'IL
+ *    PORTE — jamais ceux de la session de celui qui imprime : un compte rattaché
+ *    à plusieurs établissements imprimerait sinon la fiche dans le mauvais.
+ */
+export async function imprimerReclamation(utilisateurId, id, format) {
+  const { message } = await mien(utilisateurId, id);
+  const fiche = message.reclamation;
+  if (!fiche) throw notFound('Ce message ne porte pas de fiche de réclamation', { code: 'SANS_RECLAMATION' });
+
+  return construireFeuillePresence(fiche.etablissementId, fiche.anneeScolaire, 'reclamation', {
+    format,
+    groupes: fiche.groupes,
+    matricules: fiche.matricules,
+    reclamation: fiche.contenu,
+  });
 }
 
 /**

@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
 import { analyserSemaine, valeurSemaine } from 'shared/domain';
 import { Button } from '@/components/ui/button';
@@ -39,6 +40,14 @@ export default function NavigationSemaine({
    * rattrapage d'une absence, celle d'un document) — sans quoi l'une piloterait l'autre.
    */
   cleGuidage = '',
+  /*
+   * ═══ LES SEULES SEMAINES QU'ON PEUT OUVRIR (2026-10-26, demande du porteur :
+   * « en calendrier affiche seulement les semaines publiées ») ═══ Valeurs
+   * « 2026-W5 ». Absent : toutes, comme avant. Présent : le calendrier grise les
+   * autres, et les flèches sautent d'une semaine permise à la suivante — une
+   * flèche qui mènerait à une semaine fermée la ferait ouvrir quand même.
+   */
+  semainesPermises = null,
 }) {
   /*
    * ═══ LA SEMAINE AFFICHÉE EST PARTAGÉE, PAS LE CLIC SUR LA FLÈCHE (2026-10-23,
@@ -56,8 +65,32 @@ export default function NavigationSemaine({
 
   const analyse = semaine ? analyserSemaine(semaine) : null;
 
+  const permises = useMemo(
+    () =>
+      semainesPermises
+        ? semainesPermises
+            .map((valeur) => ({ valeur, debut: analyserSemaine(valeur)?.debut }))
+            .filter((entree) => entree.debut)
+            .sort((a, b) => a.debut - b.debut)
+        : null,
+    [semainesPermises]
+  );
+
+  /** La semaine permise juste avant (-1) ou juste après (+1) — `null` s'il n'y en a pas. */
+  const voisine = (sens) => {
+    if (!analyse || !permises) return null;
+    return sens < 0
+      ? (permises.filter((entree) => entree.debut < analyse.debut).at(-1)?.valeur ?? null)
+      : (permises.find((entree) => entree.debut > analyse.debut)?.valeur ?? null);
+  };
+
   const decaler = (decalage) => {
     if (!analyse) return;
+    if (permises) {
+      const cible = voisine(decalage);
+      if (cible) onChanger(cible);
+      return;
+    }
     const date = new Date(analyse.debut);
     date.setDate(date.getDate() + decalage * 7);
     onChanger(valeurSemaine(date));
@@ -70,6 +103,7 @@ export default function NavigationSemaine({
         size="icon"
         className="size-8"
         aria-label="Semaine précédente"
+        disabled={Boolean(permises) && !voisine(-1)}
         onClick={() => decaler(-1)}
       >
         <ChevronLeft className="size-4" />
@@ -80,6 +114,7 @@ export default function NavigationSemaine({
         anneeScolaire={anneeScolaire}
         remplies={remplies}
         completudes={completudes}
+        semainesPermises={semainesPermises}
         onChanger={onChanger}
       />
 
@@ -100,6 +135,7 @@ export default function NavigationSemaine({
         size="icon"
         className="size-8"
         aria-label="Semaine suivante"
+        disabled={Boolean(permises) && !voisine(1)}
         onClick={() => decaler(1)}
       >
         <ChevronRight className="size-4" />

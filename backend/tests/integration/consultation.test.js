@@ -10,6 +10,8 @@ import { Repartition } from '../../src/models/Repartition.js';
 import { RefreshToken } from '../../src/models/RefreshToken.js';
 import { Message } from '../../src/models/Message.js';
 import { ROLES, STATUTS_COMPTE, TYPES_COURS } from 'shared/constants';
+import JSZip from 'jszip';
+import { AbsenceStagiaire } from '../../src/models/AbsenceStagiaire.js';
 
 vi.mock('../../src/config/mailer.js', () => ({
   envoyerEmail: vi.fn(async () => ({ envoye: true })),
@@ -595,6 +597,160 @@ describe('/consultation/documents — la page « Documents » du formateur (2026
   it('reste fermée au stagiaire', async () => {
     const reponse = await request(app).get('/api/v2/consultation/documents').set('Cookie', cookiesStagiaire);
     expect(reponse.status).toBe(403);
+  });
+});
+
+/*
+ * ═══ LA FICHE DE RÉCLAMATION, REMPLIE PAR LE FORMATEUR (2026-10-25, demande du porteur) ═══
+ * Une de SES séances, des stagiaires de CE cours, ses deux saisies — et la partie
+ * « Surveillant » tirée du dossier du stagiaire.
+ */
+describe('la fiche de réclamation du formateur (2026-10-25)', () => {
+  const texteDuDocx = async (tampon) => {
+    const xml = await (await JSZip.loadAsync(tampon)).file('word/document.xml').async('string');
+    return [...xml.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g)].map((m) => m[1]).join('');
+  };
+  const fiche = (corps) =>
+    request(app)
+      .post('/api/v2/consultation/documents/reclamation')
+      .set('Cookie', cookiesFormateur)
+      .send({ format: 'docx', ...corps })
+      .responseType('blob');
+
+  let seanceId;
+  beforeEach(async () => {
+    const aujourdhui = new Date();
+    aujourdhui.setHours(0, 0, 0, 0);
+    seanceId = (
+      await Seance.create({
+        etablissementId: etablissement.id,
+        anneeScolaire: ANNEE,
+        semaine: SEMAINE,
+        jour: 'Mercredi',
+        seance: 'S2',
+        date: aujourdhui,
+        formateurMatricule: '9863',
+        groupe: 'GM101',
+        module: 'M101',
+        salle: 'B05',
+        type: TYPES_COURS.PRESENTIEL,
+      })
+    ).id;
+
+    // Quatre séances manquées sur TROIS journées : deux non justifiées, une justifiée — comptées à part.
+    const absence = (date, seance) => ({
+      etablissementId: etablissement.id,
+      anneeScolaire: ANNEE,
+      matricule: 'CEF001',
+      nomComplet: 'ALAOUI Yassine',
+      groupe: 'GM101',
+      date,
+      semaine: SEMAINE,
+      jour: 'Lundi',
+      seance,
+      typeAbsence: 'absence',
+    });
+    await AbsenceStagiaire.create([
+      absence('2026-09-14', 'S1'),
+      absence('2026-09-14', 'S2'),
+      absence('2026-09-15', 'S1'),
+      { ...absence('2026-09-16', 'S1'), justifiee: true, motif: 'Certificat médical' },
+    ]);
+  });
+
+  it('liste les stagiaires du cours', async () => {
+    const reponse = await request(app)
+      .get(`/api/v2/consultation/documents/reclamation/seances/${seanceId}/stagiaires`)
+      .set('Cookie', cookiesFormateur);
+    expect(reponse.body.stagiaires).toEqual([{ matricule: 'CEF001', nom: 'ALAOUI Yassine', groupe: 'GM101' }]);
+  });
+
+  it('remplit la fiche : séance, formateur, saisies, et la partie surveillant d’office', async () => {
+    const reponse = await fiche({
+      seanceId,
+      matricules: ['CEF001'],
+      actionNonDisciplinaire: 'Bagarre en salle',
+      degats: 'Vitre cassée',
+    });
+
+    expect(reponse.status).toBe(200);
+    const texte = await texteDuDocx(reponse.body);
+    expect(texte).toContain('Mercredi');
+    expect(texte).toContain('Lieu : B05');
+    expect(texte).toContain('BRAHIM LOURID');
+    expect(texte).toContain('9863');
+    expect(texte).toContain('ALAOUI Yassine');
+    expect(texte).toContain('Bagarre en salle');
+    expect(texte).toContain('Vitre cassée');
+    expect(texte).toContain('Absence : 2 Jr non justifiées, 1 Jr justifiée, Autre Action Disciplinaire');
+    // Le nom et le matricule du formateur, chacun à SA place.
+    expect(texte).toMatch(/Nom &amp; Prénom :\s*BRAHIM LOURID\s*Matricule :\s*9863/);
+  });
+
+  it('⚠️ s’ENVOIE au directeur et au gestionnaire, qui l’impriment depuis le message (2026-10-26)', async () => {
+    const gestionnaire = await User.create({
+      nomComplet: 'GESTIONNAIRE TEST',
+      email: 'gestion@edtpro.ma',
+      motDePasse: MOT_DE_PASSE,
+      role: ROLES.GESTIONNAIRE,
+      statut: STATUTS_COMPTE.APPROUVE,
+      estVerifie: true,
+      etablissementIds: [etablissement.id],
+    });
+
+    const envoi = await request(app)
+      .post('/api/v2/consultation/documents/reclamation/envoyer')
+      .set('Cookie', cookiesFormateur)
+      .send({ seanceId, matricules: ['CEF001'], actionNonDisciplinaire: 'Bagarre en salle', degats: '' });
+
+    expect(envoi.status).toBe(200);
+    expect(envoi.body.envoyes).toBe(2);
+    const messages = await Message.find({ reclamation: { $ne: null } }).lean();
+    const destinataires = messages.map((m) => String(m.destinataireId));
+    expect(destinataires).toContain(String(etablissement.proprietaireId));
+    // ⚠️ Hors de la matrice de la messagerie (formateur → gestionnaire), mais permis pour la fiche.
+    expect(destinataires).toContain(String(gestionnaire._id));
+
+    // Le directeur l'imprime depuis SON message.
+    const sien = messages.find((m) => String(m.destinataireId) === String(etablissement.proprietaireId));
+    const lu = await request(app).get(`/api/v2/messages/${sien._id}`).set('Cookie', cookiesDirecteur);
+    expect(lu.body.message.reclamation).toMatchObject({ groupes: ['GM101'], stagiaires: ['ALAOUI Yassine'] });
+    expect(lu.body.message.reclamation.matricules).toBeUndefined();
+
+    const impression = await request(app)
+      .post(`/api/v2/messages/${sien._id}/reclamation`)
+      .set('Cookie', cookiesDirecteur)
+      .send({ format: 'docx' })
+      .responseType('blob');
+    expect(impression.status).toBe(200);
+    const texte = await texteDuDocx(impression.body);
+    expect(texte).toContain('Bagarre en salle');
+    expect(texte).toContain('BRAHIM LOURID');
+
+    // Un tiers ne l'imprime pas.
+    const tiers = await request(app)
+      .post(`/api/v2/messages/${sien._id}/reclamation`)
+      .set('Cookie', cookiesStagiaire)
+      .send({ format: 'docx' });
+    expect(tiers.status).toBe(403);
+  });
+
+  it('refuse la séance d’un collègue', async () => {
+    const autre = await Seance.findOne({ formateurMatricule: '4211' });
+    const reponse = await fiche({ seanceId: autre.id, matricules: ['CEF001'] });
+    expect(reponse.status).toBe(403);
+  });
+
+  it('refuse une saisie de plus de 256 caractères (2026-10-26)', async () => {
+    const trop = 'x'.repeat(257);
+    expect((await fiche({ seanceId, matricules: ['CEF001'], actionNonDisciplinaire: trop })).status).toBe(400);
+    expect((await fiche({ seanceId, matricules: ['CEF001'], degats: trop })).status).toBe(400);
+    expect((await fiche({ seanceId, matricules: ['CEF001'], degats: 'x'.repeat(256) })).status).toBe(200);
+  });
+
+  it('refuse un stagiaire qui n’est pas de ce cours', async () => {
+    const reponse = await fiche({ seanceId, matricules: ['CEF999'] });
+    expect(reponse.status).toBe(400);
   });
 });
 

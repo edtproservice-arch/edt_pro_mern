@@ -186,6 +186,27 @@ router.post(
   }
 );
 
+/** La fiche de réclamation jointe au message, en Word ou PDF — pour l'imprimer (2026-10-26). */
+router.post(
+  '/:id/reclamation',
+  validate({ params: z.object({ id: identifiant }), body: z.object({ format: z.enum(['docx', 'pdf']) }) }),
+  async (req, res, next) => {
+    try {
+      const { tampon, nomFichier, contentType } = await service.imprimerReclamation(
+        req.utilisateur.id,
+        req.params.id,
+        req.body.format
+      );
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="export"; filename*=UTF-8''${encodeURIComponent(nomFichier)}`);
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+      res.send(tampon);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 /** Remet un message reçu à l'état non lu — pour y revenir plus tard. */
 router.post(
   '/:id/non-lu',

@@ -60,6 +60,19 @@ export function marquerNonLu(id) {
   return api.post(`/api/v2/messages/${encodeURIComponent(id)}/non-lu`, {});
 }
 
+/**
+ * Supprime DÉFINITIVEMENT un message de ma corbeille (2026-10-25). Il quitte la
+ * base si mon correspondant l'a retiré aussi ; sinon il ne disparaît que de chez moi.
+ */
+export function effacerMessage(id) {
+  return api.delete(`/api/v2/messages/${encodeURIComponent(id)}/definitif`);
+}
+
+/** Vide ma corbeille — même règle, pour tout ce qu'elle contient. */
+export function viderCorbeille() {
+  return api.delete('/api/v2/messages/corbeille');
+}
+
 /** Sort un message de la corbeille. */
 export function restaurerMessage(id) {
   return api.post(`/api/v2/messages/${encodeURIComponent(id)}/restaurer`, {});

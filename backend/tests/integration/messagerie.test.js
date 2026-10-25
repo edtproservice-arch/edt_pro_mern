@@ -730,3 +730,101 @@ describe('Marquer non lu', () => {
     expect((await cote(duFormateur))[0].recu).toBe(true);
   });
 });
+
+/*
+ * ═══ SUPPRIMER DÉFINITIVEMENT DEPUIS LA CORBEILLE (2026-10-25, demande du porteur) ═══
+ * Par côté, comme la corbeille : le document quitte la base dès que l'autre partie
+ * l'a retiré aussi ; tant qu'il le garde, il disparaît seulement de MA corbeille.
+ */
+describe('Corbeille — suppression définitive', () => {
+  const corbeille = (cookies) =>
+    request(app).get('/api/v2/messages?boite=corbeille').set('Cookie', cookies);
+
+  const unMessageDansMaCorbeille = async () => {
+    const duDirecteur = await connecter('directeur@edtpro.ma');
+    await envoyer(duDirecteur, { destinataires: [formateur.id], sujet: 'S', corps: 'C' });
+    const message = await Message.findOne({});
+    const duFormateur = await connecter('f1@edtpro.ma');
+    await request(app).delete(`/api/v2/messages/${message._id}`).set('Cookie', duFormateur);
+    return { message, duFormateur, duDirecteur };
+  };
+
+  it('quitte ma corbeille, et le correspondant garde le sien', async () => {
+    const { message, duFormateur, duDirecteur } = await unMessageDansMaCorbeille();
+
+    const reponse = await request(app)
+      .delete(`/api/v2/messages/${message._id}/definitif`)
+      .set('Cookie', duFormateur);
+
+    expect(reponse.body).toMatchObject({ efface: true, definitif: false });
+    expect((await corbeille(duFormateur)).body.messages).toHaveLength(0);
+    const envoyes = await request(app).get('/api/v2/messages?boite=envoyes').set('Cookie', duDirecteur);
+    expect(envoyes.body.messages).toHaveLength(1);
+    // Effacé pour moi : il ne s'ouvre ni ne se restaure plus.
+    const restaure = await request(app)
+      .post(`/api/v2/messages/${message._id}/restaurer`)
+      .set('Cookie', duFormateur);
+    expect(restaure.status).toBe(404);
+  });
+
+  it('⚠️ quitte la BASE quand le correspondant l’a retiré lui aussi', async () => {
+    const { message, duFormateur, duDirecteur } = await unMessageDansMaCorbeille();
+    await request(app).delete(`/api/v2/messages/${message._id}/definitif`).set('Cookie', duFormateur);
+
+    // Le directeur le met à la corbeille à son tour : plus personne ne le garde.
+    await request(app).delete(`/api/v2/messages/${message._id}`).set('Cookie', duDirecteur);
+
+    expect(await Message.countDocuments({})).toBe(0);
+  });
+
+  it('quitte la base d’un coup quand le correspondant l’avait déjà retiré', async () => {
+    const { message, duFormateur, duDirecteur } = await unMessageDansMaCorbeille();
+    // Le formateur l'a mis à la corbeille ; le directeur aussi, mais garde la
+    // restauration possible jusqu'ici — on simule l'état d'avant la règle.
+    await Message.updateOne({ _id: message._id }, { supprimeParExpediteur: true });
+
+    const reponse = await request(app)
+      .delete(`/api/v2/messages/${message._id}/definitif`)
+      .set('Cookie', duDirecteur);
+
+    expect(reponse.body.definitif).toBe(true);
+    expect(await Message.countDocuments({})).toBe(0);
+    expect((await corbeille(duFormateur)).body.messages).toHaveLength(0);
+  });
+
+  it('refuse un message qui n’est pas dans ma corbeille', async () => {
+    const duDirecteur = await connecter('directeur@edtpro.ma');
+    await envoyer(duDirecteur, { destinataires: [formateur.id], sujet: 'S', corps: 'C' });
+    const message = await Message.findOne({});
+
+    const reponse = await request(app)
+      .delete(`/api/v2/messages/${message._id}/definitif`)
+      .set('Cookie', await connecter('f1@edtpro.ma'));
+
+    expect(reponse.status).toBe(400);
+    expect(reponse.body.code).toBe('MESSAGE_HORS_CORBEILLE');
+    expect(await Message.countDocuments({})).toBe(1);
+  });
+
+  it('vide ma corbeille, sans toucher ma boîte de réception', async () => {
+    const duDirecteur = await connecter('directeur@edtpro.ma');
+    for (const sujet of ['A', 'B', 'C']) {
+      await envoyer(duDirecteur, { destinataires: [formateur.id], sujet, corps: 'C' });
+    }
+    const duFormateur = await connecter('f1@edtpro.ma');
+    const [a, b] = await Message.find({ sujet: { $in: ['A', 'B'] } });
+    await request(app).delete(`/api/v2/messages/${a._id}`).set('Cookie', duFormateur);
+    await request(app).delete(`/api/v2/messages/${b._id}`).set('Cookie', duFormateur);
+    // B est aussi retiré côté directeur : il doit quitter la base.
+    await Message.updateOne({ _id: b._id }, { supprimeParExpediteur: true });
+
+    const reponse = await request(app).delete('/api/v2/messages/corbeille').set('Cookie', duFormateur);
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.body).toMatchObject({ effaces: 2, supprimesDeLaBase: 1 });
+    expect((await corbeille(duFormateur)).body.messages).toHaveLength(0);
+    const reception = await request(app).get('/api/v2/messages').set('Cookie', duFormateur);
+    expect(reception.body.messages.map((m) => m.sujet)).toEqual(['C']);
+    expect(await Message.countDocuments({})).toBe(2);
+  });
+});

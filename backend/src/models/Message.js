@@ -210,6 +210,18 @@ const messageSchema = new mongoose.Schema(
     supprimeParExpediteur: { type: Boolean, default: false },
     supprimeParDestinataire: { type: Boolean, default: false },
 
+    /**
+     * Effacé DÉFINITIVEMENT de la corbeille, par côté (2026-10-25, demande du
+     * porteur : « supprimer les messages en corbeille, et de la base »).
+     *
+     * ⚠️ PAR CÔTÉ, COMME LA CORBEILLE : un même document est le message de deux
+     *    personnes. Effacé des deux côtés — ou effacé d'un côté et mis à la
+     *    corbeille de l'autre —, il quitte la base ; tant que l'autre le garde
+     *    dans une boîte, ce drapeau le cache seulement de la mienne.
+     */
+    effaceParExpediteur: { type: Boolean, default: false },
+    effaceParDestinataire: { type: Boolean, default: false },
+
     proposition: { type: propositionSchema, default: null },
 
     invitation: { type: invitationSchema, default: null },

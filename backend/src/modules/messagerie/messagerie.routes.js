@@ -200,6 +200,35 @@ router.post(
   }
 );
 
+/**
+ * Vide MA corbeille (2026-10-25).
+ *
+ * ⚠️ DÉCLARÉE AVANT `/:id` : `corbeille` n'est pas un identifiant, et `/:id`
+ *    refuserait la requête à la validation avant qu'Express n'essaie la suivante.
+ */
+router.delete('/corbeille', async (req, res, next) => {
+  try {
+    const bilan = await service.viderCorbeille(req.utilisateur.id);
+    res.json({ success: true, ...bilan });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** Supprime DÉFINITIVEMENT un message de ma corbeille (2026-10-25). */
+router.delete(
+  '/:id/definitif',
+  validate({ params: z.object({ id: identifiant }) }),
+  async (req, res, next) => {
+    try {
+      const bilan = await service.effacer(req.utilisateur.id, req.params.id);
+      res.json({ success: true, ...bilan });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 /** Retire un message de sa propre vue. */
 router.delete(
   '/:id',

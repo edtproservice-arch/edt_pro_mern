@@ -32,6 +32,7 @@ import { useSidebar } from '@/components/ui/sidebar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Textarea } from '@/components/ui/textarea';
 import Alerte from '@/components/common/Alerte';
+import ConfirmationAction from '@/components/common/ConfirmationAction';
 import { depuis } from '@/lib/derniereModification';
 import { cn } from '@/lib/utils';
 import { BOITES, VIDE } from './boites';
@@ -39,12 +40,14 @@ import {
   archiverMessage,
   chargerMessages,
   compterBoites,
+  effacerMessage,
   envoyerMessage,
   marquerNonLu,
   ouvrirMessage,
   restaurerMessage,
   supprimerBrouillon,
   supprimerMessage,
+  viderCorbeille,
 } from './api';
 import Redaction from './Redaction';
 import CarteInvitation from '@/features/partages/CarteInvitation';
@@ -216,6 +219,18 @@ export default function PageMessagerie() {
     titre: 'Message marqué non lu',
     detail: 'Il vous attend dans votre boîte de réception.',
   }, rafraichir);
+  /*
+   * ═══ SUPPRIMER DÉFINITIVEMENT, DEPUIS LA CORBEILLE (2026-10-25, demande du porteur) ═══
+   * ⚠️ TOUJOURS APRÈS CONFIRMATION (`aConfirmer`) : contrairement à la corbeille, ce
+   *    geste ne se rattrape pas.
+   */
+  const effacer = useMutationSimple(effacerMessage, {
+    titre: 'Message supprimé définitivement',
+    detail: 'Votre correspondant garde le sien s’il ne l’a pas supprimé.',
+  }, rafraichir);
+  const vider = useMutationSimple(viderCorbeille, { titre: 'Corbeille vidée' }, rafraichir);
+  /** `'message'` (celui qui est ouvert) ou `'corbeille'` (tout) — en attente de confirmation. */
+  const [aConfirmer, setAConfirmer] = useState(null);
 
   const tous = liste.data?.messages ?? [];
 
@@ -283,6 +298,19 @@ export default function PageMessagerie() {
             </Onglet>
           </ButtonGroup>
         )}
+
+        {boite === 'corbeille' && tous.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+            disabled={vider.isPending}
+            onClick={() => setAConfirmer('corbeille')}
+          >
+            <Trash2 className="size-3.5" />
+            Vider la corbeille
+          </Button>
+        )}
       </div>
 
       <div className="px-4 pb-3">
@@ -345,12 +373,14 @@ export default function PageMessagerie() {
       onArchiver={() => archiver.mutate(ouvert)}
       onDesarchiver={() => desarchiver.mutate(ouvert)}
       onRestaurer={() => restaurer.mutate(ouvert)}
+      onEffacer={() => setAConfirmer('message')}
       onNonLu={() => marquerNonLue.mutate(ouvert)}
       enCours={
         retirer.isPending ||
         archiver.isPending ||
         desarchiver.isPending ||
         restaurer.isPending ||
+        effacer.isPending ||
         marquerNonLue.isPending
       }
       onEnvoye={() => cache.invalidateQueries({ queryKey: ['messages'] })}
@@ -460,6 +490,24 @@ export default function PageMessagerie() {
           }}
         />
       )}
+
+      <ConfirmationAction
+        ouvert={Boolean(aConfirmer)}
+        onOpenChange={(ouverte) => !ouverte && setAConfirmer(null)}
+        destructive
+        titre={aConfirmer === 'corbeille' ? 'Vider la corbeille ?' : 'Supprimer définitivement ce message ?'}
+        description={
+          aConfirmer === 'corbeille'
+            ? `Les ${tous.length} message(s) de votre corbeille seront supprimés définitivement. Vos correspondants gardent les leurs s’ils ne les ont pas supprimés. Cette action est IRRÉVERSIBLE.`
+            : 'Il sera supprimé définitivement de votre corbeille. Votre correspondant garde le sien s’il ne l’a pas supprimé. Cette action est IRRÉVERSIBLE.'
+        }
+        libelleConfirmation={aConfirmer === 'corbeille' ? 'Vider' : 'Supprimer'}
+        onConfirmer={() => {
+          if (aConfirmer === 'corbeille') vider.mutate();
+          else if (ouvert) effacer.mutate(ouvert);
+          setAConfirmer(null);
+        }}
+      />
     </div>
   );
 }
@@ -726,6 +774,7 @@ function Lecture({
   onArchiver,
   onDesarchiver,
   onRestaurer,
+  onEffacer,
   onNonLu,
   onEnvoye,
 }) {
@@ -813,11 +862,19 @@ function Lecture({
           <Action icone={Archive} titre="Archiver" onClick={onArchiver} disabled={enCours} />
         )}
 
-        {boite !== 'corbeille' && (
+        {boite !== 'corbeille' ? (
           <Action
             icone={Trash2}
             titre="Mettre à la corbeille"
             onClick={onSupprimer}
+            disabled={enCours}
+            destructif
+          />
+        ) : (
+          <Action
+            icone={Trash2}
+            titre="Supprimer définitivement"
+            onClick={onEffacer}
             disabled={enCours}
             destructif
           />

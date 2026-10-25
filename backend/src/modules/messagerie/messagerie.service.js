@@ -212,11 +212,16 @@ function critereDeBoite(utilisateurId, boite) {
      * puis retiré doit s'y retrouver aussi — sinon « supprimer » depuis les
      * envoyés ferait disparaître le message sans recours.
      */
+    /*
+     * ⚠️ `$ne: true` ET NON `false` POUR L'EFFACEMENT (2026-10-25) : les messages
+     *    écrits avant ce champ ne le portent pas, et Mongoose ne prête sa valeur
+     *    par défaut qu'à la LECTURE — `false` les ferait tous disparaître.
+     */
     return {
       brouillon: false,
       $or: [
-        { destinataireId: utilisateurId, supprimeParDestinataire: true },
-        { expediteurId: utilisateurId, supprimeParExpediteur: true },
+        { destinataireId: utilisateurId, supprimeParDestinataire: true, effaceParDestinataire: { $ne: true } },
+        { expediteurId: utilisateurId, supprimeParExpediteur: true, effaceParExpediteur: { $ne: true } },
       ],
     };
   }
@@ -452,6 +457,69 @@ export async function supprimer(utilisateurId, id) {
 }
 
 /**
+ * ═══ SUPPRIMER DÉFINITIVEMENT, DEPUIS LA CORBEILLE (2026-10-25, demande du
+ * porteur : « supprimer les messages en corbeille, et de la base ») ═══
+ *
+ * ⚠️ SEULEMENT CE QUI EST DANS MA CORBEILLE : effacer d'un geste un message
+ *    encore dans une boîte sauterait l'étape qui permet de se raviser.
+ *
+ * ⚠️ LE DOCUMENT QUITTE LA BASE DÈS QUE L'AUTRE PARTIE L'A RETIRÉ AUSSI (mis à
+ *    la corbeille ou effacé). Tant qu'il le garde dans une boîte, on ne le lui
+ *    retire pas : il disparaît seulement de MA corbeille, définitivement.
+ */
+export async function effacer(utilisateurId, id) {
+  const { message, estDestinataire, estExpediteur } = await mien(utilisateurId, id);
+
+  const dansMaCorbeille =
+    (estDestinataire && message.supprimeParDestinataire) || (estExpediteur && message.supprimeParExpediteur);
+  if (!dansMaCorbeille) {
+    throw badRequest('Mettez d’abord ce message à la corbeille', { code: 'MESSAGE_HORS_CORBEILLE' });
+  }
+
+  if (estDestinataire) message.effaceParDestinataire = true;
+  if (estExpediteur) message.effaceParExpediteur = true;
+
+  if (message.supprimeParDestinataire && message.supprimeParExpediteur) {
+    await message.deleteOne();
+    return { efface: true, definitif: true };
+  }
+
+  await message.save();
+  return { efface: true, definitif: false };
+}
+
+/**
+ * Vide MA corbeille — même règle que `effacer`, pour tout ce qu'elle contient.
+ *
+ * @returns {{ effaces: number, supprimesDeLaBase: number }}
+ */
+export async function viderCorbeille(utilisateurId) {
+  const corbeille = critereDeBoite(utilisateurId, 'corbeille');
+  const effaces = await Message.countDocuments(corbeille);
+
+  await Promise.all([
+    Message.updateMany(
+      { destinataireId: utilisateurId, brouillon: false, supprimeParDestinataire: true },
+      { $set: { effaceParDestinataire: true } }
+    ),
+    Message.updateMany(
+      { expediteurId: utilisateurId, brouillon: false, supprimeParExpediteur: true },
+      { $set: { effaceParExpediteur: true } }
+    ),
+  ]);
+
+  // Retiré des DEUX côtés : plus personne ne le voit, il quitte la base.
+  const { deletedCount } = await Message.deleteMany({
+    brouillon: false,
+    supprimeParDestinataire: true,
+    supprimeParExpediteur: true,
+    $or: [{ destinataireId: utilisateurId }, { expediteurId: utilisateurId }],
+  });
+
+  return { effaces, supprimesDeLaBase: deletedCount ?? 0 };
+}
+
+/**
  * Archive ou désarchive un message, de MON côté.
  *
  * ⚠️ ARCHIVER N'EST PAS SUPPRIMER : le message quitte la boîte de réception mais
@@ -502,6 +570,11 @@ async function mien(utilisateurId, id) {
   if (!estDestinataire && !estExpediteur) {
     throw forbidden('Ce message ne vous est pas destiné', { code: 'MESSAGE_ETRANGER' });
   }
+
+  // Effacé de mon côté (2026-10-25) : il n'existe plus pour moi — ni ouvert, ni restauré.
+  const encoreLeMien =
+    (estDestinataire && !message.effaceParDestinataire) || (estExpediteur && !message.effaceParExpediteur);
+  if (!encoreLeMien) throw notFound('Message introuvable', { code: 'MESSAGE_INTROUVABLE' });
 
   return { message, estDestinataire, estExpediteur };
 }

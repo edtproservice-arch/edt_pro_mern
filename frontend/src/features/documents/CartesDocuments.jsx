@@ -44,6 +44,8 @@ import {
 } from '@/features/absences/stagiaires/api';
 import { chargerEtablissementCourant } from '@/features/configuration/api';
 import DialogueChoixGroupes from './DialogueChoixGroupes';
+import DocumentPresenceCcEfm from '@/features/consultation/DocumentPresenceCcEfm';
+import DocumentReclamation from '@/features/consultation/DocumentReclamation';
 import { empreinte, useEtatPartage } from '@/features/guidage/useEtatPartage';
 
 /**
@@ -572,6 +574,16 @@ function rechercherDocuments(recherche) {
 
 /** La feuille d'un document : avec sa fenêtre, téléchargée directement, ou à venir. */
 function TuileDocument({ document, pret }) {
+  /*
+   * ═══ DEPUIS UNE SÉANCE, COMME CHEZ LE FORMATEUR (2026-10-26, demande du porteur) ═══
+   * La feuille CC/EFM et la fiche de réclamation se remplissent d'une séance choisie
+   * dans l'emploi du temps — formateur par formateur pour la direction.
+   * ⚠️ RÉFÉRENCÉES AU RENDU, jamais dans `CATEGORIES` : ces fenêtres importent
+   *    `FeuilleDocument` d'ici, et une référence au chargement du module ferait
+   *    tomber l'un des deux dans la zone morte de l'autre selon l'ordre d'import.
+   */
+  if (document.cle === 'presence-cc-efm') return <DocumentPresenceCcEfm direction />;
+  if (document.cle === 'reclamation') return <DocumentReclamation direction />;
   if (document.choixGroupes) return <DocumentAvecDialogue document={document} attenue={!pret} />;
   if (document.telecharger) return <DocumentTelechargeable document={document} />;
   return <FeuilleDocument document={document} attenue={!pret} />;

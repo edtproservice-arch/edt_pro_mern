@@ -48,6 +48,8 @@ export default function NavigationSemaine({
    * flèche qui mènerait à une semaine fermée la ferait ouvrir quand même.
    */
   semainesPermises = null,
+  /* Le titre de la liste qui remplace alors le calendrier (voir `SelecteurSemaine`). */
+  titreListe,
 }) {
   /*
    * ═══ LA SEMAINE AFFICHÉE EST PARTAGÉE, PAS LE CLIC SUR LA FLÈCHE (2026-10-23,
@@ -115,6 +117,7 @@ export default function NavigationSemaine({
         remplies={remplies}
         completudes={completudes}
         semainesPermises={semainesPermises}
+        titreListe={titreListe}
         onChanger={onChanger}
       />
 

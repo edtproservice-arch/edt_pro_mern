@@ -1,6 +1,8 @@
 import { ROLES } from 'shared/constants';
 import { enJour, separerFusion } from 'shared/domain';
+import { Base } from '../../models/Base.js';
 import { Etablissement } from '../../models/Etablissement.js';
+import { cleGroupeModule, intitulesParGroupe } from '../../lib/intitulesModules.js';
 import { Seance } from '../../models/Seance.js';
 import { Stagiaire } from '../../models/Stagiaire.js';
 import { User } from '../../models/User.js';
@@ -20,6 +22,13 @@ import { envoyer as envoyerMessage } from '../messagerie/messagerie.service.js';
  * ⚠️ TOUT SE VÉRIFIE ICI, PAS À L'ÉCRAN : la séance doit être la sienne, les
  *    stagiaires ceux de son groupe. Le formateur ne voit ni ne remplit la fiche
  *    d'un cours qu'il n'a pas donné.
+ *
+ * ═══ ET POUR LA DIRECTION (2026-10-26, demande du porteur : « les mêmes options
+ * pour le gestionnaire et le directeur, en page Documents ») ═══ Les mêmes
+ * fonctions, avec `matricule` à `null` : toute séance DE L'ÉTABLISSEMENT est
+ * admise, et c'est son FORMATEUR — pas le compte connecté — que la fiche nomme.
+ * ⚠️ `null` n'est passé que par les routes réservées à l'encadrement ; celles du
+ *    formateur passent toujours SON matricule, tiré du jeton.
  */
 
 /** « 14/10/2026 » depuis « 2026-10-14 ». */
@@ -44,14 +53,47 @@ function presenter(seance, horaires) {
   };
 }
 
-/** La séance `id`, à condition qu'elle soit la sienne. */
+/**
+ * La séance `id` de l'établissement — et, quand `matricule` est donné, à condition
+ * qu'elle soit celle de ce formateur. `null` : l'encadrement, toute séance admise.
+ */
 async function saSeance(etablissementId, anneeScolaire, matricule, id) {
   const seance = await Seance.findOne({ _id: id, etablissementId, anneeScolaire }).lean();
   if (!seance) throw notFound('Séance introuvable', { code: 'SEANCE_INTROUVABLE' });
-  if (String(seance.formateurMatricule ?? '').trim() !== String(matricule).trim()) {
+  if (matricule !== null && String(seance.formateurMatricule ?? '').trim() !== String(matricule).trim()) {
     throw forbidden('Cette séance n’est pas la vôtre', { code: 'SEANCE_ETRANGERE' });
   }
   return seance;
+}
+
+/** Le formateur d'une séance, pour la fiche que l'encadrement remplit : son nom tiré de la base. */
+async function formateurDeLaSeance(etablissementId, anneeScolaire, seance) {
+  const matricule = String(seance.formateurMatricule ?? '').trim();
+  const base = await Base.findOne({ etablissementId, anneeScolaire }).select('formateurs').lean();
+  const fiche = (base?.formateurs ?? []).find((f) => String(f.matricule ?? '').trim() === matricule);
+  return { matricule, nomComplet: fiche?.nomComplet || matricule };
+}
+
+/**
+ * ═══ UNE DE SES SÉANCES, PRÊTE À ÉCRIRE SUR UN DOCUMENT (2026-10-26) ═══
+ * Pour la feuille de présence CC/EFM : la date, l'horaire en vigueur, les groupes
+ * d'un cours fusionné, et l'INTITULÉ du module dans la filière du groupe — la
+ * feuille a une case « Intitulé du module », un code seul n'y suffit pas.
+ */
+export async function seanceAvecIntitule(etablissementId, anneeScolaire, matricule, id) {
+  const seance = await saSeance(etablissementId, anneeScolaire, matricule, id);
+  const [{ courant }, base] = await Promise.all([
+    horairesService.obtenir(),
+    Base.findOne({ etablissementId, anneeScolaire }).select('affectations groupes groupeFilieres').lean(),
+  ]);
+  const intitules = base
+    ? await intitulesParGroupe(base, [{ groupe: seance.groupe, module: seance.module }])
+    : new Map();
+  return {
+    ...presenter(seance, courant),
+    groupes: separerFusion(seance.groupe),
+    intitule: intitules.get(cleGroupeModule(seance.groupe, seance.module)) ?? '',
+  };
 }
 
 /**
@@ -76,10 +118,12 @@ export async function stagiairesDeLaSeance(etablissementId, anneeScolaire, matri
  * Ce que la fiche écrit — vérifié une fois, que le formateur la TÉLÉCHARGE ou
  * l'ENVOIE : séance à lui, stagiaires de son cours.
  *
- * @param {{ matricule: string, nomComplet: string }} formateur — le compte connecté, jamais la requête
+ * @param {{ matricule: string, nomComplet: string } | null} formateur — le compte connecté, jamais la
+ *   requête ; `null` pour l'encadrement : le formateur de la séance.
  */
 async function preparer(etablissementId, anneeScolaire, formateur, demande) {
-  const seance = await saSeance(etablissementId, anneeScolaire, formateur.matricule, demande.seanceId);
+  const seance = await saSeance(etablissementId, anneeScolaire, formateur?.matricule ?? null, demande.seanceId);
+  const nomme = formateur ?? (await formateurDeLaSeance(etablissementId, anneeScolaire, seance));
   const groupes = separerFusion(seance.groupe);
 
   const voulus = [...new Set(demande.matricules)];
@@ -111,8 +155,8 @@ async function preparer(etablissementId, anneeScolaire, formateur, demande) {
     contenu: {
       dateHeure: `${s.jour} ${s.dateFr}${heure} (${s.seance})`,
       lieu: s.salle,
-      formateur: formateur.nomComplet,
-      matriculeFormateur: formateur.matricule,
+      formateur: nomme.nomComplet,
+      matriculeFormateur: nomme.matricule,
       actionNonDisciplinaire: demande.actionNonDisciplinaire ?? '',
       degats: demande.degats ?? '',
     },
@@ -127,6 +171,29 @@ export async function ficheReclamation(etablissementId, anneeScolaire, formateur
     groupes: fiche.groupes,
     matricules: fiche.matricules,
     reclamation: fiche.contenu,
+  });
+}
+
+/**
+ * La feuille de présence CC/EFM d'une séance (2026-10-26) : la séance donne le
+ * groupe, le module et son intitulé, la date et l'horaire ; `epreuve` dit les
+ * cases à cocher — voir `completerPresenceCcEfm`.
+ *
+ * @param {string | null} matricule — le formateur connecté, ou `null` pour l'encadrement
+ */
+export async function feuilleCcEfmDeSeance(etablissementId, anneeScolaire, matricule, { format, seanceId, epreuve }) {
+  const seance = await seanceAvecIntitule(etablissementId, anneeScolaire, matricule, seanceId);
+  return construireFeuillePresence(etablissementId, anneeScolaire, 'cc-efm', {
+    format,
+    groupes: seance.groupes,
+    examen: {
+      ...(epreuve ?? {}),
+      // L'intitulé SEUL, sans le code (2026-10-26, demande du porteur) ; le code ne sert qu'à défaut d'intitulé.
+      module: seance.intitule || seance.module,
+      date: `${seance.jour} ${seance.dateFr}`,
+      debut: seance.debut,
+      fin: seance.fin,
+    },
   });
 }
 

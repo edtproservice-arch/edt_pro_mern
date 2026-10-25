@@ -748,6 +748,66 @@ describe('la fiche de réclamation du formateur (2026-10-25)', () => {
     expect((await fiche({ seanceId, matricules: ['CEF001'], degats: 'x'.repeat(256) })).status).toBe(200);
   });
 
+  it('⚠️ la feuille CC/EFM se remplit depuis la séance, l’épreuve cochée (2026-10-26)', async () => {
+    const reponse = await request(app)
+      .post('/api/v2/consultation/documents/presence-cc-efm')
+      .set('Cookie', cookiesFormateur)
+      .send({ format: 'docx', seanceId, epreuve: { type: 'cc', numero: 2, nature: 'ecrit' } })
+      .responseType('blob');
+
+    expect(reponse.status).toBe(200);
+    const texte = await texteDuDocx(reponse.body);
+    // L'intitulé seul, sans le code (2026-10-26).
+    expect(texte).toContain('Résistance des matériaux');
+    expect(texte).not.toContain('M101');
+    expect(texte).toContain('Mercredi');
+    expect(texte).toMatch(/CONTROLE CONTINU\s*☒/);
+    expect(texte).toMatch(/EXAMEN FIN DE MODULE\s*☐/);
+    expect(texte).toMatch(/2 ☒/);
+    expect(texte).toMatch(/Ecrit ☒/);
+    expect(texte).toMatch(/Du\s+\d{2}:\d{2}\s+Au\s+\d{2}:\d{2}/);
+
+    const autre = await Seance.findOne({ formateurMatricule: '4211' });
+    const etrangere = await request(app)
+      .post('/api/v2/consultation/documents/presence-cc-efm')
+      .set('Cookie', cookiesFormateur)
+      .send({ format: 'docx', seanceId: autre.id, epreuve: { type: 'efm' } });
+    expect(etrangere.status).toBe(403);
+  });
+
+  it('⚠️ l’ENCADREMENT remplit les mêmes documents depuis n’importe quelle séance (2026-10-26)', async () => {
+    const racine = `/api/v2/absences-stagiaires/documents-seance/${seanceId}`;
+
+    const liste = await request(app).get(`${racine}/stagiaires`).set('Cookie', cookiesDirecteur);
+    expect(liste.body.stagiaires.map((s) => s.matricule)).toEqual(['CEF001']);
+
+    // La fiche nomme le FORMATEUR DE LA SÉANCE, pas le directeur connecté.
+    const fiche = await request(app)
+      .post(`${racine}/reclamation`)
+      .set('Cookie', cookiesDirecteur)
+      .send({ format: 'docx', matricules: ['CEF001'], actionNonDisciplinaire: 'Retard répété' })
+      .responseType('blob');
+    expect(fiche.status).toBe(200);
+    const texteFiche = await texteDuDocx(fiche.body);
+    expect(texteFiche).toMatch(/Nom &amp; Prénom :\s*BRAHIM LOURID\s*Matricule :\s*9863/);
+    expect(texteFiche).toContain('Retard répété');
+
+    const feuille = await request(app)
+      .post(`${racine}/presence-cc-efm`)
+      .set('Cookie', cookiesDirecteur)
+      .send({ format: 'docx', epreuve: { type: 'efm', portee: 'local' } })
+      .responseType('blob');
+    expect(feuille.status).toBe(200);
+    expect(await texteDuDocx(feuille.body)).toMatch(/Local ☒/);
+
+    // Ces routes restent fermées au formateur : il a les siennes, limitées à ses séances.
+    const parLeFormateur = await request(app)
+      .post(`${racine}/presence-cc-efm`)
+      .set('Cookie', cookiesFormateur)
+      .send({ format: 'docx' });
+    expect(parLeFormateur.status).toBe(403);
+  });
+
   it('refuse un stagiaire qui n’est pas de ce cours', async () => {
     const reponse = await fiche({ seanceId, matricules: ['CEF999'] });
     expect(reponse.status).toBe(400);

@@ -60,6 +60,8 @@ export default function SelecteurSemaine({
   completudes = [],
   /* Voir `NavigationSemaine` : les seules semaines qu'on peut ouvrir — absent, toutes. */
   semainesPermises = null,
+  /* Le titre de leur liste — « Semaines publiées » par défaut. */
+  titreListe = 'Semaines publiées',
   onChanger,
 }) {
   const [ouvert, setOuvert] = useState(false);
@@ -224,6 +226,7 @@ export default function SelecteurSemaine({
         */}
         {permises ? (
           <ListeSemaines
+            titre={titreListe}
             semaines={semainesPermises}
             courante={semaine}
             rentrees={rentrees}
@@ -305,7 +308,7 @@ export default function SelecteurSemaine({
  * ancienne à la plus récente. La semaine ouverte est marquée, et la liste s'ouvre
  * DESSUS — en fin d'année, elle serait sinon tout en bas, hors de vue.
  */
-function ListeSemaines({ semaines, courante, rentrees, onChoisir }) {
+function ListeSemaines({ titre, semaines, courante, rentrees, onChoisir }) {
   const active = useRef(null);
   useEffect(() => {
     active.current?.scrollIntoView({ block: 'center' });
@@ -317,12 +320,12 @@ function ListeSemaines({ semaines, courante, rentrees, onChoisir }) {
     .sort((a, b) => a.analyse.debut - b.analyse.debut);
 
   if (lignes.length === 0) {
-    return <p className="w-64 p-2 text-center text-sm text-muted-foreground">Aucune semaine publiée pour le moment.</p>;
+    return <p className="w-64 p-2 text-center text-sm text-muted-foreground">Aucune semaine pour le moment.</p>;
   }
 
   return (
     <div className="w-64 max-w-[calc(100vw-3rem)]">
-      <p className="px-1 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Semaines publiées</p>
+      <p className="px-1 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{titre}</p>
       <div className="max-h-72 space-y-0.5 overflow-y-auto pr-1">
         {lignes.map(({ valeur, analyse }) => {
           const estCourante = valeur === courante;

@@ -16,6 +16,7 @@ import { construireExportRegistreAbsences } from './exportRegistreAbsences.servi
 import { construireExportNotesDiscipline } from './exportNotesDiscipline.service.js';
 import { FORMULAIRES_EXAMEN, construireFormulaireExamen } from './exportFormulairesExamen.service.js';
 import { adresseDeLaRequete, construireCartesStagiaires, liensDesCartes } from './exportCarteStagiaire.service.js';
+import * as documentsDeSeance from '../consultation/reclamation.service.js';
 
 /**
  * Absences, retards et indisciplines des stagiaires — la note de discipline (F9).
@@ -126,6 +127,88 @@ router.post(
     );
     res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
     res.send(tampon);
+  })
+);
+
+/*
+ * ═══ LES DOCUMENTS D'UNE SÉANCE, POUR L'ENCADREMENT (2026-10-26, demande du
+ * porteur : « les mêmes options pour le gestionnaire et le directeur, en page
+ * Documents ») ═══ Ce que le formateur fait depuis « Mes documents » — fiche de
+ * réclamation, feuille CC/EFM —, ouvert à TOUTE séance de l'établissement, et la
+ * fiche nomme le FORMATEUR DE LA SÉANCE. Voir `consultation/reclamation.service.js`
+ * (`matricule` à `null`).
+ *
+ * ⚠️ `/documents-seance`, PAS `/seances` : ce préfixe est déjà pris par les
+ *    séances de l'appel, et `:id` y serait lu comme un autre paramètre.
+ */
+const idSeance = z.object({ id: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Identifiant invalide') });
+const MAX_SAISIE_RECLAMATION = 256;
+
+const envoyerDocument = (res, { tampon, nomFichier, contentType }) => {
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Content-Disposition', `attachment; filename="export"; filename*=UTF-8''${encodeURIComponent(nomFichier)}`);
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+  res.send(tampon);
+};
+
+router.get(
+  '/documents-seance/:id/stagiaires',
+  ENCADREMENT,
+  validate({ params: idSeance }),
+  route(async (req, res) => {
+    const stagiaires = await documentsDeSeance.stagiairesDeLaSeance(req.etablissementId, req.anneeScolaire, null, req.params.id);
+    res.json({ success: true, stagiaires });
+  })
+);
+
+router.post(
+  '/documents-seance/:id/reclamation',
+  ENCADREMENT,
+  validate({
+    params: idSeance,
+    body: z.object({
+      format: z.enum(['docx', 'pdf']),
+      matricules: z.array(z.string().trim().min(1).max(40)).min(1).max(60),
+      actionNonDisciplinaire: z.string().trim().max(MAX_SAISIE_RECLAMATION).default(''),
+      degats: z.string().trim().max(MAX_SAISIE_RECLAMATION).default(''),
+    }),
+  }),
+  route(async (req, res) => {
+    envoyerDocument(
+      res,
+      await documentsDeSeance.ficheReclamation(req.etablissementId, req.anneeScolaire, null, {
+        ...req.body,
+        seanceId: req.params.id,
+      })
+    );
+  })
+);
+
+router.post(
+  '/documents-seance/:id/presence-cc-efm',
+  ENCADREMENT,
+  validate({
+    params: idSeance,
+    body: z.object({
+      format: z.enum(['docx', 'pdf']),
+      epreuve: z
+        .object({
+          type: z.enum(['cc', 'efm']),
+          numero: z.number().int().min(1).max(6).optional(),
+          nature: z.enum(['ecrit', 'oral', 'tp']).optional(),
+          portee: z.enum(['local', 'regional']).optional(),
+        })
+        .optional(),
+    }),
+  }),
+  route(async (req, res) => {
+    envoyerDocument(
+      res,
+      await documentsDeSeance.feuilleCcEfmDeSeance(req.etablissementId, req.anneeScolaire, null, {
+        ...req.body,
+        seanceId: req.params.id,
+      })
+    );
   })
 );
 

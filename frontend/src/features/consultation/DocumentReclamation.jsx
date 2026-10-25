@@ -2,8 +2,6 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { FileWarning, Search, Send } from 'lucide-react';
-import { JOURS } from 'shared/constants';
-import { SEANCES_JOUR, horaireCreneau } from 'shared/domain';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -17,16 +15,16 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import Alerte from '@/components/common/Alerte';
 import BoutonFormat from '@/components/common/BoutonFormat';
 import { FeuilleDocument } from '@/features/documents/CartesDocuments';
-import NavigationSemaine from '@/features/emploi/NavigationSemaine';
-import { useHorairesCourants } from '@/features/horaires/useHorairesCourants';
-import { useAnneeActive } from '@/lib/anneeActive';
 import { cn } from '@/lib/utils';
 import {
-  chargerSemaineConsultation,
-  chargerSemainesConsultation,
+  chargerStagiairesDeSeance,
+  telechargerDocumentVierge,
+  telechargerReclamationDeSeance,
+} from '@/features/absences/stagiaires/api';
+import ChoixSeance from './ChoixSeance';
+import {
   chargerStagiairesReclamation,
   envoyerFicheReclamation,
   telechargerFicheReclamation,
@@ -51,9 +49,6 @@ function Compteur({ valeur }) {
   );
 }
 
-/** « 22/10 » depuis « 2026-10-22 ». */
-const dateCourte = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '');
-
 /**
  * ═══ LA FICHE DE RÉCLAMATION, REMPLIE PAR LE FORMATEUR (2026-10-25, demande du
  * porteur) ═══ Une séance (date, heure, lieu), un ou plusieurs stagiaires de ce
@@ -61,40 +56,26 @@ const dateCourte = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : ''
  * le reste : le formateur connecté, et la partie « Surveillant » tirée du dossier
  * de chaque stagiaire. Une page par stagiaire.
  */
-export default function DocumentReclamation() {
+/*
+ * ═══ `direction` : LA MÊME FENÊTRE POUR LE DIRECTEUR ET LE GESTIONNAIRE (2026-10-26) ═══
+ * Toute séance de l'établissement, choisie formateur par formateur, et la fiche
+ * nomme le formateur DE LA SÉANCE. Pas de bouton « Envoyer » : ce sont eux qui
+ * recevraient la fiche — ils l'impriment directement.
+ */
+const telechargerReclamationVierge = telechargerDocumentVierge('reclamation');
+
+export default function DocumentReclamation({ direction = false }) {
   const [ouvert, setOuvert] = useState(false);
   const [seance, setSeance] = useState(null);
   const seanceId = seance?.id ?? '';
-  const [semaineChoisie, setSemaineChoisie] = useState(null);
   const [choisis, setChoisis] = useState(() => new Set());
   const [filtre, setFiltre] = useState('');
   const [action, setAction] = useState('');
   const [degats, setDegats] = useState('');
 
-  /*
-   * ═══ LA SÉANCE SE CHOISIT DANS SON EMPLOI DU TEMPS (2026-10-25, demande du
-   * porteur) ═══ Les semaines et la grille de « Mon emploi du temps » — mêmes
-   * requêtes, même cache, même sélecteur de semaine —, plutôt qu'une longue liste
-   * déroulante : on retrouve un incident par le jour et le créneau où il a eu lieu.
-   */
-  const anneeChoisie = useAnneeActive();
-  const horaires = useHorairesCourants();
-  const semaines = useQuery({
-    queryKey: ['consultation', 'emploi', 'semaines'],
-    queryFn: chargerSemainesConsultation,
-    enabled: ouvert,
-    retry: false,
-  });
-  const semaine = semaineChoisie ?? semaines.data?.courante ?? null;
-  const grille = useQuery({
-    queryKey: ['consultation', 'emploi', semaine],
-    queryFn: () => chargerSemaineConsultation(semaine),
-    enabled: ouvert && Boolean(semaine),
-    retry: false,
-  });
   const stagiaires = useQuery({
-    queryKey: ['consultation', 'reclamation', 'stagiaires', seanceId],
-    queryFn: () => chargerStagiairesReclamation(seanceId),
+    queryKey: ['reclamation', direction ? 'direction' : 'formateur', 'stagiaires', seanceId],
+    queryFn: () => (direction ? chargerStagiairesDeSeance(seanceId) : chargerStagiairesReclamation(seanceId)),
     enabled: ouvert && Boolean(seanceId),
     retry: false,
   });
@@ -107,7 +88,7 @@ export default function DocumentReclamation() {
 
   const telechargement = useMutation({
     mutationFn: (format) =>
-      telechargerFicheReclamation({
+      (direction ? telechargerReclamationDeSeance : telechargerFicheReclamation)({
         format,
         seanceId,
         matricules: [...choisis],
@@ -133,11 +114,14 @@ export default function DocumentReclamation() {
     },
     onError: (erreur) => toast.error('Envoi impossible', { description: erreur.message }),
   });
+  const vierge = useMutation({
+    mutationFn: telechargerReclamationVierge,
+    onError: (erreur) => toast.error('Téléchargement impossible', { description: erreur.message }),
+  });
 
   const fermer = () => {
     setOuvert(false);
     setSeance(null);
-    setSemaineChoisie(null);
     setChoisis(new Set());
     setFiltre('');
     setAction('');
@@ -146,13 +130,11 @@ export default function DocumentReclamation() {
 
   // Changer de séance change de cours : les stagiaires cochés ne sont plus les mêmes.
   const choisirSeance = (choisie) => {
-    if (choisie.id === seanceId) return;
-    setSeance(choisie);
+    if ((choisie?.id ?? '') === seanceId) return;
+    setSeance(choisie ?? null);
     setChoisis(new Set());
     setFiltre('');
   };
-  const plage = seance ? horaireCreneau(seance.jour, seance.seance, horaires) : null;
-  const dateSeance = seance ? (grille.data?.jours ?? []).find((j) => j.jour === seance.jour)?.date : null;
 
   const basculer = (matricule, coche) =>
     setChoisis((avant) => {
@@ -194,44 +176,13 @@ export default function DocumentReclamation() {
           </DialogHeader>
 
           <div className="min-w-0 space-y-4">
-            <div className="min-w-0 space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <Label>Séance</Label>
-                <NavigationSemaine
-                  semaine={semaine}
-                  onChanger={setSemaineChoisie}
-                  anneeScolaire={anneeChoisie ?? grille.data?.anneeScolaire}
-                  remplies={semaines.data?.semaines ?? []}
-                  courante={semaines.data?.courante}
-                  semainesPermises={semaines.data?.publications ?? []}
-                  cleGuidage="reclamation"
-                />
-              </div>
-
-              {semaines.isError || grille.isError ? (
-                <Alerte type="erreur" titre="Emploi du temps indisponible">
-                  {(semaines.error ?? grille.error).message}
-                </Alerte>
-              ) : grille.isLoading || !grille.data ? (
-                <p className="text-xs text-muted-foreground">Chargement de la semaine…</p>
-              ) : grille.data.nonPubliee ? (
-                <p className="text-xs text-muted-foreground">
-                  L’emploi du temps de cette semaine n’a pas encore été publié.
-                </p>
-              ) : (
-                <GrilleSeances grille={grille.data} horaires={horaires} choisie={seance} onChoisir={choisirSeance} />
-              )}
-
-              {seance && (
-                <p className="rounded-md bg-primary/5 px-2.5 py-1.5 text-xs">
-                  <span className="font-medium">
-                    {seance.jour} {dateCourte(dateSeance)} · {plage.debut}–{plage.fin}
-                  </span>{' '}
-                  · {seance.groupe} · {seance.module}
-                  {seance.salle ? ` · ${seance.salle}` : ''}
-                </p>
-              )}
-            </div>
+            {/* La séance se choisit dans son emploi du temps — voir `ChoixSeance`. */}
+            <ChoixSeance
+              seance={seance}
+              onChoisir={choisirSeance}
+              cleGuidage={direction ? 'reclamation-direction' : 'reclamation'}
+              direction={direction}
+            />
 
             {seanceId && (
               <div className="space-y-1.5">
@@ -312,9 +263,19 @@ export default function DocumentReclamation() {
           </div>
 
           <DialogFooter className="gap-2 sm:justify-between">
-            <Button variant="outline" onClick={fermer}>
-              Fermer
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={fermer}>
+                Fermer
+              </Button>
+              <Button
+                variant="ghost"
+                className="text-xs text-muted-foreground"
+                disabled={vierge.isPending}
+                onClick={() => vierge.mutate('pdf')}
+              >
+                {vierge.isPending ? 'Préparation…' : 'Exemplaire vierge'}
+              </Button>
+            </div>
             <div className="flex flex-wrap justify-end gap-2">
               {['docx', 'pdf'].map((format) => (
                 <BoutonFormat
@@ -325,158 +286,21 @@ export default function DocumentReclamation() {
                   onClick={() => telechargement.mutate(format)}
                 />
               ))}
-              <Button
-                disabled={!pret}
-                onClick={() => envoi.mutate()}
-                className="gap-1.5"
-                title="Au directeur et au gestionnaire, par la messagerie"
-              >
-                <Send className="size-4" />
-                {envoi.isPending ? 'Envoi…' : 'Envoyer'}
-              </Button>
+              {!direction && (
+                <Button
+                  disabled={!pret}
+                  onClick={() => envoi.mutate()}
+                  className="gap-1.5"
+                  title="Au directeur et au gestionnaire, par la messagerie"
+                >
+                  <Send className="size-4" />
+                  {envoi.isPending ? 'Envoi…' : 'Envoyer'}
+                </Button>
+              )}
             </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
-  );
-}
-
-/**
- * La semaine du formateur, jours en lignes et créneaux en colonnes : une séance
- * se choisit d'un clic. Une case vide ne se choisit pas — il n'y avait pas cours.
- *
- * ⚠️ L'HEURE DES COLONNES EST CELLE DU LUNDI : le vendredi a les siennes. C'est
- *    pourquoi la séance choisie se redit en dessous avec SON horaire (`plage`).
- */
-function GrilleSeances({ grille, horaires, choisie, onChoisir }) {
-  const parCase = new Map(
-    (grille.seances ?? [])
-      .filter((s) => (s.periode ?? 'jour') === 'jour')
-      .map((s) => [`${s.jour}|${s.seance}`, s])
-  );
-  const jours = grille.jours?.length ? grille.jours : JOURS.map((jour) => ({ jour }));
-
-  if (parCase.size === 0) {
-    return <p className="text-xs text-muted-foreground">Aucune séance cette semaine.</p>;
-  }
-
-  return (
-    <>
-      <ListeSeances jours={jours} parCase={parCase} horaires={horaires} choisie={choisie} onChoisir={onChoisir} />
-      <TableauSeances jours={jours} parCase={parCase} horaires={horaires} choisie={choisie} onChoisir={onChoisir} />
-    </>
-  );
-}
-
-/**
- * SUR TÉLÉPHONE (`sm:hidden`) : un jour après l'autre, ses séances en boutons
- * pleine largeur — créneau et horaire DU JOUR compris, puisqu'il n'y a plus
- * d'en-tête de colonne pour les dire. Un jour sans cours n'apparaît pas.
- */
-function ListeSeances({ jours, parCase, horaires, choisie, onChoisir }) {
-  return (
-    <div className="space-y-3 sm:hidden">
-      {jours.map((j) => {
-        const duJour = SEANCES_JOUR.map((creneau) => parCase.get(`${j.jour}|${creneau}`)).filter(Boolean);
-        if (duJour.length === 0) return null;
-        return (
-          <div key={j.jour} className="space-y-1.5">
-            <p className="text-xs font-semibold">
-              {j.jour} <span className="font-normal text-muted-foreground">{dateCourte(j.date)}</span>
-            </p>
-            <div className="grid grid-cols-1 gap-1.5 min-[420px]:grid-cols-2">
-              {duJour.map((s) => {
-                const active = choisie?.id === s.id;
-                const { debut, fin } = horaireCreneau(s.jour, s.seance, horaires);
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => onChoisir(s)}
-                    className={cn(
-                      'min-w-0 rounded-md px-2.5 py-1.5 text-left text-xs leading-tight transition-colors',
-                      active ? 'bg-primary text-primary-foreground' : 'bg-success/10 hover:bg-success/25'
-                    )}
-                  >
-                    <span className={cn('block', !active && 'text-muted-foreground')}>
-                      {s.seance} · {debut}–{fin}
-                    </span>
-                    <span className="block truncate font-semibold">{s.groupe}</span>
-                    <span className="block truncate">
-                      {s.module}
-                      {s.salle ? ` · ${s.salle}` : ''}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/** DÈS LA TABLETTE (`sm:block`) : la semaine d'un regard, jours en lignes et créneaux en colonnes. */
-function TableauSeances({ jours, parCase, horaires, choisie, onChoisir }) {
-  return (
-    <div className="hidden overflow-x-auto rounded-md border sm:block">
-      <table className="w-full table-fixed text-xs">
-        <thead>
-          <tr className="bg-muted/50">
-            <th className="w-24 p-1.5 text-left font-medium">Jour</th>
-            {SEANCES_JOUR.map((creneau) => {
-              const { debut, fin } = horaireCreneau('Lundi', creneau, horaires);
-              return (
-                <th key={creneau} className="border-l p-1.5 font-medium">
-                  {creneau}
-                  <span className="block font-normal text-muted-foreground">
-                    {debut}–{fin}
-                  </span>
-                </th>
-              );
-            })}
-          </tr>
-        </thead>
-        <tbody>
-          {jours.map((j) => (
-            <tr key={j.jour} className="border-t">
-              <td className="p-1.5">
-                <span className="font-medium">{j.jour}</span>
-                <span className="block text-muted-foreground">{dateCourte(j.date)}</span>
-              </td>
-              {SEANCES_JOUR.map((creneau) => {
-                const s = parCase.get(`${j.jour}|${creneau}`);
-                if (!s) return <td key={creneau} className="border-l" />;
-                const active = choisie?.id === s.id;
-                return (
-                  <td key={creneau} className="border-l p-0.5">
-                    <button
-                      type="button"
-                      aria-pressed={active}
-                      onClick={() => onChoisir(s)}
-                      className={cn(
-                        'w-full rounded px-1.5 py-1 text-center leading-tight transition-colors',
-                        active
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-success/10 hover:bg-success/25'
-                      )}
-                    >
-                      <span className="block truncate font-semibold">{s.groupe}</span>
-                      <span className="block truncate">{s.module}</span>
-                      <span className={cn('block truncate', !active && 'text-muted-foreground')}>
-                        {s.salle || '—'}
-                      </span>
-                    </button>
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
   );
 }

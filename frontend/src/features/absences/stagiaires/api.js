@@ -129,6 +129,23 @@ export const telechargerBilletsVierges = (format) =>
 export const telechargerDocumentVierge = (cle) => (format) =>
   api.telecharger(`${RACINE}/documents-vierges`, { cle, format }, { nomParDefaut: `${cle}.${format}` });
 
+/*
+ * Les documents d'une séance, pour l'encadrement (2026-10-26) : fiche de réclamation
+ * et feuille CC/EFM d'une séance de N'IMPORTE QUEL formateur de l'établissement.
+ */
+export const chargerStagiairesDeSeance = (seanceId) =>
+  api.get(`${RACINE}/documents-seance/${encodeURIComponent(seanceId)}/stagiaires`);
+
+export const telechargerReclamationDeSeance = ({ seanceId, format, ...demande }) =>
+  api.telecharger(`${RACINE}/documents-seance/${encodeURIComponent(seanceId)}/reclamation`, { format, ...demande }, {
+    nomParDefaut: `fiche-reclamation.${format}`,
+  });
+
+export const telechargerCcEfmDeSeance = ({ seanceId, format, ...demande }) =>
+  api.telecharger(`${RACINE}/documents-seance/${encodeURIComponent(seanceId)}/presence-cc-efm`, { format, ...demande }, {
+    nomParDefaut: `feuille-presence-cc-efm.${format}`,
+  });
+
 /** Un formulaire d'examen vierge, logo OFPPT en tête (2026-10-11) — `cle` : voir le serveur. */
 export const telechargerFormulaireExamen = (cle) => (format) =>
   api.telecharger(`${RACINE}/formulaires-examen`, { cle, format }, { nomParDefaut: `${cle}.${format}` });

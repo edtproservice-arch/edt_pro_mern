@@ -32,8 +32,12 @@ export const telechargerMonDuplicata = (format) =>
 
 export const demanderDocument = (type) => api.post('/api/v2/consultation/demandes', { type });
 
-export const exporterPresenceCcEfmConsultation = ({ format, groupes }) =>
-  api.telecharger('/api/v2/consultation/documents/presence-cc-efm', { format, groupes }, {
+/**
+ * La feuille CC/EFM — depuis une séance (`seanceId`, avec l'`epreuve` cochée, 2026-10-26)
+ * ou, comme avant, pour des `groupes`.
+ */
+export const exporterPresenceCcEfmConsultation = ({ format, ...demande }) =>
+  api.telecharger('/api/v2/consultation/documents/presence-cc-efm', { format, ...demande }, {
     nomParDefaut: `feuille-presence-cc-efm.${format}`,
   });
 

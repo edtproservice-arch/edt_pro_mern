@@ -77,6 +77,13 @@ export const MODELES = {
       [0, 3, 'filiere'],
       [1, 3, 'numero'],
     ],
+    /* Depuis une séance du formateur (2026-10-26) : le module et la date. Sans
+       séance, ces cases restent vides — elles se remplissent à la main. */
+    enteteFacultative: [
+      [1, 1, 'examen.module'],
+      [2, 1, 'examen.date'],
+    ],
+    completerPage: completerPresenceCcEfm,
     tableListe: 2,
     ligne: (s, index) => [String(index + 1), s.matricule, s.nom, s.prenom],
   },
@@ -830,14 +837,17 @@ function corpsReclamation(gabarit, feuilles, sautDePage, { nommes = false } = {}
  * Une valeur vide garde ses pointillés ; un retour à la ligne de `suite` devient
  * un saut de ligne Word. `uniteIncluse` : l'unité que le canevas écrit après les
  * pointillés (« ………Jr ») et que la valeur porte déjà — elle s'efface.
+ * `avecPoints` : des points ASCII mêlés aux pointillés (« ……..…… », « ………. »)
+ * en font partie — sans lui, ils coupaient un champ en deux.
  */
-function completerParagraphe(paragraphe, valeurs = [], suite = '', { uniteIncluse = '' } = {}) {
+function completerParagraphe(paragraphe, valeurs = [], suite = '', { uniteIncluse = '', avecPoints = false } = {}) {
+  const pointille = (caractere) => caractere === '…' || (avecPoints && caractere === '.');
   const runs = [...paragraphe.matchAll(RUN)].map((m) => m[2]);
   let groupe = -1;
   let dansPointilles = false;
   const rangs = runs.map((contenu) =>
     [...contenu].map((caractere) => {
-      if (caractere !== '…') {
+      if (!pointille(caractere)) {
         dansPointilles = false;
         return -1;
       }
@@ -980,8 +990,14 @@ function construirePage(gabarit, modele, feuille) {
     if (!tableEntete) throw new Error('Canevas Word illisible : le tableau d’en-tête est absent');
     let nouvelleEntete = tableEntete;
     lignes(tableEntete).forEach((xmlLigne, numeroLigne) => {
+      /* `enteteFacultative` : écrite seulement quand la feuille porte la valeur —
+         sinon la case du canevas reste telle quelle, à remplir à la main. */
+      const champs = [
+        ...modele.entete,
+        ...(modele.enteteFacultative ?? []).filter(([, , champ]) => valeurDe(feuille, champ)),
+      ];
       const textes = Object.fromEntries(
-        modele.entete.filter(([l]) => l === numeroLigne).map(([, c, champ]) => [c, feuille[champ] ?? ''])
+        champs.filter(([l]) => l === numeroLigne).map(([, c, champ]) => [c, valeurDe(feuille, champ) ?? ''])
       );
       if (Object.keys(textes).length > 0) nouvelleEntete = nouvelleEntete.replace(xmlLigne, ecrireLigne(xmlLigne, textes));
     });
@@ -1005,7 +1021,54 @@ function construirePage(gabarit, modele, feuille) {
   const nouvelleListe = tableListe.slice(0, debut) + enTeteListe + remplies.join('') + tableListe.slice(fin);
 
   // ⚠️ LA LISTE EN DERNIER : ses lignes sont réécrites, les textes d'exemple ne doivent plus y être cherchés.
-  return remplacerTable(page, modele.tableListe, nouvelleListe);
+  const complete = remplacerTable(page, modele.tableListe, nouvelleListe);
+  return modele.completerPage ? modele.completerPage(complete, feuille) : complete;
+}
+
+/** `feuille.examen.module` pour « examen.module » — un champ simple se lit tel quel. */
+const valeurDe = (feuille, champ) => champ.split('.').reduce((objet, cle) => objet?.[cle], feuille);
+
+/**
+ * ═══ LA FEUILLE CC/EFM DEPUIS UNE SÉANCE (2026-10-26, demande du porteur) ═══
+ * `feuille.examen` : l'épreuve cochée par le formateur et l'horaire de la séance.
+ *   - les cases ☐ reconnues par leur libellé — CONTRÔLE CONTINU et son numéro (1 à 6)
+ *     et sa nature (Écrit, Oral, TP), ou EXAMEN FIN DE MODULE et sa portée (Local,
+ *     Régional) — sont cochées ☒ ;
+ *   - « Du ……… Au ……… » reçoit le début et la fin de la séance ;
+ *   - « Inscrits » reçoit l'effectif de la liste ; « Présents » reste à la main.
+ * Sans `examen` — la direction, l'exemplaire vierge —, rien ne change.
+ */
+function completerPresenceCcEfm(page, feuille) {
+  const e = feuille.examen;
+  if (!e) return page;
+  const cc = e.type === 'cc';
+  const efm = e.type === 'efm';
+  const coches = {
+    'CONTROLE CONTINU': cc,
+    'EXAMEN FIN DE MODULE': efm,
+    ...Object.fromEntries([1, 2, 3, 4, 5, 6].map((n) => [String(n), cc && e.numero === n])),
+    Ecrit: cc && e.nature === 'ecrit',
+    Oral: cc && e.nature === 'oral',
+    TP: cc && e.nature === 'tp',
+    Local: efm && e.portee === 'local',
+    Régional: efm && e.portee === 'regional',
+  };
+
+  let inscritsEcrits = false;
+  return page.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (paragraphe) => {
+    const texte = texteDu(paragraphe).replace(/\s+/g, ' ').trim();
+    if (texte.endsWith('☐') && coches[texte.replace(/\s*☐$/, '')]) return cocherParagraphe(paragraphe, [0]);
+    if (texte.startsWith('Du ') && texte.includes('Au') && e.debut) {
+      return completerParagraphe(paragraphe, [e.debut, e.fin], '', { avecPoints: true });
+    }
+    // Le premier « ……… » seul dans sa case est celui des inscrits ; le second, des présents.
+    // ⚠️ Le canevas y mêle des points ASCII (« ………………. ») : ils en font partie.
+    if (!inscritsEcrits && /^[….]+$/.test(texte)) {
+      inscritsEcrits = true;
+      return completerParagraphe(paragraphe, [String(feuille.stagiaires.length)], '', { avecPoints: true });
+    }
+    return paragraphe;
+  });
 }
 
 /** Les `<w:t>` dont le texte est EXACTEMENT une clé de `remplacements`, réécrits avec le champ qu'elle désigne. */

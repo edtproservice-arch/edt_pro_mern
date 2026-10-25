@@ -221,21 +221,50 @@ router.get('/documents', requireRole(ROLES.FORMATEUR), async (req, res, next) =>
   }
 });
 
+/*
+ * ═══ LA FEUILLE CC/EFM DEPUIS UNE SÉANCE (2026-10-26, demande du porteur : « le
+ * même pour CC/EFM — je sélectionne la séance et je coche ») ═══ Avec `seanceId`,
+ * la séance — la sienne, vérifiée — donne le groupe, le module, la date et
+ * l'horaire ; `epreuve` dit les cases à cocher. Sans elle, l'ancien chemin : des
+ * groupes, le reste à la main.
+ */
+const epreuveSchema = z.object({
+  type: z.enum(['cc', 'efm']),
+  numero: z.number().int().min(1).max(6).optional(),
+  nature: z.enum(['ecrit', 'oral', 'tp']).optional(),
+  portee: z.enum(['local', 'regional']).optional(),
+});
+
 router.post(
   '/documents/presence-cc-efm',
   requireRole(ROLES.FORMATEUR),
   validate({
-    body: z.object({
-      format: z.enum(['docx', 'pdf']),
-      groupes: z.array(z.string().trim().min(1).max(200)).min(1).max(100),
-    }),
+    body: z
+      .object({
+        format: z.enum(['docx', 'pdf']),
+        groupes: z.array(z.string().trim().min(1).max(200)).min(1).max(100).optional(),
+        seanceId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Identifiant invalide').optional(),
+        epreuve: epreuveSchema.optional(),
+      })
+      .refine((corps) => Boolean(corps.seanceId) || Boolean(corps.groupes?.length), {
+        message: 'Choisissez une séance ou des groupes',
+      }),
   }),
   async (req, res, next) => {
     try {
+      if (req.body.seanceId) {
+        envoyerFichier(
+          res,
+          await reclamation.feuilleCcEfmDeSeance(req.etablissementId, req.anneeScolaire, monIdentite(req), req.body)
+        );
+        return;
+      }
+
+      const { groupes } = req.body;
       const siens = new Set(
         await service.groupesDuFormateur(req.etablissementId, req.anneeScolaire, monIdentite(req))
       );
-      const etrangers = req.body.groupes.filter((groupe) => !siens.has(groupe));
+      const etrangers = groupes.filter((groupe) => !siens.has(groupe));
       if (etrangers.length > 0) {
         throw forbidden('Ces groupes ne sont pas les vôtres', { code: 'GROUPE_ETRANGER', details: { groupes: etrangers } });
       }
@@ -244,7 +273,7 @@ router.post(
         req.etablissementId,
         req.anneeScolaire,
         'cc-efm',
-        req.body
+        { format: req.body.format, groupes }
       );
       res.setHeader('Content-Type', contentType);
       res.setHeader(

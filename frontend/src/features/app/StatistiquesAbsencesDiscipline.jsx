@@ -6,7 +6,9 @@ import { ArrowUpRight } from 'lucide-react';
 import { chargerTableauDeBord } from '@/features/absences/stagiaires/api';
 import { nombre } from '@/lib/nombres';
 import { cn } from '@/lib/utils';
+import EvolutionHebdomadaire from './EvolutionHebdomadaire';
 import RepartitionAbsences from './RepartitionAbsences';
+import SeuilsAssiduite from './SeuilsAssiduite';
 
 /**
  * Les statistiques d'absence et de discipline des stagiaires — tuiles et
@@ -102,6 +104,7 @@ export function SectionGroupesAbsents({ d, chargement, visible = true }) {
   return (
     <div className="space-y-4 duration-300 animate-in fade-in-0 zoom-in-95 slide-in-from-top-3 motion-reduce:animate-none">
       <GroupesAbsences groupes={d?.groupesAbsences ?? []} chargement={chargement} />
+      {!chargement && <EvolutionHebdomadaire parJour={d?.absencesParJour ?? []} />}
       {!chargement && (
         <RepartitionAbsences
           repartition={d?.repartitionAbsences ?? []}
@@ -109,7 +112,8 @@ export function SectionGroupesAbsents({ d, chargement, visible = true }) {
           effectifs={d?.effectifsGroupes ?? []}
         />
       )}
-      <DernieresAbsences lignes={d?.absences.recentes ?? []} chargement={chargement} />
+      {/* À la place des « Dernières absences » (2026-10-25, demande du porteur). */}
+      {!chargement && <SeuilsAssiduite stagiaires={d?.seuilsAssiduite ?? []} />}
     </div>
   );
 }
@@ -344,21 +348,10 @@ function GroupesIndisciplines({ groupes, chargement }) {
 }
 
 /**
- * Les dernières absences et les derniers retards marqués, comme les
- * indisciplines (2026-09-29, demande du porteur : « je veux ajouter les
- * Dernières absent et retard comme indisciplines »).
+ * Les derniers retards marqués, comme les indisciplines (2026-09-29, demande
+ * du porteur). Les dernières absences ont cédé leur place aux seuils
+ * d'assiduité (2026-10-25).
  */
-function DernieresAbsences({ lignes, chargement }) {
-  return (
-    <DernieresLignes
-      titre="Dernières absences"
-      lignes={lignes}
-      chargement={chargement}
-      couleurJustifiee="text-success"
-    />
-  );
-}
-
 function DernieresRetards({ lignes, chargement }) {
   return (
     <DernieresLignes

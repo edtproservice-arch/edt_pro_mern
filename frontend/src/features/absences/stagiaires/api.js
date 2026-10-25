@@ -98,7 +98,12 @@ export const chargerRegistre = (filtre = {}) => {
   return api.get(`${RACINE}${Object.keys(propre).length ? `?${requete(propre)}` : ''}`);
 };
 
+/** Les cours passés dont l'appel n'a pas été validé — le rappel au formateur (2026-10-25). */
+export const chargerAppelsEnAttente = () => api.get(`${RACINE}/appel/en-attente`);
+
 export const justifierAbsence = (id, champs) => api.patch(`${RACINE}/${id}`, champs);
+/** Toutes les absences non justifiées d'un stagiaire entre deux dates (2026-10-25). */
+export const justifierPeriode = (corps) => api.post(`${RACINE}/justifier-periode`, corps);
 export const supprimerAbsence = (id) => api.delete(`${RACINE}/${id}`);
 
 /**

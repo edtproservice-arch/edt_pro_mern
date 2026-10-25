@@ -2,6 +2,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AppelParGrille from './AppelParGrille';
 import NotesDiscipline from './NotesDiscipline';
+import RappelAppels from './RappelAppels';
 import RegistreStagiaires from './RegistreStagiaires';
 
 /**
@@ -35,7 +36,8 @@ export default function OngletStagiaires({ encadrement }) {
         <TabsTrigger value="registre" className="text-xs">Registre</TabsTrigger>
         {encadrement && <TabsTrigger value="notes" className="text-xs">Notes de discipline</TabsTrigger>}
       </TabsList>
-      <TabsContent value="appel">
+      <TabsContent value="appel" className="space-y-3">
+        <RappelAppels encadrement={encadrement} />
         <AppelParGrille encadrement={encadrement} />
       </TabsContent>
       <TabsContent value="registre">

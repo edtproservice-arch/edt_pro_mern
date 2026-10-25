@@ -190,6 +190,9 @@ export async function tableauDeBord(etablissementId, anneeScolaire) {
     repartition,
     base,
     effectifs,
+    cumuls,
+    joursMarques,
+    parJour,
   ] = await Promise.all([
       AbsenceStagiaire.aggregate([
         { $match: correspondance },
@@ -263,7 +266,52 @@ export async function tableauDeBord(etablissementId, anneeScolaire) {
       ]),
       Base.findOne({ etablissementId, anneeScolaire }).select('formateurs affectations groupes groupeFilieres').lean(),
       groupes(etablissementId, anneeScolaire),
+      /*
+       * ⚠️ LE CUMUL NON JUSTIFIÉ DE CHAQUE STAGIAIRE (2026-10-25, demande du
+       * porteur : le tableau des seuils de la grille d'assiduité à la place des
+       * « Dernières absences ») — les mêmes faits que `noter()`, pour tous les
+       * stagiaires de l'établissement en une agrégation.
+       */
+      AbsenceStagiaire.aggregate([
+        { $match: { ...correspondance, justifiee: { $ne: true } } },
+        { $sort: { date: -1 } },
+        {
+          $group: {
+            _id: '$matricule',
+            nom: { $first: '$nomComplet' },
+            groupe: { $first: '$groupe' },
+            seances: { $sum: { $cond: [{ $eq: ['$typeAbsence', TYPES_ABSENCE.RETARD] }, 0, 1] } },
+            retards: { $sum: { $cond: [{ $eq: ['$typeAbsence', TYPES_ABSENCE.RETARD] }, 1, 0] } },
+          },
+        },
+      ]),
+      // Les jours où chaque stagiaire a manqué au moins une séance.
+      AbsenceStagiaire.aggregate([
+        { $match: { ...correspondance, typeAbsence: { $ne: TYPES_ABSENCE.RETARD } } },
+        {
+          $group: {
+            _id: { matricule: '$matricule', groupe: '$groupe', date: '$date' },
+            absent: { $max: { $cond: [{ $eq: ['$typeAbsence', TYPES_ABSENCE.RETARD] }, 0, 1] } },
+          },
+        },
+      ]),
+      /*
+       * ⚠️ L'ÉVOLUTION PAR SEMAINE (2026-10-25, demande du porteur) : par jour et
+       * par groupe, absences et retards à part — l'écran regroupe en semaines et
+       * filtre par groupe sans nouvelle requête.
+       */
+      AbsenceStagiaire.aggregate([
+        { $match: correspondance },
+        {
+          $group: {
+            _id: { date: '$date', groupe: '$groupe' },
+            absences: { $sum: { $cond: [{ $eq: ['$typeAbsence', TYPES_ABSENCE.RETARD] }, 0, 1] } },
+            retards: { $sum: { $cond: [{ $eq: ['$typeAbsence', TYPES_ABSENCE.RETARD] }, 1, 0] } },
+          },
+        },
+      ]),
     ]);
+  const series = joursAbsentsConsecutifs(joursMarques);
 
   /* ⚠️ L'INTITULÉ DANS LA FILIÈRE DU GROUPE (2026-10-23, « affiche le nom
      complet du module ») : un même code change de sens d'une filière à l'autre. */
@@ -333,6 +381,28 @@ export async function tableauDeBord(etablissementId, anneeScolaire) {
      * sans lui, un groupe de trente paraîtrait toujours plus absent qu'un de dix.
      */
     effectifsGroupes: effectifs,
+    absencesParJour: parJour.map(({ _id, absences, retards }) => ({
+      date: _id.date,
+      groupe: _id.groupe ?? '',
+      absences,
+      retards,
+    })),
+    /*
+     * Les stagiaires qui ont atteint au moins le premier palier (1 point) — la
+     * sanction se lit sur `noteDiscipline`, la règle unique de la grille.
+     */
+    seuilsAssiduite: cumuls
+      .map(({ _id, nom, groupe, seances, retards }) => ({
+        matricule: _id,
+        nom: nom || _id,
+        groupe,
+        seances,
+        retards,
+        points: noteDiscipline({ seancesAbsentes: seances, retards }).assiduite.pointsRetires,
+        serieAbsence: series.get(_id) ?? null,
+      }))
+      .filter((stagiaire) => stagiaire.points >= 1)
+      .sort((a, b) => b.points - a.points || a.nom.localeCompare(b.nom, 'fr')),
     groupesAbsences: parGroupeAbsences.map((g) => ({ groupe: g._id, n: g.n })),
     groupesRetards: parGroupeRetards.map((g) => ({ groupe: g._id, n: g.n })),
     groupesIndisciplines: parGroupeIndisciplines.map((g) => ({ groupe: g._id, n: g.n })),
@@ -357,6 +427,49 @@ export async function tableauDeBord(etablissementId, anneeScolaire) {
       intitule: intituleDe(affectation.groupe, affectation.module),
     })),
   };
+}
+
+/**
+ * ═══ N JOURS D'ABSENCE SUCCESSIFS ═══ (2026-10-25, demande du porteur : le
+ * repère du risque d'abandon à côté des noms des seuils d'assiduité).
+ *
+ * ⚠️ LA PLUS LONGUE SÉRIE DE L'ANNÉE, PAS SEULEMENT CELLE EN COURS (revient
+ * sur un premier calcul qui exigeait une série allant jusqu'au dernier jour de
+ * cours du groupe : absent les 23, 24 et 25 septembre, ABID OUSSAMA n'avait
+ * aucun repère). À égalité, la plus récente.
+ *
+ * ⚠️ DES JOURS SUCCESSIFS SEULEMENT : absent lundi puis mercredi n'est PAS une
+ * série de deux jours. Seul le dimanche, jamais travaillé, se saute : samedi
+ * puis lundi restent successifs. Un jour compte dès une séance manquée ; un
+ * simple retard ne compte pas. Justifiée ou non, peu importe — un stagiaire
+ * qui décroche peut fournir un certificat.
+ */
+function joursAbsentsConsecutifs(joursMarques) {
+  const absents = new Map();
+  for (const { _id, absent } of joursMarques) {
+    if (!absent) continue;
+    if (!absents.has(_id.matricule)) absents.set(_id.matricule, new Set());
+    absents.get(_id.matricule).add(_id.date);
+  }
+
+  const resultat = new Map();
+  for (const [matricule, dates] of absents) {
+    let meilleure = null;
+    let serie = null;
+    for (const date of [...dates].sort()) {
+      serie = serie && successifs(serie.au, date) ? { ...serie, au: date, jours: serie.jours + 1 } : { du: date, au: date, jours: 1 };
+      // `>=` : à égalité, la série la plus récente l'emporte.
+      if (!meilleure || serie.jours >= meilleure.jours) meilleure = serie;
+    }
+    resultat.set(matricule, meilleure);
+  }
+  return resultat;
+}
+
+/** `avant` est la veille de `apres` — ou le samedi d'un lundi, le dimanche n'étant jamais travaillé. */
+function successifs(avant, apres) {
+  const ecart = (Date.parse(apres) - Date.parse(avant)) / 86_400_000;
+  return ecart === 1 || (ecart === 2 && new Date(`${apres}T00:00:00Z`).getUTCDay() === 1);
 }
 
 /** Les absences d'une case, par stagiaire : le plus absent d'abord. */

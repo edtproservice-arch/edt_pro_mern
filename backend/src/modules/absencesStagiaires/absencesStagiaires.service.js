@@ -448,6 +448,108 @@ export async function justifier(etablissementId, anneeScolaire, id, champs) {
   return presenter(absence);
 }
 
+/**
+ * ═══ JUSTIFIER UNE PÉRIODE D'UN COUP ═══ (2026-10-25, demande du porteur) :
+ * un certificat de cinq jours couvre une vingtaine de séances, qu'il fallait
+ * jusqu'ici justifier une à une.
+ *
+ * ⚠️ SEULES LES NON JUSTIFIÉES CHANGENT : une absence déjà justifiée garde son
+ * motif — un certificat ne doit pas écraser celui d'un autre. Les retards ne
+ * suivent que sur demande : un certificat médical couvre une absence, pas un
+ * retard.
+ */
+export async function justifierPeriode(etablissementId, anneeScolaire, { matricule, du, au, motif, retards }) {
+  if (du > au) throw badRequest('La date de début suit la date de fin', { code: 'PERIODE_INVERSEE' });
+  const filtre = {
+    etablissementId,
+    anneeScolaire,
+    matricule,
+    date: { $gte: du, $lte: au },
+    justifiee: { $ne: true },
+  };
+  if (!retards) filtre.typeAbsence = { $ne: TYPES_ABSENCE.RETARD };
+  const { modifiedCount } = await AbsenceStagiaire.updateMany(filtre, {
+    $set: { justifiee: true, ...(motif ? { motif } : {}) },
+  });
+  return { justifiees: modifiedCount };
+}
+
+/** Jusqu'où le rappel remonte : au-delà, l'appel d'un cours ne se refait plus de mémoire. */
+const JOURS_RAPPEL = 14;
+
+/**
+ * ═══ LE RAPPEL AU FORMATEUR ═══ (2026-10-25, demande du porteur) : les cours
+ * passés de l'emploi du temps dont l'appel n'a pas été VALIDÉ.
+ *
+ * ⚠️ LA VALIDATION EST LA SEULE PREUVE : un appel où tout le monde était
+ * présent n'écrit aucune absence — sans attestation, rien ne le distingue d'un
+ * appel jamais fait. C'est aussi le geste que le formateur fait déjà
+ * (« Valider l'appel »).
+ *
+ * ⚠️ AUJOURD'HUI EST EXCLU : le cours de l'après-midi n'a peut-être pas encore
+ * eu lieu, et le rappeler le matin même passerait pour un reproche. Les cours
+ * fermés (férié, vacances, stage, formateur absent) n'ont pas d'appel à faire.
+ *
+ * Un formateur ne reçoit que les siens ; l'encadrement, ceux de tous.
+ */
+export async function appelsEnAttente(etablissementId, anneeScolaire, acteur, maintenant = new Date()) {
+  const jours = [];
+  for (let recul = 1; recul <= JOURS_RAPPEL; recul += 1) {
+    const date = enJour(new Date(maintenant.getTime() - recul * 86_400_000));
+    try {
+      jours.push(lireJour(anneeScolaire, date, maintenant));
+    } catch {
+      // Dimanche, ou hors de l'année affichée : pas de cours à rappeler.
+    }
+  }
+  if (jours.length === 0) return [];
+
+  const semaines = [...new Set(jours.map((j) => j.semaine))];
+  const [grilles, noms, validations] = await Promise.all([
+    // Une semaine illisible (pas encore d'emploi) ne doit pas priver le rappel des autres.
+    Promise.all(
+      semaines.map((semaine) =>
+        semaineDeLaGrille(etablissementId, anneeScolaire, semaine).catch(() => ({ jours: [], seances: [] }))
+      )
+    ),
+    nomsDesFormateurs(etablissementId, anneeScolaire),
+    AppelValidation.find({
+      etablissementId,
+      anneeScolaire,
+      date: { $gte: jours.at(-1).date, $lte: jours[0].date },
+    })
+      .select('date seance periode groupe')
+      .lean(),
+  ]);
+  const grilleDe = new Map(semaines.map((semaine, i) => [semaine, grilles[i]]));
+  const validees = new Set(validations.map((v) => `${v.date}|${v.seance}|${v.periode}|${v.groupe}`));
+
+  const enAttente = [];
+  for (const jourLu of jours) {
+    const grille = grilleDe.get(jourLu.semaine);
+    const etat = grille.jours.find((j) => j.jour === jourLu.jour);
+    const vues = new Set();
+    for (const s of grille.seances) {
+      if (s.jour !== jourLu.jour || !s.groupe) continue;
+      if (estFormateur(acteur) && !memeNom(s.formateurMatricule, acteur.identifiant)) continue;
+      const cle = `${jourLu.date}|${s.seance}|${s.periode}|${s.groupe}`;
+      if (vues.has(cle) || validees.has(cle) || motifDeFermeture(etat, s)) continue;
+      vues.add(cle);
+      enAttente.push({
+        date: jourLu.date,
+        jour: jourLu.jour,
+        seance: s.seance,
+        periode: s.periode,
+        groupe: s.groupe,
+        module: s.module,
+        formateurMatricule: s.formateurMatricule,
+        formateur: noms.get(String(s.formateurMatricule ?? '').trim()) ?? s.formateurMatricule,
+      });
+    }
+  }
+  return enAttente.sort((a, b) => b.date.localeCompare(a.date) || a.seance.localeCompare(b.seance));
+}
+
 export async function supprimer(etablissementId, anneeScolaire, id) {
   const { deletedCount } = await AbsenceStagiaire.deleteOne({ _id: id, etablissementId, anneeScolaire });
   if (deletedCount === 0) throw notFound('Absence introuvable', { code: 'ABSENCE_INTROUVABLE' });

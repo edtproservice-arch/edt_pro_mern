@@ -1601,3 +1601,117 @@ describe('POST /absences-stagiaires/presence/soins — le bon de soins (2026-10-
     expect(await zip.file('word/header1.xml').async('string')).toContain('ISTA Test');
   });
 });
+
+describe('POST /absences-stagiaires/justifier-periode — justifier une période d’un coup (2026-10-25)', () => {
+  const justifierPeriode = (qui, corps) =>
+    request(app).post('/api/v2/absences-stagiaires/justifier-periode').set('Cookie', cookies[qui]).send(corps);
+
+  it('justifie les absences non justifiées de la période, sans toucher aux retards ni aux autres', async () => {
+    await faits('CEF001', [
+      { typeAbsence: 'absence' }, // 09-01
+      { typeAbsence: 'absence' }, // 09-02
+      { typeAbsence: 'retard' }, // 09-03
+      { typeAbsence: 'absence', justifiee: true, motif: 'Convocation' }, // 09-04
+      { typeAbsence: 'absence' }, // 09-05 — hors période
+    ]);
+    await faits('CEF002', [{ typeAbsence: 'absence' }]); // un autre stagiaire, même jour
+
+    const reponse = await justifierPeriode('gestionnaire', {
+      matricule: 'CEF001',
+      du: '2026-09-01',
+      au: '2026-09-04',
+      motif: 'Certificat médical',
+    });
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.body).toEqual({ justifiees: 2 });
+    const lignes = await AbsenceStagiaire.find({ matricule: 'CEF001' }).sort({ date: 1 }).lean();
+    expect(lignes.map((l) => [l.date, l.justifiee, l.motif])).toEqual([
+      ['2026-09-01', true, 'Certificat médical'],
+      ['2026-09-02', true, 'Certificat médical'],
+      ['2026-09-03', false, ''],
+      // ⚠️ Déjà justifiée : elle garde SON motif.
+      ['2026-09-04', true, 'Convocation'],
+      ['2026-09-05', false, ''],
+    ]);
+    expect((await AbsenceStagiaire.findOne({ matricule: 'CEF002' }).lean()).justifiee).toBe(false);
+  });
+
+  it('les retards suivent sur demande', async () => {
+    await faits('CEF001', [{ typeAbsence: 'absence' }, { typeAbsence: 'retard' }]);
+    const reponse = await justifierPeriode('directeur', {
+      matricule: 'CEF001',
+      du: '2026-09-01',
+      au: '2026-09-30',
+      retards: true,
+    });
+    expect(reponse.body).toEqual({ justifiees: 2 });
+  });
+
+  it('refuse une période inversée, et le formateur', async () => {
+    const inversee = await justifierPeriode('directeur', { matricule: 'CEF001', du: '2026-09-10', au: '2026-09-01' });
+    expect(inversee.status).toBe(400);
+    const formateur = await justifierPeriode('formateur', { matricule: 'CEF001', du: '2026-09-01', au: '2026-09-10' });
+    expect(formateur.status).toBe(403);
+  });
+});
+
+describe('GET /absences-stagiaires/appel/en-attente — le rappel au formateur (2026-10-25)', () => {
+  const enAttente = (qui) => request(app).get('/api/v2/absences-stagiaires/appel/en-attente').set('Cookie', cookies[qui]);
+  const cles = (reponse) => reponse.body.map((c) => `${c.date} ${c.seance} ${c.groupe}`);
+
+  it('le formateur voit SES cours passés non validés — ni aujourd’hui, ni ceux à venir', async () => {
+    const reponse = await enAttente('formateur');
+    expect(reponse.status).toBe(200);
+    expect(cles(reponse)).toEqual([`${MARDI} S1 GM101 GM102`, `${LUNDI} S1 GM101`]);
+    expect(reponse.body[0]).toMatchObject({ formateur: 'BRAHIM LOURID', module: 'M101' });
+  });
+
+  it('un appel validé sort du rappel ; un appel seulement enregistré y reste', async () => {
+    await validerAppel('formateur', { date: LUNDI, seance: 'S1', groupe: 'GM101', marques: [] });
+    await appel('directeur', { date: MARDI, seance: 'S1', groupe: 'GM101 GM102', marques: [{ matricule: 'CEF001', type: 'absence' }] });
+
+    expect(cles(await enAttente('formateur'))).toEqual([`${MARDI} S1 GM101 GM102`]);
+  });
+
+  it('l’encadrement voit tous les formateurs ; un cours dont le formateur était absent n’a pas d’appel', async () => {
+    expect(cles(await enAttente('directeur'))).toEqual([
+      `${MARDI} S1 GM101 GM102`,
+      `${LUNDI} S1 GM101`,
+      `${LUNDI} S2 GM101`,
+    ]);
+  });
+});
+
+describe('GET /absences-stagiaires/tableau-bord — seuils, séries et semaines (2026-10-25)', () => {
+  it('range les stagiaires par palier, avec leur plus longue série de jours successifs', async () => {
+    // Mardi 1er, mercredi 2, jeudi 3 : trois jours de suite ; le vendredi 4, un simple retard.
+    await faits('CEF001', [
+      { typeAbsence: 'absence' },
+      { typeAbsence: 'absence' },
+      { typeAbsence: 'absence', justifiee: true },
+      { typeAbsence: 'retard' },
+    ]);
+    await faits('CEF002', [{ typeAbsence: 'absence' }]);
+
+    const reponse = await request(app).get('/api/v2/absences-stagiaires/tableau-bord').set('Cookie', cookies.directeur);
+
+    // CEF001 : 2 séances (−1) + 1 retard (−0,25) ; CEF002 : 1 séance (−0,5), sous le premier palier.
+    expect(reponse.body.seuilsAssiduite).toEqual([
+      expect.objectContaining({
+        matricule: 'CEF001',
+        seances: 2,
+        retards: 1,
+        points: 1.25,
+        // ⚠️ La justifiée compte dans la série : un décrocheur peut avoir un certificat.
+        serieAbsence: { du: '2026-09-01', au: '2026-09-03', jours: 3 },
+      }),
+    ]);
+    expect(reponse.body.absencesParJour).toEqual(
+      expect.arrayContaining([
+        { date: '2026-09-01', groupe: 'GM101', absences: 2, retards: 0 },
+        { date: '2026-09-04', groupe: 'GM101', absences: 0, retards: 1 },
+      ])
+    );
+  });
+});

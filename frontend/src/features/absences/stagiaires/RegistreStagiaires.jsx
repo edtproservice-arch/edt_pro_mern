@@ -17,6 +17,7 @@ import { MARGE_PAGE } from '@/components/common/apparenceGrille';
 import { cn } from '@/lib/utils';
 import ListeRepliable from '../ListeRepliable';
 import { chargerRegistre, exporterRegistre, justifierAbsence, supprimerAbsence, telechargerBillets } from './api';
+import JustifierPeriode from './JustifierPeriode';
 import ListeGroupes from './ListeGroupes';
 import { grouperParGroupe } from './regroupementStagiaires';
 
@@ -107,7 +108,13 @@ function TableauRegistre({ filtre, encadrement, compact = false }) {
         temps il s'affiche deux billets ») — un seul geste. Chaque ligne
         justifiée a AUSSI son icône billet (2026-10-01), pour n'en sortir qu'un.
       */}
-      {encadrement && !compact && <TelechargerBillets absences={absences} />}
+      {encadrement && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {/* Justifier une période d'un coup (2026-10-25) — dans la fiche, pour le seul stagiaire affiché. */}
+          <JustifierPeriode absences={absences} matriculeFixe={compact ? filtre.matricule : null} />
+          {!compact && <TelechargerBillets absences={absences} />}
+        </div>
+      )}
       {!compact && total > absences.length && (
         <p className="text-xs text-muted-foreground">
           {absences.length} marquages les plus récents sur {total}.
@@ -289,7 +296,14 @@ function colonnes({ encadrement, compact }) {
     {
       id: 'motif',
       entete: 'Motif',
-      rendu: (a) => (encadrement ? <Motif absence={a} /> : <span className="text-xs">{a.motif || '—'}</span>),
+      /*
+       * ⚠️ LA CLÉ PORTE LE MOTIF ENREGISTRÉ (2026-10-25, « le motif ne s'enregistre
+       * pas ») : le champ ne lisait le motif qu'à son premier rendu — écrit
+       * ailleurs (« Justifier une période »), il était bien en base mais la ligne
+       * restait vide. Un motif qui change côté serveur remonte le champ.
+       */
+      rendu: (a) =>
+        encadrement ? <Motif key={`${a.id}|${a.motif ?? ''}`} absence={a} /> : <span className="text-xs">{a.motif || '—'}</span>,
     }
   );
   if (encadrement) {
@@ -357,6 +371,8 @@ function Motif({ absence }) {
       placeholder="Motif…"
       className="h-7 min-w-32 text-xs"
       onChange={(e) => setValeur(e.target.value)}
+      // Entrée enregistre aussi : sans elle, taper puis changer de page ne quittait jamais le champ.
+      onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
       // À la sortie du champ : une écriture par frappe ferait un toast par lettre.
       onBlur={() => valeur.trim() !== (absence.motif ?? '') && ecriture.mutate(valeur.trim())}
     />

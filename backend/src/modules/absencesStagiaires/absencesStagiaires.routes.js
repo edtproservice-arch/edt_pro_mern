@@ -529,6 +529,35 @@ router.post(
   })
 );
 
+/** Les cours passés dont l'appel n'a pas été validé — le rappel au formateur (2026-10-25). */
+router.get(
+  '/appel/en-attente',
+  route(async (req, res) => {
+    res.json(await appelService.appelsEnAttente(req.etablissementId, req.anneeScolaire, acteur(req)));
+  })
+);
+
+/** Justifier toutes les absences d'un stagiaire sur une période (2026-10-25) — l'encadrement, comme `/:id`. */
+router.post(
+  '/justifier-periode',
+  ENCADREMENT,
+  validate({
+    body: z
+      .object({
+        matricule: z.string().trim().min(1).max(50),
+        du: jour,
+        au: jour,
+        motif: z.string().trim().max(255).optional(),
+        retards: z.boolean().default(false),
+      })
+      .strict(),
+  }),
+  route(async (req, res) => {
+    res.json(await appelService.justifierPeriode(req.etablissementId, req.anneeScolaire, req.body));
+    annoncer(req, 'justification');
+  })
+);
+
 router.patch(
   '/:id',
   ENCADREMENT,

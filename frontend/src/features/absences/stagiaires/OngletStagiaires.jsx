@@ -48,6 +48,7 @@ export default function OngletStagiaires({ encadrement }) {
           <NotesDiscipline groupeInitial={groupe} />
         </TabsContent>
       )}
+
     </Tabs>
   );
 }

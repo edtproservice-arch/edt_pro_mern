@@ -1,9 +1,17 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { ArrowUpRight } from 'lucide-react';
 import { AUTORITES_DISCIPLINE, sanctionAssiduite } from 'shared/domain';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import BadgeSanction from '@/features/absences/stagiaires/BadgeSanction';
+import { chargerPvSanctions } from '@/features/absences/stagiaires/api';
+import {
+  BoutonImprimerPvCompact,
+  ChoixLanguePv,
+  useImpressionPv,
+  useLanguePv,
+} from '@/features/absences/stagiaires/ImpressionPv';
 import { nombre } from '@/lib/nombres';
 import { cn } from '@/lib/utils';
 
@@ -21,8 +29,30 @@ import { cn } from '@/lib/utils';
  *
  * ⚠️ LES PALIERS 7 À 10 PARTAGENT LEUR SANCTION, comme dans la grille : une
  * seule cellule fusionnée, sinon le même long libellé se répète quatre fois.
+ *
+ * ═══ LE PV DE LA SANCTION, D'ICI (2026-10-26, demande du porteur) ═══ De la 1ère
+ * mise en garde au blâme (paliers 1 à 5), chaque stagiaire porte un bouton « PV » :
+ * il imprime le PV dans la version choisie en tête (FR / ع) — le même que l'onglet
+ * « PV de sanction » des Absences. Imprimé, le stagiaire SORT DE SA LIGNE, jusqu'au
+ * palier suivant ; la ligne dit combien en sont sortis.
  */
+const PALIERS_PV = [1, 2, 3, 4, 5];
+
 export default function SeuilsAssiduite({ stagiaires }) {
+  const [langue, choisirLangue] = useLanguePv();
+  const impression = useImpressionPv(langue);
+  // Les PV déjà sortis, palier par palier — relus après chaque impression.
+  const pv = useQuery({
+    queryKey: ['absences-stagiaires', 'pv-sanctions', true],
+    queryFn: () => chargerPvSanctions(true),
+    retry: false,
+  });
+  const imprimes = useMemo(
+    () =>
+      new Set((pv.data?.stagiaires ?? []).filter((s) => s.imprime).map((s) => `${s.matricule}|${s.palier}`)),
+    [pv.data]
+  );
+
   const parPalier = new Map();
   for (const stagiaire of stagiaires) {
     const palier = palierDe(stagiaire.points);
@@ -43,10 +73,16 @@ export default function SeuilsAssiduite({ stagiaires }) {
             )}
           </p>
         </div>
-        <Link to="/app/absences" className="flex items-center gap-1 text-xs text-primary hover:underline">
-          Voir le registre
-          <ArrowUpRight className="size-3" />
-        </Link>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[0.65rem] text-muted-foreground">PV en</span>
+            <ChoixLanguePv langue={langue} onChoisir={choisirLangue} court />
+          </div>
+          <Link to="/app/absences" className="flex items-center gap-1 text-xs text-primary hover:underline">
+            Voir le registre
+            <ArrowUpRight className="size-3" />
+          </Link>
+        </div>
       </div>
 
       <div className="mt-3 overflow-x-auto">
@@ -64,7 +100,11 @@ export default function SeuilsAssiduite({ stagiaires }) {
               const sanction = sanctionAssiduite(palier === AU_DELA ? 10.25 : palier);
               const fusion = PALIERS_FUSIONNES.includes(palier);
               const premierFusionne = palier === PALIERS_FUSIONNES[0];
-              const concernes = parPalier.get(palier) ?? [];
+              const tous = parPalier.get(palier) ?? [];
+              const avecPv = PALIERS_PV.includes(palier);
+              // Le PV de CE palier imprimé : le stagiaire quitte la ligne.
+              const concernes = avecPv ? tous.filter((s) => !imprimes.has(`${s.matricule}|${palier}`)) : tous;
+              const sortis = tous.length - concernes.length;
               return (
                 <tr key={palier} className={cn('border-b align-top last:border-0', concernes.length === 0 && 'text-muted-foreground')}>
                   <td className="whitespace-nowrap py-2 pr-3">
@@ -85,7 +125,16 @@ export default function SeuilsAssiduite({ stagiaires }) {
                     </span>
                   </td>
                   <td className="py-2">
-                    <ListeStagiaires stagiaires={concernes} />
+                    <ListeStagiaires
+                      stagiaires={concernes}
+                      impression={avecPv ? impression : null}
+                      libelle={sanction.libelle}
+                    />
+                    {sortis > 0 && (
+                      <span className="mt-1 block text-[0.65rem] text-muted-foreground">
+                        {nombre(sortis)} PV imprimé(s) — retiré(s) de la liste
+                      </span>
+                    )}
                   </td>
                 </tr>
               );
@@ -100,7 +149,7 @@ export default function SeuilsAssiduite({ stagiaires }) {
 /** Au-delà, la ligne se replie : un palier peut réunir des dizaines de stagiaires. */
 const VISIBLES = 6;
 
-function ListeStagiaires({ stagiaires }) {
+function ListeStagiaires({ stagiaires, impression = null, libelle = '' }) {
   const [tout, setTout] = useState(false);
   if (stagiaires.length === 0) return <span>—</span>;
 
@@ -110,23 +159,35 @@ function ListeStagiaires({ stagiaires }) {
       {montres.map((stagiaire) => (
         /* Une carte au survol plutôt qu'un `title` (2026-10-25, demande du
            porteur) : l'info-bulle du navigateur tardait et tenait sur une ligne. */
-        <HoverCard key={stagiaire.matricule} openDelay={150} closeDelay={80}>
-          <HoverCardTrigger asChild>
-            <Link
-              to={`/app/absences?groupe=${encodeURIComponent(stagiaire.groupe)}`}
-              className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 transition-colors hover:bg-muted/60"
-            >
-              <span>
-                <span className="font-medium">{stagiaire.nom}</span>
-                <span className="text-muted-foreground"> · {stagiaire.groupe}</span>
-              </span>
-              <SerieAbsence serie={stagiaire.serieAbsence} />
-            </Link>
-          </HoverCardTrigger>
-          <HoverCardContent align="start" className="w-72 p-3 text-xs">
-            <CarteStagiaire stagiaire={stagiaire} />
-          </HoverCardContent>
-        </HoverCard>
+        /* ⚠️ LE BOUTON « PV » À CÔTÉ DU LIEN, PAS DEDANS : un bouton dans un lien
+           ouvrirait aussi le groupe au clic, et le HTML l'interdit. */
+        <span key={stagiaire.matricule} className="inline-flex items-stretch overflow-hidden rounded-md border">
+          <HoverCard openDelay={150} closeDelay={80}>
+            <HoverCardTrigger asChild>
+              <Link
+                to={`/app/absences?groupe=${encodeURIComponent(stagiaire.groupe)}`}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 transition-colors hover:bg-muted/60"
+              >
+                <span>
+                  <span className="font-medium">{stagiaire.nom}</span>
+                  <span className="text-muted-foreground"> · {stagiaire.groupe}</span>
+                </span>
+                <SerieAbsence serie={stagiaire.serieAbsence} />
+              </Link>
+            </HoverCardTrigger>
+            <HoverCardContent align="start" className="w-72 p-3 text-xs">
+              <CarteStagiaire stagiaire={stagiaire} />
+            </HoverCardContent>
+          </HoverCard>
+          {impression && (
+            <BoutonImprimerPvCompact
+              impression={impression}
+              matricule={stagiaire.matricule}
+              nom={stagiaire.nom}
+              libelle={libelle}
+            />
+          )}
+        </span>
       ))}
       {stagiaires.length > VISIBLES && (
         <button

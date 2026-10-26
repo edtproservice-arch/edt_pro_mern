@@ -16,7 +16,15 @@ import TableauTriable from '@/components/common/TableauTriable';
 import { MARGE_PAGE } from '@/components/common/apparenceGrille';
 import { cn } from '@/lib/utils';
 import ListeRepliable from '../ListeRepliable';
-import { chargerRegistre, exporterRegistre, justifierAbsence, supprimerAbsence, telechargerBillets } from './api';
+import {
+  chargerPvSanctions,
+  chargerRegistre,
+  exporterRegistre,
+  justifierAbsence,
+  supprimerAbsence,
+  telechargerBillets,
+} from './api';
+import { BoutonImprimerPv, ChoixLanguePv, useImpressionPv, useLanguePv } from './ImpressionPv';
 import JustifierPeriode from './JustifierPeriode';
 import ListeGroupes from './ListeGroupes';
 import { grouperParGroupe } from './regroupementStagiaires';
@@ -95,6 +103,23 @@ function TableauRegistre({ filtre, encadrement, compact = false }) {
     retry: false,
   });
 
+  /*
+   * ═══ LE PV DE SANCTION, DEPUIS LE REGISTRE (2026-10-26, demande du porteur) ═══
+   * Un stagiaire dont la sanction d'assiduité (1ère mise en garde → blâme) attend
+   * son PV porte, sous son nom, un bouton « Imprimer PV », dans la version choisie
+   * en tête. Imprimé, le bouton disparaît de toutes ses lignes — jusqu'au palier
+   * suivant. Une seule liste pour l'établissement, partagée par tous les groupes ouverts.
+   */
+  const [langue, choisirLangue] = useLanguePv();
+  const impression = useImpressionPv(langue);
+  const pv = useQuery({
+    queryKey: ['absences-stagiaires', 'pv-sanctions', false],
+    queryFn: () => chargerPvSanctions(false),
+    enabled: encadrement && !compact,
+    retry: false,
+  });
+  const pvAImprimer = new Map((pv.data?.stagiaires ?? []).map((s) => [s.matricule, s]));
+
   if (registre.error) return <Alerte type="erreur" titre="Registre indisponible">{registre.error.message}</Alerte>;
 
   const { absences = [], total = 0 } = registre.data ?? {};
@@ -110,6 +135,12 @@ function TableauRegistre({ filtre, encadrement, compact = false }) {
       */}
       {encadrement && (
         <div className="flex flex-wrap items-center justify-end gap-2">
+          {!compact && pvAImprimer.size > 0 && (
+            <div className="mr-auto flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">PV de sanction en</span>
+              <ChoixLanguePv langue={langue} onChoisir={choisirLangue} court />
+            </div>
+          )}
           {/* Justifier une période d'un coup (2026-10-25) — dans la fiche, pour le seul stagiaire affiché. */}
           <JustifierPeriode absences={absences} matriculeFixe={compact ? filtre.matricule : null} />
           {!compact && <TelechargerBillets absences={absences} />}
@@ -120,7 +151,13 @@ function TableauRegistre({ filtre, encadrement, compact = false }) {
           {absences.length} marquages les plus récents sur {total}.
         </p>
       )}
-      <TableauAbsences absences={absences} encadrement={encadrement} compact={compact} chargement={registre.isLoading} />
+      <TableauAbsences
+        absences={absences}
+        encadrement={encadrement}
+        compact={compact}
+        chargement={registre.isLoading}
+        pv={encadrement && !compact ? { aImprimer: pvAImprimer, impression } : null}
+      />
     </div>
   );
 }
@@ -231,12 +268,12 @@ function RegistreDuFormateur() {
   );
 }
 
-function TableauAbsences({ absences, encadrement, compact = false, chargement = false }) {
+function TableauAbsences({ absences, encadrement, compact = false, chargement = false, pv = null }) {
   return (
     <TableauTriable
       cartesSous="lg"
       collant={compact ? null : `-${MARGE_PAGE}px`}
-      colonnes={colonnes({ encadrement, compact })}
+      colonnes={colonnes({ encadrement, compact, pv })}
       lignes={absences}
       cleLigne={(a) => a.id}
       vide={chargement ? 'Chargement…' : 'Aucune absence ni aucun retard marqué.'}
@@ -244,7 +281,7 @@ function TableauAbsences({ absences, encadrement, compact = false, chargement = 
   );
 }
 
-function colonnes({ encadrement, compact }) {
+function colonnes({ encadrement, compact, pv = null }) {
   const liste = [
     {
       id: 'date',
@@ -262,14 +299,25 @@ function colonnes({ encadrement, compact }) {
       id: 'stagiaire',
       entete: 'Stagiaire',
       tri: (a) => a.nomComplet,
-      rendu: (a) => (
-        <span className="text-xs">
-          <span className="font-medium">{a.nomComplet}</span>
-          <span className="block text-muted-foreground">
-            {a.matricule} · {a.groupe}
+      rendu: (a) => {
+        const enAttente = pv?.aImprimer.get(a.matricule);
+        return (
+          <span className="text-xs">
+            <span className="font-medium">{a.nomComplet}</span>
+            <span className="block text-muted-foreground">
+              {a.matricule} · {a.groupe}
+            </span>
+            {enAttente && (
+              <BoutonImprimerPv
+                impression={pv.impression}
+                matricule={a.matricule}
+                nom={a.nomComplet}
+                libelle={enAttente.sanction.libelle}
+              />
+            )}
           </span>
-        </span>
-      ),
+        );
+      },
     });
   }
   liste.push(

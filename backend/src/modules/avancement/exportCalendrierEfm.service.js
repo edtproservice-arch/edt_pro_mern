@@ -150,8 +150,13 @@ export async function construireCalendrierEfm({ etablissementId, anneeScolaire, 
     const realisee = datesEfm.filter((date) => date <= maintenant).at(-1) ?? null;
     const achevement = enDate(ligne.dateAchevement);
 
-    const s1 = [reference?.mhpS1, reference?.mhsynS1, reference?.mhasynS1].map((v) => Number(v ?? 0));
-    const s2 = [reference?.mhpS2, reference?.mhsynS2, reference?.mhasynS2].map((v) => Number(v ?? 0));
+    /*
+     * ⚠️ « MH TOTALE » = PRÉSENTIEL + SYNCHRONE (2026-10-26, signalé par le porteur :
+     * « =N2+O2 ne donne pas la même valeur »). L'asynchrone de la répartition DRIF y
+     * était ajouté : Français affichait 60 h (25 + 10 + 25) au lieu de 35.
+     */
+    const s1 = [reference?.mhpS1, reference?.mhsynS1].map((v) => Number(v ?? 0));
+    const s2 = [reference?.mhpS2, reference?.mhsynS2].map((v) => Number(v ?? 0));
 
     const valeurs = [
       etablissement?.region ?? '',
@@ -169,10 +174,10 @@ export async function construireCalendrierEfm({ etablissementId, anneeScolaire, 
       ligne.intitule || reference?.module || '',
       texteHeures(s1[0]),
       texteHeures(s1[1]),
-      texteHeures(s1[0] + s1[1] + s1[2]),
+      texteHeures(s1[0] + s1[1]),
       texteHeures(s2[0]),
       texteHeures(s2[1]),
-      texteHeures(s2[0] + s2[1] + s2[2]),
+      texteHeures(s2[0] + s2[1]),
       ligne.estRegional ? 'O' : 'N',
       formateur?.matricule || (estMatricule ? brut : ''),
       formateur?.nomComplet || (estMatricule ? '' : brut),

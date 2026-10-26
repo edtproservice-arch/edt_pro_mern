@@ -40,6 +40,7 @@ export { AbsenceFormateur } from './AbsenceFormateur.js';
 export { AbsenceStagiaire } from './AbsenceStagiaire.js';
 /* Le comportement de la note de discipline (2026-09-14, sans équivalent MySQL). */
 export { IndisciplineStagiaire } from './IndisciplineStagiaire.js';
+export { PvSanction } from './PvSanction.js';
 /* L'appel attesté par le formateur (2026-09-27, sans équivalent MySQL). */
 export { AppelValidation } from './AppelValidation.js';
 export { Stagiaire } from './Stagiaire.js';

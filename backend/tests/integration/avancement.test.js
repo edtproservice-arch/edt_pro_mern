@@ -922,6 +922,37 @@ describe('POST /avancement/achevement/calendrier-efm — canevas DR (2026-10-11)
     expect(await lire({ lignes })).toHaveLength(1);
   });
 
+  /* « MH TOTALE » = présentiel + synchrone, sans l'asynchrone (2026-10-26). */
+  it('calcule les MH totales sans l’asynchrone', async () => {
+    await Base.updateOne({ anneeScolaire: ANNEE }, { $set: { groupeFilieres: { GM101: 'GM' } } });
+    await Repartition.create({
+      secteur: 'Mécanique',
+      codeFiliereDrif: 'GM',
+      codeFiliereCarte: 'GM',
+      anneeFormation: 1,
+      codeModule: 'M101',
+      module: 'Français',
+      mhpS1: 25,
+      mhsynS1: 10,
+      mhasynS1: 25,
+      mhpS2: 20,
+      mhsynS2: 10,
+      mhasynS2: 25,
+    });
+    const reponse = await request(app)
+      .post('/api/v2/avancement/achevement/calendrier-efm')
+      .set('Cookie', cookies)
+      .send({ lignes: [{ groupe: 'GM101', module: 'M101', estRegional: false }] })
+      .responseType('blob');
+    const ExcelJS = (await import('exceljs')).default;
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(reponse.body);
+    const feuille = classeur.worksheets[0];
+    expect(['N2', 'O2', 'P2', 'Q2', 'R2', 'S2'].map((c) => feuille.getCell(c).value)).toEqual([
+      '25.00', '10.00', '35.00', '20.00', '10.00', '30.00',
+    ]);
+  });
+
   it('refuse une liste vide', async () => {
     const reponse = await request(app)
       .post('/api/v2/avancement/achevement/calendrier-efm')

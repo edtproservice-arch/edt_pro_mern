@@ -151,6 +151,19 @@ export const telechargerFormulaireExamen = (cle) => (format) =>
   api.telecharger(`${RACINE}/formulaires-examen`, { cle, format }, { nomParDefaut: `${cle}.${format}` });
 
 export const chargerNotes = (groupe) => api.get(`${RACINE}/notes?${requete({ groupe })}`);
+
+/*
+ * Les PV des sanctions d'assiduité (2026-10-26) : la liste des stagiaires dont le PV
+ * du palier actuel reste à imprimer — `imprimes` y ajoute ceux déjà sortis —, puis le
+ * PV d'UN stagiaire, en français ou en arabe, qui le retire de la liste.
+ */
+export const chargerPvSanctions = (imprimes = false) =>
+  api.get(`${RACINE}/pv-sanctions${imprimes ? '?imprimes=true' : ''}`);
+
+export const imprimerPvSanction = (matricule, { langue, format }) =>
+  api.telecharger(`${RACINE}/pv-sanctions/${encodeURIComponent(matricule)}`, { langue, format }, {
+    nomParDefaut: `pv-sanction-${matricule}.${format}`,
+  });
 export const chargerFiche = (matricule) => api.get(`${RACINE}/stagiaires/${encodeURIComponent(matricule)}`);
 
 export const declarerIndiscipline = (corps) => api.post(`${RACINE}/indisciplines`, corps);

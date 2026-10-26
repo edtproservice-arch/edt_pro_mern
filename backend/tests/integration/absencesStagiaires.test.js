@@ -1715,3 +1715,97 @@ describe('GET /absences-stagiaires/tableau-bord — seuils, séries et semaines 
     );
   });
 });
+
+/*
+ * ═══ LES PV DES SANCTIONS D'ASSIDUITÉ (2026-10-26, demande du porteur) ═══
+ * −0,5 par séance d'absence non justifiée : 2 séances = 1 point = 1ère mise en garde,
+ * 4 séances = 2 points = 2ème. Imprimé, le stagiaire sort de la liste — jusqu'au
+ * palier suivant.
+ */
+describe('GET/POST /absences-stagiaires/pv-sanctions — les PV de sanction', () => {
+  const liste = (cookie = cookies.directeur, imprimes = false) =>
+    request(app).get(`/api/v2/absences-stagiaires/pv-sanctions${imprimes ? '?imprimes=true' : ''}`).set('Cookie', cookie);
+  const imprimer = (matricule, corps, cookie = cookies.directeur) =>
+    request(app)
+      .post(`/api/v2/absences-stagiaires/pv-sanctions/${matricule}`)
+      .set('Cookie', cookie)
+      .send(corps)
+      .buffer(true)
+      .parse((res, callback) => {
+        const morceaux = [];
+        res.on('data', (m) => morceaux.push(m));
+        res.on('end', () => callback(null, Buffer.concat(morceaux)));
+      });
+  const texteDuDocx = async (tampon) => {
+    const JSZip = (await import('jszip')).default;
+    const xml = await (await JSZip.loadAsync(tampon)).file('word/document.xml').async('string');
+    return [...xml.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g)].map((m) => m[1]).join('');
+  };
+
+  it('liste les stagiaires sanctionnés, avec le palier de leur sanction', async () => {
+    await faits('CEF001', [{}, {}]); // 2 séances : 1 point
+
+    const reponse = await liste();
+
+    expect(reponse.status).toBe(200);
+    expect(reponse.body.stagiaires).toHaveLength(1);
+    expect(reponse.body.stagiaires[0]).toMatchObject({
+      matricule: 'CEF001',
+      groupe: 'GM101',
+      palier: 1,
+      absencesNJ: 2,
+      heuresNJ: 5,
+      imprime: null,
+    });
+    expect(reponse.body.stagiaires[0].sanction.libelle).toBe('1ère mise en garde');
+  });
+
+  it('⚠️ imprimé, le stagiaire sort de la liste — et y revient au palier suivant', async () => {
+    await faits('CEF001', [{}, {}]);
+
+    const pv = await imprimer('CEF001', { langue: 'ar', format: 'docx' });
+    expect(pv.status).toBe(200);
+    const texte = await texteDuDocx(pv.body);
+    expect(texte).toContain('تنبيه');
+    expect(texte).toContain('☒');
+    expect(texte).toContain('مسير شؤون المتدربين');
+
+    expect((await liste()).body.stagiaires).toHaveLength(0);
+    const avecImprimes = await liste(cookies.directeur, true);
+    expect(avecImprimes.body.stagiaires[0].imprime.langue).toBe('ar');
+
+    // Deux séances de plus : 2 points, 2ème mise en garde — à imprimer de nouveau.
+    await AbsenceStagiaire.create(
+      [3, 4].map((jour) => ({
+        etablissementId: etablissement.id,
+        anneeScolaire: ANNEE,
+        matricule: 'CEF001',
+        nomComplet: 'CEF001',
+        groupe: 'GM101',
+        date: `2026-09-1${jour}`,
+        semaine: '2026-W2',
+        jour: 'Mardi',
+        seance: 'S1',
+      }))
+    );
+    const ensuite = await liste();
+    expect(ensuite.body.stagiaires).toHaveLength(1);
+    expect(ensuite.body.stagiaires[0]).toMatchObject({ palier: 2, imprime: null });
+  });
+
+  it('écrit le PV en français, avec les signataires de l’avertissement', async () => {
+    await faits('CEF002', [{}, {}, {}, {}, {}, {}]); // 6 séances : 3 points, 1er avertissement
+
+    const texte = await texteDuDocx((await imprimer('CEF002', { langue: 'fr', format: 'docx' })).body);
+
+    expect(texte).toContain('AVERTISSEMENT');
+    expect(texte).toContain('BENANI Sara');
+    expect(texte).toContain('Le Directeur de l’établissement');
+    expect(texte).toContain('15 heure(s)');
+  });
+
+  it('refuse un stagiaire sans sanction, et reste fermé au formateur', async () => {
+    expect((await imprimer('CEF003', { langue: 'fr', format: 'docx' })).status).toBe(400);
+    expect((await liste(cookies.formateur)).status).toBe(403);
+  });
+});

@@ -17,6 +17,7 @@ import { construireExportNotesDiscipline } from './exportNotesDiscipline.service
 import { FORMULAIRES_EXAMEN, construireFormulaireExamen } from './exportFormulairesExamen.service.js';
 import { adresseDeLaRequete, construireCartesStagiaires, liensDesCartes } from './exportCarteStagiaire.service.js';
 import * as documentsDeSeance from '../consultation/reclamation.service.js';
+import * as pvSanctions from './pvSanctions.service.js';
 
 /**
  * Absences, retards et indisciplines des stagiaires — la note de discipline (F9).
@@ -127,6 +128,39 @@ router.post(
     );
     res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
     res.send(tampon);
+  })
+);
+
+/*
+ * ═══ LES PV DES SANCTIONS D'ASSIDUITÉ (2026-10-26, demande du porteur) ═══
+ * La liste des stagiaires dont la sanction actuelle (mise en garde, avertissement,
+ * blâme) n'a pas encore son PV, et l'impression d'un PV — en français ou en arabe —,
+ * qui le retire de la liste. Voir `pvSanctions.service.js`.
+ */
+router.get(
+  '/pv-sanctions',
+  ENCADREMENT,
+  validate({ query: z.object({ imprimes: z.enum(['true', 'false']).optional() }) }),
+  route(async (req, res) => {
+    const stagiaires = await pvSanctions.lister(req.etablissementId, req.anneeScolaire, {
+      imprimes: req.validatedQuery?.imprimes === 'true',
+    });
+    res.json({ success: true, stagiaires });
+  })
+);
+
+router.post(
+  '/pv-sanctions/:matricule',
+  ENCADREMENT,
+  validate({
+    params: z.object({ matricule: z.string().trim().min(1).max(50) }),
+    body: z.object({ langue: z.enum(['fr', 'ar']), format: z.enum(['docx', 'pdf']) }),
+  }),
+  route(async (req, res) => {
+    envoyerDocument(
+      res,
+      await pvSanctions.imprimer(req.etablissementId, req.anneeScolaire, req.params.matricule, req.body, req.utilisateur._id)
+    );
   })
 );
 

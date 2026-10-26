@@ -473,8 +473,8 @@ describe('POST /seances/:semaine/emargement', () => {
     expect(reponse.body.subarray(0, 2).toString()).toBe('PK');
   });
 
-  it('ajoute le taux d’avancement SYNCHRONE du module (2026-10-26)', async () => {
-    // 10 h de synchrone pour GM101 · M101, une séance TEAMS de 2,5 h posée → 25 %.
+  it('détaille le taux global en PRÉSENTIEL et SYNCHRONE (2026-10-26)', async () => {
+    // GM101 · M101 : 30 h présentiel + 10 h synchrone. Une séance en salle, une en TEAMS.
     await Base.updateOne(
       {},
       {
@@ -489,7 +489,8 @@ describe('POST /seances/:semaine/emargement', () => {
         },
       }
     );
-    await poser({ salle: 'TEAMS' });
+    await poser();
+    await poser({ seance: 'S2', salle: 'TEAMS' });
 
     const reponse = await request(app)
       .post(`/api/v2/seances/${SEMAINE}/emargement`)
@@ -502,6 +503,8 @@ describe('POST /seances/:semaine/emargement', () => {
     const classeur = new ExcelJS.Workbook();
     await classeur.xlsx.load(reponse.body);
     const taux = String(classeur.worksheets[0].getRow(5).getCell(6).value ?? '');
+    expect(taux).toContain('13% (5h / 40h)');
+    expect(taux).toContain('Présentiel : 8% (2.5h / 30h)');
     expect(taux).toContain('Synchrone : 25% (2.5h / 10h)');
     // Le Word aussi — c'est de lui que sort le PDF.
     const word = await request(app)
@@ -512,6 +515,7 @@ describe('POST /seances/:semaine/emargement', () => {
       .send({ jour: 'Lundi', format: 'docx' });
     const { default: JSZip } = await import('jszip');
     const document = await (await JSZip.loadAsync(word.body)).file('word/document.xml').async('string');
+    expect(document).toContain('Présentiel : 8% (2.5h / 30h)');
     expect(document).toContain('Synchrone : 25% (2.5h / 10h)');
   });
 

@@ -268,7 +268,7 @@ function ajouterSyntheseAnnuelle(classeur, { parMatricule, moisTravailles, etabl
   feuille.mergeCells(3, 1, 3, derniere);
   feuille.getCell(3, 1).value =
     'Quota HS = masse affectée − masse statutaire · MHS : 26 h (910 h), 36 h (1260 h) · vacataires ' +
-    'non listés (sans HS) · ' + mentionRealise(realiseAu) + MENTION_MUTUALISE;
+    'et formateurs sans masse statutaire non listés (sans HS) · ' + mentionRealise(realiseAu) + MENTION_MUTUALISE;
   feuille.getCell(3, 1).font = { name: POLICE, italic: true, size: 9, color: { argb: COULEURS.gris } };
 
   /* ─── En-tête du tableau : deux lignes ────────────────────────────── */

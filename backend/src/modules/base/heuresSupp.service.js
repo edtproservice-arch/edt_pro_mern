@@ -238,12 +238,13 @@ export async function heuresSupplementaires(
   formateurs.sort((a, b) => b.totaux.paye - a.totaux.paye || a.nom.localeCompare(b.nom, 'fr'));
 
   // Les vacataires n'ont pas d'heures supplémentaires : ni l'écran ni l'export ne les montrent
-  // (2026-10-26, demande du porteur).
+  // (2026-10-26, demande du porteur). Un formateur SANS masse statutaire en est un aussi (même
+  // jour, précision du porteur) : seuls restent les permanents, à 910 h ou 1260 h.
   return {
     anneeScolaire,
     realiseAu: maintenant,
     semaines: semainesComptees,
-    formateurs: formateurs.filter((formateur) => formateur.statut !== 'vacataire'),
+    formateurs: formateurs.filter((formateur) => formateur.statut === 'permanent'),
   };
 }
 

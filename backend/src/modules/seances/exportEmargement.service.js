@@ -78,11 +78,18 @@ export async function construireExportEmargement(etablissementId, anneeScolaire,
     for (const bloc of jourAgenda.blocs) {
       const avancement = avancementModule(fiches, posees, bloc.groupeSeance, bloc.module, null);
       /*
-       * ⚠️ LE SYNCHRONE À PART (2026-10-26, demande du porteur : « ajouter le
-       *    taux d'avancement synchrone du module ») — la même fonction, sur la
-       *    seule masse synchrone. `null` quand le module n'en déclare pas : la
-       *    ligne ne s'affiche alors pas.
+       * ⚠️ LE GLOBAL, PUIS SA DÉCOMPOSITION (2026-10-26, demande du porteur :
+       *    « le présentiel combien et le synchrone combien, pour qu'il soit
+       *    significatif avec le taux global ») — la même fonction, sur chaque
+       *    masse. `null` quand le module ne déclare pas ce type.
        */
+      const presentiel = avancementModule(
+        fiches,
+        posees,
+        bloc.groupeSeance,
+        bloc.module,
+        TYPES_COURS.PRESENTIEL
+      );
       const synchrone = avancementModule(
         fiches,
         posees,
@@ -102,6 +109,9 @@ export async function construireExportEmargement(etablissementId, anneeScolaire,
         prevu: avancement?.prevu ?? null,
         pose: avancement?.pose ?? null,
         niveau: avancement?.niveau ?? null,
+        presentiel: presentiel
+          ? { taux: presentiel.taux, prevu: presentiel.prevu, pose: presentiel.pose }
+          : null,
         synchrone: synchrone ? { taux: synchrone.taux, prevu: synchrone.prevu, pose: synchrone.pose } : null,
       });
     }

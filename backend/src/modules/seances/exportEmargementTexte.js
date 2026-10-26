@@ -9,12 +9,17 @@ export function nomFichierEmargement({ jour, semaineLabel, anneeScolaire }, exte
 }
 
 /**
- * La ligne « Synchrone » de la cellule Taux, ou `null` sans masse synchrone
- * (2026-10-26) — UNE écriture, pour le Word (donc le PDF) et l'Excel.
+ * La décomposition du taux global, sous lui dans la cellule Taux (2026-10-26) :
+ * « Présentiel : … » puis « Synchrone : … ». UNE écriture, pour le Word (donc
+ * le PDF) et l'Excel.
+ *
+ * ⚠️ SEULEMENT QUAND LE MODULE A LES DEUX MASSES : avec une seule, le détail
+ *    répéterait le global mot pour mot.
  */
-export const libelleSynchrone = (ligne) =>
-  ligne?.synchrone
-    ? `Synchrone : ${ligne.synchrone.taux}% (${ligne.synchrone.pose}h / ${ligne.synchrone.prevu}h)`
-    : null;
+export function lignesParType(ligne) {
+  if (!ligne?.presentiel || !ligne?.synchrone) return [];
+  const ecrire = (libelle, { taux, pose, prevu }) => `${libelle} : ${taux}% (${pose}h / ${prevu}h)`;
+  return [ecrire('Présentiel', ligne.presentiel), ecrire('Synchrone', ligne.synchrone)];
+}
 
 export { dateFr };

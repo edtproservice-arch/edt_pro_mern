@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import JSZip from 'jszip';
 import { celluleTexteSimple, echapperXml } from './xmlCellules.js';
 import { chargerCanevasTampon } from './canevasCache.js';
-import { dateFr, nomFichierEmargement, libelleSynchrone } from './exportEmargementTexte.js';
+import { dateFr, nomFichierEmargement, lignesParType } from './exportEmargementTexte.js';
 import { assemblerLigne, extraireLignes, extraireTableaux, remplacerBalise } from './xmlTableaux.js';
 
 /**
@@ -79,9 +79,9 @@ function celluleTaux(tcModele, ligne) {
     .replace(paragraphes[0], construireParagraphe(`${taux}%`))
     .replace(paragraphes[1], construireParagraphe(`(${pose}h / ${prevu}h)`));
 
-  // Le taux synchrone, sur sa propre ligne, quand le module en a une masse (2026-10-26).
-  const synchrone = libelleSynchrone(ligne);
-  return synchrone ? rempli.replace(/<\/w:tc>\s*$/, `${construireParagraphe(synchrone)}</w:tc>`) : rempli;
+  // Présentiel et synchrone, chacun sur sa ligne, sous le global (2026-10-26).
+  const detail = lignesParType(ligne).map(construireParagraphe).join('');
+  return detail ? rempli.replace(/<\/w:tc>\s*$/, `${detail}</w:tc>`) : rempli;
 }
 
 /** Une ligne de données — un bloc de cours d'un formateur. */

@@ -169,8 +169,6 @@ export function FenetreHeuresSupp({ onFermer }) {
 
   const moisAffiche = moisTravailles.includes(moisChoisi) ? moisChoisi : moisTravailles.at(-1);
 
-  const sansStatutaire = tous.filter((f) => f.sansStatutaire && f.totaux.heures > 0).length;
-
   return (
     <Dialog open onOpenChange={(etat) => !etat && onFermer()}>
       <DialogContent className="max-h-[92vh] w-[96vw] max-w-[96vw] overflow-y-auto">
@@ -196,13 +194,6 @@ export function FenetreHeuresSupp({ onFermer }) {
 
         {requete.isSuccess && (
           <div className="min-w-0 space-y-3">
-            {sansStatutaire > 0 && (
-              <Alerte type="info" titre={`${sansStatutaire} formateur(s) sans masse statutaire`}>
-                Sans masse statutaire, le quota ne peut pas être calculé : aucune heure
-                supplémentaire ne leur est comptée.
-              </Alerte>
-            )}
-
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="relative w-full sm:w-72">
                 <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />

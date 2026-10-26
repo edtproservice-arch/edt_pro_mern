@@ -6,7 +6,7 @@ import {
   heuresPosees,
   libelleSemaine,
 } from 'shared/domain';
-import { JOURS } from 'shared/constants';
+import { JOURS, TYPES_COURS } from 'shared/constants';
 import { Etablissement } from '../../models/Etablissement.js';
 import { badRequest } from '../../lib/httpError.js';
 import * as seancesService from './seances.service.js';
@@ -77,6 +77,19 @@ export async function construireExportEmargement(etablissementId, anneeScolaire,
 
     for (const bloc of jourAgenda.blocs) {
       const avancement = avancementModule(fiches, posees, bloc.groupeSeance, bloc.module, null);
+      /*
+       * ⚠️ LE SYNCHRONE À PART (2026-10-26, demande du porteur : « ajouter le
+       *    taux d'avancement synchrone du module ») — la même fonction, sur la
+       *    seule masse synchrone. `null` quand le module n'en déclare pas : la
+       *    ligne ne s'affiche alors pas.
+       */
+      const synchrone = avancementModule(
+        fiches,
+        posees,
+        bloc.groupeSeance,
+        bloc.module,
+        TYPES_COURS.SYNCHRONE
+      );
 
       lignes.push({
         formateur: formateur.nom,
@@ -89,6 +102,7 @@ export async function construireExportEmargement(etablissementId, anneeScolaire,
         prevu: avancement?.prevu ?? null,
         pose: avancement?.pose ?? null,
         niveau: avancement?.niveau ?? null,
+        synchrone: synchrone ? { taux: synchrone.taux, prevu: synchrone.prevu, pose: synchrone.pose } : null,
       });
     }
   }

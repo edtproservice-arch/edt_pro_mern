@@ -41,6 +41,8 @@ import {
   telechargerBilletsVierges,
   telechargerDocumentVierge,
   telechargerFormulaireExamen,
+  telechargerPvSanctionsDocuments,
+  telechargerPvSanctionsVierges,
 } from '@/features/absences/stagiaires/api';
 import { chargerEtablissementCourant } from '@/features/configuration/api';
 import DialogueChoixGroupes from './DialogueChoixGroupes';
@@ -389,6 +391,38 @@ const DOCUMENTS = [
       parStagiaire: true,
     },
   },
+  {
+    cle: 'pv-sanction',
+    titre: 'PV de sanction d’assiduité',
+    resume: 'Mise en garde, avertissement, blâme',
+    icone: FileSignature,
+    /*
+     * (2026-10-26, demande du porteur) Le PV de la sanction ACTUELLE de chaque stagiaire
+     * sanctionné des groupes choisis — ceux sans sanction sont ignorés. Vierge : une mise en
+     * garde, un avertissement et un blâme vides. La langue vaut pour les deux.
+     */
+    choixGroupes: {
+      description:
+        'Un PV par stagiaire sanctionné pour ses absences (1ère ou 2ème mise en garde, 1er ou 2ème avertissement, blâme), d’après sa note de discipline : identité, heures d’absence et points retirés écrits. Vierge : un exemplaire de chaque PV, à remplir à la main.',
+      formats: ['docx', 'pdf'],
+      telecharger: telechargerPvSanctionsDocuments,
+      vierge: telechargerPvSanctionsVierges,
+      parStagiaire: true,
+      champs: [
+        {
+          nom: 'langue',
+          libelle: 'Version',
+          type: 'choix',
+          defaut: 'fr',
+          aussiVierge: true,
+          options: [
+            { valeur: 'fr', libelle: 'Français' },
+            { valeur: 'ar', libelle: 'العربية' },
+          ],
+        },
+      ],
+    },
+  },
   /*
    * ═══ FORMULAIRES D'EXAMEN VIERGES (2026-10-11, treize canevas transmis, « avec
    * le logo ») ═══ Remplis à la main par la commission le jour de l'épreuve :
@@ -538,7 +572,7 @@ const CATEGORIES = [
   },
   {
     titre: 'Discipline',
-    cles: ['reclamation', 'pv-discipline'],
+    cles: ['reclamation', 'pv-sanction', 'pv-discipline'],
     icone: Gavel,
   },
 ].map((categorie) => ({

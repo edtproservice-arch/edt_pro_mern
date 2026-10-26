@@ -164,6 +164,21 @@ export const imprimerPvSanction = (matricule, { langue, format }) =>
   api.telecharger(`${RACINE}/pv-sanctions/${encodeURIComponent(matricule)}`, { langue, format }, {
     nomParDefaut: `pv-sanction-${matricule}.${format}`,
   });
+export const imprimerTousPvSanctions = ({ langue, format }) =>
+  api.telecharger(`${RACINE}/pv-sanctions`, { langue, format }, { nomParDefaut: `pv-sanctions.${format}` });
+/* Les PV de la page Documents (2026-10-26) : des groupes ou stagiaires choisis, ou vierges. */
+export const telechargerPvSanctionsDocuments = ({ format, groupes, matricules, valeurs }) =>
+  api.telecharger(
+    `${RACINE}/documents-pv-sanctions`,
+    { format, langue: valeurs?.langue === 'ar' ? 'ar' : 'fr', groupes, ...(matricules ? { matricules } : {}) },
+    { nomParDefaut: `pv-sanctions.${format}` }
+  );
+export const telechargerPvSanctionsVierges = (format, valeurs) =>
+  api.telecharger(
+    `${RACINE}/documents-pv-sanctions`,
+    { format, langue: valeurs?.langue === 'ar' ? 'ar' : 'fr', vierge: true },
+    { nomParDefaut: `pv-sanctions-vierges.${format}` }
+  );
 export const chargerFiche = (matricule) => api.get(`${RACINE}/stagiaires/${encodeURIComponent(matricule)}`);
 
 export const declarerIndiscipline = (corps) => api.post(`${RACINE}/indisciplines`, corps);

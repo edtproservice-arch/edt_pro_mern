@@ -235,6 +235,43 @@ const epreuveSchema = z.object({
   portee: z.enum(['local', 'regional']).optional(),
 });
 
+/*
+ * L'en-tête d'une épreuve — contrôle continu ou EFM (2026-10-26) : depuis une de SES séances,
+ * vérifiée ; sans séance, l'exemplaire vierge. Voir `reclamation.enteteExamenDeSeance`.
+ */
+router.post(
+  '/documents/entete-examen',
+  requireRole(ROLES.FORMATEUR),
+  validate({
+    body: z.object({
+      format: z.enum(['docx', 'pdf']),
+      type: z.enum(['cc', 'efm']),
+      seanceId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Identifiant invalide').optional(),
+      numero: z.number().int().min(1).max(6).optional(),
+      portee: z.enum(['local', 'regional']).optional(),
+      epreuve: z.enum(['th', 'tp', 'sy']).optional(),
+      duree: z.enum(['1H', '1H30', '2H', '2H30', '3H', '5H']).optional(),
+      bareme: z.union([z.literal(20), z.literal(40)]).optional(),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      envoyerFichier(
+        res,
+        await reclamation.enteteExamenDeSeance(
+          req.etablissementId,
+          req.anneeScolaire,
+          // Sans séance, rien ne se rattache au formateur : l'exemplaire vierge.
+          req.body.seanceId ? monIdentite(req) : null,
+          req.body
+        )
+      );
+    } catch (erreur) {
+      next(erreur);
+    }
+  }
+);
+
 router.post(
   '/documents/presence-cc-efm',
   requireRole(ROLES.FORMATEUR),

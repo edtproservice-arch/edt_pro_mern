@@ -473,6 +473,48 @@ describe('POST /seances/:semaine/emargement', () => {
     expect(reponse.body.subarray(0, 2).toString()).toBe('PK');
   });
 
+  it('ajoute le taux d’avancement SYNCHRONE du module (2026-10-26)', async () => {
+    // 10 h de synchrone pour GM101 · M101, une séance TEAMS de 2,5 h posée → 25 %.
+    await Base.updateOne(
+      {},
+      {
+        $push: {
+          affectations: {
+            formateur: '9863',
+            groupe: 'GM101',
+            module: 'M101',
+            type: TYPES_COURS.SYNCHRONE,
+            s1Heures: 10,
+          },
+        },
+      }
+    );
+    await poser({ salle: 'TEAMS' });
+
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/emargement`)
+      .set('Cookie', cookies)
+      .buffer(true)
+      .parse(bufferiser)
+      .send({ jour: 'Lundi', format: 'xlsx' });
+
+    expect(reponse.status).toBe(200);
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(reponse.body);
+    const taux = String(classeur.worksheets[0].getRow(5).getCell(6).value ?? '');
+    expect(taux).toContain('Synchrone : 25% (2.5h / 10h)');
+    // Le Word aussi — c'est de lui que sort le PDF.
+    const word = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/emargement`)
+      .set('Cookie', cookies)
+      .buffer(true)
+      .parse(bufferiser)
+      .send({ jour: 'Lundi', format: 'docx' });
+    const { default: JSZip } = await import('jszip');
+    const document = await (await JSZip.loadAsync(word.body)).file('word/document.xml').async('string');
+    expect(document).toContain('Synchrone : 25% (2.5h / 10h)');
+  });
+
   it('rend un .xlsx', async () => {
     await poser();
 

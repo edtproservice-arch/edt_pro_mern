@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   ChevronDown,
@@ -18,6 +18,7 @@ import {
   filtrerGroupes,
   filtrerSujets,
   groupesDuSoir,
+  libelleSemaine,
   sallesDeLaSemaine,
   semaineAOuvrir,
 } from 'shared/domain';
@@ -44,6 +45,7 @@ import {
   exporterEmargement,
   exporterEmploiGlobal,
   exporterEmploiIndividuel,
+  publierSemaine,
 } from '@/features/emploi/api';
 import NavigationSemaine from '@/features/emploi/NavigationSemaine';
 import { useSemaineSuivie } from '@/features/emploi/useSemaineSuivie';
@@ -59,6 +61,7 @@ import GrilleConsultation from './GrilleConsultation';
 import GrilleDetaillee from './GrilleDetaillee';
 import { ChoixSujets, FiltreGroupes, FiltreSeances } from './FiltresDetaillee';
 import BoutonTelecharger from '@/components/common/BoutonTelecharger';
+import ConfirmationAction from '@/components/common/ConfirmationAction';
 import { raisonBlocage, useConformite } from '@/features/emploi/useConformite';
 
 /**
@@ -289,6 +292,33 @@ export default function PageEdition() {
     onError: (erreur) => toast.error('Téléchargement impossible', { description: erreur.message }),
   });
 
+  /*
+   * ═══ IMPRIMER PUBLIE (2026-10-26, demande du porteur) ═══
+   * « Lorsque le directeur veut imprimer l'emploi, un message dit que cette
+   * action va publier automatiquement l'emploi de cette semaine, avec Valider
+   * ou Annuler. » Un emploi imprimé est un emploi diffusé : le publier d'office
+   * évite qu'une feuille circule pendant que les formateurs, eux, ne voient
+   * rien. Une semaine DÉJÀ publiée se télécharge sans rien demander, et les
+   * autres rôles ne publient jamais — ils n'en ont pas le droit.
+   */
+  const cache = useQueryClient();
+  const [impressionEnAttente, setImpressionEnAttente] = useState(null);
+  const estDirecteur = session.data?.utilisateur?.role === ROLES.DIRECTEUR;
+  const dejaPubliee = (semaines.data?.publications ?? []).includes(semaine);
+  const imprimer = (lancer) => {
+    if (estDirecteur && !dejaPubliee) setImpressionEnAttente(() => lancer);
+    else lancer();
+  };
+  const publication = useMutation({
+    mutationFn: () => publierSemaine(semaine),
+    onSuccess: () => {
+      cache.invalidateQueries({ queryKey: ['emploi', 'semaines'] });
+      cache.invalidateQueries({ queryKey: ['emploi', 'contexte'] });
+    },
+    onError: (erreur) =>
+      toast.error('Publication impossible — rien n’a été téléchargé', { description: erreur.message }),
+  });
+
   const changerAxe = (valeur) => {
     setAxe(valeur);
     /* ⚠️ Les deux réductions repartent de zéro : un matricule retenu n'a aucun
@@ -512,7 +542,7 @@ export default function PageEdition() {
                 enCours={telechargement.isPending}
                 disabled={Boolean(blocageEdition)}
                 title={blocageEdition}
-                onChoisir={(format) => telechargement.mutate(format)}
+                onChoisir={(format) => imprimer(() => telechargement.mutate(format))}
               />
             </span>
           )}
@@ -546,19 +576,25 @@ export default function PageEdition() {
                     <DropdownMenuSubTrigger>{jour}</DropdownMenuSubTrigger>
                     <DropdownMenuSubContent>
                       <DropdownMenuItem
-                        onSelect={() => telechargementEmargement.mutate({ jour, format: 'docx' })}
+                        onSelect={() =>
+                          imprimer(() => telechargementEmargement.mutate({ jour, format: 'docx' }))
+                        }
                       >
                         <FileText className="size-3.5 text-blue-600" />
                         Word
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onSelect={() => telechargementEmargement.mutate({ jour, format: 'pdf' })}
+                        onSelect={() =>
+                          imprimer(() => telechargementEmargement.mutate({ jour, format: 'pdf' }))
+                        }
                       >
                         <File className="size-3.5 text-red-600" />
                         PDF
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onSelect={() => telechargementEmargement.mutate({ jour, format: 'xlsx' })}
+                        onSelect={() =>
+                          imprimer(() => telechargementEmargement.mutate({ jour, format: 'xlsx' }))
+                        }
                       >
                         <FileSpreadsheet className="size-3.5 text-green-600" />
                         Excel
@@ -569,6 +605,27 @@ export default function PageEdition() {
               </DropdownMenuContent>
             </DropdownMenu>
           )}
+
+          <ConfirmationAction
+            ouvert={impressionEnAttente !== null}
+            onOpenChange={(ouvert) => !ouvert && setImpressionEnAttente(null)}
+            titre="Imprimer publiera cette semaine"
+            description={`Cette action va publier automatiquement l’emploi du temps de ${
+              semaine ? libelleSemaine(semaine, { court: true }) : 'cette semaine'
+            } : le gestionnaire, les formateurs et les stagiaires pourront le consulter. Voulez-vous continuer ?`}
+            libelleConfirmation="Valider"
+            onConfirmer={async () => {
+              const lancer = impressionEnAttente;
+              setImpressionEnAttente(null);
+              try {
+                await publication.mutateAsync();
+              } catch {
+                return; // le toast d'erreur dit pourquoi ; rien n'est téléchargé
+              }
+              toast.success(`${libelleSemaine(semaine, { court: true })} publiée`);
+              lancer?.();
+            }}
+          />
 
         </div>
       </div>

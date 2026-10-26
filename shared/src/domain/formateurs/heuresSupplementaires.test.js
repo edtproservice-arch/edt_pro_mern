@@ -73,18 +73,26 @@ describe('quotaHeuresSupp', () => {
 describe('calculerHeuresSupp', () => {
   const semaine = (numero, lundi, heures, joursFermes = 0) => ({ numero, lundi, heures, joursFermes });
 
-  it('ne compte que les heures entre le seuil et 35 h', () => {
+  it('compte toutes les heures au-delà du seuil, sans plafond de 35 h', () => {
     const { semaines } = calculerHeuresSupp({
       quota: 500,
       semaines: [
         semaine(1, '2025-09-01', 35),
-        semaine(2, '2025-09-08', 40), // au-delà de 35 h : ignoré
+        semaine(2, '2025-09-08', 40), // plus de plafond : 14 h
         semaine(3, '2025-09-15', 30, 1), // un férié : seuil 20
         semaine(4, '2025-09-22', 20),
       ],
     });
-    expect(semaines.map((s) => s.brut)).toEqual([9, 9, 10, 0]);
-    expect(semaines.map((s) => s.horsPlafond)).toEqual([0, 5, 0, 0]);
+    expect(semaines.map((s) => s.brut)).toEqual([9, 14, 10, 0]);
+  });
+
+  it('une semaine en dessous de sa masse se retranche des autres semaines du mois', () => {
+    const { mois } = calculerHeuresSupp({
+      quota: 100,
+      semaines: [semaine(5, '2025-10-06', 40), semaine(6, '2025-10-13', 16)],
+    });
+    // +14 h puis −10 h : 4 h payées, pas 14.
+    expect(mois[0]).toMatchObject({ heures: 56, masse: 52, cumul: 4, brut: 4, paye: 4 });
   });
 
   it('plafonne le payé à 30 h par mois', () => {
@@ -98,11 +106,9 @@ describe('calculerHeuresSupp', () => {
       ],
     });
     expect(resultat.mois).toEqual([
-      { mois: '2025-10', heures: 140, objectif: 104, brut: 36, paye: 30, masse: 104, cumul: 36 },
+      { mois: '2025-10', heures: 140, objectif: 104, masse: 104, cumul: 36, brut: 36, paye: 30, nonPaye: 'plafondMois' },
     ]);
-    expect(resultat.semaines.map((s) => s.paye)).toEqual([9, 9, 9, 3]);
-    expect(resultat.semaines.map((s) => s.cumulMois)).toEqual([9, 18, 27, 30]);
-    expect(resultat.semaines.map((s) => s.nonPaye)).toEqual([null, null, null, 'plafondMois']);
+    expect(resultat.semaines.map((s) => s.restant)).toEqual([470, 470, 470, 470]);
   });
 
   it('un formateur à 36 h n’a d’HS que les semaines où un férié baisse le seuil', () => {
@@ -116,8 +122,8 @@ describe('calculerHeuresSupp', () => {
 
   it('un vacataire n’a aucune heure supplémentaire', () => {
     const resultat = calculerHeuresSupp({ quota: 0, mhs: null, semaines: [semaine(1, '2025-09-01', 40)] });
-    expect(resultat.semaines[0]).toMatchObject({ seuil: null, brut: 0, paye: 0, horsPlafond: 0 });
-    expect(resultat.totaux).toMatchObject({ heures: 40, objectif: 0, brut: 0 });
+    expect(resultat.semaines[0]).toMatchObject({ seuil: null, brut: 0 });
+    expect(resultat.totaux).toMatchObject({ heures: 40, objectif: 0, brut: 0, paye: 0 });
   });
 
   it('Cumul du mois = total réalisé − masse des semaines commencées', () => {
@@ -164,9 +170,9 @@ describe('calculerHeuresSupp', () => {
         semaine(10, '2025-11-03', 35),
       ],
     });
-    expect(resultat.semaines.map((s) => s.paye)).toEqual([9, 9, 2, 0]);
-    expect(resultat.semaines.map((s) => s.nonPaye)).toEqual([null, null, 'quota', 'quota']);
-    expect(resultat.semaines.map((s) => s.restant)).toEqual([11, 2, 0, 0]);
+    // Septembre : 105 h − 78 h = 27 h, dont 20 payées ; novembre : plus rien.
+    expect(resultat.mois.map((m) => [m.brut, m.paye, m.nonPaye])).toEqual([[27, 20, 'quota'], [9, 0, 'quota']]);
+    expect(resultat.semaines.map((s) => s.restant)).toEqual([0, 0, 0, 0]);
     expect(resultat.totaux).toMatchObject({ paye: 20, quota: 20, restant: 0, brut: 36 });
   });
 });

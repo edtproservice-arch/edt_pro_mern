@@ -36,6 +36,12 @@ export const demanderDocument = (type) => api.post('/api/v2/consultation/demande
  * La feuille CC/EFM — depuis une séance (`seanceId`, avec l'`epreuve` cochée, 2026-10-26)
  * ou, comme avant, pour des `groupes`.
  */
+/* L'en-tête d'une épreuve — contrôle continu ou EFM — depuis une séance, ou vierge (2026-10-26). */
+export const telechargerEnteteExamen = ({ format, ...demande }) =>
+  api.telecharger('/api/v2/consultation/documents/entete-examen', { format, ...demande }, {
+    nomParDefaut: `entete-${demande.type}.${format}`,
+  });
+
 export const exporterPresenceCcEfmConsultation = ({ format, ...demande }) =>
   api.telecharger('/api/v2/consultation/documents/presence-cc-efm', { format, ...demande }, {
     nomParDefaut: `feuille-presence-cc-efm.${format}`,

@@ -149,6 +149,34 @@ router.get(
   })
 );
 
+// Les PV de la page Documents, section Discipline — des groupes choisis, ou vierges (2026-10-26).
+router.post(
+  '/documents-pv-sanctions',
+  ENCADREMENT,
+  validate({
+    body: z.object({
+      langue: z.enum(['fr', 'ar']),
+      format: z.enum(['docx', 'pdf']),
+      vierge: z.boolean().optional(),
+      groupes: z.array(z.string().trim().min(1).max(100)).max(500).optional(),
+      matricules: z.array(z.string().trim().min(1).max(50)).max(5000).optional(),
+    }),
+  }),
+  route(async (req, res) => {
+    envoyerDocument(res, await pvSanctions.imprimerDocuments(req.etablissementId, req.anneeScolaire, req.body, req.utilisateur._id));
+  })
+);
+
+// Tous les PV en attente, un par page, dans un seul document (2026-10-26).
+router.post(
+  '/pv-sanctions',
+  ENCADREMENT,
+  validate({ body: z.object({ langue: z.enum(['fr', 'ar']), format: z.enum(['docx', 'pdf']) }) }),
+  route(async (req, res) => {
+    envoyerDocument(res, await pvSanctions.imprimerTous(req.etablissementId, req.anneeScolaire, req.body, req.utilisateur._id));
+  })
+);
+
 router.post(
   '/pv-sanctions/:matricule',
   ENCADREMENT,

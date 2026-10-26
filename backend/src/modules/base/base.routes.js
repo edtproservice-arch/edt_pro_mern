@@ -579,8 +579,8 @@ router.patch('/formateurs', exigerDroitPage('formateurs', 'modifier'), validate(
 });
 
 /*
- * Heures supplémentaires de chaque formateur (2026-10-17) — semaine par semaine, plafonnées
- * par mois et par le quota « affecté − statutaire ». Voir `heuresSupp.service.js`.
+ * Heures supplémentaires de chaque formateur (2026-10-17) — compensées sur le mois, plafonnées
+ * à 30 h par mois et par le quota « affecté − statutaire ». Vacataires exclus. Voir `heuresSupp.service.js`.
  */
 router.get('/formateurs/heures-supp', exigerDroitPage('formateurs', 'consulter'), async (req, res, next) => {
   try {

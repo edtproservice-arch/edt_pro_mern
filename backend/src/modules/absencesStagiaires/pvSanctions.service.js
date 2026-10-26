@@ -138,45 +138,147 @@ function aujourdhui(maintenant = new Date()) {
 export async function imprimer(etablissementId, anneeScolaire, matricule, { langue, format }, acteurId = null) {
   const [situation] = await situations(etablissementId, anneeScolaire, { matricule });
   if (!situation) throw notFound('Stagiaire introuvable', { code: 'STAGIAIRE_INCONNU' });
-  const { stagiaire, groupe, faits, sanction, points, palier } = situation;
+  const { stagiaire, sanction, palier } = situation;
   if (!typeDuPalier(palier) || !sanction) {
     throw badRequest('Ce stagiaire n’a pas de sanction d’assiduité à notifier par PV', { code: 'SANS_SANCTION_PV' });
   }
 
-  const etablissement = await Etablissement.findById(etablissementId).select('nom nomAbrege').lean();
-  const docx = await construireDocxPvSanctions([
-    {
-      langue,
-      palier,
-      etablissement: etablissement?.nom ?? '',
-      anneeScolaire,
-      date: aujourdhui(),
-      heures: faits.heuresNJ,
-      points,
-      // En arabe, le nom arabe de Konosys quand il existe ; sinon le nom latin.
-      nom: (langue === 'ar' && nomArabe(stagiaire)) || nomLatin(stagiaire),
-      matricule: stagiaire.matricule,
-      filiere: stagiaire.filiere ?? '',
-      niveau: String(stagiaire.niveau ?? '').trim().toUpperCase(),
-      anneeFormation: groupe ? anneeDuNomGroupe(groupe) : null,
-      groupe,
-    },
-  ]);
+  const etablissement = await Etablissement.findById(etablissementId).select('nom nomAbrege complexe').lean();
+  const docx = await construireDocxPvSanctions([donneesPv(situation, etablissement, anneeScolaire, langue)]);
   const tampon = format === 'pdf' ? await convertirDocxEnPdf(docx) : docx;
 
-  await PvSanction.findOneAndUpdate(
-    { etablissementId, anneeScolaire, matricule, palier },
-    { $set: { sanction: sanction.libelle, langue, imprimeLe: new Date(), imprimePar: acteurId } },
-    { upsert: true }
-  );
+  await tracer(etablissementId, anneeScolaire, [situation], langue, acteurId);
 
   const base = `PV_${sanction.libelle.replace(/[^\p{L}\p{N}]+/gu, '_')}_${nomLatin(stagiaire).replace(/[^\p{L}\p{N}]+/gu, '_')}`;
+  return { tampon, nomFichier: `${base}${langue === 'ar' ? '_AR' : ''}.${format}`, contentType: typeDeContenu(format) };
+}
+
+/**
+ * ═══ TOUS LES PV EN ATTENTE, D'UN COUP (2026-10-26, demande du porteur) ═══
+ * Ceux de la liste (`lister`, sans les déjà imprimés), un par page, dans UN seul document —
+ * rangés par groupe puis par nom, pour la distribution. Tous sortent ensuite de la liste.
+ */
+export async function imprimerTous(etablissementId, anneeScolaire, { langue, format }, acteurId = null) {
+  const concernes = (await situations(etablissementId, anneeScolaire)).filter(
+    (s) => s.sanction && typeDuPalier(s.palier)
+  );
+  const deja = await PvSanction.find({
+    etablissementId,
+    anneeScolaire,
+    matricule: { $in: concernes.map((s) => s.stagiaire.matricule) },
+  })
+    .select('matricule palier')
+    .lean();
+  const sortis = new Set(deja.map((pv) => `${pv.matricule}|${pv.palier}`));
+  const aImprimer = concernes
+    .filter((s) => !sortis.has(`${s.stagiaire.matricule}|${s.palier}`))
+    .sort((a, b) => a.groupe.localeCompare(b.groupe, 'fr') || nomLatin(a.stagiaire).localeCompare(nomLatin(b.stagiaire), 'fr'));
+  if (aImprimer.length === 0) throw badRequest('Aucun PV de sanction en attente', { code: 'AUCUN_PV_EN_ATTENTE' });
+
+  const etablissement = await Etablissement.findById(etablissementId).select('nom nomAbrege complexe').lean();
+  const docx = await construireDocxPvSanctions(aImprimer.map((s) => donneesPv(s, etablissement, anneeScolaire, langue)));
+  const tampon = format === 'pdf' ? await convertirDocxEnPdf(docx) : docx;
+
+  await tracer(etablissementId, anneeScolaire, aImprimer, langue, acteurId);
+
   return {
     tampon,
-    nomFichier: `${base}${langue === 'ar' ? '_AR' : ''}.${format}`,
-    contentType:
-      format === 'pdf'
-        ? 'application/pdf'
-        : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    nomFichier: `PV_sanctions_${aImprimer.length}${langue === 'ar' ? '_AR' : ''}.${format}`,
+    contentType: typeDeContenu(format),
   };
+}
+
+/**
+ * ═══ LES PV DE SANCTION DE LA PAGE DOCUMENTS (2026-10-26, demande du porteur) ═══
+ * Section « Discipline » : les PV des stagiaires SANCTIONNÉS des groupes choisis (ou des seuls
+ * stagiaires cochés), imprimés ou non — on y réimprime aussi. Les autres sont ignorés : un
+ * stagiaire sans sanction d'assiduité n'a pas de PV.
+ * VIERGE : un exemplaire de chaque PV — mise en garde, avertissement, blâme —, sans nom ni
+ * case cochée, à remplir à la main. Aucune trace : personne n'est notifié.
+ */
+export async function imprimerDocuments(
+  etablissementId,
+  anneeScolaire,
+  { langue, format, vierge = false, groupes = [], matricules = [] },
+  acteurId = null
+) {
+  const etablissement = await Etablissement.findById(etablissementId).select('nom nomAbrege complexe').lean();
+  const enTete = {
+    complexe: etablissement?.complexe ?? '',
+    efp: etablissement?.nomAbrege || etablissement?.nom || '',
+    anneeScolaire,
+  };
+
+  if (vierge) {
+    const docx = await construireDocxPvSanctions([1, 3, 5].map((palier) => ({ ...enTete, langue, palier, vierge: true })));
+    return {
+      tampon: format === 'pdf' ? await convertirDocxEnPdf(docx) : docx,
+      nomFichier: `PV_sanctions_vierges${langue === 'ar' ? '_AR' : ''}.${format}`,
+      contentType: typeDeContenu(format),
+    };
+  }
+
+  const choisis = new Set(matricules);
+  const dansLesGroupes = new Set(groupes);
+  const aImprimer = (await situations(etablissementId, anneeScolaire))
+    .filter((s) => s.sanction && typeDuPalier(s.palier))
+    .filter(({ stagiaire, groupe }) =>
+      choisis.size > 0
+        ? choisis.has(stagiaire.matricule)
+        : dansLesGroupes.has(groupe) || (stagiaire.groupes ?? []).some((g) => dansLesGroupes.has(g))
+    )
+    .sort((a, b) => a.groupe.localeCompare(b.groupe, 'fr') || nomLatin(a.stagiaire).localeCompare(nomLatin(b.stagiaire), 'fr'));
+  if (aImprimer.length === 0) {
+    throw badRequest('Aucun stagiaire sanctionné (mise en garde, avertissement ou blâme) dans cette sélection', {
+      code: 'AUCUN_PV_SANCTION',
+    });
+  }
+
+  const docx = await construireDocxPvSanctions(aImprimer.map((s) => donneesPv(s, etablissement, anneeScolaire, langue)));
+  const tampon = format === 'pdf' ? await convertirDocxEnPdf(docx) : docx;
+  await tracer(etablissementId, anneeScolaire, aImprimer, langue, acteurId);
+  return {
+    tampon,
+    nomFichier: `PV_sanctions_${aImprimer.length}${langue === 'ar' ? '_AR' : ''}.${format}`,
+    contentType: typeDeContenu(format),
+  };
+}
+
+const typeDeContenu = (format) =>
+  format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+/** Ce que la page d'un PV affiche, d'après la situation d'un stagiaire. */
+function donneesPv({ stagiaire, groupe, faits, points, palier }, etablissement, anneeScolaire, langue) {
+  return {
+    langue,
+    palier,
+    // « CFP : … / EFP : … » — l'ouverture des autres documents (le nom abrégé, comme eux).
+    complexe: etablissement?.complexe ?? '',
+    efp: etablissement?.nomAbrege || etablissement?.nom || '',
+    anneeScolaire,
+    date: aujourdhui(),
+    heures: faits.heuresNJ,
+    points,
+    // En arabe, le nom arabe de Konosys quand il existe ; sinon le nom latin.
+    nom: (langue === 'ar' && nomArabe(stagiaire)) || nomLatin(stagiaire),
+    matricule: stagiaire.matricule,
+    filiere: stagiaire.filiere ?? '',
+    niveau: String(stagiaire.niveau ?? '').trim().toUpperCase(),
+    anneeFormation: groupe ? anneeDuNomGroupe(groupe) : null,
+    groupe,
+  };
+}
+
+/** La trace « PV sorti » — écrite APRÈS la construction du document, qui peut échouer. */
+async function tracer(etablissementId, anneeScolaire, situationsImprimees, langue, acteurId) {
+  const imprimeLe = new Date();
+  await PvSanction.bulkWrite(
+    situationsImprimees.map(({ stagiaire, palier, sanction }) => ({
+      updateOne: {
+        filter: { etablissementId, anneeScolaire, matricule: stagiaire.matricule, palier },
+        update: { $set: { sanction: sanction.libelle, langue, imprimeLe, imprimePar: acteurId } },
+        upsert: true,
+      },
+    }))
+  );
 }

@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import JSZip from 'jszip';
 import { celluleTexteSimple, echapperXml } from './xmlCellules.js';
 import { chargerCanevasTampon } from './canevasCache.js';
-import { dateFr, nomFichierEmargement } from './exportEmargementTexte.js';
+import { dateFr, nomFichierEmargement, libelleSynchrone } from './exportEmargementTexte.js';
 import { assemblerLigne, extraireLignes, extraireTableaux, remplacerBalise } from './xmlTableaux.js';
 
 /**
@@ -55,7 +55,8 @@ function extraireTableau(xml) {
  * pour ce groupe × module), la cellule reste nue — un pourcentage inventé
  * mentirait plus qu'une case vide.
  */
-function celluleTaux(tcModele, { taux, prevu, pose, niveau }) {
+function celluleTaux(tcModele, ligne) {
+  const { taux, prevu, pose, niveau } = ligne;
   if (taux === null || taux === undefined) {
     const sansFond = tcModele.replace(/<w:shd[^/]*\/>/, '');
     const paragraphes = sansFond.match(/<w:p\b[\s\S]*?<\/w:p>/g) ?? [];
@@ -74,9 +75,13 @@ function celluleTaux(tcModele, { taux, prevu, pose, niveau }) {
   const paragraphes = tc.match(/<w:p\b[\s\S]*?<\/w:p>/g);
   if (!paragraphes || paragraphes.length < 2) return tc;
 
-  return tc
+  const rempli = tc
     .replace(paragraphes[0], construireParagraphe(`${taux}%`))
     .replace(paragraphes[1], construireParagraphe(`(${pose}h / ${prevu}h)`));
+
+  // Le taux synchrone, sur sa propre ligne, quand le module en a une masse (2026-10-26).
+  const synchrone = libelleSynchrone(ligne);
+  return synchrone ? rempli.replace(/<\/w:tc>\s*$/, `${construireParagraphe(synchrone)}</w:tc>`) : rempli;
 }
 
 /** Une ligne de données — un bloc de cours d'un formateur. */

@@ -24,7 +24,14 @@ import {
   supprimerAbsence,
   telechargerBillets,
 } from './api';
-import { BoutonImprimerPv, ChoixLanguePv, useImpressionPv, useLanguePv } from './ImpressionPv';
+import {
+  BoutonImprimerPv,
+  BoutonImprimerTousPv,
+  ChoixLanguePv,
+  useImpressionPv,
+  useImpressionTousPv,
+  useLanguePv,
+} from './ImpressionPv';
 import JustifierPeriode from './JustifierPeriode';
 import ListeGroupes from './ListeGroupes';
 import { grouperParGroupe } from './regroupementStagiaires';
@@ -112,6 +119,7 @@ function TableauRegistre({ filtre, encadrement, compact = false }) {
    */
   const [langue, choisirLangue] = useLanguePv();
   const impression = useImpressionPv(langue);
+  const impressionTous = useImpressionTousPv(langue);
   const pv = useQuery({
     queryKey: ['absences-stagiaires', 'pv-sanctions', false],
     queryFn: () => chargerPvSanctions(false),
@@ -139,6 +147,7 @@ function TableauRegistre({ filtre, encadrement, compact = false }) {
             <div className="mr-auto flex items-center gap-1.5">
               <span className="text-xs text-muted-foreground">PV de sanction en</span>
               <ChoixLanguePv langue={langue} onChoisir={choisirLangue} court />
+              <BoutonImprimerTousPv impression={impressionTous} nombre={pvAImprimer.size} />
             </div>
           )}
           {/* Justifier une période d'un coup (2026-10-25) — dans la fiche, pour le seul stagiaire affiché. */}

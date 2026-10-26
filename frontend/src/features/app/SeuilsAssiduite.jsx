@@ -8,8 +8,10 @@ import BadgeSanction from '@/features/absences/stagiaires/BadgeSanction';
 import { chargerPvSanctions } from '@/features/absences/stagiaires/api';
 import {
   BoutonImprimerPvCompact,
+  BoutonImprimerTousPv,
   ChoixLanguePv,
   useImpressionPv,
+  useImpressionTousPv,
   useLanguePv,
 } from '@/features/absences/stagiaires/ImpressionPv';
 import { nombre } from '@/lib/nombres';
@@ -41,6 +43,7 @@ const PALIERS_PV = [1, 2, 3, 4, 5];
 export default function SeuilsAssiduite({ stagiaires }) {
   const [langue, choisirLangue] = useLanguePv();
   const impression = useImpressionPv(langue);
+  const impressionTous = useImpressionTousPv(langue);
   // Les PV déjà sortis, palier par palier — relus après chaque impression.
   const pv = useQuery({
     queryKey: ['absences-stagiaires', 'pv-sanctions', true],
@@ -78,6 +81,10 @@ export default function SeuilsAssiduite({ stagiaires }) {
             <span className="text-[0.65rem] text-muted-foreground">PV en</span>
             <ChoixLanguePv langue={langue} onChoisir={choisirLangue} court />
           </div>
+          <BoutonImprimerTousPv
+            impression={impressionTous}
+            nombre={(pv.data?.stagiaires ?? []).filter((s) => !s.imprime).length}
+          />
           <Link to="/app/absences" className="flex items-center gap-1 text-xs text-primary hover:underline">
             Voir le registre
             <ArrowUpRight className="size-3" />

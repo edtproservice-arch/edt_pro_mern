@@ -1727,7 +1727,8 @@ describe('GET/POST /absences-stagiaires/pv-sanctions — les PV de sanction', ()
     request(app).get(`/api/v2/absences-stagiaires/pv-sanctions${imprimes ? '?imprimes=true' : ''}`).set('Cookie', cookie);
   const imprimer = (matricule, corps, cookie = cookies.directeur) =>
     request(app)
-      .post(`/api/v2/absences-stagiaires/pv-sanctions/${matricule}`)
+      // Sans matricule : tous les PV en attente, d'un coup.
+      .post(`/api/v2/absences-stagiaires/pv-sanctions${matricule ? `/${matricule}` : ''}`)
       .set('Cookie', cookie)
       .send(corps)
       .buffer(true)
@@ -1802,6 +1803,54 @@ describe('GET/POST /absences-stagiaires/pv-sanctions — les PV de sanction', ()
     expect(texte).toContain('BENANI Sara');
     expect(texte).toContain('Le Directeur de l’établissement');
     expect(texte).toContain('15 heure(s)');
+  });
+
+  it('imprime tous les PV en attente dans un seul document, puis plus rien', async () => {
+    await faits('CEF001', [{}, {}]); // 1ère mise en garde
+    await faits('CEF002', [{}, {}, {}, {}, {}, {}]); // 1er avertissement
+
+    const tous = await imprimer('', { langue: 'fr', format: 'docx' });
+    expect(tous.status).toBe(200);
+    const texte = await texteDuDocx(tous.body);
+    expect(texte).toContain('MISE EN GARDE');
+    expect(texte).toContain('AVERTISSEMENT');
+    expect(texte).toContain('BENANI Sara');
+
+    expect((await liste()).body.stagiaires).toHaveLength(0);
+    const rien = await imprimer('', { langue: 'fr', format: 'docx' });
+    expect(rien.status).toBe(400);
+  });
+
+  it('page Documents : les PV des sanctionnés des groupes choisis, ou vierges', async () => {
+    await faits('CEF001', [{}, {}]); // 1ère mise en garde — CEF002, sans sanction, est ignoré
+    const documents = (corps) =>
+      request(app)
+        .post('/api/v2/absences-stagiaires/documents-pv-sanctions')
+        .set('Cookie', cookies.directeur)
+        .send(corps)
+        .buffer(true)
+        .parse((res, callback) => {
+          const morceaux = [];
+          res.on('data', (m) => morceaux.push(m));
+          res.on('end', () => callback(null, Buffer.concat(morceaux)));
+        });
+
+    const groupe = await documents({ langue: 'fr', format: 'docx', groupes: ['GM101'] });
+    expect(groupe.status).toBe(200);
+    const texte = await texteDuDocx(groupe.body);
+    expect(texte).toContain('MISE EN GARDE');
+    expect(texte).toContain('CEF001');
+    expect(texte).not.toContain('BENANI');
+
+    const vierges = await documents({ langue: 'ar', format: 'docx', vierge: true });
+    expect(vierges.status).toBe(200);
+    const texteVierge = await texteDuDocx(vierges.body);
+    for (const titre of ['تنبيه', 'إنذار', 'توبيخ']) expect(texteVierge).toContain(titre);
+    expect(texteVierge).not.toContain('☒');
+    expect(texteVierge).toContain('……');
+
+    // Aucun sanctionné parmi les stagiaires cochés : refusé.
+    expect((await documents({ langue: 'fr', format: 'docx', groupes: ['GM101'], matricules: ['CEF002'] })).status).toBe(400);
   });
 
   it('refuse un stagiaire sans sanction, et reste fermé au formateur', async () => {

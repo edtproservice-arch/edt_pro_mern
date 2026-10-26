@@ -5,6 +5,7 @@ import PageDocumentsStagiaire from './PageDocumentsStagiaire';
 import Alerte from '@/components/common/Alerte';
 import CadreReglage from '@/features/parametres/CadreReglage';
 import { chargerDocumentsConsultation } from './api';
+import DocumentEnteteExamen from './DocumentEnteteExamen';
 import DocumentPresenceCcEfm from './DocumentPresenceCcEfm';
 import DocumentReclamation from './DocumentReclamation';
 
@@ -44,6 +45,9 @@ function PageDocumentsFormateur() {
       {/* Des feuilles de largeur fixe, côte à côte — comme la page Documents du directeur (2026-10-26). */}
       <div className="flex flex-wrap gap-4">
         <DocumentPresenceCcEfm />
+        {/* L'en-tête du sujet d'une épreuve (2026-10-26) : le formateur n'écrit plus que ses questions. */}
+        <DocumentEnteteExamen type="cc" />
+        <DocumentEnteteExamen type="efm" />
         <DocumentReclamation />
       </div>
     </CadreReglage>

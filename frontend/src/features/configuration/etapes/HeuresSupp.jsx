@@ -544,9 +544,9 @@ function SyntheseAnnuelle({ formateurs, moisTravailles }) {
 
 /**
  * Le TH.SUP d'une semaine, NÉGATIF compris (2026-10-20, demande du porteur) : l'écart entre les
- * heures réalisées et le seuil de la semaine. Positif, ce sont les heures supp (plafonnées à 35 h) ;
- * négatif, ce qui manque pour atteindre le seuil. Ce n'est qu'un affichage : un écart négatif ne
- * retire rien aux heures supp des autres semaines.
+ * heures réalisées et le seuil de la semaine. Positif, ce sont les heures supp (sans plafond depuis
+ * le 2026-10-26) ; négatif, ce qui manque pour atteindre le seuil. Le payé du mois, lui, part du
+ * Cumul TH.SUP : un manque s'y retranche des semaines au-dessus.
  *
  * @returns {number|null}  `null` : pas d'écart à montrer — vacataire, ou semaine pas encore commencée
  */

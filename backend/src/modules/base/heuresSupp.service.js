@@ -221,7 +221,7 @@ export async function heuresSupplementaires(
         ? calcul.semaines
         : calcul.semaines
             .filter((semaine) => semaine.heures > 0)
-            .map(({ numero, heures: h, brut, paye }) => ({ numero, heures: h, brut, paye }))
+            .map(({ numero, heures: h, brut }) => ({ numero, heures: h, brut }))
       ).map((semaine) =>
         parSemaineAilleurs.has(semaine.numero)
           ? {
@@ -237,7 +237,14 @@ export async function heuresSupplementaires(
 
   formateurs.sort((a, b) => b.totaux.paye - a.totaux.paye || a.nom.localeCompare(b.nom, 'fr'));
 
-  return { anneeScolaire, realiseAu: maintenant, semaines: semainesComptees, formateurs };
+  // Les vacataires n'ont pas d'heures supplémentaires : ni l'écran ni l'export ne les montrent
+  // (2026-10-26, demande du porteur).
+  return {
+    anneeScolaire,
+    realiseAu: maintenant,
+    semaines: semainesComptees,
+    formateurs: formateurs.filter((formateur) => formateur.statut !== 'vacataire'),
+  };
 }
 
 /** Séances terminées → identifiant du formateur → numéro de semaine → heures. */

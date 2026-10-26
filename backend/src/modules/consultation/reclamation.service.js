@@ -1,5 +1,5 @@
 import { ROLES } from 'shared/constants';
-import { enJour, separerFusion } from 'shared/domain';
+import { anneeDuNomGroupe, enJour, separerFusion } from 'shared/domain';
 import { Base } from '../../models/Base.js';
 import { Etablissement } from '../../models/Etablissement.js';
 import { cleGroupeModule, intitulesParGroupe } from '../../lib/intitulesModules.js';
@@ -9,6 +9,8 @@ import { User } from '../../models/User.js';
 import { badRequest, forbidden, notFound } from '../../lib/httpError.js';
 import * as horairesService from '../horaires/horaires.service.js';
 import { construireFeuillePresence } from '../absencesStagiaires/exportFeuillePresence.service.js';
+import { construireDocxEnteteExamen } from '../absencesStagiaires/exportEnteteExamenDocx.js';
+import { convertirDocxEnPdf } from '../seances/libreOffice.js';
 import { envoyer as envoyerMessage } from '../messagerie/messagerie.service.js';
 
 /**
@@ -195,6 +197,65 @@ export async function feuilleCcEfmDeSeance(etablissementId, anneeScolaire, matri
       fin: seance.fin,
     },
   });
+}
+
+/**
+ * ═══ L'EN-TÊTE D'UNE ÉPREUVE, DEPUIS UNE SÉANCE (2026-10-26, demande du porteur) ═══
+ * Contrôle continu ou EFM : la séance — la sienne, vérifiée — donne la filière et le niveau
+ * (ceux des stagiaires du groupe), l'année, le module, son intitulé et la date ; le formateur
+ * choisit le reste (n° du contrôle ou portée de l'EFM, épreuve, durée, barème). Sans séance :
+ * l'exemplaire VIERGE, seul l'établissement écrit. Nom, groupe et V restent toujours vides —
+ * voir `exportEnteteExamenDocx.js`.
+ *
+ * @param {string | null} matricule — le formateur connecté, ou `null` pour l'encadrement
+ */
+export async function enteteExamenDeSeance(
+  etablissementId,
+  anneeScolaire,
+  matricule,
+  { format, type, seanceId = null, numero, portee, epreuve, duree, bareme }
+) {
+  const etablissement = await Etablissement.findById(etablissementId).select('nom nomAbrege complexe region').lean();
+  const contenu = {
+    type,
+    numero,
+    portee,
+    epreuve,
+    duree,
+    bareme,
+    anneeScolaire,
+    complexe: etablissement?.complexe ?? '',
+    efp: etablissement?.nomAbrege || etablissement?.nom || '',
+    region: etablissement?.region ?? '',
+  };
+
+  let groupe = '';
+  if (seanceId) {
+    const seance = await seanceAvecIntitule(etablissementId, anneeScolaire, matricule, seanceId);
+    // La filière et le niveau : ceux des stagiaires du groupe (d'un cours fusionné, le premier qui en a).
+    const stagiaire = await Stagiaire.findOne({ etablissementId, anneeScolaire, groupes: { $in: seance.groupes } })
+      .select('filiere niveau')
+      .lean();
+    groupe = seance.groupes[0] ?? '';
+    Object.assign(contenu, {
+      filiere: stagiaire?.filiere ?? '',
+      niveau: String(stagiaire?.niveau ?? '').trim().toUpperCase(),
+      annee: groupe ? anneeDuNomGroupe(groupe) : null,
+      module: seance.module,
+      intitule: seance.intitule,
+      date: seance.dateFr,
+    });
+  }
+
+  const docx = await construireDocxEnteteExamen(contenu);
+  const titre = type === 'efm' ? 'EFM' : `Controle${numero ? `_${numero}` : ''}`;
+  const suite = seanceId ? [groupe, contenu.module].filter(Boolean).join('_') : 'vierge';
+  return {
+    tampon: format === 'pdf' ? await convertirDocxEnPdf(docx) : docx,
+    nomFichier: `${titre}_${suite}`.replace(/[^\p{L}\p{N}]+/gu, '_') + `.${format}`,
+    contentType:
+      format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  };
 }
 
 /**

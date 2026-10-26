@@ -12,7 +12,7 @@ import { heuresSupplementaires } from './heuresSupp.service.js';
  *   Mle | Nom et Prénom | MHS | (TH.R, TH.SUP) par semaine | Total réalisé | Cumul | Plafond |
  *   Quota HS | Reste du quota
  *
- * TH.R = heures réalisées ; TH.SUP = heures supplémentaires réalisées (entre le seuil et 35 h) ;
+ * TH.R = heures réalisées ; TH.SUP = heures réalisées au-delà du seuil (sans plafond depuis le 2026-10-26) ;
  * Cumul = total réalisé − masse horaire du mois (26 h par semaine commencée, − 4,334 h par jour
  * férié — règle du porteur du 2026-10-20 ; négatif en rouge) ; Plafond = ce qui est payé (30 h par mois au plus, et dans la
  * limite du quota) ; Quota HS = le quota de l'année ; Reste du quota = ce qu'il reste à payer sur
@@ -267,8 +267,8 @@ function ajouterSyntheseAnnuelle(classeur, { parMatricule, moisTravailles, etabl
 
   feuille.mergeCells(3, 1, 3, derniere);
   feuille.getCell(3, 1).value =
-    'Quota HS = masse affectée − masse statutaire · MHS : 26 h (910 h), 36 h (1260 h), « Vac. » : ' +
-    'vacataire, sans HS · ' + mentionRealise(realiseAu) + MENTION_MUTUALISE;
+    'Quota HS = masse affectée − masse statutaire · MHS : 26 h (910 h), 36 h (1260 h) · vacataires ' +
+    'non listés (sans HS) · ' + mentionRealise(realiseAu) + MENTION_MUTUALISE;
   feuille.getCell(3, 1).font = { name: POLICE, italic: true, size: 9, color: { argb: COULEURS.gris } };
 
   /* ─── En-tête du tableau : deux lignes ────────────────────────────── */

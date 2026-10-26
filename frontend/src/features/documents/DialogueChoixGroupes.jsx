@@ -6,6 +6,7 @@ import BoutonFormat from '@/components/common/BoutonFormat';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ChoixSujets, FiltreGroupes } from '@/features/edition/FiltresDetaillee';
 import { chargerContexte, chargerSemaines } from '@/features/emploi/api';
@@ -30,15 +31,17 @@ import { empreinte, useEtatPartage } from '@/features/guidage/useEtatPartage';
  *   document concerne (la convocation à l'EFF : 2ᵉ et 3ᵉ année, 2026-10-11) ;
  *   les autres ne sont pas proposés.
  * @param {string} [videGroupes] — ce que dit la fenêtre quand aucun groupe n'est admis.
- * @param {Array<{nom, libelle, type?, defaut?, placeholder?}>} [champs] — des
+ * @param {Array<{nom, libelle, type?, defaut?, placeholder?, options?, aussiVierge?}>} [champs] — des
  *   valeurs communes à tous les stagiaires (date, horaire de l'épreuve…),
- *   rendues à `telecharger` dans `valeurs`.
+ *   rendues à `telecharger` dans `valeurs`. `type: 'choix'` + `options` [{valeur, libelle}] : des
+ *   pastilles, une seule retenue (la langue d'un PV, 2026-10-26). `aussiVierge` : le champ reste
+ *   en « Imprimer vierge », et ses valeurs vont aussi à `vierge(format, valeurs)`.
  * @param {boolean} [parStagiaire] — un document PAR STAGIAIRE (attestation,
  *   convention, carte…) : une fois des groupes cochés, leurs stagiaires se
  *   choisissent aussi (2026-10-17, demande du porteur : « un filtre par
  *   stagiaire si je sélectionne le groupe, sauf les documents liste »).
  *   Aucun coché = tous ; rendus à `telecharger` dans `matricules`.
- * @param {(format: string) => Promise} [vierge] — « Imprimer vierge » (2026-10-18,
+ * @param {(format: string, valeurs?: object) => Promise} [vierge] — « Imprimer vierge » (2026-10-18,
  *   demande du porteur : l'option pour TOUS les documents) : cochée, la case
  *   télécharge le document VIDE — aucun groupe, aucun stagiaire, seul
  *   l'établissement écrit ; le choix des groupes, des stagiaires et des champs
@@ -152,7 +155,7 @@ export default function DialogueChoixGroupes({
   const telechargement = useMutation({
     mutationFn: (format) =>
       enVierge && vierge
-        ? vierge(format)
+        ? vierge(format, champs ? valeurs : undefined)
         : telecharger({
             format,
             groupes: retenus,
@@ -191,6 +194,15 @@ export default function DialogueChoixGroupes({
                   </span>
                 </span>
               </label>
+            )}
+
+            {/* Les champs qui valent aussi pour un exemplaire vierge — la langue d'un PV (2026-10-26). */}
+            {champs?.some((champ) => champ.aussiVierge) && (
+              <ChampsDocument
+                champs={champs.filter((champ) => champ.aussiVierge)}
+                valeurs={valeurs}
+                setValeurs={setValeurs}
+              />
             )}
 
             {!enVierge && (
@@ -236,40 +248,11 @@ export default function DialogueChoixGroupes({
                 )}
 
                 {champs && (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {champs.map((champ) =>
-                      champ.type === 'checkbox' ? (
-                        // Une option à cocher (2026-10-11 : renouveler les QR des cartes de stagiaire).
-                        <label key={champ.nom} className="flex items-start gap-2 text-sm sm:col-span-2">
-                          <Checkbox
-                            className="mt-0.5"
-                            checked={Boolean(valeurs[champ.nom])}
-                            onCheckedChange={(coche) => setValeurs((actuelles) => ({ ...actuelles, [champ.nom]: coche === true }))}
-                          />
-                          <span>
-                            {champ.libelle}
-                            {champ.aide && <span className="block text-xs text-muted-foreground">{champ.aide}</span>}
-                          </span>
-                        </label>
-                      ) : (
-                      <div key={champ.nom} className={champ.large ? 'space-y-1.5 sm:col-span-2' : 'space-y-1.5'}>
-                        <Label htmlFor={`champ-${champ.nom}`} className="text-xs font-medium text-muted-foreground">
-                          {champ.libelle}
-                        </Label>
-                        <Input
-                          id={`champ-${champ.nom}`}
-                          type={champ.type ?? 'text'}
-                          value={valeurs[champ.nom] ?? ''}
-                          placeholder={champ.placeholder}
-                          className="h-9"
-                          onChange={(evenement) =>
-                            setValeurs((actuelles) => ({ ...actuelles, [champ.nom]: evenement.target.value }))
-                          }
-                        />
-                      </div>
-                      )
-                    )}
-                  </div>
+                  <ChampsDocument
+                    champs={champs.filter((champ) => !champ.aussiVierge)}
+                    valeurs={valeurs}
+                    setValeurs={setValeurs}
+                  />
                 )}
 
                 {avecSemaine && (
@@ -303,5 +286,72 @@ export default function DialogueChoixGroupes({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** Les champs saisis dans la fenêtre : texte, date, heure, case à cocher ou choix en pastilles. */
+function ChampsDocument({ champs, valeurs, setValeurs }) {
+  if (champs.length === 0) return null;
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {champs.map((champ) =>
+        champ.type === 'choix' ? (
+          // Une valeur parmi quelques-unes, en pastilles (2026-10-26 : la langue d'un PV).
+          <div key={champ.nom} className="space-y-1.5 sm:col-span-2">
+            <p className="text-xs font-medium text-muted-foreground">{champ.libelle}</p>
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label={champ.libelle}>
+              {champ.options.map((option) => {
+                const actif = (valeurs[champ.nom] ?? champ.defaut) === option.valeur;
+                return (
+                  <button
+                    key={option.valeur}
+                    type="button"
+                    aria-pressed={actif}
+                    onClick={() => setValeurs((actuelles) => ({ ...actuelles, [champ.nom]: option.valeur }))}
+                    className={cn(
+                      'rounded-full border px-3.5 py-1 text-xs font-medium transition-colors',
+                      actif
+                        ? 'border-primary/30 bg-primary/10 text-primary'
+                        : 'border-input text-muted-foreground hover:border-primary/30 hover:text-primary',
+                    )}
+                  >
+                    {option.libelle}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : champ.type === 'checkbox' ? (
+          // Une option à cocher (2026-10-11 : renouveler les QR des cartes de stagiaire).
+          <label key={champ.nom} className="flex items-start gap-2 text-sm sm:col-span-2">
+            <Checkbox
+              className="mt-0.5"
+              checked={Boolean(valeurs[champ.nom])}
+              onCheckedChange={(coche) => setValeurs((actuelles) => ({ ...actuelles, [champ.nom]: coche === true }))}
+            />
+            <span>
+              {champ.libelle}
+              {champ.aide && <span className="block text-xs text-muted-foreground">{champ.aide}</span>}
+            </span>
+          </label>
+        ) : (
+          <div key={champ.nom} className={champ.large ? 'space-y-1.5 sm:col-span-2' : 'space-y-1.5'}>
+            <Label htmlFor={`champ-${champ.nom}`} className="text-xs font-medium text-muted-foreground">
+              {champ.libelle}
+            </Label>
+            <Input
+              id={`champ-${champ.nom}`}
+              type={champ.type ?? 'text'}
+              value={valeurs[champ.nom] ?? ''}
+              placeholder={champ.placeholder}
+              className="h-9"
+              onChange={(evenement) =>
+                setValeurs((actuelles) => ({ ...actuelles, [champ.nom]: evenement.target.value }))
+              }
+            />
+          </div>
+        ),
+      )}
+    </div>
   );
 }

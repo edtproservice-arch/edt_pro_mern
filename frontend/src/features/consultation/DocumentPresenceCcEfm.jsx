@@ -165,7 +165,7 @@ export default function DocumentPresenceCcEfm({ direction = false }) {
  * « Mon emploi du temps ». `facultatif` : un second clic sur la pastille choisie
  * la décoche, et la case reste vide sur la feuille.
  */
-function Choix({ libelle, options, valeur, onChanger, facultatif = false }) {
+export function Choix({ libelle, options, valeur, onChanger, facultatif = false }) {
   return (
     <div className="space-y-1.5">
       <Label>

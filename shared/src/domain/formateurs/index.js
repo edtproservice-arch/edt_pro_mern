@@ -18,7 +18,6 @@
 export { nomBase, prenom, decouper } from './nomBase.js';
 export { resoudreHomonymes } from './homonymes.js';
 export {
-  PLAFOND_HEURES_SUPP_SEMAINE,
   MOIS_HORS_HEURES_SUPP,
   PLAFOND_HEURES_SUPP_MOIS,
   REGIMES_STATUTAIRES,

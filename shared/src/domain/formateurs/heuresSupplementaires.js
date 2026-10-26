@@ -4,14 +4,15 @@
  * ═══ LA RÈGLE ═══
  *  1. Le QUOTA annuel = masse AFFECTÉE − masse STATUTAIRE. Un formateur à 1000 h
  *     affectées pour 910 h statutaires a 90 h supplémentaires à payer, pas plus.
- *  2. Chaque SEMAINE, seules comptent les heures situées ENTRE un seuil et 35 h :
- *     au-delà de 35 h, rien n'est compté. Le seuil est la masse HEBDOMADAIRE
+ *  2. Chaque SEMAINE, comptent les heures AU-DELÀ d'un seuil — sans plafond depuis le
+ *     2026-10-26 (les 35 h ont été levées). Le seuil est la masse HEBDOMADAIRE
  *     statutaire (MHS) — 26 h pour 910 h annuelles, 36 h pour 1260 h — et descend
  *     avec les jours fermés (fériés, vacances) de la semaine : −6 h pour le premier,
  *     −5 h pour chacun des suivants — 26, 20, 15, 10, 5, 0.
  *  2 bis. Toute AUTRE masse annuelle est celle d'un VACATAIRE : pas d'heures
  *     supplémentaires (précision du porteur, 2026-10-17).
- *  3. Chaque MOIS, le payé est plafonné à 30 h.
+ *  3. Chaque MOIS, les semaines en dessous de leur masse se retranchent des autres (le Cumul
+ *     TH.SUP) ; le payé est ce Cumul s'il est positif, plafonné à 30 h.
  *  4. Une fois le quota épuisé, plus rien n'est compté, même une semaine chargée.
  *
  * ⚠️ UNE SEMAINE APPARTIENT AU MOIS DE SON JEUDI — celui qui porte la majorité de
@@ -26,7 +27,6 @@ export const SEUIL_HEURES_SUPP = 26;
 
 /** Masse annuelle statutaire → masse hebdomadaire (MHS). Les seules qui ouvrent droit aux HS. */
 export const REGIMES_STATUTAIRES = Object.freeze({ 910: 26, 1260: 36 });
-export const PLAFOND_HEURES_SUPP_SEMAINE = 35;
 export const PLAFOND_HEURES_SUPP_MOIS = 30;
 
 /**
@@ -118,9 +118,9 @@ export function quotaHeuresSupp(affecte, statutaire) {
  *   (« AAAA-MM-JJ ») : une semaine qui commence après ce jour n'entre pas dans la masse du mois —
  *   elle n'a pas encore eu lieu, on ne la compte pas comme un manque.
  * @returns {{
- *   semaines: Array<{numero, lundi, mois, seuil, plafond, heures, brut, paye, cumulMois,
- *     restant, horsPlafond, nonPaye: 'quota'|'plafondMois'|null}>,
- *   mois: Array<{mois, heures, objectif, brut, paye, masse, cumul}>,
+ *   semaines: Array<{numero, lundi, mois, seuil, heures, brut, restant}>,
+ *   mois: Array<{mois, heures, objectif, masse, cumul, brut, paye,
+ *     nonPaye: 'quota'|'plafondMois'|null}>,
  *   totaux: {heures, objectif, brut, paye, quota, restant},
  * }}
  */
@@ -128,7 +128,6 @@ export function calculerHeuresSupp({ semaines = [], quota = 0, mhs = SEUIL_HEURE
   const eligible = mhs !== null && mhs !== undefined;
   let restant = Math.max(0, Number(quota) || 0);
   const parMois = new Map();
-  const detail = [];
 
   for (const semaine of [...semaines].sort((a, b) => a.lundi.localeCompare(b.lundi))) {
     const mois = moisDeLaSemaine(semaine.lundi);
@@ -136,53 +135,38 @@ export function calculerHeuresSupp({ semaines = [], quota = 0, mhs = SEUIL_HEURE
     if (!moisCompteHeuresSupp(mois)) continue;
     const seuil = eligible ? seuilHebdomadaire(semaine.joursFermes, mhs) : null;
     const heures = arrondi(Number(semaine.heures) || 0);
-    const brut = eligible
-      ? arrondi(Math.max(0, Math.min(heures, PLAFOND_HEURES_SUPP_SEMAINE) - seuil))
-      : 0;
+    // Plus de plafond de 35 h par semaine (2026-10-26, demande du porteur) : tout ce qui dépasse
+    // le seuil compte.
+    const brut = eligible ? arrondi(Math.max(0, heures - seuil)) : 0;
 
-    if (!parMois.has(mois)) parMois.set(mois, { mois, heures: 0, objectif: 0, brut: 0, paye: 0, masse: 0 });
+    if (!parMois.has(mois)) parMois.set(mois, { mois, heures: 0, objectif: 0, masse: 0, semaines: [] });
     const cumul = parMois.get(mois);
-
-    const restantAvant = restant;
-    const paye = arrondi(Math.max(0, Math.min(brut, PLAFOND_HEURES_SUPP_MOIS - cumul.paye, restant)));
-    restant = arrondi(restant - paye);
-    // Ce qui a retenu une heure réalisée : le quota s'il est à sec, sinon le plafond du mois.
-    const nonPaye = brut > paye ? (paye >= restantAvant ? 'quota' : 'plafondMois') : null;
-
     cumul.heures = arrondi(cumul.heures + heures);
     cumul.objectif = arrondi(cumul.objectif + (seuil ?? 0));
-    cumul.brut = arrondi(cumul.brut + brut);
-    cumul.paye = arrondi(cumul.paye + paye);
     if (eligible && (!jusquau || semaine.lundi <= jusquau)) {
       cumul.masse = arrondi(cumul.masse + masseHebdomadaireCumul(semaine.joursFermes, mhs));
     }
-
-    detail.push({
-      numero: semaine.numero,
-      lundi: semaine.lundi,
-      mois,
-      seuil,
-      plafond: PLAFOND_HEURES_SUPP_SEMAINE,
-      heures,
-      brut,
-      paye,
-      cumulMois: cumul.paye,
-      restant,
-      horsPlafond: eligible ? arrondi(Math.max(0, heures - PLAFOND_HEURES_SUPP_SEMAINE)) : 0,
-      nonPaye,
-    });
+    cumul.semaines.push({ numero: semaine.numero, lundi: semaine.lundi, mois, seuil, heures, brut, restant: 0 });
   }
 
   /*
-   * ═══ LE CUMUL TH.SUP DU MOIS (2026-10-20, règle du porteur) ═══
-   * Total réalisé − masse horaire du mois (la somme des masses de ses semaines déjà commencées).
-   * Positif : des heures au-delà de la masse ; négatif : ce qui manque pour l'atteindre. Un
-   * affichage : le payé, lui, reste calculé semaine par semaine.
+   * ═══ LE CUMUL TH.SUP DU MOIS, ET CE QUI EST PAYÉ (2026-10-20 puis 2026-10-26, règle du porteur) ═══
+   * Cumul = total réalisé − masse horaire du mois (la somme des masses de ses semaines déjà
+   * commencées) : une semaine EN DESSOUS de sa masse se retranche des semaines au-dessus.
+   * Payé = ce Cumul s'il est positif, dans la limite de 30 h par mois et du quota restant.
    */
-  const mois = [...parMois.values()].map((m) => ({
-    ...m,
-    cumul: eligible ? arrondi(m.heures - m.masse) : null,
-  }));
+  const detail = [];
+  const mois = [...parMois.values()].map(({ semaines: semainesDuMois, ...m }) => {
+    const cumul = eligible ? arrondi(m.heures - m.masse) : null;
+    const brut = eligible ? Math.max(0, cumul) : 0;
+    const restantAvant = restant;
+    const paye = arrondi(Math.max(0, Math.min(brut, PLAFOND_HEURES_SUPP_MOIS, restant)));
+    restant = arrondi(restant - paye);
+    // Ce qui a retenu une heure réalisée : le quota s'il est à sec, sinon le plafond du mois.
+    const nonPaye = brut > paye ? (paye >= restantAvant ? 'quota' : 'plafondMois') : null;
+    for (const semaine of semainesDuMois) detail.push({ ...semaine, restant });
+    return { ...m, cumul, brut, paye, nonPaye };
+  });
   const somme = (cle) => arrondi(mois.reduce((total, m) => total + m[cle], 0));
 
   return {

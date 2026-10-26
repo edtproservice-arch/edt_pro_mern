@@ -40,10 +40,60 @@ const ROLES_SANS_VERIFICATION_APPAREIL = [ROLES.FORMATEUR, ROLES.STAGIAIRE];
  * serveur HTTP, à l'inverse des endpoints PHP.
  */
 
+/** Région, complexe, nom : comparés sans accents, sans casse, espaces réduits — « DIGITAL  CASABLANCA » = « Digital Casablanca ». */
+const cleComparaison = (texte) =>
+  String(texte ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+
+/** « fa•••@ofppt.ma » : de quoi reconnaître SON compte, sans livrer l'adresse d'un autre. */
+const masquerEmail = (email) => {
+  const [local, domaine] = String(email ?? '').split('@');
+  return domaine ? `${local.slice(0, 2)}•••@${domaine}` : '•••';
+};
+
+/**
+ * ═══ UN ÉTABLISSEMENT NE S'INSCRIT QU'UNE FOIS (2026-10-26, demande du porteur) ═══
+ * Constaté sur le VPS : le même centre en cinq exemplaires — chaque inscription
+ * créait le sien, et un directeur dont le premier compte attendait encore son code
+ * se réinscrivait avec une autre adresse. Les doublons restaient, vides et
+ * invisibles, à côté du vrai.
+ *
+ * Même région, même complexe, même nom : déjà inscrit, SI son directeur existe
+ * encore et n'a été ni refusé ni supprimé. Un établissement orphelin, ou dont la
+ * demande a été rejetée, ne bloque pas une nouvelle inscription.
+ */
+async function etablissementDejaInscrit({ region, complexe, nomEtablissement }) {
+  const cible = [region, complexe, nomEtablissement].map(cleComparaison).join('|');
+  const candidats = (await Etablissement.find({}).select('region complexe nom proprietaireId').lean()).filter(
+    (e) => [e.region, e.complexe, e.nom].map(cleComparaison).join('|') === cible
+  );
+  if (candidats.length === 0) return null;
+
+  return User.findOne({
+    _id: { $in: candidats.map((e) => e.proprietaireId) },
+    statut: { $nin: [STATUTS_COMPTE.REJETE, STATUTS_COMPTE.SUPPRIME] },
+  })
+    .select('email')
+    .lean();
+}
+
 export async function inscrire(donnees) {
   const existant = await User.findOne({ email: donnees.email });
   if (existant) {
     throw conflict('Un compte existe déjà avec cette adresse e-mail', { code: 'EMAIL_EXISTANT' });
+  }
+
+  const directeurEnPlace = await etablissementDejaInscrit(donnees);
+  if (directeurEnPlace) {
+    throw conflict(
+      `Cet établissement est déjà inscrit sur EDT Pro, avec le compte ${masquerEmail(directeurEnPlace.email)}. ` +
+        'Connectez-vous avec ce compte — « Mot de passe oublié » si besoin —, ou contactez l’administrateur.',
+      { code: 'ETABLISSEMENT_DEJA_INSCRIT' }
+    );
   }
 
   // L'inscription libre est réservée aux directeurs d'EFP. Les formateurs,

@@ -81,6 +81,42 @@ describe('POST /api/v2/auth/inscription', () => {
     expect(utilisateur.motDePasse).toMatch(/^\$2[aby]\$/);
   });
 
+  /*
+   * ═══ UN ÉTABLISSEMENT NE S'INSCRIT QU'UNE FOIS (2026-10-26) ═══ Constaté en
+   * production : le même centre en cinq exemplaires, un par inscription.
+   */
+  it('⚠️ refuse un établissement déjà inscrit, même écrit autrement, en nommant le compte en place', async () => {
+    await request(app).post('/api/v2/auth/inscription').send(INSCRIPTION);
+    const reponse = await request(app)
+      .post('/api/v2/auth/inscription')
+      .send({ ...INSCRIPTION, email: 'second@edtpro.ma', nomEtablissement: '  ista  nargiss   fès ' });
+
+    expect(reponse.status).toBe(409);
+    expect(reponse.body.code).toBe('ETABLISSEMENT_DEJA_INSCRIT');
+    expect(reponse.body.message).toContain('di•••@edtpro.ma');
+    expect(reponse.body.message).not.toContain('directeur@edtpro.ma');
+    expect(await Etablissement.countDocuments({})).toBe(1);
+    expect(await User.countDocuments({ email: 'second@edtpro.ma' })).toBe(0);
+  });
+
+  it('accepte le même nom dans un AUTRE complexe', async () => {
+    await request(app).post('/api/v2/auth/inscription').send(INSCRIPTION);
+    const reponse = await request(app)
+      .post('/api/v2/auth/inscription')
+      .send({ ...INSCRIPTION, email: 'second@edtpro.ma', complexe: 'CF Tertiaire' });
+    expect(reponse.status).toBe(201);
+  });
+
+  it('ne bloque pas sur un établissement ORPHELIN ou dont la demande a été rejetée', async () => {
+    await request(app).post('/api/v2/auth/inscription').send(INSCRIPTION);
+    await User.updateOne({ email: INSCRIPTION.email }, { statut: STATUTS_COMPTE.REJETE });
+
+    const reponse = await request(app)
+      .post('/api/v2/auth/inscription')
+      .send({ ...INSCRIPTION, email: 'second@edtpro.ma' });
+    expect(reponse.status).toBe(201);
+  });
+
   it('refuse un mot de passe qui ne respecte pas la politique', async () => {
     const reponse = await request(app)
       .post('/api/v2/auth/inscription')

@@ -47,7 +47,7 @@ export default function RegisterPage() {
       await sInscrire(valeurs);
       navigate(`/verification?email=${encodeURIComponent(valeurs.email)}`);
     } catch (error) {
-      setErreurServeur(error.message);
+      setErreurServeur({ message: error.message, code: error.code });
     }
   }
 
@@ -68,7 +68,18 @@ export default function RegisterPage() {
       >
         {erreurServeur && (
           <Alerte type="erreur" titre="Inscription impossible" className="mb-4">
-            {erreurServeur}
+            {erreurServeur.message}
+            {/* L'établissement a déjà son compte (2026-10-26) : on mène à ce compte, pas à un doublon. */}
+            {erreurServeur.code === 'ETABLISSEMENT_DEJA_INSCRIT' && (
+              <span className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                <Link to="/connexion" className="font-medium text-primary hover:underline">
+                  Se connecter
+                </Link>
+                <Link to="/mot-de-passe-oublie" className="font-medium text-primary hover:underline">
+                  Mot de passe oublié
+                </Link>
+              </span>
+            )}
           </Alerte>
         )}
 

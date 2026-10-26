@@ -503,7 +503,7 @@ describe('POST /seances/:semaine/emargement', () => {
     const classeur = new ExcelJS.Workbook();
     await classeur.xlsx.load(reponse.body);
     const taux = String(classeur.worksheets[0].getRow(5).getCell(6).value ?? '');
-    expect(taux).toContain('13% (5h / 40h)');
+    expect(taux).toContain('Global : 13% (5h / 40h)');
     expect(taux).toContain('Présentiel : 8% (2.5h / 30h)');
     expect(taux).toContain('Synchrone : 25% (2.5h / 10h)');
     // Le Word aussi — c'est de lui que sort le PDF.
@@ -515,6 +515,11 @@ describe('POST /seances/:semaine/emargement', () => {
       .send({ jour: 'Lundi', format: 'docx' });
     const { default: JSZip } = await import('jszip');
     const document = await (await JSZip.loadAsync(word.body)).file('word/document.xml').async('string');
+    expect(document).toContain('Global : 13% (5h / 40h)');
+    // Tout le texte du tableau en 11 pt — 22 demi-points (2026-10-26).
+    const tableau = document.slice(document.indexOf('<w:tbl>'), document.indexOf('</w:tbl>'));
+    expect(tableau).toContain('<w:sz w:val="22"/>');
+    expect(tableau).not.toMatch(/<w:sz w:val="(?!22")\d+"\/>/);
     expect(document).toContain('Présentiel : 8% (2.5h / 30h)');
     expect(document).toContain('Synchrone : 25% (2.5h / 10h)');
   });

@@ -68,6 +68,20 @@ export const assemblerLigne = (avantPremierTc, tcs) => `${avantPremierTc}${tcs.j
  * place en fin de page peut couper une ligne EN PLEIN MILIEU de son contenu
  * plutôt que la pousser en entier sur la page suivante.
  */
+/**
+ * Une ligne qui ne se coupe JAMAIS entre deux pages (`cantSplit`) : si elle ne
+ * tient pas en bas de page, Word la passe entière à la suivante.
+ * ← 2026-10-27, demande du porteur : « ne pas partager une ligne sur deux pages ».
+ */
+export function insecable(avantPremierTc) {
+  if (avantPremierTc.includes('<w:cantSplit')) return avantPremierTc;
+  if (avantPremierTc.includes('<w:trPr>')) {
+    return avantPremierTc.replace('<w:trPr>', '<w:trPr><w:cantSplit/>');
+  }
+  const finOuverture = avantPremierTc.indexOf('>') + 1;
+  return `${avantPremierTc.slice(0, finOuverture)}<w:trPr><w:cantSplit/></w:trPr>${avantPremierTc.slice(finOuverture)}`;
+}
+
 export function avecHauteurMinimale(avantPremierTc, twips) {
   const proprietes = `<w:cantSplit/><w:trHeight w:val="${twips}" w:hRule="atLeast"/>`;
   if (avantPremierTc.includes('<w:trPr>')) {

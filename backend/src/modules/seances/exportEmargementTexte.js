@@ -22,4 +22,13 @@ export function lignesParType(ligne) {
   return [ecrire('Présentiel', ligne.presentiel), ecrire('Synchrone', ligne.synchrone)];
 }
 
+/**
+ * Toutes les lignes de la cellule Taux (maquette du porteur, 2026-10-26) :
+ * « Global : 22% (30h / 135h) », puis la décomposition quand elle a un sens.
+ */
+export const lignesTaux = (ligne) => [
+  `Global : ${ligne.taux}% (${ligne.pose}h / ${ligne.prevu}h)`,
+  ...lignesParType(ligne),
+];
+
 export { dateFr };

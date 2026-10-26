@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import { dateFr, nomFichierEmargement, lignesParType } from './exportEmargementTexte.js';
+import { dateFr, nomFichierEmargement, lignesTaux } from './exportEmargementTexte.js';
 
 /**
  * L'Excel de l'émargement journalier — la même liste que le Word : une ligne
@@ -71,7 +71,7 @@ export async function construireXlsxEmargement(donnees) {
       `${ligne.debut.replace(':', 'h')} - ${ligne.fin.replace(':', 'h')}`,
       ligne.taux === null
         ? ''
-        : [`${ligne.taux}% (${ligne.pose}h / ${ligne.prevu}h)`, ...lignesParType(ligne)].join('\n'),
+        : lignesTaux(ligne).join('\n'),
       '',
       '',
     ];

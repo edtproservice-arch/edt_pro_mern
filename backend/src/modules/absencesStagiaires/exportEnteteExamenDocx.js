@@ -16,6 +16,7 @@ import {
   tableau,
 } from './formulaireComposeDocx.js';
 import { centrerTitresEntete } from './enteteCanevas.js';
+import { ajouterNumerotation } from '../seances/numerotationPages.js';
 
 /**
  * ═══ L'EN-TÊTE D'UNE ÉPREUVE — CONTRÔLE CONTINU OU EFM (2026-10-26, demande du porteur,
@@ -186,11 +187,18 @@ export async function construireDocxEnteteExamen(e) {
     .replace(/(<w:pgMar[^>]*\sw:top=")\d+"/, `$1${MARGE_HAUT}"`)
     .replace(/(<w:pgMar[^>]*\sw:header=")\d+"/, `$1${MARGE_HAUT}"`)
     .replace(/(<w:pgMar[^>]*\sw:right=")\d+"/, `$1${MARGE}"`)
-    .replace(/(<w:pgMar[^>]*\sw:left=")\d+"/, `$1${MARGE}"`);
-  zip.file('word/document.xml', xml.slice(0, debutCorps) + corps(e) + '<w:p/>' + miseEnPage);
+    .replace(/(<w:pgMar[^>]*\sw:left=")\d+"/, `$1${MARGE}"`)
+    /*
+     * ═══ ⚠️ PLUS D'EN-TÊTE DE PAGE (2026-10-27, demande du porteur : « annule cette partie
+     *     depuis l'en-tête du Word, pas du document, pour ne pas la dupliquer sur une autre
+     *     page ») ═══ Le bloc OFPPT (logo, « مكتب التكوين المهني… », « Office de la
+     *     Formation… ») passe en tête du CORPS, sur la seule première page : la section ne
+     *     référence plus d'en-tête.
+     */
+    .replace(/<w:headerReference\b[^>]*\/>/g, '');
 
   /*
-   * L'en-tête de page : « CFP : … » et « EFP : … » retirés — l'établissement est écrit sous la
+   * L'en-tête du canevas : « CFP : … » et « EFP : … » retirés — l'établissement est écrit sous la
    * Direction Régionale —, et son tableau (logo, titres) élargi à la largeur du document.
    */
   const ajout = LARGEUR - LARGEUR_ENTETE;
@@ -204,12 +212,36 @@ export async function construireDocxEnteteExamen(e) {
    * d'un point.
    */
   const finTableau = entete.lastIndexOf('</w:tbl>') + '</w:tbl>'.length;
-  zip.file(
-    'word/header1.xml',
-    // Les titres centrés sur la page (2026-10-26) — voir `centrerTitresEntete`.
-    centrerTitresEntete(entete.slice(0, finTableau)) +
-      '<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/></w:pPr></w:p></w:hdr>'
-  );
+  // Les titres centrés sur la page (2026-10-26) — voir `centrerTitresEntete`.
+  const enteteCentre = centrerTitresEntete(entete.slice(0, finTableau));
+  const tableauEntete = enteteCentre.slice(enteteCentre.indexOf('<w:tbl>'));
+
+  /*
+   * ⚠️ L'IMAGE DU LOGO SUIT LE TABLEAU : dans l'en-tête, son `r:embed` désignait une relation
+   *    de `header1.xml.rels`. Déplacée dans le corps, elle doit en avoir une dans
+   *    `document.xml.rels` — sous un identifiant NEUF, car celui de l'en-tête (« rId1 ») y
+   *    désigne déjà autre chose.
+   */
+  const relationsEntete = (await zip.file('word/_rels/header1.xml.rels')?.async('string')) ?? '';
+  let relationsDocument = await zip.file('word/_rels/document.xml.rels').async('string');
+  let tableauCorps = tableauEntete;
+  for (const [, identifiant] of tableauEntete.matchAll(/r:embed="([^"]+)"/g)) {
+    const relation = relationsEntete.match(new RegExp(`<Relationship\\b[^>]*Id="${identifiant}"[^>]*/>`))?.[0];
+    if (!relation) continue;
+    const neuf = `rIdEntete${identifiant.replace(/\W/g, '')}`;
+    if (!relationsDocument.includes(`Id="${neuf}"`)) {
+      relationsDocument = relationsDocument.replace(
+        '</Relationships>',
+        `${relation.replace(`Id="${identifiant}"`, `Id="${neuf}"`)}</Relationships>`
+      );
+    }
+    tableauCorps = tableauCorps.replaceAll(`r:embed="${identifiant}"`, `r:embed="${neuf}"`);
+  }
+  zip.file('word/_rels/document.xml.rels', relationsDocument);
+
+  const documentXml = xml.slice(0, debutCorps) + tableauCorps + corps(e) + '<w:p/>' + miseEnPage;
+  // La numérotation « 1 / N » en bas de page, comme l'emploi du temps journalier (2026-10-27).
+  zip.file('word/document.xml', await ajouterNumerotation(zip, documentXml));
 
   return zip.generateAsync({ type: 'nodebuffer' });
 }

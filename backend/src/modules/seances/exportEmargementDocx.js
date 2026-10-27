@@ -5,6 +5,7 @@ import { celluleTexteSimple, echapperXml } from './xmlCellules.js';
 import { chargerCanevasTampon } from './canevasCache.js';
 import { dateFr, nomFichierEmargement, lignesTaux } from './exportEmargementTexte.js';
 import { assemblerLigne, extraireLignes, extraireTableaux, remplacerBalise, insecable } from './xmlTableaux.js';
+import { ajouterNumerotation } from './numerotationPages.js';
 
 /**
  * Le Word de l'émargement JOURNALIER — GREFFÉ dans le canevas transmis par
@@ -164,68 +165,6 @@ function titreCentreSurLaPage(xmlEntete) {
   });
 
   return xmlEntete.slice(0, index) + recentree + xmlEntete.slice(index + colonneTitre.length);
-}
-
-/**
- * ═══ LA NUMÉROTATION DES PAGES — « 1 / 2 » ═══ (2026-10-27, demande du
- * porteur : « numérote les pages (numéro de page / nombre de pages) ».)
- * Le canevas n'a pas de pied de page : on en AJOUTE un, centré, fait de deux
- * champs Word — PAGE et NUMPAGES — que Word et LibreOffice (donc le PDF)
- * calculent eux-mêmes. Un nombre écrit en dur serait faux dès la 2ᵉ page.
- *
- * ⚠️ QUATRE ENDROITS À TENIR ENSEMBLE, sinon Word déclare le fichier endommagé :
- *    la partie `word/footer1.xml`, sa relation, son type de contenu, et la
- *    `w:footerReference` de la section (juste après la `w:headerReference`).
- */
-const RELATION_PIED = 'rIdPiedDePage';
-const champ = (instruction, valeur) =>
-  `<w:fldSimple w:instr=" ${instruction} "><w:r><w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t>${valeur}</w:t></w:r></w:fldSimple>`;
-const texte = (valeur) =>
-  `<w:r><w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t xml:space="preserve">${valeur}</w:t></w:r>`;
-const PIED_DE_PAGE =
-  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-  '<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
-  'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
-  `<w:p><w:pPr><w:jc w:val="center"/></w:pPr>${champ('PAGE', '1')}${texte(' / ')}${champ('NUMPAGES', '1')}</w:p>` +
-  '</w:ftr>';
-
-async function ajouterNumerotation(zip, xmlDocument) {
-  zip.file('word/footer1.xml', PIED_DE_PAGE);
-
-  const fichierRelations = zip.file('word/_rels/document.xml.rels');
-  if (fichierRelations) {
-    const relations = await fichierRelations.async('string');
-    if (!relations.includes(`Id="${RELATION_PIED}"`)) {
-      zip.file(
-        'word/_rels/document.xml.rels',
-        relations.replace(
-          '</Relationships>',
-          `<Relationship Id="${RELATION_PIED}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/></Relationships>`
-        )
-      );
-    }
-  }
-
-  const fichierTypes = zip.file('[Content_Types].xml');
-  if (fichierTypes) {
-    const types = await fichierTypes.async('string');
-    if (!types.includes('/word/footer1.xml')) {
-      zip.file(
-        '[Content_Types].xml',
-        types.replace(
-          '</Types>',
-          '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/></Types>'
-        )
-      );
-    }
-  }
-
-  // La référence dans la section : après celle de l'en-tête, comme le veut le schéma.
-  if (xmlDocument.includes('<w:footerReference')) return xmlDocument;
-  const reference = `<w:footerReference w:type="default" r:id="${RELATION_PIED}"/>`;
-  return /<w:headerReference\b[^>]*\/>/.test(xmlDocument)
-    ? xmlDocument.replace(/(<w:headerReference\b[^>]*\/>)(?![\s\S]*<w:headerReference)/, `$1${reference}`)
-    : xmlDocument.replace(/(<w:sectPr\b[^>]*>)/, `$1${reference}`);
 }
 
 /** Tous les runs d'un fragment XML à `demiPoints` (11 pt = 22, 14 pt = 28). */

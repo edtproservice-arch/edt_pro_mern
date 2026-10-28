@@ -783,7 +783,7 @@ describe('la fiche de réclamation du formateur (2026-10-25)', () => {
         .send(corps)
         .responseType('blob');
 
-    const controle = await entete({ format: 'docx', type: 'cc', seanceId, numero: 3, epreuve: 'tp', duree: '2H30', bareme: 20 });
+    const controle = await entete({ format: 'docx', type: 'cc', seanceId, numero: 3, epreuve: 'tp', duree: '2H30' });
     expect(controle.status).toBe(200);
     const texte = await texteDuDocx(controle.body);
     expect(texte).toContain('CONTRÔLE CONTINU N° 3');
@@ -800,10 +800,14 @@ describe('la fiche de réclamation du formateur (2026-10-25)', () => {
     const texteVierge = await texteDuDocx(vierge.body);
     expect(texteVierge).toContain('ÉVALUATION DE FIN DE MODULE RÉGIONALE');
     expect(texteVierge).toContain('Th / TP / SY');
+    // Le barème suit l'épreuve : EFM sur 40, contrôle sur 20.
+    expect(texteVierge).toContain('/ 40');
     expect(texteVierge).not.toContain('Résistance des matériaux');
 
     const autre = await Seance.findOne({ formateurMatricule: '4211' });
     expect((await entete({ format: 'docx', type: 'cc', seanceId: autre.id })).status).toBe(403);
+    // Word seulement (2026-10-28) : le sujet s'écrit sous l'en-tête.
+    expect((await entete({ format: 'pdf', type: 'cc', seanceId })).status).toBe(400);
   });
 
   it('⚠️ l’ENCADREMENT remplit les mêmes documents depuis n’importe quelle séance (2026-10-26)', async () => {

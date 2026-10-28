@@ -44,7 +44,8 @@ const CANEVAS_ENTETE = path.join(__dirname, 'canevas', 'ficheReclamation.docx');
 
 export const EPREUVES = { th: 'Théorique', tp: 'Pratique', sy: 'Synthèse' };
 export const DUREES = ['1H', '1H30', '2H', '2H30', '3H', '5H'];
-export const BAREMES = [20, 40];
+// Le barème est celui de l'épreuve, pas un choix (2026-10-28, demande du porteur) : contrôle sur 20, EFM sur 40.
+export const BAREMES = { cc: 20, efm: 40 };
 export const PORTEES = { local: 'LOCALE', regional: 'RÉGIONALE' };
 
 const NIVEAUX = { TS: 'Technicien spécialisé', T: 'Technicien', Q: 'Qualification', S: 'Spécialisation' };
@@ -87,7 +88,7 @@ const cote = (contenu, largeur, gauche) =>
 /**
  * @param {{ type: 'cc'|'efm', numero?: number, portee?: 'local'|'regional', region?: string,
  *   anneeScolaire: number, filiere?: string, niveau?: string, annee?: number|null, module?: string,
- *   intitule?: string, date?: string, epreuve?: 'th'|'tp'|'sy', duree?: string, bareme?: number }} e
+ *   intitule?: string, date?: string, epreuve?: 'th'|'tp'|'sy', duree?: string }} e
  */
 function corps(e) {
   const titre =
@@ -136,7 +137,7 @@ function corps(e) {
           info('Année de formation', annee, '1A / 2A') +
             info('Épreuve', e.epreuve ? EPREUVES[e.epreuve] : '', 'Th / TP / SY') +
             info('Durée', e.duree, '1H30 / 2H30 / 5H') +
-            info('Barème', `……… / ${e.bareme ?? 40}`),
+            info('Barème', `……… / ${BAREMES[e.type]}`),
           LARGEUR_DROITE,
           false
         )

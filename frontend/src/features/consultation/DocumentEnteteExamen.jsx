@@ -33,7 +33,6 @@ const EPREUVES = [
   { valeur: 'sy', libelle: 'Synthèse' },
 ];
 const DUREES = ['1H', '1H30', '2H', '2H30', '3H', '5H'].map((d) => ({ valeur: d, libelle: d }));
-const BAREMES = [20, 40].map((b) => ({ valeur: b, libelle: `/ ${b}` }));
 
 /**
  * ═══ L'EN-TÊTE D'UNE ÉPREUVE — CONTRÔLE CONTINU OU EFM (2026-10-26, demande du porteur) ═══
@@ -51,7 +50,6 @@ export default function DocumentEnteteExamen({ type }) {
   const [portee, setPortee] = useState(null);
   const [epreuve, setEpreuve] = useState(null);
   const [duree, setDuree] = useState(null);
-  const [bareme, setBareme] = useState(40);
 
   // Ce qui est choisi — et rien de ce qui est resté vide.
   const options = () => ({
@@ -60,7 +58,6 @@ export default function DocumentEnteteExamen({ type }) {
     ...(type === 'efm' && portee && { portee }),
     ...(epreuve && { epreuve }),
     ...(duree && { duree }),
-    ...(bareme && { bareme }),
   });
 
   const telechargement = useMutation({
@@ -80,7 +77,6 @@ export default function DocumentEnteteExamen({ type }) {
     setPortee(null);
     setEpreuve(null);
     setDuree(null);
-    setBareme(40);
   };
 
   const pret = Boolean(seance) && !telechargement.isPending;
@@ -93,7 +89,7 @@ export default function DocumentEnteteExamen({ type }) {
         aria-label={`Remplir : ${document.titre}`}
         className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <FeuilleDocument document={document} pied="Word · PDF" className="cursor-pointer hover:border-border-strong" />
+        <FeuilleDocument document={document} pied="Word" className="cursor-pointer hover:border-border-strong" />
       </button>
 
       <Dialog open={ouvert} onOpenChange={(valeur) => !valeur && fermer()}>
@@ -103,6 +99,7 @@ export default function DocumentEnteteExamen({ type }) {
             <DialogTitle>{document.titre}</DialogTitle>
             <DialogDescription>
               Choisissez la séance : la filière, le niveau, l’année, le module et la date se remplissent d’eux-mêmes.
+              Le barème est fixé : sur 20 pour un contrôle, sur 40 pour un EFM.
               Le nom, le groupe et la variante restent à remplir par le stagiaire.
             </DialogDescription>
           </DialogHeader>
@@ -120,7 +117,6 @@ export default function DocumentEnteteExamen({ type }) {
             </div>
             <div className="flex flex-wrap gap-x-6 gap-y-3">
               <Choix libelle="Durée" options={DUREES} valeur={duree} onChanger={setDuree} facultatif />
-              <Choix libelle="Barème" options={BAREMES} valeur={bareme} onChanger={setBareme} />
             </div>
           </div>
 
@@ -133,13 +129,14 @@ export default function DocumentEnteteExamen({ type }) {
                 variant="ghost"
                 className="text-xs text-muted-foreground"
                 disabled={vierge.isPending}
-                onClick={() => vierge.mutate('pdf')}
+                onClick={() => vierge.mutate('docx')}
               >
                 {vierge.isPending ? 'Préparation…' : 'Exemplaire vierge'}
               </Button>
             </div>
             <div className="flex flex-wrap justify-end gap-2">
-              {['docx', 'pdf'].map((format) => (
+              {/* Word seulement (2026-10-28, demande du porteur) : le sujet s'écrit sous l'en-tête. */}
+              {['docx'].map((format) => (
                 <BoutonFormat
                   key={format}
                   format={format}

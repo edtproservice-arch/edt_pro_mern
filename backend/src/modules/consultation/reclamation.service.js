@@ -203,7 +203,7 @@ export async function feuilleCcEfmDeSeance(etablissementId, anneeScolaire, matri
  * ═══ L'EN-TÊTE D'UNE ÉPREUVE, DEPUIS UNE SÉANCE (2026-10-26, demande du porteur) ═══
  * Contrôle continu ou EFM : la séance — la sienne, vérifiée — donne la filière et le niveau
  * (ceux des stagiaires du groupe), l'année, le module, son intitulé et la date ; le formateur
- * choisit le reste (n° du contrôle ou portée de l'EFM, épreuve, durée, barème). Sans séance :
+ * choisit le reste (n° du contrôle ou portée de l'EFM, épreuve, durée — le barème suit l'épreuve). Sans séance :
  * l'exemplaire VIERGE, seul l'établissement écrit. Nom, groupe et V restent toujours vides —
  * voir `exportEnteteExamenDocx.js`.
  *
@@ -213,7 +213,7 @@ export async function enteteExamenDeSeance(
   etablissementId,
   anneeScolaire,
   matricule,
-  { format, type, seanceId = null, numero, portee, epreuve, duree, bareme }
+  { type, seanceId = null, numero, portee, epreuve, duree }
 ) {
   const etablissement = await Etablissement.findById(etablissementId).select('nom nomAbrege complexe region').lean();
   const contenu = {
@@ -222,7 +222,6 @@ export async function enteteExamenDeSeance(
     portee,
     epreuve,
     duree,
-    bareme,
     anneeScolaire,
     complexe: etablissement?.complexe ?? '',
     efp: etablissement?.nomAbrege || etablissement?.nom || '',
@@ -251,10 +250,10 @@ export async function enteteExamenDeSeance(
   const titre = type === 'efm' ? 'EFM' : `Controle${numero ? `_${numero}` : ''}`;
   const suite = seanceId ? [groupe, contenu.module].filter(Boolean).join('_') : 'vierge';
   return {
-    tampon: format === 'pdf' ? await convertirDocxEnPdf(docx) : docx,
-    nomFichier: `${titre}_${suite}`.replace(/[^\p{L}\p{N}]+/gu, '_') + `.${format}`,
-    contentType:
-      format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    // Word seulement (2026-10-28, demande du porteur) : le sujet s'écrit sous l'en-tête.
+    tampon: docx,
+    nomFichier: `${titre}_${suite}`.replace(/[^\p{L}\p{N}]+/gu, '_') + '.docx',
+    contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   };
 }
 

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { ROLES } from 'shared/constants';
 import { authenticate } from '../../middleware/authenticate.js';
-import { requireRole } from '../../middleware/requireRole.js';
+import { requireRole, requireRoleOuComplexe } from '../../middleware/requireRole.js';
 import { resolveTenant } from '../../middleware/resolveTenant.js';
 import * as service from './avancement.service.js';
 import { badRequest } from '../../lib/httpError.js';
@@ -30,7 +30,8 @@ const router = Router();
  */
 router.use(
   authenticate,
-  requireRole(ROLES.DIRECTEUR, ROLES.GESTIONNAIRE, ROLES.FORMATEUR),
+  // Le directeur de complexe y LIT aussi (2026-10-27) — jamais n'y écrit.
+  requireRoleOuComplexe(ROLES.DIRECTEUR, ROLES.GESTIONNAIRE, ROLES.FORMATEUR),
   resolveTenant,
   exigerDroitPage('avancement', 'consulter')
 );

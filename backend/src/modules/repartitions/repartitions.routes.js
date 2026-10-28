@@ -5,6 +5,7 @@ import { authenticate } from '../../middleware/authenticate.js';
 import { requireRole } from '../../middleware/requireRole.js';
 import { validate } from '../../middleware/validate.js';
 import { Repartition } from '../../models/Repartition.js';
+import { chargerEnsembles, ensembleDepuisLignes } from './ensembles.service.js';
 
 /**
  * Référentiel DRIF — cascade de sélection de la carte d'établissement (F3).
@@ -149,40 +150,6 @@ const modulesSchema = z.object({
   annee: z.coerce.number().int().min(1).max(5),
 });
 
-/** Filière et modules portés par un lot de lignes de répartition. */
-function ensembleDepuisLignes(lignes) {
-  const premiere = lignes[0];
-
-  return {
-    filiere: premiere
-      ? {
-          code: premiere.codeFiliereCarte,
-          /* Conservé pour l'affichage et le rapprochement avec le document DRIF. */
-          codeDrif: premiere.codeFiliereDrif,
-          intitule: premiere.intituleFiliere,
-          secteur: premiere.secteur,
-          niveau: premiere.niveauFormation,
-          typeFormation: premiere.typeFormation,
-          creneau: premiere.creneau,
-        }
-      : null,
-    modules: lignes.map((ligne) => ({
-      code: ligne.codeModule,
-      nom: ligne.module,
-      mhpS1: ligne.mhpS1,
-      mhpS2: ligne.mhpS2,
-      mhsynS1: ligne.mhsynS1,
-      mhsynS2: ligne.mhsynS2,
-      mhasynS1: ligne.mhasynS1,
-      mhasynS2: ligne.mhasynS2,
-      mhpTotale: ligne.mhpTotale,
-      mhdTotale: ligne.mhdTotale,
-      estRegional: ligne.efmRegional,
-      metier: ligne.metier,
-    })),
-  };
-}
-
 /** Modules d'une filière pour une année de formation, masses horaires comprises. */
 router.get('/modules', validate({ query: modulesSchema }), async (req, res, next) => {
   try {
@@ -252,29 +219,7 @@ router.get('/modules-multiples', validate({ query: ensemblesSchema }), async (re
       return;
     }
 
-    const lignes = await Repartition.find({
-      $or: demandes.map(({ codeFiliere, anneeFormation }) => ({
-        codeFiliereCarte: codeFiliere,
-        anneeFormation,
-      })),
-    }).sort({ codeModule: 1 });
-
-    // Regroupement en mémoire : une passe sur quelques centaines de lignes coûte
-    // moins qu'un aller-retour réseau supplémentaire.
-    const parEnsemble = new Map();
-    for (const ligne of lignes) {
-      const cle = `${ligne.codeFiliereCarte}||${ligne.anneeFormation}`;
-      if (!parEnsemble.has(cle)) parEnsemble.set(cle, []);
-      parEnsemble.get(cle).push(ligne);
-    }
-
-    const ensembles = {};
-    for (const { codeFiliere, anneeFormation } of demandes) {
-      const cle = `${codeFiliere}||${anneeFormation}`;
-      // Un ensemble sans aucune ligne est rendu VIDE plutôt qu'omis : l'appelant
-      // doit pouvoir distinguer « pas de modules » de « pas demandé ».
-      ensembles[cle] = ensembleDepuisLignes(parEnsemble.get(cle) ?? []);
-    }
+    const ensembles = await chargerEnsembles(demandes);
 
     res.json({ success: true, ensembles });
   } catch (error) {

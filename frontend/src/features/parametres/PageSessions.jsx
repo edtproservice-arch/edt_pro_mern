@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Briefcase, GraduationCap, Presentation } from 'lucide-react';
+import { Briefcase, Building2, GraduationCap, Presentation } from 'lucide-react';
 import { ROLES } from 'shared/constants';
 import { cn } from '@/lib/utils';
 import CadreReglage from './CadreReglage';
@@ -8,6 +8,7 @@ import { useDroitPage } from '@/features/partages/useDroitPage';
 import CreationEnLot from './sessions/CreationEnLot';
 import CreationGestionnaire from './sessions/CreationGestionnaire';
 import ListeComptes from './sessions/ListeComptes';
+import SectionDirecteurComplexe from './sessions/SectionDirecteurComplexe';
 
 /**
  * Création des comptes de l'établissement (F12).
@@ -46,6 +47,19 @@ const ROLES_ECRAN = [
     icone: Briefcase,
     resume: 'Saisie manuelle',
   },
+  /*
+   * ═══ DIRECTEUR DE COMPLEXE (2026-10-27, demande du porteur) ═══ Il ne relève pas
+   * de CET établissement : il consulte, en lecture seule, ceux du complexe qui l'y
+   * autorisent. Sa section n'a donc pas la liste des comptes de l'établissement —
+   * elle a la sienne, celle du complexe. Réservée au directeur (pas aux invités).
+   */
+  {
+    cle: ROLES.DIRECTEUR_COMPLEXE,
+    libelle: 'Directeur de complexe',
+    icone: Building2,
+    resume: 'Lecture seule, sur accord',
+    directeurSeul: true,
+  },
 ];
 
 export default function PageSessions() {
@@ -69,8 +83,9 @@ export default function PageSessions() {
         champs. Le poser en premier, visuellement, évite le formulaire à champs
         masqués de `#sessionForm`, où l'on ne savait pas ce qui allait s'ouvrir.
       */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        {ROLES_ECRAN.map(({ cle, libelle, icone: Icone, resume }) => (
+      {/* Quatre rôles en rangée depuis le directeur de complexe (2026-10-27) : deux par ligne sur tablette. */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {ROLES_ECRAN.filter((entree) => !(lectureSeule && entree.directeurSeul)).map(({ cle, libelle, icone: Icone, resume }) => (
           <button
             key={cle}
             type="button"
@@ -97,6 +112,8 @@ export default function PageSessions() {
           </button>
         ))}
       </div>
+
+      {!lectureSeule && role === ROLES.DIRECTEUR_COMPLEXE && <SectionDirecteurComplexe />}
 
       {!lectureSeule && role === ROLES.FORMATEUR && (
         <CreationEnLot
@@ -130,9 +147,11 @@ export default function PageSessions() {
         Le séparateur marque le passage de « créer » à « gérer ».
       */}
       {/* En lecture seule, la liste EST la page : pas de séparateur au-dessus de rien. */}
-      <div className={cn(!lectureSeule && 'border-t pt-6')}>
-        <ListeComptes role={role} lectureSeule={lectureSeule} />
-      </div>
+      {role !== ROLES.DIRECTEUR_COMPLEXE && (
+        <div className={cn(!lectureSeule && 'border-t pt-6')}>
+          <ListeComptes role={role} lectureSeule={lectureSeule} />
+        </div>
+      )}
     </CadreReglage>
     </>
   );

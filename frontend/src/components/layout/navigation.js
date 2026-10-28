@@ -207,6 +207,22 @@ export const NAVIGATION_STAGIAIRE = [
 ];
 
 /**
+ * ═══ LE DIRECTEUR DE COMPLEXE (2026-10-27) ═══ Une barre latérale, comme le
+ * directeur (demande du porteur), mais de CONSULTATION : l'emploi du temps
+ * publié (l'écran « Édition »), l'avancement. Son accueil est le tableau de bord
+ * du complexe. Chaque page s'ajoute ici à mesure qu'elle lui est ouverte côté
+ * serveur (`PAGES_DIRECTEUR_COMPLEXE`) — jamais avant.
+ */
+export const NAVIGATION_COMPLEXE = [
+  { titre: 'Emploi du temps', url: '/app/edition', icone: CalendarRange, phase: 5 },
+  { titre: 'Avancement', url: '/app/avancement', icone: TrendingUp, phase: 5 },
+  // Étape 2 (2026-10-27) : des vues du COMPLEXE, sur ses établissements autorisés à la fois.
+  { titre: 'Formateurs', titrePage: 'Formateurs du complexe', url: '/app/complexe/formateurs', icone: Users, phase: 5 },
+  { titre: 'Espaces', titrePage: 'Occupation des espaces', url: '/app/complexe/espaces', icone: DoorOpen, phase: 5 },
+  { titre: 'Absences', titrePage: 'Absences en chiffres', url: '/app/complexe/absences', icone: UserX, phase: 5 },
+];
+
+/**
  * ⚠️ LE GESTIONNAIRE VOIT UN SOUS-ENSEMBLE DU MENU DU DIRECTEUR, PAS UN
  * TROISIÈME MENU (demande du porteur : « c'est la même chose que le
  * directeur, mais il peut accéder seulement aux pages édition et document »).
@@ -240,6 +256,8 @@ const URLS_GESTIONNAIRE = ['/app/edition', '/app/documents', '/app/absences'];
  * discipline des stagiaires. Le lien redevient donc pertinent.
  */
 export function raccourcisPourRole(role) {
+  // Le directeur de complexe : accueil et messagerie — pas d'annonces à publier (2026-10-27).
+  if (role === ROLES.DIRECTEUR_COMPLEXE) return RACCOURCIS.filter((entree) => entree.url !== '/app/annonces');
   // « Annonces » : seuls le directeur et le gestionnaire en publient sous /app.
   if (role === ROLES.DIRECTEUR || role === ROLES.GESTIONNAIRE) return RACCOURCIS;
   return RACCOURCIS.filter((entree) => entree.url !== '/app/annonces');
@@ -358,6 +376,7 @@ function entreesCollaboration(partages) {
 }
 
 export function navigationPourRole(role, { partages = [] } = {}) {
+  if (role === ROLES.DIRECTEUR_COMPLEXE) return NAVIGATION_COMPLEXE;
   if (role === ROLES.ADMIN) return entreesCollaboration(partages);
   if (role === ROLES.FORMATEUR) return [...NAVIGATION_FORMATEUR, ...entreesPartagees(role, partages)];
   if (role === ROLES.STAGIAIRE) return NAVIGATION_STAGIAIRE;
@@ -388,6 +407,7 @@ export const ENTREES = [
   ...NAVIGATION.flatMap((entree) => (entree.sousMenu ? [entree, ...entree.sousMenu] : [entree])),
   ...NAVIGATION_FORMATEUR,
   ...NAVIGATION_STAGIAIRE,
+  ...NAVIGATION_COMPLEXE,
   ...HORS_MENU,
 ].filter(
   (entree, rang, toutes) => toutes.findIndex((autre) => autre.url === entree.url) === rang

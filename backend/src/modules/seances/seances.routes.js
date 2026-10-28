@@ -7,7 +7,7 @@ import { SEANCES_JOUR, droitSuffit } from 'shared/domain';
 import { forbidden } from '../../lib/httpError.js';
 import { validate } from '../../middleware/validate.js';
 import { authenticate } from '../../middleware/authenticate.js';
-import { agitEnDirecteur, requireRole } from '../../middleware/requireRole.js';
+import { agitEnDirecteur, requireRole, requireRoleOuComplexe } from '../../middleware/requireRole.js';
 import { resolveTenant } from '../../middleware/resolveTenant.js';
 import * as service from './seances.service.js';
 import { construireExport } from './exportGlobal.service.js';
@@ -52,7 +52,8 @@ const router = Router();
  */
 router.use(
   authenticate,
-  requireRole(ROLES.DIRECTEUR, ROLES.GESTIONNAIRE, ROLES.FORMATEUR),
+  // Le directeur de complexe y LIT aussi (2026-10-27) — jamais n'y écrit.
+  requireRoleOuComplexe(ROLES.DIRECTEUR, ROLES.GESTIONNAIRE, ROLES.FORMATEUR),
   resolveTenant
 );
 

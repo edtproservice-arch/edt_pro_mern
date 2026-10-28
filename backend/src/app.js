@@ -8,6 +8,7 @@ import devicesRoutes from './modules/auth/devices.routes.js';
 import adminRoutes from './modules/admin/admin.routes.js';
 import etablissementsRoutes from './modules/etablissements/etablissements.routes.js';
 import comptesRoutes from './modules/comptes/comptes.routes.js';
+import complexeRoutes from './modules/complexe/complexe.routes.js';
 import baseRoutes from './modules/base/base.routes.js';
 import stagiairesRoutes from './modules/stagiaires/stagiaires.routes.js';
 import chronogrammeRoutes from './modules/chronogramme/chronogramme.routes.js';
@@ -129,6 +130,7 @@ export function createApp() {
   app.use('/api/v2/admin', adminRoutes); //                      F15 — Phase 3
   app.use('/api/v2/etablissements', etablissementsRoutes); //    F2  — Phase 3
   app.use('/api/v2/comptes', comptesRoutes); //                  F12 — Phase 3
+  app.use('/api/v2/complexe', complexeRoutes); //                Directeur de complexe (2026-10-27)
   app.use('/api/v2/base', baseRoutes); //                     F3, F4 — Phase 4
   app.use('/api/v2/stagiaires', stagiairesRoutes); //            F11 — Phase 4
   app.use('/api/v2/chronogrammes', chronogrammeRoutes); //         F7 — Phase 7

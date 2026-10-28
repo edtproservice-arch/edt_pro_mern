@@ -17,6 +17,9 @@ import PageCarte from '@/features/parametres/PageCarte';
 import PageFormateurs from '@/features/parametres/PageFormateurs';
 import PageFormations from '@/features/parametres/PageFormations';
 import PageEdition from '@/features/edition/PageEdition';
+import PageFormateursComplexe from '@/features/complexe/PageFormateursComplexe';
+import PageEspacesComplexe from '@/features/complexe/PageEspacesComplexe';
+import PageAbsencesComplexe from '@/features/complexe/PageAbsencesComplexe';
 import PageEfmRegional from '@/features/parametres/PageEfmRegional';
 import PageGroupesFq from '@/features/parametres/PageGroupesFq';
 import PageStages from '@/features/parametres/PageStages';
@@ -77,6 +80,8 @@ const TOUS_LES_ROLES_APPLICATIFS = [
   ROLES.GESTIONNAIRE,
   ROLES.FORMATEUR,
   ROLES.STAGIAIRE,
+  // Sa messagerie le relie aux directeurs qui l'ont autorisé (2026-10-27).
+  ROLES.DIRECTEUR_COMPLEXE,
 ];
 
 /**
@@ -165,6 +170,23 @@ export default function App() {
                   <PageMessagerie />
                 </GardeRole>
               }
+            />
+
+            {/*
+              ═══ LE DIRECTEUR DE COMPLEXE (2026-10-27, étape 2) ═══ Ses vues du
+              complexe, sur ses établissements autorisés à la fois — à lui seul.
+            */}
+            <Route
+              path="complexe/formateurs"
+              element={<GardeRole roles={[ROLES.DIRECTEUR_COMPLEXE]}><PageFormateursComplexe /></GardeRole>}
+            />
+            <Route
+              path="complexe/espaces"
+              element={<GardeRole roles={[ROLES.DIRECTEUR_COMPLEXE]}><PageEspacesComplexe /></GardeRole>}
+            />
+            <Route
+              path="complexe/absences"
+              element={<GardeRole roles={[ROLES.DIRECTEUR_COMPLEXE]}><PageAbsencesComplexe /></GardeRole>}
             />
 
             {/* ═══ RÉSERVÉS AU DIRECTEUR SEUL ═══ */}

@@ -43,6 +43,27 @@ export function requireRole(...rolesAutorises) {
   };
 }
 
+/**
+ * ═══ LE DIRECTEUR DE COMPLEXE LIT, ET SEULEMENT LÀ OÙ ON L'Y INVITE (2026-10-27) ═══
+ * `requireRole` avec, EN PLUS, le directeur de complexe — mais pour une LECTURE
+ * seulement (GET, HEAD). Toute écriture lui reste refusée, quelle que soit la route.
+ *
+ * ⚠️ UNE LISTE BLANCHE, ROUTEUR PAR ROUTEUR : l'ajouter à `requireRole` lui-même
+ * aurait ouvert TOUTES les lectures du directeur — la liste des comptes, les
+ * stagiaires nommés —, alors que le porteur ne veut lui montrer que des chiffres.
+ * Un routeur qui ne pose pas cette garde le refuse, par construction.
+ */
+export function requireRoleOuComplexe(...rolesAutorises) {
+  const garde = requireRole(...rolesAutorises);
+  return (req, res, next) => {
+    if (req.utilisateur?.role === ROLES.DIRECTEUR_COMPLEXE) {
+      if (req.method === 'GET' || req.method === 'HEAD') return next();
+      return next(forbidden('Consultation seule', { code: 'LECTURE_SEULE' }));
+    }
+    return garde(req, res, next);
+  };
+}
+
 /** Un administrateur qui collabore avec un établissement (jeton `col`). */
 export function enCollaboration(utilisateur) {
   return utilisateur?.role === ROLES.ADMIN && Boolean(utilisateur.$locals?.collaboration);

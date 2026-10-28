@@ -38,7 +38,17 @@ export const SOURCES_DROIT = {
   INVITATION: 'invitation',
   /** L'administrateur en collaboration, invité par défaut (2026-09-14). */
   ADMIN: 'admin',
+  /** Le directeur de complexe, autorisé par l'établissement (2026-10-27). */
+  COMPLEXE: 'complexe',
 };
+
+/**
+ * ═══ CE QUE CONSULTE LE DIRECTEUR DE COMPLEXE (2026-10-27) ═══ En LECTURE seule,
+ * jamais plus. Pas de liste nominative de stagiaires (décision du porteur : « les
+ * chiffres seulement, par défaut ») : aucune page qui en montre n'y figure.
+ * D'autres pages s'y ajouteront au fil des étapes — une seule liste, ici.
+ */
+export const PAGES_DIRECTEUR_COMPLEXE = ['emploi', 'avancement'];
 
 const RANG = { [DROITS_PAGE.CONSULTER]: 1, [DROITS_PAGE.MODIFIER]: 2, [DROITS_PAGE.PROPRIETAIRE]: 3 };
 
@@ -83,6 +93,17 @@ export function droitSurPage(utilisateur, partage, page = partage?.page) {
    */
   if (utilisateur.role === ROLES.ADMIN) {
     return { droit: DROITS_PAGE.PROPRIETAIRE, source: SOURCES_DROIT.ADMIN };
+  }
+
+  /*
+   * ⚠️ L'ÉTABLISSEMENT NE SE VÉRIFIE PAS ICI : il l'a été avant, par
+   * `resoudreContexte` — le compte n'y porte QUE les établissements qui l'ont
+   * autorisé. Ici, seulement : quelles pages, et en lecture.
+   */
+  if (utilisateur.role === ROLES.DIRECTEUR_COMPLEXE) {
+    return PAGES_DIRECTEUR_COMPLEXE.includes(page)
+      ? { droit: DROITS_PAGE.CONSULTER, source: SOURCES_DROIT.COMPLEXE }
+      : null;
   }
 
   // Le stagiaire n'est jamais invité à préparer un emploi du temps.

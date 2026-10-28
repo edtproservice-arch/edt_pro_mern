@@ -48,3 +48,27 @@ export function supprimerCompte(id) {
 export function reinitialiserMotDePasse(id, motDePasse) {
   return api.post(`/api/v2/comptes/${id}/mot-de-passe`, { motDePasse });
 }
+
+/*
+ * ═══ DIRECTEUR DE COMPLEXE (2026-10-27) ═══ Les comptes du complexe, vus et gérés
+ * par le directeur de CET établissement : créer, autoriser, retirer, supprimer.
+ */
+export function chargerComptesComplexe() {
+  return api.get('/api/v2/complexe/comptes').then((reponse) => reponse.comptes);
+}
+
+export function creerCompteComplexe(charge) {
+  return api.post('/api/v2/complexe/comptes', charge);
+}
+
+export function autoriserCompteComplexe(id) {
+  return api.post(`/api/v2/complexe/comptes/${id}/autoriser`);
+}
+
+export function retirerCompteComplexe(id) {
+  return api.post(`/api/v2/complexe/comptes/${id}/retirer`);
+}
+
+export function supprimerCompteComplexe(id) {
+  return api.delete(`/api/v2/complexe/comptes/${id}`);
+}

@@ -84,7 +84,12 @@ export async function droitDe(utilisateur, etablissementId, anneeScolaire, page)
    * invité par défaut (2026-09-14) : ni l'un ni l'autre n'est écrit dans un
    * partage — inutile de lire la base.
    */
-  if (utilisateur?.role === ROLES.DIRECTEUR || utilisateur?.role === ROLES.ADMIN) {
+  // ⚠️ Le directeur de complexe aussi (2026-10-27) : son droit vient de son rôle, pas d'un partage.
+  if (
+    utilisateur?.role === ROLES.DIRECTEUR ||
+    utilisateur?.role === ROLES.ADMIN ||
+    utilisateur?.role === ROLES.DIRECTEUR_COMPLEXE
+  ) {
     return droitSurPage(utilisateur, null, page);
   }
   if (!ROLES_INVITABLES.includes(utilisateur?.role)) return null;
@@ -103,7 +108,7 @@ export async function droitDe(utilisateur, etablissementId, anneeScolaire, page)
 export async function meilleurDroit(utilisateur, etablissementId, anneeScolaire, pages) {
   if (pages.length === 1) return droitDe(utilisateur, etablissementId, anneeScolaire, pages[0]);
   if (utilisateur?.role === ROLES.DIRECTEUR) return droitSurPage(utilisateur, null, pages[0]);
-  if (utilisateur?.role === ROLES.ADMIN) {
+  if (utilisateur?.role === ROLES.ADMIN || utilisateur?.role === ROLES.DIRECTEUR_COMPLEXE) {
     // Invité par défaut sur les pages qui se partagent : la plus ouverte l'emporte.
     return pages.map((page) => droitSurPage(utilisateur, null, page)).find(Boolean) ?? null;
   }

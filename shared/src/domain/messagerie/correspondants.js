@@ -53,6 +53,8 @@ const MATRICE = {
     { role: ROLES.FORMATEUR, etablissement: true },
     { role: ROLES.GESTIONNAIRE, etablissement: true },
     { role: ROLES.ADMIN, etablissement: false },
+    // Le directeur de complexe qu'il a AUTORISÉ — l'établissement partagé, c'est l'accord (2026-10-27).
+    { role: ROLES.DIRECTEUR_COMPLEXE, etablissement: true },
   ],
 
   [ROLES.FORMATEUR]: [
@@ -67,6 +69,14 @@ const MATRICE = {
   ],
 
   [ROLES.STAGIAIRE]: [{ role: ROLES.GESTIONNAIRE, etablissement: true }],
+
+  /*
+   * ═══ LE DIRECTEUR DE COMPLEXE (2026-10-27) ═══ Il écrit aux directeurs des
+   * établissements qui l'ont AUTORISÉ, et à eux seuls : son `etablissementIds` ne
+   * porte que ceux-là. Ni formateurs, ni stagiaires — il consulte, il ne dirige pas
+   * leurs équipes. Un établissement qui retire son accord sort de sa liste.
+   */
+  [ROLES.DIRECTEUR_COMPLEXE]: [{ role: ROLES.DIRECTEUR, etablissement: true }],
 };
 
 /** Les rôles qu'un expéditeur peut viser — pour construire la liste de choix. */

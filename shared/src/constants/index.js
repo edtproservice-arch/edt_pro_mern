@@ -24,6 +24,14 @@ export const ROLES = {
   GESTIONNAIRE: 'gestionnaire',
   FORMATEUR: 'formateur',
   STAGIAIRE: 'stagiaire',
+  /*
+   * ═══ DIRECTEUR DE COMPLEXE (2026-10-27, demande du porteur) ═══ Il CONSULTE,
+   * en lecture seule, les établissements de son complexe qui l'y ont autorisé —
+   * et eux seuls. Son compte est créé par un directeur depuis « Sessions » ;
+   * chaque autre directeur du complexe l'autorise ou non (accord global).
+   * `etablissementIds` = les établissements qui ont dit oui, rien d'autre.
+   */
+  DIRECTEUR_COMPLEXE: 'directeur_complexe',
 };
 
 /** ← enum `status` de la table utilisateurs */

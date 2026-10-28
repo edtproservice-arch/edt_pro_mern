@@ -5,6 +5,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -14,7 +17,8 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar';
 import { libelleAnneeScolaire } from 'shared/domain';
-import { chargerEtablissementCourant } from '@/features/configuration/api';
+import { chargerEtablissementCourant, chargerMesEtablissements } from '@/features/configuration/api';
+import { definirEtablissementActif } from '@/lib/etablissementActif';
 import { definirAnneeActive, useAnneeActive } from '@/lib/anneeActive';
 
 /**
@@ -41,6 +45,23 @@ export default function SelecteurAnnee() {
     queryFn: chargerEtablissementCourant,
     retry: false,
   });
+
+  /*
+   * ═══ D'ABORD L'ÉTABLISSEMENT, PUIS L'ANNÉE (2026-10-27, demande du porteur) ═══
+   * Un compte rattaché à PLUSIEURS établissements — directeur de complexe,
+   * formateur mutualisé — choisit ici les deux, dans cet ordre : chaque
+   * établissement ouvre ses propres années. Le même cache que le menu du compte.
+   */
+  const liste = useQuery({ queryKey: ['etablissements', 'mes'], queryFn: chargerMesEtablissements, retry: false });
+  const etablissements = liste.data?.etablissements ?? [];
+  const plusieurs = etablissements.length > 1;
+
+  // Un autre établissement : tout repart à neuf, comme au menu du compte — requêtes comprises.
+  const ouvrir = (id, annee) => {
+    definirEtablissementActif(id);
+    definirAnneeActive(annee);
+    window.location.reload();
+  };
 
   const etablissement = contexte.data?.etablissement;
   const annees = contexte.data?.anneesDisponibles ?? [];
@@ -95,6 +116,41 @@ export default function SelecteurAnnee() {
             side={isMobile ? 'bottom' : 'right'}
             sideOffset={4}
           >
+            {plusieurs && (
+              <>
+                <DropdownMenuLabel className="text-xs text-muted-foreground">Établissement</DropdownMenuLabel>
+                {etablissements.map((autre) => {
+                  const courant = autre.id === etablissement?.id;
+                  // Les années d'un établissement : la sienne, la précédente, la suivante — la règle du serveur.
+                  const sesAnnees = [autre.anneeScolaire - 1, autre.anneeScolaire, autre.anneeScolaire + 1];
+                  return (
+                    <DropdownMenuSub key={autre.id}>
+                      <DropdownMenuSubTrigger className="gap-2 p-2">
+                        <Building2 className="size-4 text-muted-foreground" />
+                        <span className="flex-1 truncate">{autre.nomAbrege || autre.nom}</span>
+                        {courant && <Check className="size-4" />}
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="min-w-44">
+                        <DropdownMenuLabel className="text-xs text-muted-foreground">Année scolaire</DropdownMenuLabel>
+                        {sesAnnees.map((annee) => (
+                          <DropdownMenuItem
+                            key={annee}
+                            className="gap-2 p-2"
+                            onClick={() => (courant ? changer(annee) : ouvrir(autre.id, annee))}
+                          >
+                            <span className="flex-1">{libelleAnneeScolaire(annee)}</span>
+                            {courant && annee === active && <Check className="size-4" />}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                  );
+                })}
+              </>
+            )}
+
+            {!plusieurs && (
+            <>
             <DropdownMenuLabel className="text-xs text-muted-foreground">
               Année scolaire
             </DropdownMenuLabel>
@@ -114,6 +170,8 @@ export default function SelecteurAnnee() {
               <DropdownMenuItem disabled className="text-xs">
                 Aucune année disponible
               </DropdownMenuItem>
+            )}
+            </>
             )}
           </DropdownMenuContent>
         </DropdownMenu>

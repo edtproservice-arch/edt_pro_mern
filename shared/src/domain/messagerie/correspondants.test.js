@@ -143,3 +143,23 @@ describe('règles communes', () => {
     expect(rolesJoignables('inconnu')).toEqual([]);
   });
 });
+
+/*
+ * ═══ LE DIRECTEUR DE COMPLEXE (2026-10-27) ═══ Il écrit aux directeurs qui l'ont
+ * autorisé (un établissement partagé = l'accord), et à eux seuls.
+ */
+describe('directeur de complexe', () => {
+  const complexe = personne('c', ROLES.DIRECTEUR_COMPLEXE, [EFP]);
+  const directeurAutre = personne('d2', ROLES.DIRECTEUR, [AUTRE]);
+
+  it('écrit au directeur d’un établissement qui l’a autorisé, et en reçoit', () => {
+    expect(peutEcrire(complexe, directeur)).toBe(true);
+    expect(peutEcrire(directeur, complexe)).toBe(true);
+  });
+
+  it('n’écrit ni à un établissement qui ne l’a pas autorisé, ni aux équipes', () => {
+    expect(peutEcrire(complexe, directeurAutre)).toBe(false);
+    expect(peutEcrire(complexe, formateur)).toBe(false);
+    expect(peutEcrire(formateur, complexe)).toBe(false);
+  });
+});

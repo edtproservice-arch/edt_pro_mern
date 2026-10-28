@@ -16,6 +16,7 @@ export const LIBELLES_ROLE = {
   [ROLES.GESTIONNAIRE]: 'Gestionnaire',
   [ROLES.FORMATEUR]: 'Formateur',
   [ROLES.STAGIAIRE]: 'Stagiaire',
+  [ROLES.DIRECTEUR_COMPLEXE]: 'Directeur de complexe',
 };
 
 export const libelleRole = (role) => LIBELLES_ROLE[role] ?? role;
@@ -31,6 +32,7 @@ export const ORDRE_ROLES = [
   ROLES.GESTIONNAIRE,
   ROLES.FORMATEUR,
   ROLES.STAGIAIRE,
+  ROLES.DIRECTEUR_COMPLEXE,
 ];
 
 /**
@@ -49,6 +51,7 @@ export const COULEURS_ROLE = {
   [ROLES.GESTIONNAIRE]: 'hsl(var(--accent-teal))',
   [ROLES.FORMATEUR]: 'hsl(var(--accent-orange))',
   [ROLES.STAGIAIRE]: 'hsl(var(--accent-green))',
+  [ROLES.DIRECTEUR_COMPLEXE]: 'hsl(var(--accent-brown))',
 };
 
 /**
@@ -69,6 +72,7 @@ export const TEINTE_ROLE = {
   [ROLES.GESTIONNAIRE]: 'bg-accent-teal/20 text-accent-teal',
   [ROLES.FORMATEUR]: 'bg-accent-orange/20 text-accent-orange-deep',
   [ROLES.STAGIAIRE]: 'bg-accent-green/20 text-accent-green-deep',
+  [ROLES.DIRECTEUR_COMPLEXE]: 'bg-accent-brown/20 text-accent-brown',
 };
 
 export const teinteRole = (role) => TEINTE_ROLE[role] ?? 'bg-muted text-muted-foreground';

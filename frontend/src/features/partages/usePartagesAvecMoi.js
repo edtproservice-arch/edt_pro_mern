@@ -4,7 +4,8 @@ import { recupererSession } from '@/features/auth/api';
 import { chargerMesPartages } from './api';
 
 /** Les rôles qui peuvent se voir partager une page (le directeur en est propriétaire). */
-const ROLES_CONCERNES = [ROLES.FORMATEUR, ROLES.GESTIONNAIRE];
+// Le directeur de complexe aussi (2026-10-27) : ses gardes de page lisent ses droits ici.
+const ROLES_CONCERNES = [ROLES.FORMATEUR, ROLES.GESTIONNAIRE, ROLES.DIRECTEUR_COMPLEXE];
 
 /**
  * Les pages partagées avec la personne connectée — pour le menu et les gardes.

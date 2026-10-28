@@ -21,7 +21,9 @@ import {
 import { recupererSession, seDeconnecter } from '@/features/auth/api';
 import { initiales } from '@/lib/initiales';
 import { useTheme } from '@/lib/theme';
-import SousMenuEtablissements from './SousMenuEtablissements';
+
+/** Les rôles sans page Paramètres : leur bascule clair / sombre vit dans ce menu. */
+const SANS_PARAMETRES = [ROLES.GESTIONNAIRE, ROLES.DIRECTEUR_COMPLEXE];
 
 /**
  * Menu du compte, en pied de la barre latérale.
@@ -107,7 +109,8 @@ export default function MenuUtilisateur() {
               </DropdownMenuItem>
               {/* ⚠️ PAS POUR LE GESTIONNAIRE (2026-09-29, demande du porteur) : la
                   page Paramètres ne lui est pas ouverte — le lien menait à un refus. */}
-              {utilisateur?.role !== ROLES.GESTIONNAIRE && (
+              {/* Ni pour le directeur de complexe (2026-10-27) : il consulte, il ne règle rien. */}
+              {!SANS_PARAMETRES.includes(utilisateur?.role) && (
                 <DropdownMenuItem asChild>
                   <NavLink to="/app/parametres">
                     <Settings />
@@ -115,7 +118,12 @@ export default function MenuUtilisateur() {
                   </NavLink>
                 </DropdownMenuItem>
               )}
-              <SousMenuEtablissements />
+              {/*
+                ⚠️ PLUS DE « CHANGER D'ÉTABLISSEMENT » ICI (2026-10-27, demande du porteur) :
+                le sélecteur en tête de la barre latérale choisit l'établissement, PUIS
+                l'année (`SelecteurAnnee`). Deux chemins pour le même geste, c'était un de trop.
+                La barre horizontale (formateur, stagiaire) le garde : elle n'a pas ce sélecteur.
+              */}
 
               {/*
                 ⚠️ POUR LE GESTIONNAIRE (2026-09-28, demande du porteur : « pour le
@@ -123,7 +131,7 @@ export default function MenuUtilisateur() {
                 Paramètres, où vit la bascule du directeur. Un clic alterne
                 clair / sombre ; le menu se referme, comme pour toute entrée.
               */}
-              {utilisateur?.role === ROLES.GESTIONNAIRE && (
+              {SANS_PARAMETRES.includes(utilisateur?.role) && (
                 <DropdownMenuItem onClick={() => theme.definir(theme.sombre ? 'clair' : 'sombre')}>
                   {theme.sombre ? <Sun /> : <Moon />}
                   {theme.sombre ? 'Thème clair' : 'Thème sombre'}

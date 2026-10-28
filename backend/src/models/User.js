@@ -57,6 +57,16 @@ const userSchema = new mongoose.Schema(
 
     etablissementIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Etablissement' }],
 
+    /*
+     * ═══ DIRECTEUR DE COMPLEXE (2026-10-27) ═══ Son complexe — `region|complexe`,
+     * la même clé que les établissements — et l'établissement qui a CRÉÉ le compte.
+     * ⚠️ Le complexe est porté par le COMPTE, pas déduit de `etablissementIds` : un
+     * compte que tous ses établissements ont retiré reste visible aux directeurs du
+     * complexe, qui peuvent l'autoriser de nouveau. Vides pour tout autre rôle.
+     */
+    complexe: { type: String, trim: true, default: '' },
+    creeParEtablissementId: { type: mongoose.Schema.Types.ObjectId, ref: 'Etablissement', default: null },
+
     estVerifie: { type: Boolean, default: false },
     estActif: { type: Boolean, default: true },
     configurationTerminee: { type: Boolean, default: false },

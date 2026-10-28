@@ -4,6 +4,7 @@ import { ROLES } from 'shared/constants';
 import { recupererSession } from '@/features/auth/api';
 import AccueilApp from './AccueilApp';
 import AccueilGestionnaire from './AccueilGestionnaire';
+import AccueilComplexe from '@/features/complexe/AccueilComplexe';
 
 /**
  * `/app` (l'index) — et c'est le SEUL endroit qui ne peut pas utiliser
@@ -31,6 +32,8 @@ export default function AccueilRouteur() {
     return <Navigate to="/app/mon-emploi" replace />;
   }
   if (role === ROLES.GESTIONNAIRE) return <AccueilGestionnaire />;
+  // Le directeur de complexe : le tableau de bord de ses établissements autorisés (2026-10-27).
+  if (role === ROLES.DIRECTEUR_COMPLEXE) return <AccueilComplexe />;
   // L'administrateur en collaboration : la première page collaborative (2026-09-14).
   if (role === ROLES.ADMIN) return <Navigate to="/app/emploi" replace />;
 

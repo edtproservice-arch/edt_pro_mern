@@ -108,3 +108,15 @@ export const creationLotSchema = z.object({
 export const candidatsSchema = z.object({
   role: z.enum([ROLES.FORMATEUR, ROLES.STAGIAIRE]),
 });
+
+/**
+ * ═══ COMPTE DE DIRECTEUR DE COMPLEXE (2026-10-27) ═══ Créé par un directeur depuis
+ * « Sessions ». Il se connecte par son ADRESSE : il n'a pas de matricule, et il
+ * n'appartient à aucun établissement en propre. Le mot de passe suit la règle de
+ * toute création de compte.
+ */
+export const creationDirecteurComplexeSchema = z.object({
+  nomComplet: z.string().trim().min(3, 'Nom complet requis').max(150),
+  email: z.string().trim().toLowerCase().email('Adresse e-mail invalide'),
+  motDePasse: motDePasseSchema,
+});

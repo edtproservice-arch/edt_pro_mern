@@ -1003,16 +1003,19 @@ function ResumeSalles({ salles }) {
  * ═══ PRÉSENTIEL, SYNCHRONE, GLOBALE (2026-10-10, demande du porteur) ═══
  * « Remplace total par MH Présentiel, donne la masse S1, S2 pour le synchrone et
  * ajoute MH Globale. » Chaque nature d'heures a sa ligne, avec son détail par
- * semestre ; la masse GLOBALE les réunit — présentiel, synchrone et asynchrone,
- * comme MHP totale + MHD totale dans la répartition DRIF.
+ * semestre ; la masse GLOBALE les réunit.
+ *
+ * ⚠️ SANS L'ASYNCHRONE (2026-10-28, demande du porteur : « supprime la masse
+ *    horaire asynchrone et soustrais-la de la MH globale ») : elle n'a aucune
+ *    séance à planifier ni à affecter. La globale = présentiel + synchrone, les
+ *    heures que la carte distribue réellement.
  */
 const centieme = (valeur) => Math.round(Number(valeur ?? 0) * 100) / 100;
 
 function Heures({ module }) {
   const presentiel = heuresPresentiel(module);
   const synchrone = heuresSynchrone(module);
-  const asynchrone = centieme(Number(module.mhasynS1 ?? 0) + Number(module.mhasynS2 ?? 0));
-  const globale = centieme(presentiel + synchrone + asynchrone);
+  const globale = centieme(presentiel + synchrone);
 
   return (
     <div className="mt-1 space-y-1 text-xs">
@@ -1029,18 +1032,11 @@ function Heures({ module }) {
         appellent en plus une séance à distance — et, depuis le 2026-10-10, à
         quel semestre.
       */}
-      {(synchrone > 0 || asynchrone > 0) && (
+      {synchrone > 0 && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          {synchrone > 0 && (
-            <>
-              <BadgeSynchrone heures={synchrone} />
-              <Semestre libelle="S1" heures={module.mhsynS1 ?? 0} classe="text-accent-sky" />
-              <Semestre libelle="S2" heures={module.mhsynS2 ?? 0} classe="text-accent-green" />
-            </>
-          )}
-          {/* L'asynchrone n'a pas de séance à planifier, mais compte dans la masse globale :
-              sans lui, le total ne se vérifierait pas à l'œil. */}
-          {asynchrone > 0 && <span className="text-muted-foreground">Asynchrone {asynchrone} h</span>}
+          <BadgeSynchrone heures={synchrone} />
+          <Semestre libelle="S1" heures={module.mhsynS1 ?? 0} classe="text-accent-sky" />
+          <Semestre libelle="S2" heures={module.mhsynS2 ?? 0} classe="text-accent-green" />
         </div>
       )}
 

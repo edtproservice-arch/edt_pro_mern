@@ -22,6 +22,11 @@ export const ACTIONS_AUDIT = {
   COLLABORATION_FIN: 'session.collaboration_fin',
   /** Invitation, changement de droit, retrait, accès général (Phase 5bis). */
   PARTAGE_MODIFIE: 'page.partage_modifie',
+  /** Directeur de complexe (2026-10-27) : création, accès accordé ou retiré, suppression. */
+  COMPLEXE_COMPTE_CREE: 'complexe.compte_cree',
+  COMPLEXE_ACCES_ACCORDE: 'complexe.acces_accorde',
+  COMPLEXE_ACCES_RETIRE: 'complexe.acces_retire',
+  COMPLEXE_COMPTE_SUPPRIME: 'complexe.compte_supprime',
 };
 
 const auditLogSchema = new mongoose.Schema(

@@ -444,7 +444,7 @@ export async function tableauDeBord(etablissementId, anneeScolaire) {
  * simple retard ne compte pas. Justifiée ou non, peu importe — un stagiaire
  * qui décroche peut fournir un certificat.
  */
-function joursAbsentsConsecutifs(joursMarques) {
+export function joursAbsentsConsecutifs(joursMarques) {
   const absents = new Map();
   for (const { _id, absent } of joursMarques) {
     if (!absent) continue;

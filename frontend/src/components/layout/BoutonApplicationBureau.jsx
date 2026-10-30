@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import { MonitorDown, Smartphone } from 'lucide-react';
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { estAndroid, estApplicationTauri } from '@/lib/miseAJourDesktop';
@@ -13,11 +14,28 @@ import { estAndroid, estApplicationTauri } from '@/lib/miseAJourDesktop';
  *    `.github/workflows/application-bureau.yml` : les liens ne changent jamais.
  * ⚠️ DANS LE NAVIGATEUR SEULEMENT : dans une application installée, on l'a déjà — elle propose
  *    elle-même ses mises à jour. Sur un téléphone Android, seule l'APK est proposée.
+ * ⚠️ PAS DE LIEN VERS UN FICHIER ABSENT (même jour : « échec de téléchargement » avant la
+ *    première publication) : chaque bouton vérifie que son fichier existe, et se cache sur un
+ *    404. Une erreur réseau — le site local, qui interroge edtpro.tech — le laisse affiché.
  */
 export const URL_INSTALLEUR_BUREAU = 'https://edtpro.tech/telechargements/EDT-Pro_x64-setup.exe';
 export const URL_APK_ANDROID = 'https://edtpro.tech/telechargements/EDT-Pro.apk';
 
+/** Le fichier est-il publié ? `false` seulement sur un 404 franc. */
+function usePublie(href) {
+  const requete = useQuery({
+    queryKey: ['telechargement-publie', href],
+    queryFn: async () => (await fetch(href, { method: 'HEAD', cache: 'no-store' })).status !== 404,
+    staleTime: 10 * 60 * 1000,
+    retry: false,
+  });
+  // Affiché une fois le fichier trouvé — ou si la vérification échoue (réseau) ; caché sinon.
+  return requete.isError || requete.data === true;
+}
+
 function Lien({ href, Icone, titre, etiquette, infobulle }) {
+  const publie = usePublie(href);
+  if (!publie) return null;
   return (
     <SidebarMenuItem>
       <SidebarMenuButton asChild tooltip={infobulle}>

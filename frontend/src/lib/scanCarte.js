@@ -40,7 +40,12 @@ export function jetonDuQr(contenu, hotes = hotesAdmis()) {
 }
 
 /**
- * Ouvre la caméra en plein écran et rend le texte du QR scanné.
+ * Ouvre la caméra et rend le texte du QR scanné.
+ *
+ * ⚠️ EN MODE FENÊTRÉ, la caméra DERRIÈRE la page (2026-10-31) : le mode plein écran
+ *    (`windowed: false`) s'ouvrait puis se refermait aussitôt sur Android (constaté par le
+ *    porteur). L'appelant rend donc la page transparente pendant le scan, et y dessine son
+ *    cadre de visée — voir `BoutonScannerCarte` et `html.scan-qr-actif` (globals.css).
  * @returns {Promise<string>}
  * @throws {Error} `code` : `PERMISSION` (caméra refusée) — sinon l'erreur du scanner
  */
@@ -53,8 +58,14 @@ export async function scannerQr() {
     erreur.code = 'PERMISSION';
     throw erreur;
   }
-  const resultat = await scan({ windowed: false, formats: [Format.QRCode] });
+  const resultat = await scan({ windowed: true, formats: [Format.QRCode] });
   return resultat?.content ?? '';
+}
+
+/** Arrête un scan en cours : la promesse de `scannerQr` est alors rejetée. */
+export async function annulerScan() {
+  const { cancel } = await import('@tauri-apps/plugin-barcode-scanner');
+  await cancel();
 }
 
 /** Les réglages de l'application, pour autoriser la caméra après un refus. */

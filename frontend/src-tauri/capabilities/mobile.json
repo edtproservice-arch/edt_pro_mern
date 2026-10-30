@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/mobile-schema.json",
   "identifier": "mobile",
-  "description": "Droits de l'application Android : ouvrir un lien (la nouvelle APK) dans le navigateur",
+  "description": "Droits de l'application Android : ouvrir un lien (la nouvelle APK), scanner le QR de la carte de stagiaire",
   "windows": [
     "main"
   ],
@@ -11,6 +11,7 @@
   ],
   "permissions": [
     "core:default",
-    "opener:default"
+    "opener:default",
+    "barcode-scanner:default"
   ]
 }

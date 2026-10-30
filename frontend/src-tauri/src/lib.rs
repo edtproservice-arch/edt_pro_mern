@@ -8,6 +8,9 @@ pub fn run() {
             // (`src/lib/miseAJourDesktop.js`), qui sait la présenter à l'utilisateur.
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+            // Le scan du QR de la carte de stagiaire : connexion directe (2026-10-31).
+            #[cfg(mobile)]
+            app.handle().plugin(tauri_plugin_barcode_scanner::init())?;
             Ok(())
         })
         .run(tauri::generate_context!())

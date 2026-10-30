@@ -7,6 +7,7 @@ import { connexionSchema } from 'shared/schemas';
 import AuthLayout from './components/AuthLayout';
 import ChampMotDePasse from './components/ChampMotDePasse';
 import PanneauAide from './components/PanneauAide';
+import BoutonScannerCarte from './components/BoutonScannerCarte';
 import {
   Form,
   FormControl,
@@ -149,6 +150,10 @@ export default function LoginPage() {
             </Button>
           </form>
         </Form>
+        {/* Application mobile seulement : se connecter en scannant sa carte (2026-10-31). */}
+        <div className="mt-4">
+          <BoutonScannerCarte />
+        </div>
       </AuthLayout>
 
       <PanneauAide />

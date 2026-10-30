@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ROLES } from 'shared/constants';
 import CarteEtablissement from '@/features/configuration/carte/CarteEtablissement';
+import DialogueGroupesRetires from '@/features/configuration/DialogueGroupesRetires';
 import { repliCase } from '@/features/configuration/carte/casesCarte';
 import { enregistrerCarte } from '@/features/configuration/api';
 import { recupererSession } from '@/features/auth/api';
@@ -288,13 +289,43 @@ export default function PageAffectations({
     reprendre.current?.(enregistree.carte);
   }, [enregistree.carte, enregistree.version, adoptions]);
 
+  /*
+   * ═══ DES GROUPES RETIRÉS ENCORE UTILISÉS (2026-10-30, demande du porteur) ═══
+   * Le serveur refuse (409 `GROUPES_ENCORE_UTILISES`) une carte qui ferait disparaître des
+   * groupes portant encore des séances, un chronogramme ou des stagiaires — et n'écrit rien.
+   * Un simple toast « Des groupes retirés sont encore utilisés » ne disait ni lesquels ni ce
+   * qu'ils emporteraient : la même fenêtre que la carte de la configuration les nomme, chiffres
+   * à l'appui, et le directeur tranche. `carte` : celle qui a été refusée — la confirmation
+   * renvoie CELLE-LÀ, pas une carte retouchée depuis qui retirerait d'autres groupes.
+   */
+  const [aConfirmer, setAConfirmer] = useState(null);
+  /*
+   * ⚠️ LA CARTE REFUSÉE NE REPART PAS TOUTE SEULE. L'enregistrement automatique relance un envoi
+   *    dès que le précédent se termine : la même carte repartait en boucle, un toast de refus
+   *    après l'autre, et la fenêtre se serait rouverte aussitôt « Annuler » cliqué. Seule une
+   *    carte MODIFIÉE depuis — ou la confirmation — est renvoyée.
+   */
+  const refusee = useRef(null);
+
   const enregistrement = useMutation({
     // La carte voyage en VARIABLE de mutation, et non par la fermeture : c'est
     // ainsi que `onSuccess` sait ce qui a réellement été envoyé. Une retouche
     // faite pendant l'écriture reste alors « en attente » au lieu d'être
     // comptée pour écrite, donc perdue.
-    mutationFn: (carte) => enregistrerCarte(carte, version.current ?? 0),
-    onSuccess: (resultat, envoyee) => {
+    mutationFn: ({ carte, confirmerSuppressions = false }) =>
+      enregistrerCarte(carte, version.current ?? 0, confirmerSuppressions),
+    onSuccess: (resultat, { carte: envoyee }) => {
+      setAConfirmer(null);
+      refusee.current = null;
+      // Une cascade confirmée ne passe pas en silence : ce qui est parti, après coup.
+      if (resultat.cascade) {
+        const { groupes: partis = [], chronogrammes, seances, stagiaires } = resultat.cascade;
+        toast.warning(`${partis.join(', ')} retiré(s) de la carte`, {
+          description:
+            `${chronogrammes} chronogramme(s) et ${seances} séance(s) supprimé(s), ` +
+            `${stagiaires} stagiaire(s) détaché(s). Les absences sont conservées.`,
+        });
+      }
       // Tout de suite : la relecture qui suit rendra cette même version, et ne
       // doit pas passer pour l'enregistrement d'un collègue.
       version.current = resultat.version;
@@ -303,7 +334,12 @@ export default function PageAffectations({
         JSON.stringify(courante) !== reference.current && Boolean(courante?.groupes?.length)
       );
     },
-    onError: async (erreur) => {
+    onError: async (erreur, { carte }) => {
+      if (erreur.code === 'GROUPES_ENCORE_UTILISES') {
+        refusee.current = JSON.stringify(carte);
+        setAConfirmer({ details: erreur.details ?? [], carte });
+        return;
+      }
       if (!estVersionPerimee(erreur)) {
         toast.error('Enregistrement impossible', { description: erreur.message });
         return;
@@ -345,7 +381,10 @@ export default function PageAffectations({
         enCours: enregistrement.isPending,
         // Un 409 compris : « Enregistré » contredirait le toast qui l'annonce.
         echec: enregistrement.isError,
-        onEnregistrer: () => enregistrement.mutate(courante),
+        onEnregistrer: () => {
+          if (refusee.current !== null && refusee.current === JSON.stringify(courante)) return;
+          enregistrement.mutate({ carte: courante });
+        },
         // Active « Défaire » : la carte à l'écran, et de quoi la reposer.
         valeur: courante,
         onRestaurer: (precedente) => reprendre.current?.(precedente),
@@ -356,6 +395,13 @@ export default function PageAffectations({
       {/* La salle est celle de la page : une seule entrée par page est possible,
           et c'est elle qui porte curseurs et case ouverte. */}
       <EnTetePartage page="affectations" salle={salle} />
+      <DialogueGroupesRetires
+        details={aConfirmer?.details ?? null}
+        explication="Ces groupes ne sont plus dans la carte, mais ils portent encore des données. Enregistrer les supprimera définitivement ; annuler n'écrit rien."
+        libelleConfirmation="Supprimer et enregistrer"
+        onConfirmer={() => enregistrement.mutate({ carte: aConfirmer.carte, confirmerSuppressions: true })}
+        onAnnuler={() => setAConfirmer(null)}
+      />
       <CadreReglage
         titre={estCarte ? 'Carte' : 'Affectations'}
         chargement={enregistree.chargement}

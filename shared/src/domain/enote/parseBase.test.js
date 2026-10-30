@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { separerFusion } from '../carte/reconstruction.js';
 import { construireBase } from './parseBase.js';
 import { indexColonne, resoudreColonnes } from './colonnes.js';
 import { arrondir } from './massesHoraires.js';
@@ -273,6 +274,48 @@ describe('construireBase — règles', () => {
     const synchrones = base.affectations.filter((a) => a.type === 'synchrone');
     expect(synchrones).toHaveLength(1);
     expect(synchrones[0].groupe).toBe('GM101 GM102');
+  });
+
+  it('suffixe les groupes homonymes dans le libellé d’un cours synchrone fusionné (2026-10-30)', () => {
+    // Deux filières ont un GE101 et un GE102 : les groupes deviennent « GE101 (FGT) », « GE101 (GE) »…
+    // Le libellé de fusion d'e-note reste « GE101 GE102 » : sans renommage, l'affectation visait
+    // un « GE101 » qu'aucun groupe ne porte, et l'enregistrement de la carte était refusé.
+    const synchrone = { matriculeS: '10039', formateurS: 'SAMIR EL ACHOURI', mhsyn: '30' };
+    const base = construireBase([
+      construire({ codeFiliere: 'FGT_GE_TS', groupe: 'GE101', fusion: 'GE101 GE102', ...synchrone }),
+      construire({ codeFiliere: 'FGT_GE_TS', groupe: 'GE102', fusion: 'GE101 GE102', ...synchrone }),
+      construire({ codeFiliere: 'GE_GE_TS', groupe: 'GE101', fusion: 'GE103 GE102 GE101', ...synchrone }),
+      construire({ codeFiliere: 'GE_GE_TS', groupe: 'GE102', fusion: 'GE103 GE102 GE101', ...synchrone }),
+      construire({ codeFiliere: 'GE_GE_TS', groupe: 'GE103', fusion: 'GE103 GE102 GE101', ...synchrone }),
+    ]);
+
+    const libelles = base.affectations.filter((a) => a.type === 'synchrone').map((a) => a.groupe);
+    expect(libelles).toEqual(['GE101 (FGT) GE102 (FGT)', 'GE103 GE102 (GE) GE101 (GE)']);
+    // Chaque membre de chaque libellé est un groupe de la base.
+    for (const libelle of libelles) {
+      for (const membre of separerFusion(libelle)) expect(base.groupes).toContain(membre);
+    }
+  });
+
+  it('suffixe aussi un libellé de fusion d’un seul groupe homonyme', () => {
+    const synchrone = { matriculeS: '10039', formateurS: 'SAMIR EL ACHOURI', mhsyn: '30' };
+    const base = construireBase([
+      construire({ codeFiliere: 'FGT_GE_TS', groupe: 'GE101', fusion: 'GE101', ...synchrone }),
+      construire({ codeFiliere: 'GE_GE_TS', groupe: 'GE101' }),
+    ]);
+    expect(base.affectations.find((a) => a.type === 'synchrone').groupe).toBe('GE101 (FGT)');
+  });
+
+  it('garde tel quel le libellé imposé par la carte', () => {
+    const synchrone = { matriculeS: '10039', formateurS: 'SAMIR EL ACHOURI', mhsyn: '30' };
+    const base = construireBase(
+      [
+        construire({ codeFiliere: 'FGT_GE_TS', groupe: 'GE101 (FGT)', fusion: 'GE101 (FGT) GE102 (FGT)', ...synchrone }),
+        construire({ codeFiliere: 'GE_GE_TS', groupe: 'GE101 (GE)' }),
+      ],
+      { nomsGroupes: new Map([['FGT_GE_TS||GE101 (FGT)', 'GE101 (FGT)'], ['GE_GE_TS||GE101 (GE)', 'GE101 (GE)']]) }
+    );
+    expect(base.affectations.find((a) => a.type === 'synchrone').groupe).toBe('GE101 (FGT) GE102 (FGT)');
   });
 
   it('déduit une adresse OFPPT des matricules numériques seulement', () => {

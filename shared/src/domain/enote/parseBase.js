@@ -3,6 +3,7 @@ import { nomBase } from '../formateurs/nomBase.js';
 import { resoudreHomonymes } from '../formateurs/homonymes.js';
 import { resoudreColonnes } from './colonnes.js';
 import { renommerGroupe, retirerSuffixe } from './suffixesGroupes.js';
+import { separerFusion } from '../carte/reconstruction.js';
 import { arrondir, massesHoraires } from './massesHoraires.js';
 
 /**
@@ -106,6 +107,34 @@ function identifiant(formateur) {
  */
 export function cleGroupeLigne(codeFiliere, groupeBrut) {
   return `${majuscules(codeFiliere)}||${String(groupeBrut ?? '').trim()}`;
+}
+
+/**
+ * ═══ LE LIBELLÉ D'UN COURS SYNCHRONE, RENOMMÉ COMME SES GROUPES (2026-10-30) ═══
+ * La colonne « fusion » d'e-note écrit les groupes tels quels : « GE101 GE102 ». Quand deux
+ * filières ont un GE101, l'import suffixe le GROUPE (« GE101 (FGT) », « GE101 (GE) ») mais
+ * gardait ce libellé brut : l'affectation synchrone visait alors un « GE101 » qu'aucun groupe
+ * ne porte. La carte ne l'affichait pas, son enregistrement le croyait retiré, et le serveur
+ * refusait — « Des groupes retirés sont encore utilisés » (POLE INDUSTRIE, ISTA ZENATA).
+ *
+ * Chaque membre reçoit donc le nom final de son groupe : celui de la ligne pour le groupe de
+ * la ligne ; pour un autre, la règle de l'import avec SA filière — la seule qui le porte, ou
+ * celle de la ligne quand elle en fait partie. Ambigu (homonyme d'autres filières seulement),
+ * il reste tel quel : mieux vaut un nom brut qu'un suffixe inventé.
+ */
+function renommerFusion(fusion, groupeBrut, groupe, codeFiliere, filieresParGroupe) {
+  const nomDeLaLigne = retirerSuffixe(groupeBrut);
+  const filiereLigne = majuscules(codeFiliere);
+  return separerFusion(fusion)
+    .map((membre) => {
+      const nom = retirerSuffixe(membre);
+      if (nom === nomDeLaLigne) return groupe;
+      const filieres = filieresParGroupe.get(nom);
+      if (!filieres || filieres.size === 0) return renommerGroupe(membre, filiereLigne, filieresParGroupe);
+      if (filieres.size === 1) return renommerGroupe(membre, [...filieres][0], filieresParGroupe);
+      return filieres.has(filiereLigne) ? renommerGroupe(membre, filiereLigne, filieresParGroupe) : membre;
+    })
+    .join(' ');
 }
 
 /**
@@ -281,7 +310,13 @@ export function construireBase(lignes, options = {}) {
       // CHAQUE ligne de groupe (« GM101 » puis « GM102 »), avec à chaque fois la
       // masse horaire complète. Les additionner doublerait la charge prévue :
       // le cours est unique, on ne le retient qu'une fois.
-      const groupeSynchrone = fusionGroupe || groupe;
+      // Renommé comme ses groupes à l'import (voir `renommerFusion`). La carte, elle, impose déjà
+      // ses noms (`nomsGroupes`) : son libellé est repris tel quel.
+      const groupeSynchrone = fusionGroupe
+        ? options.nomsGroupes
+          ? fusionGroupe
+          : renommerFusion(fusionGroupe, ligne[col.groupe], groupe, ligne[col.codeFiliere], filieresParGroupe)
+        : groupe;
       const cle = `${synchrone}|${groupeSynchrone}|${module}`;
 
       if (!synchronesVues.has(cle)) {

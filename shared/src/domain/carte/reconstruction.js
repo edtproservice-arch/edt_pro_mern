@@ -222,12 +222,17 @@ export function reconstruireGroupes(base, referentiel = new Map()) {
   const sallesParModule = lireTable(base?.sallesAffectations);
 
   // ─── 2. Un groupe par nom, garni des modules officiels de son ensemble ────
-  for (const nom of base?.groupes ?? []) {
+  /*
+   * Un groupe de la carte, garni des modules officiels de son ensemble. Clé : son nom en
+   * majuscules, sans espaces autour — la comparaison du serveur (`nomsDeLaCarte`).
+   */
+  const cle = (nom) => String(nom ?? '').trim().toUpperCase();
+  const creerGroupe = (nom) => {
     const codeFiliere = filiereParGroupe.get(nom) ?? '';
     const anneeFormation = anneeDuNomGroupe(nom);
     const ensemble = referentiel.get(`${codeFiliere}||${anneeFormation}`);
 
-    parGroupe.set(nom, {
+    parGroupe.set(cle(nom), {
       nom,
       codeFiliere,
       intituleFiliere: ensemble?.filiere?.intitule ?? codeFiliere,
@@ -266,6 +271,11 @@ export function reconstruireGroupes(base, referentiel = new Map()) {
         reference: { mhpS1: module.mhpS1, mhpS2: module.mhpS2 },
       })),
     });
+    return parGroupe.get(cle(nom));
+  };
+
+  for (const nom of base?.groupes ?? []) {
+    if (!parGroupe.has(cle(nom))) creerGroupe(nom);
   }
 
   // ─── 3. Reposer les affectations enregistrées sur ces modules ─────────────
@@ -275,8 +285,14 @@ export function reconstruireGroupes(base, referentiel = new Map()) {
     const fusion = estFusion(affectation.groupe) ? String(affectation.groupe).trim() : '';
 
     for (const nomGroupe of groupes) {
-      const groupe = parGroupe.get(nomGroupe);
-      if (!groupe) continue;
+      /*
+       * ⚠️ UN GROUPE CONNU DE SES SEULES AFFECTATIONS EST RECRÉÉ, PAS IGNORÉ (2026-10-30).
+       *    Absent de `base.groupes` mais présent dans une affectation, il était sauté : la carte
+       *    à l'écran ne le contenait pas, son prochain enregistrement l'omettait, et le serveur
+       *    le croyait RETIRÉ — « Des groupes retirés sont encore utilisés » en changeant un
+       *    simple formateur, et l'enregistrement bloqué. Recréé ici, il repart avec la carte.
+       */
+      const groupe = parGroupe.get(cle(nomGroupe)) ?? creerGroupe(nomGroupe);
 
       const module = groupe.modules.find(
         (candidat) =>

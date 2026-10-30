@@ -600,3 +600,35 @@ describe('salles par module (2026-09-23)', () => {
     expect(sallesDe(groupes, 'DEVOWFS201', 'M202')).toEqual(['Atelier FM']);
   });
 });
+
+describe('reconstruireGroupes — un groupe connu de ses seules affectations (2026-10-30)', () => {
+  it('le recrée avec son affectation, au lieu de le faire disparaître de la carte', () => {
+    const avecOrphelin = {
+      ...base,
+      affectations: [
+        ...base.affectations,
+        { formateur: '9863', groupe: 'DEVOWFS203', module: 'M201', type: TYPES_COURS.PRESENTIEL, s1Heures: 30, s2Heures: 30 },
+      ],
+    };
+
+    const groupes = reconstruireGroupes(avecOrphelin, referentiel);
+    const orphelin = groupes.find((groupe) => groupe.nom === 'DEVOWFS203');
+
+    expect(orphelin).toBeDefined();
+    expect(orphelin.modules.find((module) => module.code === 'M201').formateurPresentiel).toBe('AHMED CHERKAOUI');
+    // Les groupes de la liste restent, une fois chacun.
+    expect(groupes.filter((groupe) => groupe.nom === 'DEVOWFS201')).toHaveLength(1);
+  });
+
+  it('reconnaît un groupe de la liste écrit autrement dans une affectation', () => {
+    const casse = {
+      ...base,
+      affectations: [
+        { formateur: '9863', groupe: ' devowfs202 ', module: 'M203', type: TYPES_COURS.PRESENTIEL, s1Heures: 10, s2Heures: 10 },
+      ],
+    };
+    const groupes = reconstruireGroupes(casse, referentiel);
+    expect(groupes.map((groupe) => groupe.nom)).toEqual(['DEVOWFS201', 'DEVOWFS202']);
+    expect(groupes[1].modules.find((module) => module.code === 'M203').formateurPresentiel).toBe('AHMED CHERKAOUI');
+  });
+});

@@ -161,9 +161,20 @@ jobs:
 
       - name: NDK Android
         shell: bash
+        # Les machines Ubuntu de GitHub ont déjà un NDK (ANDROID_NDK_LATEST_HOME) : on le prend. À défaut,
+        # on l'installe — sans `yes |` : son « Broken pipe » faisait échouer l'étape (pipefail).
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
-          echo "NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+          if [ -n "${ANDROID_NDK_LATEST_HOME:-}" ] && [ -d "$ANDROID_NDK_LATEST_HOME" ]; then
+            NDK="$ANDROID_NDK_LATEST_HOME"
+          else
+            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+            (yes 2>/dev/null || true) | "$SDKMANAGER" --licenses > /dev/null || true
+            "$SDKMANAGER" --install "ndk;$NDK_VERSION"
+            NDK="$ANDROID_HOME/ndk/$NDK_VERSION"
+          fi
+          test -d "$NDK" || { echo "::error::NDK introuvable : $NDK"; exit 1; }
+          echo "NDK utilisé : $NDK"
+          echo "NDK_HOME=$NDK" >> "$GITHUB_ENV"
 
       - name: Rust (cibles Android)
         uses: dtolnay/rust-toolchain@stable

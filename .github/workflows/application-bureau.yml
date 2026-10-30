@@ -97,6 +97,10 @@ jobs:
             echo "::error::Secret TAURI_SIGNING_PRIVATE_KEY absent : sans lui, aucune mise à jour ne serait acceptée."
             exit 1
           fi
+          # ⚠️ Collée depuis le Bloc-notes, la clé (une seule ligne base64) peut garder un retour à la ligne
+          #    Windows ou des espaces : la signature échouait. Retirés ici — le mot de passe, lui, est vide.
+          export TAURI_SIGNING_PRIVATE_KEY="$(printf '%s' "$TAURI_SIGNING_PRIVATE_KEY" | tr -d ' \r\n\t')"
+          export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(printf '%s' "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" | tr -d '\r\n')"
           npm run desktop:release -- "$VERSION"
 
       - name: Publier la release

@@ -26,6 +26,19 @@ const cellule = (resultat, groupe, module, semaine) =>
     ?.planning.get(module)
     ?.find((c) => c.semaine === semaine);
 
+describe('reporterVersChronogramme — seulement certains groupes (liaison, 2026-10-30)', () => {
+  it('n’écrit que dans les groupes demandés : un chronogramme planifié n’est pas touché', () => {
+    const resultat = reporterVersChronogramme({
+      seances: [seance(), seance({ groupe: 'GM102' })],
+      chronogrammes: [chrono('GM102', { M101: [{ semaine: 'S3', heures: 5, type: 'P' }] })],
+      groupes: new Set(['GM101']),
+    });
+    expect(resultat.bilan.groupes).toEqual(['GM101']);
+    expect(cellule(resultat, 'GM101', 'M101', 'S9')).toMatchObject({ heures: 2.5, type: 'P' });
+    expect(resultat.aEcrire.some((p) => p.groupe === 'GM102')).toBe(false);
+  });
+});
+
 describe('heuresPoseesParSemaine', () => {
   it('compte 2,5 h en journée et 2 h le soir', () => {
     const { parSemaine } = heuresPoseesParSemaine([

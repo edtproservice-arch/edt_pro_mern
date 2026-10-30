@@ -10,12 +10,20 @@ import {
 } from './heuresSupplementaires.js';
 
 describe('seuilHebdomadaire', () => {
-  it('descend de 6 h puis de 5 h par jour fermé', () => {
-    expect([0, 1, 2, 3, 4, 5, 6, 7].map((n) => seuilHebdomadaire(n))).toEqual([26, 20, 15, 10, 5, 0, 0, 0]);
+  it('descend de 4,334 h par jour fermé — la masse du Cumul (2026-10-30)', () => {
+    expect([0, 1, 2, 3, 6, 7].map((n) => seuilHebdomadaire(n))).toEqual([26, 21.67, 17.33, 13, 0, 0]);
   });
 
-  it('part de 36 h pour un formateur à 1260 h', () => {
-    expect([0, 1, 2, 3].map((n) => seuilHebdomadaire(n, 36))).toEqual([36, 30, 25, 20]);
+  it('part de 36 h pour un formateur à 1260 h, −6 h par jour fermé', () => {
+    expect([0, 1, 2, 3].map((n) => seuilHebdomadaire(n, 36))).toEqual([36, 30, 24, 18]);
+  });
+
+  it('S44 de FOUAD NOUZRI : 25 h, un férié → TH.SUP 25 − 21,67 = 3,33', () => {
+    const { semaines } = calculerHeuresSupp({
+      quota: 50,
+      semaines: [{ numero: 8, lundi: '2026-10-26', joursFermes: 1, heures: 25 }],
+    });
+    expect(semaines[0]).toMatchObject({ seuil: 21.67, brut: 3.33 });
   });
 });
 
@@ -79,11 +87,11 @@ describe('calculerHeuresSupp', () => {
       semaines: [
         semaine(1, '2025-09-01', 35),
         semaine(2, '2025-09-08', 40), // plus de plafond : 14 h
-        semaine(3, '2025-09-15', 30, 1), // un férié : seuil 20
+        semaine(3, '2025-09-15', 30, 1), // un férié : seuil 21,67
         semaine(4, '2025-09-22', 20),
       ],
     });
-    expect(semaines.map((s) => s.brut)).toEqual([9, 14, 10, 0]);
+    expect(semaines.map((s) => s.brut)).toEqual([9, 14, 8.33, 0]);
   });
 
   it('une semaine en dessous de sa masse se retranche des autres semaines du mois', () => {

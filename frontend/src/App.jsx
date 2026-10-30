@@ -46,6 +46,8 @@ import PageChoisirEtablissement from '@/features/auth/PageChoisirEtablissement';
 import AdminDashboard from '@/features/admin/AdminDashboard';
 import { demarrerBattementCoeur } from '@/lib/battementCoeur';
 import { verifierMiseAJourDesktop } from '@/lib/miseAJourDesktop';
+import { FenetreMiseAJour } from '@/components/layout/MiseAJourDesktop';
+import { ControlesFenetreSecours } from '@/components/layout/ControlesFenetre';
 import StatistiquesAdmin from '@/features/admin/StatistiquesAdmin';
 import PageRepartition from '@/features/repartition/PageRepartition';
 import PageReseau from '@/features/reseau/PageReseau';
@@ -105,7 +107,8 @@ export default function App() {
    */
   useEffect(demarrerBattementCoeur, []);
 
-  // Application de bureau seulement : propose la nouvelle version si elle existe.
+  // Application de bureau seulement : propose la nouvelle version si elle existe — au lancement,
+  // puis toutes les 6 heures ; la fenêtre est montée ci-dessous, l'icône dans la barre du haut.
   useEffect(verifierMiseAJourDesktop, []);
 
   return (
@@ -449,6 +452,10 @@ export default function App() {
           dépendre de la vitesse de lecture.
         */}
         <Toaster position="bottom-right" closeButton />
+        {/* Montée à la racine : elle s'ouvre aussi sur la page de connexion. */}
+        <FenetreMiseAJour />
+        {/* Application de bureau : réduire, agrandir, fermer sur les pages sans barre du haut. */}
+        <ControlesFenetreSecours />
       </BrowserRouter>
     </QueryClientProvider>
   );

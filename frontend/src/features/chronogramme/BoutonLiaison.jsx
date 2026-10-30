@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 
 import { libelleSemaine } from 'shared/domain';
 
-import { chargerCompletude, chargerLiaison, definirLiaison } from './api';
+import { chargerCompletude, chargerLiaison, definirLiaison, reporterVersChronogramme } from './api';
 
 /**
  * Associer ou dissocier l'emploi du temps et le chronogramme.
@@ -61,6 +61,8 @@ export default function BoutonLiaison({ lectureSeule = false, className }) {
    *    chronogramme — c'est sur ce chiffre que le directeur décide.
    */
   const [apercu, setApercu] = useState(null);
+  // Ce que la liaison importera dans les chronogrammes VIDES (2026-10-30).
+  const [apercuImport, setApercuImport] = useState(null);
   const clientRequetes = useQueryClient();
 
   const etat = useQuery({ queryKey: ['chronogramme-liaison'], queryFn: chargerLiaison });
@@ -69,15 +71,17 @@ export default function BoutonLiaison({ lectureSeule = false, className }) {
      ne réassocie pas. */
   const preparer = async () => {
     setApercu(null);
+    setApercuImport(null);
     setOuvert(true);
     if (etat.data?.liee) return;
-    try {
-      setApercu(semainesIncompletes(await chargerCompletude()));
-    } catch {
-      /* ⚠️ UN APERÇU INDISPONIBLE N'EMPÊCHE PAS DE DÉCIDER : la fenêtre
-         s'ouvre sans chiffre plutôt que de refuser le geste. */
-      setApercu(null);
-    }
+    /* ⚠️ UN APERÇU INDISPONIBLE N'EMPÊCHE PAS DE DÉCIDER : la fenêtre
+       s'ouvre sans chiffre plutôt que de refuser le geste. */
+    const [completude, importation] = await Promise.allSettled([
+      chargerCompletude(),
+      reporterVersChronogramme(true, { seulementVides: true }),
+    ]);
+    setApercu(completude.status === 'fulfilled' ? semainesIncompletes(completude.value) : null);
+    setApercuImport(importation.status === 'fulfilled' ? importation.value : null);
   };
 
   const basculer = useMutation({
@@ -91,6 +95,10 @@ export default function BoutonLiaison({ lectureSeule = false, className }) {
      * c'est la GRILLE qui doit le rejoindre : les semaines sous 100 % sont
      * détectées et annoncées (`semainesIncompletes`), et leurs séances
      * manquantes se placent depuis la fenêtre Conformité de chaque semaine.
+     *
+     * ⚠️ SAUF UN CHRONOGRAMME TOTALEMENT VIDE (2026-10-30, demande du porteur) :
+     *    il n'a rien de planifié à protéger, et reçoit à la liaison les heures
+     *    déjà posées dans l'emploi (`definirLiaison` → `importe`).
      */
     mutationFn: async (liee) => {
       const reponse = await definirLiaison(liee);
@@ -104,6 +112,27 @@ export default function BoutonLiaison({ lectureSeule = false, className }) {
       if (!reponse.liee) {
         toast.success('Emploi du temps délié du chronogramme.');
         return;
+      }
+
+      /*
+       * ═══ L'EMPLOI IMPORTÉ DANS LES CHRONOGRAMMES VIDES (2026-10-30) ═══
+       * Les grilles ouvertes doivent relire leur planning ; et le directeur doit
+       * savoir ce qui vient d'être écrit — un import muet passerait pour une
+       * planification faite à la main.
+       */
+      const importe = reponse.importe;
+      if (importe?.groupes?.length > 0) {
+        clientRequetes.invalidateQueries({ queryKey: ['chronogramme'] });
+        clientRequetes.invalidateQueries({ queryKey: ['chronogramme-formateur'] });
+        clientRequetes.invalidateQueries({ queryKey: ['chronogrammes'] });
+        toast.success(`Emploi importé dans ${importe.groupes.length} chronogramme(s) vide(s)`, {
+          duration: 10_000,
+          description:
+            `${importe.heures} h reprises de l’emploi du temps : ${importe.groupes.join(', ')}.` +
+            (importe.depassements?.length > 0
+              ? ` ${importe.depassements.length} case(s) non reprises : elles dépasseraient la masse du module.`
+              : ''),
+        });
       }
 
       const incompletes = reponse.incompletes ?? [];
@@ -194,9 +223,21 @@ export default function BoutonLiaison({ lectureSeule = false, className }) {
                 chaque module, semaine par semaine.
               </span>
               <span className="mt-2 block">
-                <strong>Le chronogramme ne sera pas modifié</strong> : sa planification reste la
-                référence, et c’est l’emploi du temps qui doit la rejoindre.
+                <strong>Un chronogramme déjà planifié ne sera pas modifié</strong> : sa
+                planification reste la référence, et c’est l’emploi du temps qui doit la rejoindre.
               </span>
+              {/* L'import dans les chronogrammes vides (2026-10-30). */}
+              {apercuImport?.groupes?.length > 0 && (
+                <span className="mt-2 block">
+                  <strong>
+                    {apercuImport.groupes.length} chronogramme(s) vide(s) recevront les heures déjà
+                    posées dans l’emploi
+                  </strong>{' '}
+                  ({apercuImport.heures} h) : {apercuImport.groupes.slice(0, 8).join(', ')}
+                  {apercuImport.groupes.length > 8 ? ` et ${apercuImport.groupes.length - 8} autre(s)` : ''}.
+                  Ces semaines seront protégées : la génération automatique ne les effacera pas.
+                </span>
+              )}
               {apercu && (
                 <span className="mt-2 block">
                   {apercu.length === 0 ? (
@@ -212,7 +253,7 @@ export default function BoutonLiaison({ lectureSeule = false, className }) {
                 </span>
               )}
               <span className="mt-2 block text-muted-foreground">
-                Rien n’est effacé ni réécrit, ni dans la grille, ni dans le chronogramme.
+                Rien n’est effacé : ni dans la grille, ni dans un chronogramme déjà planifié.
               </span>
             </>
           )

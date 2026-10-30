@@ -724,8 +724,8 @@ function EnTeteSemaine({ semaine: s }) {
         ))}
 
         <p className="mt-2 text-xs text-warning">
-          {ouvres} jour(s) ouvré(s) — seuil des heures supp : {seuilHebdomadaire(s.joursFermes, 26)} h
-          (MHS 26 h), {seuilHebdomadaire(s.joursFermes, 36)} h (MHS 36 h).
+          {ouvres} jour(s) ouvré(s) — seuil des heures supp : {heures(seuilHebdomadaire(s.joursFermes, 26))} h
+          (MHS 26 h), {heures(seuilHebdomadaire(s.joursFermes, 36))} h (MHS 36 h).
         </p>
       </HoverCardContent>
     </HoverCard>

@@ -576,6 +576,34 @@ describe('module réaffecté : les semaines de l’ancien titulaire sont protég
   });
 });
 
+describe('les semaines déjà posées dans l’emploi sont protégées (2026-10-30)', () => {
+  // GM101 · M101 : S3 posée dans l'emploi (4 séances = 10 h) et importée au chronogramme ; S6 planifiée seulement.
+  const seances = ['S1', 'S2', 'S3', 'S4'].map((seance) => ({
+    semaine: '2026-W3',
+    groupe: 'GM101',
+    module: 'M101',
+    seance,
+    salle: 'A12',
+    statut: 'planifie',
+  }));
+  const plannings = { GM101: { M101: { 3: { heures: 10, type: 'P' }, 6: { heures: 10, type: 'P' } } } };
+
+  it('« Tout refaire » garde la semaine posée, efface le reste, et ne répartit que ce qui manque', () => {
+    const construit = construire([affectation('100', 'GM101', 'M101', P, 60)], { plannings, seances });
+    expect(construit.conserves.GM101).toEqual({ M101: { 3: { P: 10, S: 0 } } });
+    const [lot] = construit.probleme.taches[0].lots;
+    expect(lot.heures).toBe(50);
+    expect(lot.plafonds[3]).toBeUndefined();
+    expect(lot.plafonds[6]).toBe(10);
+  });
+
+  it('sans séance dans l’emploi, rien ne change', () => {
+    const construit = construire([affectation('100', 'GM101', 'M101', P, 60)], { plannings });
+    expect(construit.conserves.GM101).toEqual({});
+    expect(construit.probleme.taches[0].lots[0].heures).toBe(60);
+  });
+});
+
 describe('le contrôle de la réponse', () => {
   const construit = () => construire([affectation('100', 'GM101', 'M101', P, 60)]);
 

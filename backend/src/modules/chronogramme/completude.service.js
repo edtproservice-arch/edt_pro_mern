@@ -324,7 +324,17 @@ export async function definirLiaison(etablissementId, anneeScolaire, liee) {
     { upsert: true }
   );
 
-  return etatLiaison(etablissementId, anneeScolaire);
+  /*
+   * ═══ LIER IMPORTE L'EMPLOI DANS LES CHRONOGRAMMES VIDES (2026-10-30, demande
+   * du porteur) ═══ Un groupe dont le chronogramme est TOTALEMENT vide reçoit
+   * les heures déjà posées dans l'emploi du temps. La règle du 2026-10-10 tient :
+   * un chronogramme planifié, même d'une seule case, n'est jamais touché.
+   */
+  const importe = liee
+    ? await reporter(etablissementId, anneeScolaire, { simulation: false, seulementVides: true })
+    : null;
+
+  return { ...(await etatLiaison(etablissementId, anneeScolaire)), importe };
 }
 
 /**
@@ -339,14 +349,37 @@ export async function definirLiaison(etablissementId, anneeScolaire, liee) {
  *    milieu laisserait un chronogramme à moitié aligné — pire que pas aligné
  *    du tout, parce qu'invisible.
  */
-export async function reporter(etablissementId, anneeScolaire, { simulation = true } = {}) {
+export async function reporter(
+  etablissementId,
+  anneeScolaire,
+  { simulation = true, seulementVides = false } = {}
+) {
   const [seances, chronogrammes, base] = await Promise.all([
     Seance.find({ etablissementId, anneeScolaire })
       .select('semaine groupe module seance salle statut')
       .lean(),
     Chronogramme.find({ etablissementId, anneeScolaire }).select('groupe planning').lean(),
-    Base.findOne({ etablissementId, anneeScolaire }).select('affectations').lean(),
+    Base.findOne({ etablissementId, anneeScolaire }).select('affectations groupes').lean(),
   ]);
+
+  /*
+   * `seulementVides` (2026-10-30) : les groupes de la base dont le chronogramme
+   * n'a AUCUNE case — ou n'existe pas encore. Les autres sont planifiés : on n'y
+   * touche pas.
+   */
+  let groupes = null;
+  if (seulementVides) {
+    const planifies = new Set(
+      chronogrammes
+        .filter((chrono) => Object.values(chrono.planning ?? {}).some((cellules) => (cellules ?? []).length > 0))
+        .map((chrono) => String(chrono.groupe).trim().toUpperCase())
+    );
+    groupes = new Set(
+      (base?.groupes ?? [])
+        .map((groupe) => String(groupe).trim().toUpperCase())
+        .filter((groupe) => !planifies.has(groupe))
+    );
+  }
 
   /*
    * ⚠️ LA MASSE DE LA CARTE, par `fichesModules` — la même définition que le
@@ -357,6 +390,7 @@ export async function reporter(etablissementId, anneeScolaire, { simulation = tr
     seances,
     chronogrammes,
     masses: fichesModules(base?.affectations ?? []),
+    groupes,
   });
 
   if (simulation || aEcrire.length === 0) {

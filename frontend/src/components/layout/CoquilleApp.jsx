@@ -5,6 +5,8 @@ import { ROLES } from 'shared/constants';
 import { Separator } from '@/components/ui/separator';
 import FilAriane from './FilAriane';
 import BarreOutilsPage from './BarreOutilsPage';
+import { BoutonMiseAJour } from './MiseAJourDesktop';
+import { ControlesFenetre } from './ControlesFenetre';
 import BarreNavigation from './BarreNavigation';
 import { FournirLargeurPage } from './largeurPage';
 import { FournirSansFilAriane } from './titrePage';
@@ -411,11 +413,17 @@ export default function CoquilleApp() {
             demande du porteur — 44 px essayés d'abord, jugés trop serrés).
             ⚠️ Deux hauteurs calculées en dépendent : `CadreReglage`
             (100svh − 3,125rem) et `GardeEtapes` (100svh − 6,125rem). */}
-        <header data-guidage-entete className="sticky top-0 z-30 flex h-[50px] shrink-0 items-center gap-2 border-b bg-background px-4 print:hidden">
+        {/* `data-tauri-drag-region` : dans l'application de bureau, sans barre Windows, c'est en
+            saisissant cette barre (ses espaces vides) qu'on déplace la fenêtre — 2026-10-30. */}
+        <header data-guidage-entete data-tauri-drag-region className="sticky top-0 z-30 flex h-[50px] shrink-0 items-center gap-2 border-b bg-background px-4 print:hidden">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-2 h-4" />
           <FilAriane courante={courante} />
           <BarreOutilsPage />
+          {/* Application de bureau seulement : une version attend d'être installée (2026-10-30). */}
+          <BoutonMiseAJour />
+          {/* Application de bureau seulement : réduire, agrandir, fermer (2026-10-30). */}
+          <ControlesFenetre />
         </header>
 
         {/* Stages et formations de la semaine, en bandeau passant (2026-10-10) — directeur et gestionnaire.

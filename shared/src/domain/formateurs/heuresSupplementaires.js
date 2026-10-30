@@ -7,8 +7,9 @@
  *  2. Chaque SEMAINE, comptent les heures AU-DELÀ d'un seuil — sans plafond depuis le
  *     2026-10-26 (les 35 h ont été levées). Le seuil est la masse HEBDOMADAIRE
  *     statutaire (MHS) — 26 h pour 910 h annuelles, 36 h pour 1260 h — et descend
- *     avec les jours fermés (fériés, vacances) de la semaine : −6 h pour le premier,
- *     −5 h pour chacun des suivants — 26, 20, 15, 10, 5, 0.
+ *     avec les jours fermés (fériés, vacances) de la semaine : 26 − 4,334 × jours fermés
+ *     (36 − 6 × jours fermés) — 26 ; 21,67 ; 17,33… La même masse que le Cumul du mois
+ *     (2026-10-30, demande du porteur ; c'était −6 h puis −5 h : 26, 20, 15…).
  *  2 bis. Toute AUTRE masse annuelle est celle d'un VACATAIRE : pas d'heures
  *     supplémentaires (précision du porteur, 2026-10-17).
  *  3. Chaque MOIS, les semaines en dessous de leur masse se retranchent des autres (le Cumul
@@ -51,13 +52,16 @@ export function regimeFormateur(masseStatutaire) {
 }
 
 /**
- * Le seuil d'une semaine selon ses jours fermés (lundi → samedi), à partir de la MHS :
- * 26, 20, 15, 10, 5, 0 — ou 36, 30, 25, 20…
+ * Le seuil d'une semaine selon ses jours fermés (lundi → samedi), à partir de la MHS.
+ *
+ * ═══ LA MÊME MASSE QUE LE CUMUL (2026-10-30, demande du porteur) ═══ « En S44, TH.SUP doit
+ * être égal à 25 − (26 − 4,334 × le nombre de jours fériés de la semaine) » : le TH.SUP de la
+ * semaine se mesure désormais à `masseHebdomadaireCumul` — 26 ; 21,67 ; 17,33… (36 − 6 h par
+ * jour pour une MHS de 36 h). L'ancienne règle, −6 h puis −5 h (26, 20, 15…), faisait qu'une
+ * semaine à un férié comptait +1 h dans sa colonne et −0,67 h dans le Cumul.
  */
 export function seuilHebdomadaire(joursFermes = 0, mhs = SEUIL_HEURES_SUPP) {
-  const n = Math.max(0, Math.floor(Number(joursFermes) || 0));
-  if (n === 0) return mhs;
-  return Math.max(0, mhs - 6 - 5 * (n - 1));
+  return masseHebdomadaireCumul(joursFermes, mhs) ?? mhs;
 }
 
 /**
@@ -66,8 +70,7 @@ export function seuilHebdomadaire(joursFermes = 0, mhs = SEUIL_HEURES_SUPP) {
  * semaine ». 4,334 est un sixième de 26 (arrondi au millième supérieur) : chaque jour fermé retire
  * un jour ouvré sur six. Pour une MHS de 36 h, le même principe retire 6 h par jour.
  *
- * ⚠️ CE N'EST PAS `seuilHebdomadaire` (−6 h puis −5 h), qui reste le seuil des heures supp de
- * chaque semaine — et donc de ce qui est payé.
+ * C'est aussi, depuis le 2026-10-30, le seuil de chaque semaine (`seuilHebdomadaire`).
  *
  * @returns {number|null}  `null` pour un vacataire (pas de MHS)
  */

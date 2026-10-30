@@ -248,11 +248,18 @@ router.post(
   '/report',
   requireRole(ROLES.DIRECTEUR),
   modifier,
-  validate({ body: z.object({ simulation: z.boolean().default(true) }) }),
+  validate({
+    body: z.object({
+      simulation: z.boolean().default(true),
+      // Les seuls chronogrammes VIDES — l'aperçu de la liaison (2026-10-30).
+      seulementVides: z.boolean().default(false),
+    }),
+  }),
   async (req, res, next) => {
     try {
       const bilan = await completude.reporter(req.etablissementId, req.anneeScolaire, {
         simulation: req.body.simulation,
+        seulementVides: req.body.seulementVides,
       });
       if (!bilan.simulation) annoncerModification(req, PAGES_DU_CHRONOGRAMME);
       res.json({ success: true, ...bilan });

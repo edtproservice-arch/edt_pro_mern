@@ -1,6 +1,6 @@
 [package]
 name = "edt-pro"
-version = "0.1.0"
+version = "0.2.0"
 description = "EDT Pro — application de bureau"
 authors = ["EDT Pro"]
 edition = "2021"

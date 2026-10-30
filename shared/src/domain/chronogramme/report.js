@@ -115,9 +115,12 @@ const typeDe = (cellule) => (cellule?.type === 'S' ? 'S' : 'P');
  * @param {Array}  entrees.chronogrammes  lignes `{groupe, planning}`
  * @param {Map}    [entrees.masses]       `GROUPE||MODULE` → `{presentiel, synchrone}`
  *   (`fichesModules`) — la masse horaire que le report ne doit pas dépasser
+ * @param {Set<string>} [entrees.groupes] les seuls groupes à reporter (noms en
+ *   MAJUSCULES) — `null` : tous. Sert à la liaison, qui n'importe que dans les
+ *   chronogrammes VIDES (2026-10-30).
  * @returns {{aEcrire: Array, bilan: object}}
  */
-export function reporterVersChronogramme({ seances = [], chronogrammes = [], masses = null } = {}) {
+export function reporterVersChronogramme({ seances = [], chronogrammes = [], masses = null, groupes = null } = {}) {
   const { parSemaine, noms, semainesLues, seancesLues } = heuresPoseesParSemaine(seances);
 
   /* L'état de départ, recopié : la fonction ne modifie jamais ses entrées. */
@@ -141,6 +144,7 @@ export function reporterVersChronogramme({ seances = [], chronogrammes = [], mas
     const semaine = `S${numero}`;
 
     for (const [cg, parModule] of [...parSemaine.get(numero).entries()].sort()) {
+      if (groupes && !groupes.has(cg)) continue;
       if (!plannings.has(cg)) {
         /*
          * ⚠️ UN GROUPE SANS CHRONOGRAMME EN REÇOIT UN. L'ignorer ferait

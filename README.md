@@ -149,9 +149,11 @@ une nouvelle version. Les installations la détectent au démarrage (plugin
 proposent de l'installer.
 
 1. `npm run desktop:release -- 0.2.0` — écrit la version, compile, signe, et
-   prépare `release/desktop-v0.2.0/` (`EDT-Pro_0.2.0_x64-setup.exe` + `latest.json`).
-2. Créer la release **`v0.2.0`** sur GitHub, y déposer ces deux fichiers,
-   la marquer *latest*.
+   prépare `release/desktop-v0.2.0/` (`EDT-Pro_0.2.0_x64-setup.exe`, sa copie
+   `EDT-Pro_x64-setup.exe` + `latest.json`).
+2. Créer la release **`v0.2.0`** sur GitHub, y déposer ces trois fichiers,
+   la marquer *latest*. La copie sans version sert le bouton « Application
+   bureau » de la barre latérale, dont le lien ne change jamais.
 
 La version doit toujours **augmenter** : une installation ignore une version
 égale ou inférieure à la sienne.

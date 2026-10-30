@@ -177,8 +177,9 @@ export function placerManquantes(semaine, { simulation = true } = {}) {
  * des volumes sur plusieurs groupes, et annoncer l'ampleur après coup n'est pas
  * une confirmation.
  */
-export function reporterVersChronogramme(simulation = true) {
-  return api.post('/api/v2/chronogrammes/report', { simulation });
+export function reporterVersChronogramme(simulation = true, { seulementVides = false } = {}) {
+  // `seulementVides` : l'aperçu de la liaison, qui n'importe que dans les chronogrammes vides (2026-10-30).
+  return api.post('/api/v2/chronogrammes/report', { simulation, seulementVides });
 }
 
 /**

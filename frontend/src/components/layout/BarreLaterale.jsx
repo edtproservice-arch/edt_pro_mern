@@ -20,6 +20,7 @@ import {
   SidebarRail,
 } from '@/components/ui/sidebar';
 import MenuUtilisateur from './MenuUtilisateur';
+import BoutonApplicationBureau from './BoutonApplicationBureau';
 import BoutonEpingle from './BoutonEpingle';
 import SelecteurAnnee from './SelecteurAnnee';
 import { ENTREES, navigationPourRole, raccourcisPourRole } from './navigation';
@@ -222,6 +223,8 @@ export default function BarreLaterale(proprietes) {
 
       {/* Le compte en pied, comme partout : on l'y cherche. */}
       <SidebarFooter>
+        {/* L'installeur Windows, dans le navigateur seulement (2026-10-30). */}
+        <BoutonApplicationBureau />
         <MenuUtilisateur />
       </SidebarFooter>
 

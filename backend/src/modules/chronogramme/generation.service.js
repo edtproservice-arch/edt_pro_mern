@@ -8,6 +8,7 @@ import {
   SEMAINES_METIER_FORMATION,
   bornerALaFinDeFormation,
   cleReaffectation,
+  heuresPoseesParSemaine,
   derniereSemaineDuGroupe,
   estGroupeDuSoir,
   estGroupePIE,
@@ -49,6 +50,7 @@ import { AutoGenConfig } from '../../models/AutoGenConfig.js';
 import { Base } from '../../models/Base.js';
 import { Chronogramme } from '../../models/Chronogramme.js';
 import { Etablissement } from '../../models/Etablissement.js';
+import { Seance } from '../../models/Seance.js';
 import { HttpError, notFound } from '../../lib/httpError.js';
 import { cleGroupeModule, intitulesParGroupe } from '../../lib/intitulesModules.js';
 import { joursFeries as joursFeriesEtablissement } from '../calendrier/calendrier.service.js';
@@ -149,6 +151,8 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
     indisponibilites = new Map(),
     // Les modules réaffectés en cours d'année (`reaffectationsDeLAnnee`, 2026-10-23).
     reaffectations = new Map(),
+    // Les séances de l'emploi du temps : leurs semaines sont protégées (2026-10-30).
+    seances = [],
   } = donnees;
   const completer = mode === MODES.COMPLETER;
 
@@ -262,6 +266,20 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
   const basculeDe = (groupe, module, type) =>
     Math.max(0, ...anciensDe(groupe, module, type).map((ancien) => ancien.derniereSemaine));
 
+  /*
+   * ═══ LES SEMAINES DÉJÀ POSÉES DANS L'EMPLOI SONT PROTÉGÉES (2026-10-30,
+   * demande du porteur) ═══ Une case du chronogramme dont la semaine est déjà
+   * posée dans l'emploi du temps — c'est ce qu'importe la liaison dans un
+   * chronogramme vide — décrit des cours bien placés : « Tout refaire » ne
+   * l'efface plus, elle compte comme faite, et le solveur ne pose rien d'autre
+   * cette semaine-là pour ce module.
+   */
+  const { parSemaine: poseesEmploi } = heuresPoseesParSemaine(seances);
+  const poseDansEmploi = (groupe, module, numero, type) =>
+    (poseesEmploi.get(Number(numero))?.get(String(groupe).trim().toUpperCase())?.get(String(module).trim().toUpperCase())?.[
+      type
+    ] ?? 0) > 0;
+
   // ─── 2. Ce qu'on garde des plannings actuels ───
   const groupesTouches = [...new Set([...taches.values()].flatMap((t) => t.groupes))].sort();
   const conserves = {};
@@ -279,7 +297,9 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
             !completer &&
             couvertes.has(`${cleCase(groupe, module)}||${type}`) &&
             // Les semaines de l'ancien titulaire restent (2026-10-23).
-            Number(semaine) > basculeDe(groupe, module, type)
+            Number(semaine) > basculeDe(groupe, module, type) &&
+            // Celles déjà posées dans l'emploi aussi (2026-10-30).
+            !poseDansEmploi(groupe, module, semaine, type)
           ) {
             partsRemplacees += 1;
             groupesVides.add(groupe);
@@ -363,6 +383,29 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
       }
     }
 
+    /*
+     * Les semaines déjà posées dans l'emploi (2026-10-30) : leurs cases sont
+     * gardées (« Tout refaire ») et comptent comme faites. En « Compléter »,
+     * `deja` les compte déjà, avec toutes les cases existantes.
+     */
+    const protegees = new Set();
+    if (!completer) {
+      for (let numero = bascule + 1; numero <= semainesCommunes.length; numero += 1) {
+        const heures = Math.max(
+          0,
+          ...tache.groupes.map((groupe) =>
+            poseDansEmploi(groupe, tache.module, numero, tache.type)
+              ? conserve(groupe, tache.module, numero, tache.type)
+              : 0
+          )
+        );
+        if (heures > 0) {
+          protegees.add(numero);
+          faitAvant.set(numero, Math.max(faitAvant.get(numero) ?? 0, heures));
+        }
+      }
+    }
+
     // Ce que la tâche porte déjà, semaine par semaine (mode « compléter »).
     const deja = new Map();
     if (completer) {
@@ -407,7 +450,7 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
         Math.min(...lignes.map((ligne) => plafondSemaine(ligne.get(numero))));
       const fenetre = semainesCommunes
         .map((semaine) => semaine.numero)
-        .filter((numero) => numero > bascule && plafondLigne(numero) > 0)
+        .filter((numero) => numero > bascule && !protegees.has(numero) && plafondLigne(numero) > 0)
         .slice(0, SEMAINES_METIER_FORMATION);
       const plafondModule = Math.min(
         plafondHebdomadaireModule(aPoser, SEMAINES_METIER_FORMATION),
@@ -463,8 +506,9 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
 
       const plafonds = {};
       for (const numero of fenetre) {
-        // Les semaines de l'ancien titulaire : rien pour le nouveau (2026-10-23).
-        if (numero <= bascule) continue;
+        // Les semaines de l'ancien titulaire : rien pour le nouveau (2026-10-23) ;
+        // celles déjà posées dans l'emploi gardent leur case (2026-10-30).
+        if (numero <= bascule || protegees.has(numero)) continue;
         const plafond = Math.min(plafondLigne(numero), plafondModule);
         const libre = plafond - (deja.get(numero) ?? 0);
         if (libre > 0) plafonds[numero] = libre;
@@ -914,11 +958,13 @@ function bilan(construit, solution, plannings, base) {
  *    demander confirmation.
  */
 export async function generer(etablissementId, anneeScolaire, { mode = MODES.REMPLACER, simulation = true } = {}) {
-  const [base, etablissement, existants, configuration] = await Promise.all([
+  const [base, etablissement, existants, configuration, seances] = await Promise.all([
     Base.findOne({ etablissementId, anneeScolaire }),
     Etablissement.findById(etablissementId).select('calendrier stages formations'),
     Chronogramme.find({ etablissementId, anneeScolaire }),
     AutoGenConfig.findOne({ etablissementId, anneeScolaire }).select('contraintes').lean(),
+    // Les semaines déjà posées dans l'emploi sont protégées (2026-10-30).
+    Seance.find({ etablissementId, anneeScolaire }).select('semaine groupe module seance salle statut').lean(),
   ]);
   if (!base) throw notFound('Aucune base pour cette année scolaire', { code: 'BASE_ABSENTE' });
 
@@ -952,6 +998,7 @@ export async function generer(etablissementId, anneeScolaire, { mode = MODES.REM
       ),
       // Les semaines de l'ancien titulaire d'un module réaffecté sont protégées (2026-10-23).
       reaffectations: await reaffectationsDeLAnnee(etablissementId, anneeScolaire, base),
+      seances,
     },
     { mode }
   );

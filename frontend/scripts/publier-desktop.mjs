@@ -6,8 +6,9 @@
  * 1. Écrit la version dans `src-tauri/tauri.conf.json` et `src-tauri/Cargo.toml`.
  * 2. Compile et SIGNE les installeurs (`tauri build`) avec la clé privée
  *    `~/.tauri/edt-pro.key` (ou `TAURI_SIGNING_PRIVATE_KEY` si déjà défini).
- * 3. Rassemble dans `release/desktop-v<version>/` l'installeur, sa signature
- *    et le `latest.json` que lisent les installations existantes.
+ * 3. Rassemble dans `release/desktop-v<version>/` l'installeur (deux fois : avec et
+ *    sans sa version dans le nom) et le `latest.json` que lisent les installations
+ *    existantes.
  *
  * Il reste à créer la release `v<version>` sur GitHub et à y déposer les
  * fichiers de ce dossier (voir le README, « Application de bureau »).
@@ -75,6 +76,13 @@ const nomPublie = `EDT-Pro_${version}_x64-setup.exe`;
 const sortie = join(racineFrontend, '..', 'release', `desktop-v${version}`);
 mkdirSync(sortie, { recursive: true });
 copyFileSync(join(dossierNsis, installeur), join(sortie, nomPublie));
+/*
+ * ⚠️ AUSSI SOUS UN NOM SANS VERSION (2026-10-30) : le bouton « Application bureau » de la barre
+ * latérale pointe sur `releases/latest/download/EDT-Pro_x64-setup.exe`, qui ne sert que le nom
+ * EXACT. Ce nom-là ne change jamais : le lien reste bon à chaque nouvelle version.
+ */
+const nomStable = 'EDT-Pro_x64-setup.exe';
+copyFileSync(join(dossierNsis, installeur), join(sortie, nomStable));
 
 const plateforme = {
   signature: readFileSync(join(dossierNsis, `${installeur}.sig`), 'utf8').trim(),
@@ -91,9 +99,10 @@ writeFileSync(join(sortie, 'latest.json'), `${JSON.stringify(latest, null, 2)}\n
 console.log(`
 ✔ Version ${version} prête dans ${sortie}
     ${nomPublie}
+    ${nomStable}   (le même installeur, pour le bouton « Application bureau »)
     latest.json
 
   Étape suivante : créer la release « v${version} » sur
   https://github.com/${DEPOT}/releases/new
-  et y déposer ces DEUX fichiers (en la marquant « latest »).
+  et y déposer ces TROIS fichiers (en la marquant « latest »).
 `);

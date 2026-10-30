@@ -78,8 +78,8 @@ mkdirSync(sortie, { recursive: true });
 copyFileSync(join(dossierNsis, installeur), join(sortie, nomPublie));
 /*
  * ⚠️ AUSSI SOUS UN NOM SANS VERSION (2026-10-30) : le bouton « Application bureau » de la barre
- * latérale pointe sur `releases/latest/download/EDT-Pro_x64-setup.exe`, qui ne sert que le nom
- * EXACT. Ce nom-là ne change jamais : le lien reste bon à chaque nouvelle version.
+ * latérale télécharge `https://edtpro.tech/telechargements/EDT-Pro_x64-setup.exe` — le serveur,
+ * pas GitHub. Ce nom-là ne change jamais : le lien reste bon à chaque nouvelle version.
  */
 const nomStable = 'EDT-Pro_x64-setup.exe';
 copyFileSync(join(dossierNsis, installeur), join(sortie, nomStable));
@@ -102,7 +102,10 @@ console.log(`
     ${nomStable}   (le même installeur, pour le bouton « Application bureau »)
     latest.json
 
-  Étape suivante : créer la release « v${version} » sur
-  https://github.com/${DEPOT}/releases/new
-  et y déposer ces TROIS fichiers (en la marquant « latest »).
+  Étapes suivantes :
+  1. Mises à jour automatiques — créer la release « v${version} » sur
+     https://github.com/${DEPOT}/releases/new, y déposer ${nomPublie} et latest.json,
+     et la marquer « latest ».
+  2. Bouton « Application bureau » — déposer l'installeur sur le serveur :
+     scp "${join(sortie, nomStable)}" root@187.7.30.89:/opt/edtpro/telechargements/${nomStable}
 `);

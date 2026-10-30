@@ -148,12 +148,28 @@ une nouvelle version. Les installations la détectent au démarrage (plugin
 `updater`, lecture de `latest.json` dans la dernière Release GitHub) et
 proposent de l'installer.
 
-1. `npm run desktop:release -- 0.2.0` — écrit la version, compile, signe, et
-   prépare `release/desktop-v0.2.0/` (`EDT-Pro_0.2.0_x64-setup.exe`, sa copie
-   `EDT-Pro_x64-setup.exe` + `latest.json`).
-2. Créer la release **`v0.2.0`** sur GitHub, y déposer ces trois fichiers,
-   la marquer *latest*. La copie sans version sert le bouton « Application
-   bureau » de la barre latérale, dont le lien ne change jamais.
+**Publication automatique** (`.github/workflows/application-bureau.yml`) — il
+suffit de pousser un tag de version :
+
+```bash
+git tag v0.3.0
+git push origin v0.3.0
+```
+
+GitHub compile et signe l'installeur sur une machine Windows, crée la release
+`v0.3.0` marquée *latest* (installeur + `latest.json`, que lisent les
+installations), puis dépose l'installeur sur le serveur : c'est lui que sert
+le bouton « Application bureau » de la barre latérale, en téléchargement direct
+depuis `https://edtpro.tech/telechargements/EDT-Pro_x64-setup.exe`.
+
+Secrets du dépôt (*Settings → Secrets and variables → Actions*) :
+`TAURI_SIGNING_PRIVATE_KEY` (contenu de `~/.tauri/edt-pro.key`) et
+`SERVEUR_SSH_CLE` (clé de dépôt, restreinte côté serveur à la seule commande
+`/opt/edtpro/recevoir-installeur.sh`).
+
+**À la main**, si besoin : `npm run desktop:release -- 0.3.0` prépare
+`release/desktop-v0.3.0/` et affiche les deux étapes restantes (release GitHub,
+`scp` de l'installeur sur le serveur).
 
 La version doit toujours **augmenter** : une installation ignore une version
 égale ou inférieure à la sienne.

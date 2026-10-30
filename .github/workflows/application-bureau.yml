@@ -1,0 +1,115 @@
+# ═══ PUBLICATION AUTOMATIQUE DE L'APPLICATION DE BUREAU (2026-10-30) ═══
+#
+# Déclenchée par un tag de version :
+#     git tag v0.3.0
+#     git push origin v0.3.0
+#
+# Sur une machine Windows de GitHub :
+#   1. compile et SIGNE l'installeur (`npm run desktop:release`, la clé de signature venant du
+#      secret TAURI_SIGNING_PRIVATE_KEY) ;
+#   2. crée la release « vX.Y.Z », marquée « latest », avec l'installeur et `latest.json` :
+#      les applications installées voient la mise à jour à leur prochain lancement ;
+#   3. dépose l'installeur sur le serveur (secret SERVEUR_SSH_CLE) : c'est lui que télécharge le
+#      bouton « Application bureau » de la barre latérale, sur https://edtpro.tech.
+#
+# Secrets à créer UNE fois (Settings → Secrets and variables → Actions) :
+#   TAURI_SIGNING_PRIVATE_KEY          le contenu de ~/.tauri/edt-pro.key
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD son mot de passe — facultatif, la clé actuelle n'en a pas
+#   SERVEUR_SSH_CLE                    la clé privée de dépôt — elle ne peut QUE remplacer
+#                                      l'installeur (commande forcée côté serveur)
+#
+# ⚠️ La version doit toujours AUGMENTER : une installation ignore une version égale ou
+#    inférieure à la sienne.
+
+name: Application de bureau
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: application-bureau
+  cancel-in-progress: false
+
+jobs:
+  publier:
+    runs-on: windows-latest
+    env:
+      # La clé du serveur (publique) : GitHub ne déposera l'installeur que sur CE serveur.
+      SERVEUR_HOTE: '187.7.30.89 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC9CMqgmqStb8mfiMNgQxk1BXK3Vf4ADsDcyDoAmEl1M'
+      # Inutile ici : le binaire MongoDB des tests du serveur ne sert pas à compiler l'application.
+      MONGOMS_DISABLE_POSTINSTALL: '1'
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: La version, d'après le tag
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag invalide « $GITHUB_REF_NAME » (attendu : v1.2.3)"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache de compilation Rust
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: 'frontend/src-tauri -> target'
+
+      - name: Dépendances
+        run: npm ci --no-audit --no-fund
+
+      - name: Compiler et signer l'installeur
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::Secret TAURI_SIGNING_PRIVATE_KEY absent : sans lui, aucune mise à jour ne serait acceptée."
+            exit 1
+          fi
+          npm run desktop:release -- "$VERSION"
+
+      - name: Publier la release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: EDT Pro ${{ env.VERSION }}
+          make_latest: 'true'
+          files: |
+            release/desktop-v${{ env.VERSION }}/EDT-Pro_${{ env.VERSION }}_x64-setup.exe
+            release/desktop-v${{ env.VERSION }}/latest.json
+
+      - name: Déposer l'installeur sur le serveur
+        shell: bash
+        env:
+          SERVEUR_SSH_CLE: ${{ secrets.SERVEUR_SSH_CLE }}
+        run: |
+          if [ -z "$SERVEUR_SSH_CLE" ]; then
+            echo "::warning::Secret SERVEUR_SSH_CLE absent : l'installeur n'est pas déposé sur edtpro.tech."
+            exit 0
+          fi
+          umask 077
+          printf '%s\n' "$SERVEUR_SSH_CLE" > "$RUNNER_TEMP/cle"
+          printf '%s\n' "$SERVEUR_HOTE" > "$RUNNER_TEMP/hotes"
+          # La commande est FORCÉE côté serveur : l'installeur part sur l'entrée standard, rien d'autre.
+          ssh -i "$RUNNER_TEMP/cle" -o UserKnownHostsFile="$RUNNER_TEMP/hotes" -o StrictHostKeyChecking=yes \
+            -o IdentitiesOnly=yes edtpro@187.7.30.89 < "release/desktop-v$VERSION/EDT-Pro_x64-setup.exe"
+          rm -f "$RUNNER_TEMP/cle"

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ClipboardList } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -14,10 +14,16 @@ import {
 import { Label } from '@/components/ui/label';
 import BoutonFormat from '@/components/common/BoutonFormat';
 import { FeuilleDocument } from '@/features/documents/CartesDocuments';
-import { telechargerCcEfmDeSeance, telechargerDocumentVierge } from '@/features/absences/stagiaires/api';
+import {
+  exporterFeuillePresence,
+  telechargerCcEfmDeSeance,
+  telechargerDocumentVierge,
+} from '@/features/absences/stagiaires/api';
+import { ChoixSujets } from '@/features/edition/FiltresDetaillee';
+import { chargerContexte } from '@/features/emploi/api';
 import { cn } from '@/lib/utils';
 import ChoixSeance from './ChoixSeance';
-import { exporterPresenceCcEfmConsultation } from './api';
+import { chargerDocumentsConsultation, exporterPresenceCcEfmConsultation } from './api';
 
 const DOCUMENT = { titre: 'Feuille de présence CC/EFM', resume: 'Contrôle continu et EFM', icone: ClipboardList };
 
@@ -37,6 +43,17 @@ const PORTEES = [
 ];
 
 const telechargerVierge = telechargerDocumentVierge('cc-efm');
+const exporterParGroupes = exporterFeuillePresence('cc-efm');
+
+/*
+ * ═══ DEPUIS UNE SÉANCE, OU PAR GROUPE (2026-10-30, demande du porteur) ═══ Sans séance, on
+ * choisit seulement le ou les groupes : une feuille par groupe, ses stagiaires et l'épreuve
+ * cochée écrits ; le module, la date et l'horaire se remplissent à la main.
+ */
+const SOURCES = [
+  { valeur: 'seance', libelle: 'Depuis une séance' },
+  { valeur: 'groupe', libelle: 'Par groupe' },
+];
 
 /**
  * ═══ LA FEUILLE DE PRÉSENCE CC/EFM, DEPUIS UNE SÉANCE (2026-10-26, demande du
@@ -49,7 +66,9 @@ const telechargerVierge = telechargerDocumentVierge('cc-efm');
 /* `direction` (2026-10-26) : toute séance de l'établissement, formateur par formateur — voir `ChoixSeance`. */
 export default function DocumentPresenceCcEfm({ direction = false }) {
   const [ouvert, setOuvert] = useState(false);
+  const [source, setSource] = useState('seance');
   const [seance, setSeance] = useState(null);
+  const [groupes, setGroupes] = useState([]);
   const [type, setType] = useState(null);
   const [numero, setNumero] = useState(null);
   const [nature, setNature] = useState(null);
@@ -60,13 +79,29 @@ export default function DocumentPresenceCcEfm({ direction = false }) {
       ? { type, ...(numero && { numero }), ...(nature && { nature }) }
       : { type, ...(portee && { portee }) };
 
+  /*
+   * Les groupes proposés : ceux de l'établissement pour la direction, les SIENS pour le
+   * formateur — le serveur refuse de toute façon un groupe qui n'est pas le sien.
+   */
+  const listeGroupes = useQuery({
+    queryKey: direction ? ['emploi', 'contexte'] : ['consultation', 'documents'],
+    queryFn: direction ? chargerContexte : chargerDocumentsConsultation,
+    enabled: ouvert && source === 'groupe',
+    retry: false,
+  });
+  const groupesProposes = listeGroupes.data?.groupes ?? [];
+
   const telechargement = useMutation({
     mutationFn: (format) =>
-      (direction ? telechargerCcEfmDeSeance : exporterPresenceCcEfmConsultation)({
-        format,
-        seanceId: seance.id,
-        epreuve: epreuve(),
-      }),
+      source === 'groupe'
+        ? direction
+          ? exporterParGroupes({ format, groupes, valeurs: epreuve() })
+          : exporterPresenceCcEfmConsultation({ format, groupes, epreuve: epreuve() })
+        : (direction ? telechargerCcEfmDeSeance : exporterPresenceCcEfmConsultation)({
+            format,
+            seanceId: seance.id,
+            epreuve: epreuve(),
+          }),
     onError: (erreur) => toast.error('Téléchargement impossible', { description: erreur.message }),
   });
   const vierge = useMutation({
@@ -76,14 +111,17 @@ export default function DocumentPresenceCcEfm({ direction = false }) {
 
   const fermer = () => {
     setOuvert(false);
+    setSource('seance');
     setSeance(null);
+    setGroupes([]);
     setType(null);
     setNumero(null);
     setNature(null);
     setPortee(null);
   };
 
-  const pret = Boolean(seance) && Boolean(type) && !telechargement.isPending;
+  const pret =
+    (source === 'groupe' ? groupes.length > 0 : Boolean(seance)) && Boolean(type) && !telechargement.isPending;
 
   return (
     <>
@@ -103,17 +141,44 @@ export default function DocumentPresenceCcEfm({ direction = false }) {
             <DialogTitle>{DOCUMENT.titre}</DialogTitle>
             <DialogDescription>
               Choisissez la séance, puis cochez l’épreuve : le groupe, le module, la date, l’horaire et le
-              nombre d’inscrits se remplissent d’eux-mêmes.
+              nombre d’inscrits se remplissent d’eux-mêmes. Ou choisissez seulement le groupe : le module,
+              la date et l’horaire restent à remplir à la main.
             </DialogDescription>
           </DialogHeader>
 
           <div className="min-w-0 space-y-4">
-            <ChoixSeance
-              seance={seance}
-              onChoisir={setSeance}
-              cleGuidage={direction ? 'presence-cc-efm-direction' : 'presence-cc-efm'}
-              direction={direction}
-            />
+            <Choix libelle="Remplir" options={SOURCES} valeur={source} onChanger={setSource} />
+
+            {source === 'seance' ? (
+              <ChoixSeance
+                seance={seance}
+                onChoisir={setSeance}
+                cleGuidage={direction ? 'presence-cc-efm-direction' : 'presence-cc-efm'}
+                direction={direction}
+              />
+            ) : (
+              <div className="space-y-1.5">
+                <Label>Groupes</Label>
+                {listeGroupes.isLoading ? (
+                  <p className="text-sm text-muted-foreground">Chargement des groupes…</p>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <ChoixSujets
+                      sujets={groupesProposes}
+                      choisis={groupes}
+                      libelle={(groupe) => groupe}
+                      entete="Groupe"
+                      onChanger={setGroupes}
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      {groupes.length === 0
+                        ? 'Aucun groupe choisi'
+                        : `${groupes.length} groupe(s) — une feuille chacun ; module, date et horaire à la main`}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
 
             <Choix libelle="Épreuve" options={TYPES} valeur={type} onChanger={setType} />
 

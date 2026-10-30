@@ -156,7 +156,12 @@ export default function Redaction({ initial, onFermer, onEnvoye, onSupprimerBrou
 
   return (
     <Dialog open onOpenChange={(ouvert) => !ouvert && onFermer()}>
-      <DialogContent className="max-w-2xl">
+      {/*
+        ⚠️ BORNÉE À L'ÉCRAN (2026-10-30) : sur un petit écran, la fenêtre dépassait en haut comme en
+        bas — titre coupé, « Envoyer » hors de portée. Elle tient dans 90 % de la hauteur visible et
+        défile ; les boutons restent collés en bas.
+      */}
+      <DialogContent className="max-h-[90dvh] w-[calc(100vw-1.5rem)] max-w-[calc(100vw-1.5rem)] overflow-y-auto overflow-x-hidden p-4 sm:max-w-2xl sm:p-6">
         <DialogHeader>
           <DialogTitle>{initial.reponseA ? 'Répondre' : 'Nouveau message'}</DialogTitle>
           <DialogDescription>
@@ -233,7 +238,7 @@ export default function Redaction({ initial, onFermer, onEnvoye, onSupprimerBrou
                   className="h-9 text-sm"
                 />
 
-                <CommandList className="max-h-56">
+                <CommandList className="max-h-40 sm:max-h-56">
                   <CommandEmpty className="py-4 text-xs text-muted-foreground">
                     {liste.length === choisis.length
                       ? 'Tout le monde est déjà dans la liste.'
@@ -304,12 +309,12 @@ export default function Redaction({ initial, onFermer, onEnvoye, onSupprimerBrou
               id="corps"
               value={corps}
               onChange={(evenement) => setCorps(evenement.target.value)}
-              rows={8}
-              className="text-sm"
+              rows={5}
+              className="min-h-28 text-sm sm:min-h-40"
             />
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="sticky -bottom-4 -mx-4 flex flex-wrap items-center gap-2 border-t bg-background px-4 py-3 sm:-bottom-6 sm:-mx-6 sm:px-6">
             {/*
               ⚠️ « SUPPRIMER » N'APPARAÎT QUE SUR UN BROUILLON DÉJÀ ENREGISTRÉ :
               sur un message neuf, « Annuler » suffit — il n'y a rien à

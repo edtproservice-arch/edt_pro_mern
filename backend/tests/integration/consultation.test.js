@@ -748,6 +748,29 @@ describe('la fiche de réclamation du formateur (2026-10-25)', () => {
     expect((await fiche({ seanceId, matricules: ['CEF001'], degats: 'x'.repeat(256) })).status).toBe(200);
   });
 
+  it('par groupe, sans séance, coche aussi l’épreuve (2026-10-30)', async () => {
+    const formateur = await request(app)
+      .post('/api/v2/consultation/documents/presence-cc-efm')
+      .set('Cookie', cookiesFormateur)
+      .send({ format: 'docx', groupes: ['GM101'], epreuve: { type: 'efm', portee: 'regional' } })
+      .responseType('blob');
+    expect(formateur.status).toBe(200);
+    const texte = await texteDuDocx(formateur.body);
+    expect(texte).toMatch(/EXAMEN FIN DE MODULE\s*☒/);
+    expect(texte).toMatch(/CONTROLE CONTINU\s*☐/);
+
+    const direction = await request(app)
+      .post('/api/v2/absences-stagiaires/presence/cc-efm')
+      .set('Cookie', cookiesDirecteur)
+      .send({ format: 'docx', groupes: ['GM101'], examen: { type: 'cc', numero: 2, nature: 'oral' } })
+      .responseType('blob');
+    expect(direction.status).toBe(200);
+    const texteDirection = await texteDuDocx(direction.body);
+    expect(texteDirection).toMatch(/CONTROLE CONTINU\s*☒/);
+    expect(texteDirection).toMatch(/2 ☒/);
+    expect(texteDirection).toMatch(/Oral ☒/);
+  });
+
   it('⚠️ la feuille CC/EFM se remplit depuis la séance, l’épreuve cochée (2026-10-26)', async () => {
     const reponse = await request(app)
       .post('/api/v2/consultation/documents/presence-cc-efm')

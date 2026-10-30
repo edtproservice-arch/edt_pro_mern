@@ -310,7 +310,8 @@ router.post(
         req.etablissementId,
         req.anneeScolaire,
         'cc-efm',
-        { format: req.body.format, groupes }
+        // Sans séance, l'épreuve cochée vaut aussi (2026-10-30) : le reste se remplit à la main.
+        { format: req.body.format, groupes, ...(req.body.epreuve ? { examen: req.body.epreuve } : {}) }
       );
       res.setHeader('Content-Type', contentType);
       res.setHeader(

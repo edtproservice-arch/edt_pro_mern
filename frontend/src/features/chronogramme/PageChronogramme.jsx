@@ -1765,7 +1765,7 @@ function ChoixFormateurs({ requete, selection, onChange }) {
                 <Input
                   value={filtre}
                   onChange={(evenement) => setFiltre(evenement.target.value)}
-                  placeholder="Filtrer\u2026"
+                  placeholder="Filtrer…"
                   className="h-8 pl-8"
                 />
               </div>

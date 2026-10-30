@@ -299,6 +299,11 @@ router.post(
           debut: z.string().regex(/^\d{2}:\d{2}$/).or(z.literal('')).optional(),
           fin: z.string().regex(/^\d{2}:\d{2}$/).or(z.literal('')).optional(),
           epreuve: z.string().trim().max(100).optional(),
+          // La feuille CC/EFM d'un groupe, sans séance (2026-10-30) : l'épreuve cochée.
+          type: z.enum(['cc', 'efm']).optional(),
+          numero: z.number().int().min(1).max(6).optional(),
+          nature: z.enum(['ecrit', 'oral', 'tp']).optional(),
+          portee: z.enum(['local', 'regional']).optional(),
         })
         .optional(),
     }),

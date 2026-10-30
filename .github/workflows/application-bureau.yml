@@ -220,9 +220,21 @@ jobs:
           fi
           OUTILS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)
           umask 077
-          printf '%s' "$ANDROID_KEYSTORE" | base64 -d > "$RUNNER_TEMP/cle.jks"
+          # ⚠️ Un secret collé depuis le Bloc-notes garde souvent un retour à la ligne Windows (\r) ou des
+          #    espaces : base64 les refusait (« invalid input »). Retirés ici, du mot de passe aussi.
+          if ! printf '%s' "$ANDROID_KEYSTORE" | tr -d ' \r\n\t' | base64 -d > "$RUNNER_TEMP/cle.jks"; then
+            echo "::error::ANDROID_KEYSTORE n'est pas du base64 : collez le contenu de keystore-base64.txt (pas le fichier .jks)."
+            exit 1
+          fi
+          export ANDROID_KEYSTORE_MOT_DE_PASSE="$(printf '%s' "$ANDROID_KEYSTORE_MOT_DE_PASSE" | tr -d '\r\n')"
+          ALIAS="$(printf '%s' "${ANDROID_KEY_ALIAS:-edtpro}" | tr -d ' \r\n\t')"
+          # Le magasin s'ouvre-t-il avec ce mot de passe, et contient-il l'alias ? Dit clairement, sinon.
+          if ! keytool -list -keystore "$RUNNER_TEMP/cle.jks" -storepass:env ANDROID_KEYSTORE_MOT_DE_PASSE -alias "$ALIAS" > /dev/null; then
+            echo "::error::Le magasin ne s'ouvre pas avec ANDROID_KEYSTORE_MOT_DE_PASSE, ou n'a pas l'alias « $ALIAS »."
+            exit 1
+          fi
           "$OUTILS/zipalign" -p -f 4 "$NON_SIGNEE" "$RUNNER_TEMP/alignee.apk"
-          "$OUTILS/apksigner" sign --ks "$RUNNER_TEMP/cle.jks" --ks-pass env:ANDROID_KEYSTORE_MOT_DE_PASSE --ks-key-alias "${ANDROID_KEY_ALIAS:-edtpro}" --out "EDT-Pro_$VERSION.apk" "$RUNNER_TEMP/alignee.apk"
+          "$OUTILS/apksigner" sign --ks "$RUNNER_TEMP/cle.jks" --ks-pass env:ANDROID_KEYSTORE_MOT_DE_PASSE --ks-key-alias "$ALIAS" --out "EDT-Pro_$VERSION.apk" "$RUNNER_TEMP/alignee.apk"
           rm -f "$RUNNER_TEMP/cle.jks"
           "$OUTILS/apksigner" verify "EDT-Pro_$VERSION.apk"
           cp "EDT-Pro_$VERSION.apk" EDT-Pro.apk

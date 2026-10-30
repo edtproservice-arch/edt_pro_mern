@@ -558,17 +558,3 @@
     }
   }
 }
-
-/*
- * ═══ SCAN DU QR DE LA CARTE — APPLICATION ANDROID (2026-10-31) ═══
- * En mode fenêtré, la caméra est affichée DERRIÈRE la page : pendant le scan, la page devient
- * transparente et l'application se cache ; seul reste le cadre de visée, monté hors de #root
- * (voir BoutonScannerCarte).
- */
-html.scan-qr-actif,
-html.scan-qr-actif body {
-  background: transparent !important;
-}
-html.scan-qr-actif #root {
-  visibility: hidden;
-}

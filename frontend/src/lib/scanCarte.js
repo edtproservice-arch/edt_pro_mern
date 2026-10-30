@@ -8,7 +8,14 @@
  *
  * ⚠️ SEULS LES QR DE CONNEXION EDT PRO sont suivis : un autre lien, scanné par erreur, ne mène
  *    nulle part. Le jeton est de toute façon vérifié (signé) par le serveur.
+ *
+ * ═══ LE SCAN SE FAIT DANS L'APPLICATION, PAS PAR LE MODULE NATIF (même jour) ═══
+ * `tauri-plugin-barcode-scanner` plantait dans son code Android (« null object reference »),
+ * en plein écran comme en mode fenêtré. Il ne sert plus qu'à OBTENIR l'autorisation de la
+ * caméra ; la caméra s'affiche dans la page (getUserMedia) et le QR est décodé ici — par le
+ * détecteur d'Android quand la WebView l'offre (BarcodeDetector), sinon par jsQR.
  */
+import jsQR from 'jsqr';
 
 /** Les adresses dont un QR de carte peut venir : le site, et l'API visée par l'application. */
 function hotesAdmis() {
@@ -39,33 +46,87 @@ export function jetonDuQr(contenu, hotes = hotesAdmis()) {
   return correspondance ? decodeURIComponent(correspondance[1]) : null;
 }
 
+const erreurPermission = () => {
+  const erreur = new Error('L’accès à la caméra est refusé.');
+  erreur.code = 'PERMISSION';
+  return erreur;
+};
+
 /**
- * Ouvre la caméra et rend le texte du QR scanné.
- *
- * ⚠️ EN MODE FENÊTRÉ, la caméra DERRIÈRE la page (2026-10-31) : le mode plein écran
- *    (`windowed: false`) s'ouvrait puis se refermait aussitôt sur Android (constaté par le
- *    porteur). L'appelant rend donc la page transparente pendant le scan, et y dessine son
- *    cadre de visée — voir `BoutonScannerCarte` et `html.scan-qr-actif` (globals.css).
- * @returns {Promise<string>}
- * @throws {Error} `code` : `PERMISSION` (caméra refusée) — sinon l'erreur du scanner
+ * L'autorisation Android de la caméra, par le module natif (cette partie-là fonctionne). Hors
+ * de l'application — ou module absent —, getUserMedia demandera lui-même.
+ * @throws {Error} `code: 'PERMISSION'` si elle est refusée
  */
-export async function scannerQr() {
-  const { Format, checkPermissions, requestPermissions, scan } = await import('@tauri-apps/plugin-barcode-scanner');
-  let permission = await checkPermissions();
-  if (permission !== 'granted') permission = await requestPermissions();
-  if (permission !== 'granted') {
-    const erreur = new Error('L’accès à la caméra est refusé.');
-    erreur.code = 'PERMISSION';
-    throw erreur;
+export async function demanderCamera() {
+  let module;
+  try {
+    module = await import('@tauri-apps/plugin-barcode-scanner');
+  } catch {
+    return;
   }
-  const resultat = await scan({ windowed: true, formats: [Format.QRCode] });
-  return resultat?.content ?? '';
+  let permission = await module.checkPermissions();
+  if (permission !== 'granted') permission = await module.requestPermissions();
+  if (permission !== 'granted') throw erreurPermission();
 }
 
-/** Arrête un scan en cours : la promesse de `scannerQr` est alors rejetée. */
-export async function annulerScan() {
-  const { cancel } = await import('@tauri-apps/plugin-barcode-scanner');
-  await cancel();
+/**
+ * La caméra arrière, dans un `<video>` de la page.
+ * @returns {Promise<MediaStream>}
+ */
+export async function ouvrirCamera(video) {
+  if (!navigator.mediaDevices?.getUserMedia) throw new Error('Caméra indisponible sur cet appareil.');
+  let flux;
+  try {
+    flux = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false,
+    });
+  } catch (erreur) {
+    if (erreur?.name === 'NotAllowedError' || erreur?.name === 'SecurityError') throw erreurPermission();
+    if (erreur?.name === 'NotFoundError') throw new Error('Aucune caméra trouvée sur cet appareil.');
+    throw erreur;
+  }
+  video.srcObject = flux;
+  await video.play();
+  return flux;
+}
+
+/** Arrête la caméra (le voyant s'éteint). */
+export function fermerCamera(flux) {
+  for (const piste of flux?.getTracks?.() ?? []) piste.stop();
+}
+
+/**
+ * Un décodeur : `(video) => Promise<string|null>`, le texte du QR visible dans l'image, s'il y en a.
+ * BarcodeDetector quand la WebView sait lire les QR, sinon jsQR sur une image réduite.
+ */
+export async function creerDecodeur() {
+  try {
+    if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+      const formats = await window.BarcodeDetector.getSupportedFormats();
+      if (formats.includes('qr_code')) {
+        const detecteur = new window.BarcodeDetector({ formats: ['qr_code'] });
+        return async (video) => (await detecteur.detect(video))[0]?.rawValue ?? null;
+      }
+    }
+  } catch {
+    // Détecteur indisponible : jsQR prend le relais.
+  }
+
+  const toile = document.createElement('canvas');
+  const contexte = toile.getContext('2d', { willReadFrequently: true });
+  return async (video) => {
+    const largeurVideo = video.videoWidth;
+    const hauteurVideo = video.videoHeight;
+    if (!largeurVideo || !hauteurVideo) return null;
+    // 720 px de large suffisent pour un QR qui remplit le cadre, et restent rapides à décoder.
+    const echelle = Math.min(1, 720 / largeurVideo);
+    toile.width = Math.round(largeurVideo * echelle);
+    toile.height = Math.round(hauteurVideo * echelle);
+    contexte.drawImage(video, 0, 0, toile.width, toile.height);
+    const image = contexte.getImageData(0, 0, toile.width, toile.height);
+    return jsQR(image.data, image.width, image.height, { inversionAttempts: 'dontInvert' })?.data ?? null;
+  };
 }
 
 /** Les réglages de l'application, pour autoriser la caméra après un refus. */

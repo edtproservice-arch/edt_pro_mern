@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { ETAT_INITIAL, creerSuiviMiseAJour } from './miseAJourDesktop';
+import { ETAT_INITIAL, creerSuiviMiseAJour, plusRecente } from './miseAJourDesktop';
 
 /** Une mise à jour factice : `evenements` sont rejoués pendant le téléchargement. */
 const fausseMiseAJour = (version, { evenements = [], echec = null } = {}) => ({
@@ -91,5 +91,26 @@ describe('creerSuiviMiseAJour (2026-10-30)', () => {
     await expect(suivi.verifier()).resolves.toBeUndefined();
     expect(suivi.lire()).toEqual(ETAT_INITIAL);
     avertir.mockRestore();
+  });
+});
+
+describe('Android (2026-10-30)', () => {
+  it('compare les versions nombre par nombre', () => {
+    expect(plusRecente('0.10.0', '0.9.3')).toBe(true);
+    expect(plusRecente('0.2.0', '0.2.0')).toBe(false);
+    expect(plusRecente('0.1.9', '0.2.0')).toBe(false);
+    expect(plusRecente('1.0.0', '0.99.99')).toBe(true);
+  });
+
+  it('« installer » ouvre l’APK sans redémarrer ; la proposition reste dans l’icône', async () => {
+    const relancer = vi.fn();
+    const miseAJour = fausseMiseAJour('0.3.0');
+    const suivi = creerSuiviMiseAJour({ verifier: async () => miseAJour, relancer, mobile: () => true });
+    await suivi.verifier();
+    await suivi.installer();
+
+    expect(miseAJour.downloadAndInstall).toHaveBeenCalledTimes(1);
+    expect(relancer).not.toHaveBeenCalled();
+    expect(suivi.lire()).toMatchObject({ etat: 'disponible', fenetreOuverte: false, version: '0.3.0' });
   });
 });

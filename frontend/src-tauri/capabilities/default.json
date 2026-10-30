@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Droits de la fenêtre principale",
+  "description": "Droits de la fenêtre principale — application de bureau",
   "windows": [
     "main"
   ],
@@ -16,5 +16,10 @@
     "core:window:allow-close",
     "core:window:allow-start-dragging",
     "core:window:allow-is-maximized"
+  ],
+  "platforms": [
+    "windows",
+    "macOS",
+    "linux"
   ]
 }

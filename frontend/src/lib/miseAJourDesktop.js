@@ -24,8 +24,32 @@ import { useSyncExternalStore } from 'react';
  * release) : l'application doit démarrer quoi qu'il arrive, la vérification
  * reprendra plus tard. L'échec de l'INSTALLATION, lui, se dit dans la fenêtre.
  */
-export const estApplicationDesktop = () =>
-  typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+/** Dans l'application Tauri — bureau OU Android. */
+export const estApplicationTauri = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+/** Sur un appareil Android (navigateur ou application). */
+export const estAndroid = () => typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent ?? '');
+/** L'application de BUREAU : Tauri, hors Android — fenêtre, barre de titre, mise à jour signée. */
+export const estApplicationDesktop = () => estApplicationTauri() && !estAndroid();
+/** L'application ANDROID (2026-10-30). */
+export const estApplicationAndroid = () => estApplicationTauri() && estAndroid();
+
+/*
+ * ═══ SUR ANDROID, PAS DE MISE À JOUR SIGNÉE (2026-10-30) ═══ Le plugin `updater` de Tauri
+ * n'existe pas sur mobile, et Android n'installe pas seul une APK hors Play Store. L'application
+ * lit donc ce petit fichier, publié avec chaque APK (`.github/workflows/application-bureau.yml`),
+ * et propose d'ouvrir la nouvelle APK dans le navigateur — l'utilisateur l'installe.
+ */
+export const MANIFESTE_ANDROID = 'https://edtpro.tech/telechargements/android.json';
+
+/** « 0.10.0 » plus récente que « 0.9.3 » : comparaison nombre par nombre. */
+export function plusRecente(candidate, actuelle) {
+  const a = String(candidate ?? '').split('.').map((n) => Number.parseInt(n, 10) || 0);
+  const b = String(actuelle ?? '').split('.').map((n) => Number.parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+    if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
+  }
+  return false;
+}
 
 const SIX_HEURES = 6 * 60 * 60 * 1000;
 
@@ -44,8 +68,10 @@ export const ETAT_INITIAL = Object.freeze({
 /**
  * Le suivi d'une mise à jour, ses fonctions Tauri INJECTÉES : `verifier` rend la mise à jour
  * disponible (ou `null`), `relancer` redémarre l'application. Ainsi testable hors de Tauri.
+ * `mobile` (valeur ou fonction) : Android — « installer » ouvre l'APK dans le navigateur ; pas de
+ * redémarrage, la proposition reste dans l'icône jusqu'à ce que la nouvelle version tourne.
  */
-export function creerSuiviMiseAJour({ verifier, relancer }) {
+export function creerSuiviMiseAJour({ verifier, relancer, mobile = false }) {
   let etat = ETAT_INITIAL;
   let miseAJour = null;
   const abonnes = new Set();
@@ -95,6 +121,11 @@ export function creerSuiviMiseAJour({ verifier, relancer }) {
       try {
         let total = 0;
         let recu = 0;
+        if (typeof mobile === 'function' ? mobile() : mobile) {
+          await miseAJour.downloadAndInstall();
+          changer({ etat: 'disponible', progression: null, fenetreOuverte: false });
+          return;
+        }
         await miseAJour.downloadAndInstall((evenement) => {
           if (evenement.event === 'Started') total = evenement.data?.contentLength ?? 0;
           if (evenement.event === 'Progress' && total) {
@@ -111,9 +142,32 @@ export function creerSuiviMiseAJour({ verifier, relancer }) {
   };
 }
 
+/** Android : la version publiée sur edtpro.tech, si elle est plus récente que celle-ci. */
+async function verifierAndroid() {
+  const reponse = await fetch(MANIFESTE_ANDROID, { cache: 'no-store' });
+  if (!reponse.ok) return null;
+  const publiee = await reponse.json();
+  const { getVersion } = await import('@tauri-apps/api/app');
+  const actuelle = await getVersion();
+  if (!publiee?.version || !publiee?.url || !plusRecente(publiee.version, actuelle)) return null;
+  return {
+    version: publiee.version,
+    currentVersion: actuelle,
+    body: publiee.notes ?? '',
+    date: publiee.date ?? null,
+    // Le navigateur du téléphone télécharge l'APK ; Android propose ensuite de l'installer.
+    downloadAndInstall: async () => {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('plugin:opener|open_url', { url: publiee.url });
+    },
+  };
+}
+
 /** Le suivi de l'application : les plugins Tauri, chargés à la demande. */
 export const suiviMiseAJour = creerSuiviMiseAJour({
+  mobile: estApplicationAndroid,
   verifier: async () => {
+    if (estApplicationAndroid()) return verifierAndroid();
     const { check } = await import('@tauri-apps/plugin-updater');
     return check();
   },
@@ -126,9 +180,9 @@ export const suiviMiseAJour = creerSuiviMiseAJour({
 /** L'état de la mise à jour, pour l'icône et la fenêtre. */
 export const useMiseAJourDesktop = () => useSyncExternalStore(suiviMiseAJour.abonner, suiviMiseAJour.lire);
 
-/** Au démarrage, puis toutes les 6 heures — dans l'application de bureau seulement. */
+/** Au démarrage, puis toutes les 6 heures — dans l'application, bureau ou Android. */
 export function verifierMiseAJourDesktop() {
-  if (!estApplicationDesktop()) return undefined;
+  if (!estApplicationTauri()) return undefined;
   suiviMiseAJour.verifier();
   const minuterie = setInterval(() => suiviMiseAJour.verifier(), SIX_HEURES);
   return () => clearInterval(minuterie);

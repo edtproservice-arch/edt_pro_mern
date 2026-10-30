@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
-import { estApplicationDesktop, suiviMiseAJour, useMiseAJourDesktop } from '@/lib/miseAJourDesktop';
+import { estApplicationAndroid, estApplicationTauri, suiviMiseAJour, useMiseAJourDesktop } from '@/lib/miseAJourDesktop';
 
 /**
  * ═══ LA MISE À JOUR DE L'APPLICATION DE BUREAU, À LA MANIÈRE DES GRANDES APPLICATIONS ═══
@@ -17,14 +17,16 @@ import { estApplicationDesktop, suiviMiseAJour, useMiseAJourDesktop } from '@/li
  * barre ».) Les deux : la FENÊTRE s'ouvre d'elle-même quand une version est trouvée ; l'ICÔNE
  * reste dans la barre du haut tant qu'elle n'est pas installée, et la rouvre.
  *
- * ⚠️ APPLICATION DE BUREAU SEULEMENT (précision du porteur) : dans un navigateur, le site est à
+ * ⚠️ DANS L'APPLICATION SEULEMENT (précision du porteur) : dans un navigateur, le site est à
  *    jour à chaque déploiement — ni icône ni fenêtre, quoi qu'il arrive.
+ * ⚠️ SUR ANDROID (2026-10-30), « Mettre à jour » ouvre la nouvelle APK dans le navigateur :
+ *    Android n'installe pas seul une application hors Play Store, l'utilisateur confirme.
  */
 
 /** L'icône de la barre du haut : invisible tant qu'aucune version n'attend. */
 export function BoutonMiseAJour() {
   const etat = useMiseAJourDesktop();
-  if (!estApplicationDesktop() || etat.etat === 'aucune') return null;
+  if (!estApplicationTauri() || etat.etat === 'aucune') return null;
 
   const enCours = etat.etat === 'telechargement' || etat.etat === 'redemarrage';
   const libelle = enCours ? 'Mise à jour en cours' : `Mise à jour ${etat.version} disponible`;
@@ -50,9 +52,10 @@ export function BoutonMiseAJour() {
 /** La fenêtre : montée une fois, à la racine de l'application. */
 export function FenetreMiseAJour() {
   const etat = useMiseAJourDesktop();
-  if (!estApplicationDesktop() || etat.etat === 'aucune') return null;
+  if (!estApplicationTauri() || etat.etat === 'aucune') return null;
 
   const enCours = etat.etat === 'telechargement' || etat.etat === 'redemarrage';
+  const android = estApplicationAndroid();
 
   return (
     <Dialog open={etat.fenetreOuverte} onOpenChange={(ouvert) => !ouvert && suiviMiseAJour.fermer()}>
@@ -108,8 +111,10 @@ export function FenetreMiseAJour() {
 
         {!enCours && (
           <p className="text-xs text-muted-foreground">
-            L’application redémarrera une fois la mise à jour installée. Vos données ne sont pas touchées : elles
-            sont sur le serveur.
+            {android
+              ? 'La nouvelle version se télécharge dans votre navigateur : ouvrez le fichier pour l’installer. '
+              : 'L’application redémarrera une fois la mise à jour installée. '}
+            Vos données ne sont pas touchées : elles sont sur le serveur.
           </p>
         )}
 
@@ -119,7 +124,11 @@ export function FenetreMiseAJour() {
           </Button>
           <Button onClick={suiviMiseAJour.installer} disabled={enCours} className="gap-1.5">
             {enCours ? <Loader2 className="size-4 animate-spin" /> : <ArrowDownToLine className="size-4" />}
-            {etat.etat === 'erreur' ? 'Réessayer' : 'Mettre à jour et redémarrer'}
+            {etat.etat === 'erreur'
+              ? 'Réessayer'
+              : android
+                ? 'Télécharger la nouvelle version'
+                : 'Mettre à jour et redémarrer'}
           </Button>
         </DialogFooter>
       </DialogContent>

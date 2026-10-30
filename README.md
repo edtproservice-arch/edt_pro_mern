@@ -179,6 +179,26 @@ Les installations refusent toute mise à jour qui n'est pas signée par elle —
 **la perdre, c'est devoir faire réinstaller tout le monde à la main**.
 Sauvegardez-la. La clé publique correspondante est dans `tauri.conf.json`.
 
+### Application Android (APK)
+
+Le même projet Tauri, compilé pour Android par le job `android` du workflow
+`.github/workflows/application-bureau.yml`, sur le même tag que le bureau. Le
+projet Android (`src-tauri/gen/android`) n'est pas dans le dépôt : il est
+généré à chaque publication, puis `frontend/scripts/preparer-android.mjs` y
+écrit la version et autorise les cookies de edtpro.tech (sans quoi la
+connexion échoue dans la WebView).
+
+L'APK signée est déposée sur `https://edtpro.tech/telechargements/EDT-Pro.apk`
+(bouton « Application mobile » de la barre latérale), avec `android.json` : au
+lancement, l'application le lit et propose de télécharger la nouvelle version
+(pas de mise à jour automatique hors Play Store).
+
+Secrets : `ANDROID_KEYSTORE` (magasin de clés en base64),
+`ANDROID_KEYSTORE_MOT_DE_PASSE`, `ANDROID_KEY_ALIAS` (`edtpro`).
+
+⚠️ **Clé Android** : `~/.android-edtpro/` (hors dépôt). Une APK signée par une
+autre clé ne s'installe pas par-dessus l'ancienne — sauvegardez-la.
+
 ## Tests
 
 ```bash

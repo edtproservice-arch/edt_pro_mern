@@ -12,11 +12,23 @@
 #   3. dépose l'installeur sur le serveur (secret SERVEUR_SSH_CLE) : c'est lui que télécharge le
 #      bouton « Application bureau » de la barre latérale, sur https://edtpro.tech.
 #
+# Et EN PARALLÈLE, sur une machine Linux (job « android », 2026-10-30) :
+#   4. génère le projet Android, compile l'APK (arm64 + armv7) et la SIGNE (secrets ANDROID_*) ;
+#   5. dépose sur le serveur l'APK (`EDT-Pro.apk`, bouton « Application mobile ») et
+#      `android.json`, que lit l'application Android pour proposer la mise à jour ;
+#   6. garde l'APK dans les artefacts de l'exécution (onglet Actions).
+#
 # Secrets à créer UNE fois (Settings → Secrets and variables → Actions) :
 #   TAURI_SIGNING_PRIVATE_KEY          le contenu de ~/.tauri/edt-pro.key
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD son mot de passe — facultatif, la clé actuelle n'en a pas
 #   SERVEUR_SSH_CLE                    la clé privée de dépôt — elle ne peut QUE remplacer
-#                                      l'installeur (commande forcée côté serveur)
+#                                      l'installeur et l'APK (commande forcée côté serveur)
+#   ANDROID_KEYSTORE                   le magasin de clés Android, en base64
+#   ANDROID_KEYSTORE_MOT_DE_PASSE      son mot de passe
+#   ANDROID_KEY_ALIAS                  l'alias de la clé (« edtpro »)
+#
+# ⚠️ LA CLÉ ANDROID EST DÉFINITIVE : une APK signée par une autre clé ne s'installe PAS par-dessus
+#    l'ancienne — il faudrait désinstaller l'application. Sauvegardez le magasin et son mot de passe.
 #
 # ⚠️ La version doit toujours AUGMENTER : une installation ignore une version égale ou
 #    inférieure à la sienne.
@@ -112,4 +124,120 @@ jobs:
           # La commande est FORCÉE côté serveur : l'installeur part sur l'entrée standard, rien d'autre.
           ssh -i "$RUNNER_TEMP/cle" -o UserKnownHostsFile="$RUNNER_TEMP/hotes" -o StrictHostKeyChecking=yes \
             -o IdentitiesOnly=yes edtpro@187.7.30.89 < "release/desktop-v$VERSION/EDT-Pro_x64-setup.exe"
+          rm -f "$RUNNER_TEMP/cle"
+
+  android:
+    runs-on: ubuntu-latest
+    env:
+      SERVEUR_HOTE: '187.7.30.89 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC9CMqgmqStb8mfiMNgQxk1BXK3Vf4ADsDcyDoAmEl1M'
+      MONGOMS_DISABLE_POSTINSTALL: '1'
+      NDK_VERSION: '27.0.12077973'
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: La version, d'après le tag
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag invalide « $GITHUB_REF_NAME » (attendu : v1.2.3)"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Java 17 (Gradle)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: NDK Android
+        shell: bash
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
+          echo "NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+
+      - name: Rust (cibles Android)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+
+      - name: Cache de compilation Rust
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: 'frontend/src-tauri -> target'
+          key: android
+
+      - name: Dépendances
+        run: npm ci --no-audit --no-fund
+
+      - name: Projet Android (généré, puis préparé)
+        working-directory: frontend
+        shell: bash
+        run: |
+          npx tauri android init --ci
+          node scripts/preparer-android.mjs "$VERSION"
+          npx tauri icon public/favicon.png
+
+      - name: Compiler l'APK
+        working-directory: frontend
+        run: npx tauri android build --apk --target aarch64 --target armv7 --ci
+
+      - name: Signer l'APK
+        shell: bash
+        env:
+          ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+          ANDROID_KEYSTORE_MOT_DE_PASSE: ${{ secrets.ANDROID_KEYSTORE_MOT_DE_PASSE }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE" ] || [ -z "$ANDROID_KEYSTORE_MOT_DE_PASSE" ]; then
+            echo "::error::Secrets ANDROID_KEYSTORE / ANDROID_KEYSTORE_MOT_DE_PASSE absents : une APK non signée ne s'installe pas."
+            exit 1
+          fi
+          NON_SIGNEE=$(find frontend/src-tauri/gen/android/app/build/outputs/apk -name '*release-unsigned.apk' | head -n 1)
+          if [ -z "$NON_SIGNEE" ]; then
+            echo "::error::APK introuvable après la compilation."
+            exit 1
+          fi
+          OUTILS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)
+          umask 077
+          printf '%s' "$ANDROID_KEYSTORE" | base64 -d > "$RUNNER_TEMP/cle.jks"
+          "$OUTILS/zipalign" -p -f 4 "$NON_SIGNEE" "$RUNNER_TEMP/alignee.apk"
+          "$OUTILS/apksigner" sign --ks "$RUNNER_TEMP/cle.jks" --ks-pass env:ANDROID_KEYSTORE_MOT_DE_PASSE --ks-key-alias "${ANDROID_KEY_ALIAS:-edtpro}" --out "EDT-Pro_$VERSION.apk" "$RUNNER_TEMP/alignee.apk"
+          rm -f "$RUNNER_TEMP/cle.jks"
+          "$OUTILS/apksigner" verify "EDT-Pro_$VERSION.apk"
+          cp "EDT-Pro_$VERSION.apk" EDT-Pro.apk
+          # Ce que lit l'application Android pour proposer la mise à jour.
+          node -e 'const v = process.env.VERSION; process.stdout.write(JSON.stringify({ version: v, notes: `EDT Pro ${v}`, date: new Date().toISOString(), url: "https://edtpro.tech/telechargements/EDT-Pro.apk" }))' > android.json
+
+      - name: Garder l'APK (onglet Actions)
+        uses: actions/upload-artifact@v4
+        with:
+          name: EDT-Pro_${{ env.VERSION }}.apk
+          path: EDT-Pro_${{ env.VERSION }}.apk
+
+      - name: Déposer l'APK sur le serveur
+        shell: bash
+        env:
+          SERVEUR_SSH_CLE: ${{ secrets.SERVEUR_SSH_CLE }}
+        run: |
+          if [ -z "$SERVEUR_SSH_CLE" ]; then
+            echo "::warning::Secret SERVEUR_SSH_CLE absent : l'APK n'est pas déposée sur edtpro.tech."
+            exit 0
+          fi
+          umask 077
+          printf '%s\n' "$SERVEUR_SSH_CLE" > "$RUNNER_TEMP/cle"
+          printf '%s\n' "$SERVEUR_HOTE" > "$RUNNER_TEMP/hotes"
+          SSH="ssh -i $RUNNER_TEMP/cle -o UserKnownHostsFile=$RUNNER_TEMP/hotes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes"
+          # L'APK d'abord : le manifeste n'annonce la version qu'une fois le fichier en place.
+          $SSH edtpro@187.7.30.89 android-apk < EDT-Pro.apk
+          $SSH edtpro@187.7.30.89 android-json < android.json
           rm -f "$RUNNER_TEMP/cle"

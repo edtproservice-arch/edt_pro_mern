@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "mobile",
+  "description": "Droits de l'application Android : ouvrir un lien (la nouvelle APK) dans le navigateur",
+  "windows": [
+    "main"
+  ],
+  "platforms": [
+    "android",
+    "iOS"
+  ],
+  "permissions": [
+    "core:default",
+    "opener:default"
+  ]
+}

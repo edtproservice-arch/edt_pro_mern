@@ -35,4 +35,10 @@ export const EVENEMENTS = {
    * `{ codeModule }`. Toute session ouverte relit ce qu'elle en garde en cache.
    */
   REFERENTIEL_MODIFIE: 'referentiel:modifie',
+  /**
+   * Une notification pour des personnes précises (2026-10-31) : message, annonce, emploi du
+   * temps publié ou modifié. Charge : `{ utilisateurIds: string[], notification }` — voir
+   * `modules/notifications/notifications.service.js`.
+   */
+  NOTIFICATION: 'notification',
 };

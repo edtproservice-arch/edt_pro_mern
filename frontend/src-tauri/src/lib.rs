@@ -3,6 +3,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
+        // Message, annonce, emploi du temps : la notification du système (2026-10-31).
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             // La vérification elle-même est lancée par le frontend
             // (`src/lib/miseAJourDesktop.js`), qui sait la présenter à l'utilisateur.

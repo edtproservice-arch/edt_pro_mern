@@ -5,6 +5,7 @@ import { User } from '../../src/models/User.js';
 import { Etablissement } from '../../src/models/Etablissement.js';
 import { Message } from '../../src/models/Message.js';
 import { ROLES, STATUTS_COMPTE } from 'shared/constants';
+import { bus, EVENEMENTS } from '../../src/lib/bus.js';
 
 vi.mock('../../src/config/mailer.js', () => ({
   envoyerEmail: vi.fn(async () => ({ envoye: true })),
@@ -81,6 +82,28 @@ const envoyer = (cookies, corps) =>
   request(app).post('/api/v2/messages').set('Cookie', cookies).send(corps);
 
 describe('POST /messages — la matrice de droits', () => {
+  it('⚠️ prévient les sessions ouvertes du destinataire — une notification (2026-10-31)', async () => {
+    const recues = [];
+    const ecouter = (evenement) => recues.push(evenement);
+    bus.on(EVENEMENTS.NOTIFICATION, ecouter);
+    try {
+      const cookies = await connecter('directeur@edtpro.ma');
+      const reponse = await envoyer(cookies, { destinataires: [formateur.id], sujet: 'Réunion', corps: 'Jeudi 14 h.' });
+      expect(reponse.status).toBe(200);
+    } finally {
+      bus.off(EVENEMENTS.NOTIFICATION, ecouter);
+    }
+
+    expect(recues).toHaveLength(1);
+    expect(recues[0].utilisateurIds).toEqual([String(formateur.id)]);
+    expect(recues[0].notification).toMatchObject({
+      genre: 'message',
+      titre: 'Message de Directeur Test',
+      corps: 'Réunion',
+      lien: '/app/messagerie',
+    });
+  });
+
   it('le directeur écrit à son formateur', async () => {
     const cookies = await connecter('directeur@edtpro.ma');
     const reponse = await envoyer(cookies, {

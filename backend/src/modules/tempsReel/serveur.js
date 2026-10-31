@@ -576,6 +576,18 @@ export function attacherTempsReel(serveurHttp) {
   }
 
   /**
+   * ═══ UNE NOTIFICATION (2026-10-31) ═══ Remise à TOUTES les sessions ouvertes de ses
+   * destinataires — chaque onglet, l'application de bureau, le téléphone —, quelle que soit la
+   * page affichée. Voir `modules/notifications/notifications.service.js`.
+   */
+  function surNotification({ utilisateurIds, notification }) {
+    const cibles = new Set(utilisateurIds);
+    for (const connexion of connexions) {
+      if (cibles.has(connexion.utilisateur.id)) envoyer(connexion.ws, { type: 'notification', ...notification });
+    }
+  }
+
+  /**
    * ═══ LE RÉFÉRENTIEL NATIONAL A CHANGÉ (2026-10-10) ═══ Une masse de la
    * répartition DRIF : TOUTES les sessions ouvertes, de tous les établissements,
    * relisent ce qu'elles en gardent en cache. Le message ne porte que le code du
@@ -625,6 +637,7 @@ export function attacherTempsReel(serveurHttp) {
   bus.on(EVENEMENTS.SESSIONS_REVOQUEES, surRevocation);
   bus.on(EVENEMENTS.PARTAGE_MODIFIE, surPartage);
   bus.on(EVENEMENTS.REFERENTIEL_MODIFIE, surReferentiel);
+  bus.on(EVENEMENTS.NOTIFICATION, surNotification);
 
   /*
    * ⚠️ LE PING DÉTECTE LES CONNEXIONS MORTES. Un portable qui se met en veille
@@ -650,6 +663,7 @@ export function attacherTempsReel(serveurHttp) {
     bus.off(EVENEMENTS.SESSIONS_REVOQUEES, surRevocation);
     bus.off(EVENEMENTS.PARTAGE_MODIFIE, surPartage);
     bus.off(EVENEMENTS.REFERENTIEL_MODIFIE, surReferentiel);
+    bus.off(EVENEMENTS.NOTIFICATION, surNotification);
     serveurHttp.off('upgrade', surUpgrade);
     for (const connexion of connexions) connexion.ws.terminate();
     return new Promise((resoudre) => wss.close(() => resoudre()));

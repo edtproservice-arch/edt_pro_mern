@@ -14,6 +14,7 @@ import { construireExport } from './exportGlobal.service.js';
 import { construireExportEmargement } from './exportEmargement.service.js';
 import { construireExportIndividuel } from './exportIndividuel.service.js';
 import { annoncerModification } from '../tempsReel/annonces.js';
+import { notifierPublication } from '../notifications/notifications.service.js';
 import { exigerDroitPage } from '../partages/exigerDroitPage.js';
 import {
   conformiteDeLaSemaine,
@@ -134,6 +135,8 @@ router.put('/publication', directeurSeul, async (req, res, next) => {
     );
     res.json({ success: true, publication: resultat });
     annoncerModification(req, 'emploi', { action: 'publication', semaine: resultat?.semaine });
+    // Tout l'établissement est prévenu : l'emploi de la semaine est disponible (2026-10-31).
+    notifierPublication(req.etablissementId, resultat?.semaine ?? req.body?.semaine, req.utilisateur?.id);
   } catch (error) {
     next(error);
   }

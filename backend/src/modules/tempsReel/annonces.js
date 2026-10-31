@@ -2,6 +2,7 @@ import { normaliserValeurSemaine } from 'shared/domain';
 import { bus, EVENEMENTS } from '../../lib/bus.js';
 import { logger } from '../../lib/logger.js';
 import { noter } from '../modifications/modifications.service.js';
+import { noterChangementEmploi } from '../notifications/notifications.service.js';
 
 /** L'en-tête par lequel un onglet se désigne lui-même. */
 export const EN_TETE_CONNEXION = 'x-connexion-id';
@@ -34,6 +35,14 @@ export function annoncerModification(req, pages, details = {}) {
   for (const page of [].concat(pages)) {
     annoncerSurPage(req, page, details);
     noterModification(req, page);
+    /*
+     * Un emploi DÉJÀ PUBLIÉ qui change : les personnes de l'établissement sont prévenues,
+     * regroupé — une notification après deux minutes sans retouche (2026-10-31). La
+     * publication a sa propre notification ; la dépublication n'en mérite pas.
+     */
+    if (page === 'emploi' && details.semaine && !['publication', 'depublication'].includes(details.action)) {
+      noterChangementEmploi(req.etablissementId, req.anneeScolaire, details.semaine, req.utilisateur?.id);
+    }
   }
 }
 

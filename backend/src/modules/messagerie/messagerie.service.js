@@ -4,6 +4,7 @@ import { Message } from '../../models/Message.js';
 import { User } from '../../models/User.js';
 import { badRequest, forbidden, notFound } from '../../lib/httpError.js';
 import { construireFeuillePresence } from '../absencesStagiaires/exportFeuillePresence.service.js';
+import { notifierMessage } from '../notifications/notifications.service.js';
 
 /**
  * Messagerie interne (F10).
@@ -364,7 +365,7 @@ export async function envoyer(
     reclamation = null,
   }
 ) {
-  const expediteur = await User.findById(expediteurId).select('role etablissementIds').lean();
+  const expediteur = await User.findById(expediteurId).select('role etablissementIds nomComplet').lean();
   if (!expediteur) throw notFound('Compte introuvable', { code: 'COMPTE_INTROUVABLE' });
 
   const cibles = await User.find({ _id: { $in: destinataires }, estActif: true })
@@ -451,6 +452,13 @@ export async function envoyer(
   }
 
   const crees = await Message.insertMany(envoyes);
+
+  // Les sessions ouvertes des destinataires sont prévenues (2026-10-31) — une annonce aussi :
+  // elle part par ici, programmée ou non.
+  notifierMessage(
+    envoyes.map((envoi) => envoi.destinataireId),
+    { expediteurNom: expediteur.nomComplet || 'EDT Pro', sujet, annonce: Boolean(annonce) }
+  );
 
   // `ids` : le service des propositions retrouve ainsi le message qu'il vient de poser.
   return { envoyes: envoyes.length, refuses, ids: crees.map((message) => String(message._id)) };

@@ -238,6 +238,12 @@ function recevoir(message) {
     return;
   }
 
+  // Une notification pour cette personne (2026-10-31) : message, annonce, emploi du temps.
+  if (message.type === 'notification') {
+    for (const ecouteur of ecouteursNotifications) ecouteur(message);
+    return;
+  }
+
   // Le référentiel national a changé (2026-10-10) : chaque écran relit ce qu'il en garde.
   if (message.type === 'referentiel') {
     for (const ecouteur of ecouteursReferentiel) ecouteur(message);
@@ -403,8 +409,31 @@ function fermerSiInutile() {
  */
 const ecouteursGuidage = new Set();
 
+/*
+ * ═══ LES NOTIFICATIONS (2026-10-31) ═══ Message, annonce, emploi publié ou modifié : elles
+ * arrivent quelle que soit la page. Tant qu'un écouteur est branché — toute la session, voir
+ * `NotificationsSession` —, la socket reste ouverte, même sur une page sans salle.
+ */
+const ecouteursNotifications = new Set();
+
 function socketUtile() {
-  return pages.size > 0 || ecouteursGuidage.size > 0;
+  return pages.size > 0 || ecouteursGuidage.size > 0 || ecouteursNotifications.size > 0;
+}
+
+/**
+ * Branche un écouteur de notifications : il reçoit chaque `{ type: 'notification', genre, titre,
+ * corps, lien }`. Ouvre la socket s'il le faut.
+ * @returns {() => void} pour le débrancher.
+ */
+export function ecouterNotifications(rappel) {
+  clearTimeout(minuteurFermeture);
+  minuteurFermeture = null;
+  ecouteursNotifications.add(rappel);
+  ouvrir();
+  return () => {
+    ecouteursNotifications.delete(rappel);
+    fermerSiInutile();
+  };
 }
 
 /**

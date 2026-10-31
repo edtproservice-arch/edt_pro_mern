@@ -15,6 +15,7 @@ import { EmplacementPanneauDroit, FournirPanneauDroit } from './PanneauDroit';
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import BandeauUsurpation from './BandeauUsurpation';
 import BandeauCollaboration from './BandeauCollaboration';
+import NotificationsSession from './NotificationsSession';
 import BarreLaterale from './BarreLaterale';
 import Guidage from '@/features/guidage/Guidage';
 import { ENTREES } from './navigation';
@@ -317,6 +318,8 @@ export default function CoquilleApp() {
             utilisateur={utilisateur}
           />
           <BandeauCollaboration collaboration={collaboration} />
+          {/* Message, annonce, emploi du temps : les notifications de la session (2026-10-31). */}
+          <NotificationsSession />
 
           <BarreNavigation
             titre={TITRE_SESSION[role]}
@@ -406,6 +409,7 @@ export default function CoquilleApp() {
           utilisateur={utilisateur}
         />
         <BandeauCollaboration collaboration={collaboration} />
+        <NotificationsSession />
 
         {/* La navigation ne s'imprime pas : ce qu'on met sur le papier, c'est le
             contenu de la page, jamais la barre d'outils qui y mène.

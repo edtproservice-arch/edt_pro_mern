@@ -12,6 +12,7 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "barcode-scanner:default"
+    "barcode-scanner:default",
+    "notification:default"
   ]
 }

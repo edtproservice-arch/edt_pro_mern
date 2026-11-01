@@ -26,7 +26,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import TableauTriable from '@/components/common/TableauTriable';
-import { HAUTEUR_BARRE } from '@/components/layout/BarreNavigation';
 import {
   chargerComplexes,
   chargerReseau,
@@ -146,10 +145,10 @@ export default function PageReseau() {
   const regionsServies = resume.data?.parRegion?.length ?? 0;
 
   return (
-    <>
+    <div className="flex h-svh flex-col">
       <BarreNavigation titre="Administration" liens={<SectionsAdmin />} messagerie />
 
-      <main className="min-h-screen bg-background">
+      <main className="min-h-0 flex-1 overflow-y-auto bg-background">
         <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
           <BandeCartes className="lg:grid-cols-3">
             <CarteStat
@@ -255,7 +254,6 @@ export default function PageReseau() {
               */}
               <TableauTriable
                 pleinePage
-                collerSous={HAUTEUR_BARRE}
                 vide="Aucun établissement ne correspond à ces critères."
                 cleLigne={(etablissement) => etablissement.id}
                 colonnes={[
@@ -435,7 +433,7 @@ export default function PageReseau() {
         libelleConfirmation="Supprimer"
         onConfirmer={() => suppression.mutate(aSupprimer)}
       />
-    </>
+    </div>
   );
 }
 

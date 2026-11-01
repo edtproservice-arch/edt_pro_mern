@@ -93,10 +93,10 @@ export default function AdminDashboard() {
   }
 
   return (
-    <>
+    <div className="flex h-svh flex-col">
       <BarreNavigation titre="Administration" liens={<SectionsAdmin />} messagerie />
 
-      <main className="min-h-screen bg-background">
+      <main className="min-h-0 flex-1 overflow-y-auto bg-background">
         {/*
           ⚠️ NI TITRE, NI SOUS-TITRE, NI CADRE (demande du porteur, 2026-09-02).
           La rangée de sections dit déjà où l'on est, et « Gestion des
@@ -224,7 +224,7 @@ export default function AdminDashboard() {
           </div>
         </div>
       </main>
-    </>
+    </div>
   );
 }
 

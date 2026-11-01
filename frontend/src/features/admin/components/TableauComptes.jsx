@@ -14,7 +14,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import TableauTriable from '@/components/common/TableauTriable';
-import { HAUTEUR_BARRE } from '@/components/layout/BarreNavigation';
 import ConfirmationAction from '@/components/common/ConfirmationAction';
 import {
   changerStatut,
@@ -106,7 +105,6 @@ export default function TableauComptes({ comptes, enChargement, onChangement }) 
       */}
       <TableauTriable
         pleinePage
-        collerSous={HAUTEUR_BARRE}
         vide="Aucun compte dans cet onglet."
         cleLigne={(compte) => compte.id}
         colonnes={[

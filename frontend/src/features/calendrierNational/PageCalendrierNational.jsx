@@ -172,10 +172,10 @@ export default function PageCalendrierNational() {
   const annees = [annee - 1, annee, annee + 1];
 
   return (
-    <>
+    <div className="flex h-svh flex-col">
       <BarreNavigation titre="Administration" liens={<SectionsAdmin />} messagerie />
 
-      <main className="min-h-screen bg-background">
+      <main className="min-h-0 flex-1 overflow-y-auto bg-background">
         <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
           <BandeCartes className="lg:grid-cols-3">
             <CarteStat
@@ -331,6 +331,6 @@ export default function PageCalendrierNational() {
           )}
         </div>
       </main>
-    </>
+    </div>
   );
 }

@@ -18,7 +18,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import TableauTriable from '@/components/common/TableauTriable';
-import { HAUTEUR_BARRE } from '@/components/layout/BarreNavigation';
 import { BandeCartes, CarteStat } from '@/components/common/CartesStat';
 import { Building2, Layers, ListTree } from 'lucide-react';
 import {
@@ -209,10 +208,10 @@ export default function PageRepartition() {
   const pages = liste.data?.pages ?? 1;
 
   return (
-    <>
+    <div className="flex h-svh flex-col">
       <BarreNavigation titre="Administration" liens={<SectionsAdmin />} messagerie />
 
-      <main className="min-h-screen bg-background">
+      <main className="min-h-0 flex-1 overflow-y-auto bg-background">
         <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
           <BandeCartes className="lg:grid-cols-3">
             <CarteStat
@@ -369,7 +368,6 @@ export default function PageRepartition() {
               */}
               <TableauTriable
                 pleinePage
-                collerSous={HAUTEUR_BARRE}
                 vide="Aucune ligne ne correspond à ces critères."
                 cleLigne={(ligne) => ligne.id}
                 colonnes={[
@@ -622,7 +620,7 @@ export default function PageRepartition() {
         libelleConfirmation="Reporter"
         onConfirmer={() => report.mutate(aReporter)}
       />
-    </>
+    </div>
   );
 }
 

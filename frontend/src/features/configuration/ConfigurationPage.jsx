@@ -481,10 +481,10 @@ export default function ConfigurationPage() {
     (courante !== 3 || voie === 'carte' || basePrete);
 
   return (
-    <>
+    <div className="flex h-svh flex-col">
       <BarreNavigation titre="Configuration" />
 
-      <main className="min-h-screen bg-background">
+      <main className="min-h-0 flex-1 overflow-y-auto bg-background">
         {/*
           ⚠️ PLEINE LARGEUR (2026-09-19, demande du porteur) : la page n'est plus bornée
           — ni à `max-w-5xl` comme à l'origine, ni à la largeur de la barre. Les marges
@@ -638,6 +638,6 @@ export default function ConfigurationPage() {
         </div>
         </FournirLargeurPage>
       </main>
-    </>
+    </div>
   );
 }

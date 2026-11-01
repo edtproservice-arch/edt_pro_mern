@@ -58,17 +58,15 @@ import SousMenuEtablissements from './SousMenuEtablissements';
  *   d'où l'absence de valeur par défaut plutôt qu'un lien mort.
  */
 
-/**
- * Sa hauteur RÉELLE (68 px de contenu + 1 px de `border-b`), exportée pour
- * qui doit se poser JUSTE en dessous — l'en-tête collant des tableaux de
- * l'administration (`TableauTriable`, `pleinePage`), depuis le 2026-09-03.
- *
- * ⚠️ UNE SEULE MESURE, PARTAGÉE. Elle a déjà été recopiée trois fois en
- * `pt-[68px]` avant de passer collante — le jour où cette barre change de
- * hauteur, une valeur écrite ailleurs devient fausse sans qu'aucune erreur ne
- * le signale.
+/*
+ * ═══ ⚠️ LA PAGE NE DÉFILE PAS, SON CONTENU SI ═══ (2026-11-01, demande du porteur :
+ * « en admin le scroll bar s'affiche aussi en nav bar ».) Une page qui pose cette barre
+ * l'enveloppe avec son `<main>` dans `<div className="flex h-svh flex-col">`, et c'est le
+ * `<main>` qui défile (`min-h-0 flex-1 overflow-y-auto`) : la barre de défilement commence
+ * SOUS la barre, comme dans la coquille de la direction. Un en-tête collant s'y accroche
+ * donc à `top: 0` — plus de hauteur de barre à reporter (l'ancienne `HAUTEUR_BARRE`, 68 px
+ * puis 56, ramenée à 56 le même jour : « diminuer le height du barre »).
  */
-export const HAUTEUR_BARRE = '69px';
 
 /**
  * La largeur maximale de la barre — donc celle sur laquelle une page servie
@@ -124,7 +122,7 @@ export default function BarreNavigation({
       <div
         data-tauri-drag-region
         className={cn(
-          'mx-auto flex h-[68px] items-center justify-between gap-4 px-4 sm:px-6 md:grid md:grid-cols-[1fr_auto_1fr] lg:px-8',
+          'mx-auto flex h-14 items-center justify-between gap-4 px-4 sm:px-6 md:grid md:grid-cols-[1fr_auto_1fr] lg:px-8',
           LARGEUR_BARRE
         )}
       >
@@ -152,7 +150,7 @@ export default function BarreNavigation({
               {/*
                 ⚠️ LE PANNEAU S'ARRÊTE SOUS LA BARRE, qui reste visible et
                 utilisable (demande du porteur, 2026-09-02 — c'est ce que fait la
-                référence). D'où `top-[68px]`, `modal={false}` et pas de voile :
+                référence). D'où `top-14`, `modal={false}` et pas de voile :
                 un panneau modal fige le fond et recouvre l'en-tête, or c'est
                 depuis l'en-tête qu'on le referme.
 
@@ -175,9 +173,9 @@ export default function BarreNavigation({
                 fermeture={false}
                 onInteractOutside={(e) => e.preventDefault()}
                 /* ⚠️ `h-auto` : la variante « left » pose `h-full`, qui vaut 100 % de la
-                   fenêtre — avec `top-[68px]`, le panneau dépassait de 68 px par le
+                   fenêtre — avec `top-14`, le panneau dépassait d'autant par le
                    bas (mesuré). Ce sont `top` et `bottom` qui doivent le borner. */
-                className="inset-y-auto bottom-0 top-[68px] h-auto w-full border-0 sm:max-w-full"
+                className="inset-y-auto bottom-0 top-14 h-auto w-full border-0 sm:max-w-full"
               >
                 <SheetTitle className="sr-only">Sections de l&apos;administration</SheetTitle>
                 <div className="px-2 pt-6">
@@ -275,8 +273,13 @@ export default function BarreNavigation({
           <MenuCompte profilUrl={profilUrl} />
 
           {/* Application de bureau seulement : réduire, agrandir, fermer, à côté du profil
-              (2026-11-01, demande du porteur). */}
-          <ControlesFenetre className="ml-1 h-9 border-l pl-1" />
+              (2026-11-01, demande du porteur). Collés au bord droit, sur toute la hauteur de la
+              barre — les marges négatives annulent son `px-4 sm:px-6 lg:px-8` — et resserrés :
+              la place gagnée revient aux liens. */}
+          <ControlesFenetre
+            etroits
+            className="-my-px -mr-4 ml-1 h-14 border-l sm:-mr-6 lg:-mr-8"
+          />
         </div>
       </div>
     </header>

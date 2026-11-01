@@ -52,12 +52,13 @@ function useAgrandie() {
   return agrandie;
 }
 
-const BOUTON =
+const BOUTON_LARGE =
   'flex h-full w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring';
 
-function Boutons({ className }) {
+function Boutons({ className, etroits = false }) {
   const agrandie = useAgrandie();
   const agir = (action) => () => fenetre().then(action).catch(() => {});
+  const BOUTON = etroits ? BOUTON_LARGE.replace('w-11', 'w-10') : BOUTON_LARGE;
 
   return (
     <div className={cn('flex h-full items-stretch', className)}>
@@ -89,9 +90,10 @@ function Boutons({ className }) {
 /**
  * Les boutons, au bout de la barre du haut de l'application. Par défaut (barre de `CoquilleApp`),
  * ils occupent toute sa hauteur, collés au bord droit — d'où la marge négative, qui annule le
- * `px-4` de la barre. `className` les adapte à une autre barre (`BarreNavigation`).
+ * `px-4` de la barre. `className` les adapte à une autre barre (`BarreNavigation`) ; `etroits`
+ * les resserre (40 px au lieu de 44) là où la place manque.
  */
-export function ControlesFenetre({ className = '-my-px -mr-4 ml-1 self-stretch border-l' }) {
+export function ControlesFenetre({ className = '-my-px -mr-4 ml-1 self-stretch border-l', etroits = false }) {
   const desktop = estApplicationDesktop();
   useEffect(() => {
     if (!desktop) return undefined;
@@ -104,7 +106,7 @@ export function ControlesFenetre({ className = '-my-px -mr-4 ml-1 self-stretch b
   }, [desktop]);
 
   if (!desktop) return null;
-  return <Boutons className={className} />;
+  return <Boutons className={className} etroits={etroits} />;
 }
 
 /** En haut à droite des pages SANS barre du haut : de quoi déplacer et fermer la fenêtre. */

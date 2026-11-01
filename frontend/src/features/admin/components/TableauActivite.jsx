@@ -22,7 +22,6 @@ import {
 } from '@/components/ui/select';
 import TableauTriable from '@/components/common/TableauTriable';
 import ConfirmationAction from '@/components/common/ConfirmationAction';
-import { HAUTEUR_BARRE } from '@/components/layout/BarreNavigation';
 import IndicateurChargement from '@/components/ui/indicateur-chargement';
 import { routeApresUsurpation } from '@/features/auth/routage';
 import {
@@ -346,7 +345,6 @@ export default function TableauActivite() {
           */}
           <TableauTriable
             pleinePage
-            collerSous={HAUTEUR_BARRE}
             vide="Aucun compte ne correspond à ces filtres."
             cleLigne={(ligne) => ligne.id}
             colonnes={[

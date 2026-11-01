@@ -21,6 +21,13 @@ import { estAndroid, estApplicationTauri } from '@/lib/miseAJourDesktop';
 export const URL_INSTALLEUR_BUREAU = 'https://edtpro.tech/telechargements/EDT-Pro_x64-setup.exe';
 export const URL_APK_ANDROID = 'https://edtpro.tech/telechargements/EDT-Pro.apk';
 
+/**
+ * ⚠️ LE LIEN ANDROID EST MASQUÉ POUR LE MOMENT (2026-11-01, demande du porteur : « masquer le bouton
+ * télécharger mobile pour le moment » — l'application part sur le Play Store). L'APK reste publiée
+ * et les applications installées se mettent toujours à jour ; repasser à `true` pour le rafficher.
+ */
+const PROPOSER_APK = false;
+
 /** Le fichier est-il publié ? `false` seulement sur un 404 franc. */
 function usePublie(href) {
   const requete = useQuery({
@@ -64,13 +71,15 @@ export default function BoutonApplicationBureau() {
           infobulle="Télécharger l’application Windows"
         />
       )}
-      <Lien
-        href={URL_APK_ANDROID}
-        Icone={Smartphone}
-        titre="Application mobile"
-        etiquette="Android"
-        infobulle="Télécharger l’application Android"
-      />
+      {PROPOSER_APK && (
+        <Lien
+          href={URL_APK_ANDROID}
+          Icone={Smartphone}
+          titre="Application mobile"
+          etiquette="Android"
+          infobulle="Télécharger l’application Android"
+        />
+      )}
     </SidebarMenu>
   );
 }

@@ -923,6 +923,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
+ "winreg 0.10.1",
 ]
 
 [[package]]

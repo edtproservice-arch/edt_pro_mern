@@ -30,6 +30,10 @@ tauri-plugin-updater = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-single-instance = "2"
 
+# Lire le choix « démarrage désactivé » de Windows (2026-11-01) : celle d'auto-launch, déjà là.
+[target.'cfg(windows)'.dependencies]
+winreg = "0.10"
+
 # Scan du QR de la carte de stagiaire : mobile uniquement (2026-10-31).
 [target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
 tauri-plugin-barcode-scanner = "2"

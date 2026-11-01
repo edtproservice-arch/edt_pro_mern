@@ -47,15 +47,13 @@ mod bureau {
         }
         icone.build(app)?;
 
-        // Démarrer avec Windows — proposé UNE fois, au premier lancement : si la personne le
-        // retire ensuite (Paramètres → Applications → Démarrage), on ne le remet pas.
-        if let Ok(dossier) = app.path().app_config_dir() {
-            let marque = dossier.join("demarrage-automatique-propose");
-            if !marque.exists() {
-                let _ = app.autolaunch().enable();
-                let _ = std::fs::create_dir_all(&dossier);
-                let _ = std::fs::write(&marque, b"1");
-            }
+        // Démarrer avec Windows — reposé à CHAQUE lancement s'il manque (2026-11-01) : chaque mise
+        // à jour désinstalle l'ancienne version, et le désinstalleur efface l'inscription.
+        // ⚠️ SAUF SI LA PERSONNE L'A DÉSACTIVÉ dans Windows : `is_enabled` le compte comme « absent »,
+        //    et `enable` réécrirait par-dessus son choix.
+        let demarrage = app.autolaunch();
+        if !demarrage.is_enabled().unwrap_or(true) && !demarrage_refuse() {
+            let _ = demarrage.enable();
         }
 
         // Lancé par Windows au démarrage : la fenêtre reste cachée, l'icône suffit.
@@ -65,6 +63,27 @@ mod bureau {
             }
         }
         Ok(())
+    }
+
+    /// Le démarrage désactivé par la personne (Gestionnaire des tâches → Démarrage, ou
+    /// Paramètres → Applications → Démarrage) : Windows le note dans `StartupApproved\Run`, une
+    /// valeur dont les 8 derniers octets ne sont plus nuls — survit à la désinstallation.
+    #[cfg(windows)]
+    fn demarrage_refuse() -> bool {
+        use winreg::enums::{HKEY_CURRENT_USER, KEY_READ};
+        winreg::RegKey::predef(HKEY_CURRENT_USER)
+            .open_subkey_with_flags(
+                r"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run",
+                KEY_READ,
+            )
+            .and_then(|cle| cle.get_raw_value("EDT Pro"))
+            .map(|valeur| valeur.bytes.len() >= 8 && valeur.bytes.iter().rev().take(8).any(|octet| *octet != 0))
+            .unwrap_or(false)
+    }
+
+    #[cfg(not(windows))]
+    fn demarrage_refuse() -> bool {
+        false
     }
 }
 

@@ -208,7 +208,8 @@ jobs:
             printf '%s' "$GOOGLE_SERVICES_JSON" > src-tauri/gen/android/app/google-services.json
           fi
           node scripts/preparer-android.mjs "$VERSION"
-          npx tauri icon public/favicon.png
+          # Le logo des applications (2026-11-01) — le même que celui du bureau.
+          npx tauri icon src-tauri/icons/source/logo-application.svg
 
       - name: Compiler l'APK
         working-directory: frontend

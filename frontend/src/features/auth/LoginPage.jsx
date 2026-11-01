@@ -116,7 +116,7 @@ export default function LoginPage() {
                       d'un formateur, CEF d'un stagiaire (← `login.php:73`). */}
                   <FormLabel>Email ou identifiant</FormLabel>
                   <FormControl>
-                    <Input autoComplete="username" placeholder="vous@exemple.ma" {...field} />
+                    <Input autoComplete="username" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

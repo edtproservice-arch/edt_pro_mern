@@ -16,12 +16,12 @@ const CONSIGNES = [
   {
     role: 'Formateur',
     texte:
-      "Ne créez pas de compte. Connectez-vous avec votre matricule ou votre email OFPPT (@ofppt.ma) et le mot de passe fourni par votre directeur.",
+      "Ne créez pas de compte. Connectez-vous avec votre matricule ou votre email OFPPT et le mot de passe fourni par votre directeur.",
   },
   {
     role: 'Stagiaire',
     texte:
-      "Ne créez pas de compte. Connectez-vous avec votre CEF ou votre email OFPPT (@ofppt-edu.ma) et le mot de passe fourni par votre directeur.",
+      "Ne créez pas de compte. Connectez-vous avec votre CEF ou votre email OFPPT et le mot de passe fourni par votre directeur.",
   },
   {
     role: 'Gestionnaire',

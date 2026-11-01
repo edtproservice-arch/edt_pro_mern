@@ -11,6 +11,8 @@
  *    tire son `versionName` et son `versionCode`).
  * 2. Remplace `MainActivity.kt` : la WebView ACCEPTE les cookies de edtpro.tech.
  * 3. Si `gen/android/app/google-services.json` existe : Firebase Cloud Messaging (2026-11-01).
+ * 4. Le thème : barre d'état blanche à icônes sombres, bleu de l'application au lieu du violet
+ *    du modèle (2026-11-01).
  *
  * ⚠️ SANS (2), PAS DE CONNEXION : l'application sert ses écrans depuis
  *    `https://tauri.localhost` et appelle l'API sur `https://edtpro.tech` — un autre site. Sa
@@ -136,7 +138,45 @@ class MainActivity : TauriActivity() {
 `
 );
 
+// ── 4. Thème : la barre d'état aux couleurs de l'application (2026-11-01) ─
+/*
+ * « Pourquoi la barre en haut s'affiche en violet ? » — le modèle de `tauri android init` donne
+ * au thème Material ses couleurs d'exemple, VIOLETTES, et Android en peint la barre d'état. On
+ * la met au fond de l'application (blanc, thème clair par défaut — `public/theme-init.js`), avec
+ * des icônes sombres pour rester lisibles, et le bleu de l'application à la place du violet
+ * partout ailleurs (sélection, effets de défilement).
+ *
+ * ⚠️ `values-night` AUSSI : l'application garde son thème clair même quand le téléphone est en
+ *    mode sombre — une barre sombre au-dessus d'une page blanche jurerait.
+ */
+const COULEURS_THEME = {
+  colorPrimary: '#0075DE', // --primary de globals.css
+  colorPrimaryVariant: '#0075DE',
+  'android:statusBarColor': '#FFFFFF', // --background
+  'android:windowLightStatusBar': 'true', // icônes sombres sur fond clair (API 23+)
+};
+const dossierRes = join(dossierAndroid, 'app', 'src', 'main', 'res');
+let themes = 0;
+for (const entree of existsSync(dossierRes) ? readdirSync(dossierRes) : []) {
+  const chemin = join(dossierRes, entree, 'themes.xml');
+  if (!/^values(-|$)/.test(entree) || !existsSync(chemin)) continue;
+  let texte = readFileSync(chemin, 'utf8');
+  if (!/<style\b[^>]*>/.test(texte)) continue;
+  for (const [nom, valeur] of Object.entries(COULEURS_THEME)) {
+    const ligne = `<item name="${nom}">${valeur}</item>`;
+    const existant = new RegExp(`<item name="${nom}"[^>]*>[^<]*</item>`);
+    texte = existant.test(texte)
+      ? texte.replace(existant, ligne)
+      : texte.replace(/<style\b[^>]*>/, (style) => `${style}\n        ${ligne}`);
+  }
+  writeFileSync(chemin, texte);
+  themes += 1;
+}
+// Un modèle Tauri qui changerait de forme ne doit pas bloquer la publication : on le signale.
+if (themes === 0) console.warn(`⚠ Aucun themes.xml sous ${dossierRes} : la barre d'état garde les couleurs du modèle.`);
+
 console.log(
   `✔ Android prêt : version ${version}, ${activite.replace(racine, 'frontend')} (paquet ${paquet})` +
-    (avecFirebase ? ', Firebase activé.' : ', sans Firebase (pas de google-services.json).')
+    (avecFirebase ? ', Firebase activé' : ', sans Firebase (pas de google-services.json)') +
+    `, thème appliqué à ${themes} fichier(s).`
 );

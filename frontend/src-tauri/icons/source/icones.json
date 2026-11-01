@@ -1,6 +1,6 @@
 {
-  "default": "logo-application.svg",
+  "default": "logo-application.png",
   "android_bg": "android-fond.png",
-  "android_fg": "android-premier-plan.svg",
+  "android_fg": "android-premier-plan.png",
   "android_fg_scale": 100
 }

@@ -200,10 +200,11 @@
     color-scheme: dark;
   }
 
-  /* Les logos ont des lettres NOIRES : sur fond sombre elles disparaissent. On
+  /* Le logo de l'OFPPT a des lettres NOIRES : sur fond sombre elles disparaissent. On
      inverse la clarté et on ramène la teinte (2026-09-28, demande du porteur :
-     « pas de fond blanc derrière le logo ») — noir → blanc, le vert reste vert. */
-  html.dark img[src$='logo_edtpro.svg'],
+     « pas de fond blanc derrière le logo ») — noir → blanc, le vert reste vert.
+     ⚠️ PAS LE LOGO D'EDT PRO (logo_edtpro.png, 2026-11-01) : vert et bleu se lisent déjà
+     sur fond sombre, et l'inversion foncerait son carré gris. */
   html.dark img[src$='logo_ofppt.svg'] {
     filter: invert(1) hue-rotate(180deg);
   }

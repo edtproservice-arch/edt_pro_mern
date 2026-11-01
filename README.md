@@ -139,8 +139,8 @@ WS_ORIGINES=https://<votre-projet>.vercel.app,https://tauri.localhost
 
 (`tauri://localhost` sur macOS/Linux.) Icônes régénérables avec
 `npx tauri icon src-tauri/icons/source/icones.json` depuis `frontend/` (le logo des
-applications : `logo-application.svg` pour le bureau, et pour Android une icône
-adaptative — fond blanc, `android-premier-plan.svg` réduit pour ne pas être rogné).
+applications : `logo-application.png` pour le bureau, et pour Android une icône
+adaptative — fond gris clair de la tuile, `android-premier-plan.png` réduit pour ne pas être rogné).
 
 ### Mises à jour de l'application de bureau
 

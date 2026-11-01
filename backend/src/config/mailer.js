@@ -245,8 +245,8 @@ function rendreValeur(valeur) {
  * plusieurs clients — doit encore dire de qui vient le message.
  */
 const enTete = (haut) =>
-  `<img src="${URL_LOGO}" alt="EDT Pro" width="120" height="57"
-        style="display:block;width:120px;height:57px;margin:${haut} 0 0;border:0;outline:none;text-decoration:none;">`;
+  `<img src="${URL_LOGO}" alt="EDT Pro" width="120" height="55"
+        style="display:block;width:120px;height:55px;margin:${haut} 0 0;border:0;outline:none;text-decoration:none;">`;
 
 /*
  * Un paragraphe qui n'est QU'UNE valeur à recopier : aucun espace, assez long

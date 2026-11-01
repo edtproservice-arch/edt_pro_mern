@@ -12,9 +12,11 @@ import { estApplicationDesktop } from '@/lib/miseAJourDesktop';
  * (`data-tauri-drag-region` ; un double-clic l'agrandit).
  *
  * ⚠️ APPLICATION DE BUREAU SEULEMENT : dans un navigateur, rien ne s'affiche.
- * ⚠️ TOUTE PAGE DOIT POUVOIR FERMER LA FENÊTRE : celles qui n'ont pas la barre de
- *    `CoquilleApp` — connexion, administration, choix de l'établissement — reçoivent
- *    `ControlesFenetreSecours`, en haut à droite. La barre signale sa présence ici.
+ * ⚠️ TOUTE PAGE DOIT POUVOIR FERMER LA FENÊTRE : la barre de `CoquilleApp` et celle de
+ *    l'administration (`BarreNavigation`, 2026-11-01 — avant, des boutons flottants y
+ *    recouvraient la messagerie et le profil) les portent ; les pages sans barre — connexion,
+ *    choix de l'établissement — reçoivent `ControlesFenetreSecours`, en haut à droite.
+ *    Chaque barre signale sa présence ici.
  */
 
 /* Combien de barres du haut sont montées : 0 → les contrôles de secours s'affichent. */
@@ -85,10 +87,11 @@ function Boutons({ className }) {
 }
 
 /**
- * Les boutons, au bout de la barre du haut de l'application. Ils occupent toute sa hauteur,
- * collés au bord droit — d'où la marge négative, qui annule le `px-4` de la barre.
+ * Les boutons, au bout de la barre du haut de l'application. Par défaut (barre de `CoquilleApp`),
+ * ils occupent toute sa hauteur, collés au bord droit — d'où la marge négative, qui annule le
+ * `px-4` de la barre. `className` les adapte à une autre barre (`BarreNavigation`).
  */
-export function ControlesFenetre() {
+export function ControlesFenetre({ className = '-my-px -mr-4 ml-1 self-stretch border-l' }) {
   const desktop = estApplicationDesktop();
   useEffect(() => {
     if (!desktop) return undefined;
@@ -101,7 +104,7 @@ export function ControlesFenetre() {
   }, [desktop]);
 
   if (!desktop) return null;
-  return <Boutons className="-my-px -mr-4 ml-1 self-stretch border-l" />;
+  return <Boutons className={className} />;
 }
 
 /** En haut à droite des pages SANS barre du haut : de quoi déplacer et fermer la fenêtre. */

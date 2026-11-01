@@ -18,6 +18,7 @@ import { compterNonLus } from '@/features/messagerie/api';
 import { initiales } from '@/lib/initiales';
 import { useTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
+import { ControlesFenetre } from './ControlesFenetre';
 import { EmplacementEnTete } from './enTetePage';
 import SousMenuEtablissements from './SousMenuEtablissements';
 
@@ -109,7 +110,9 @@ export default function BarreNavigation({
   const nonLus = compteur.data?.nonLus ?? 0;
 
   return (
-    <header className="sticky top-0 z-50 border-b bg-card">
+    // `data-tauri-drag-region` : dans l'application de bureau, sans barre Windows, on déplace la
+    // fenêtre en saisissant les espaces vides de cette barre (2026-11-01).
+    <header data-tauri-drag-region className="sticky top-0 z-50 border-b bg-card">
       {/*
         ⚠️ FLEX SUR MOBILE, GRILLE À PARTIR DE `md`. La grille `1fr auto 1fr`
         centre parfaitement les liens — mais sans eux, elle garde ses TROIS
@@ -119,6 +122,7 @@ export default function BarreNavigation({
         centre existe.
       */}
       <div
+        data-tauri-drag-region
         className={cn(
           'mx-auto flex h-[68px] items-center justify-between gap-4 px-4 sm:px-6 md:grid md:grid-cols-[1fr_auto_1fr] lg:px-8',
           LARGEUR_BARRE
@@ -269,6 +273,10 @@ export default function BarreNavigation({
           )}
 
           <MenuCompte profilUrl={profilUrl} />
+
+          {/* Application de bureau seulement : réduire, agrandir, fermer, à côté du profil
+              (2026-11-01, demande du porteur). */}
+          <ControlesFenetre className="ml-1 h-9 border-l pl-1" />
         </div>
       </div>
     </header>

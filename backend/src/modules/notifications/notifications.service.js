@@ -3,6 +3,7 @@ import { bus, EVENEMENTS } from '../../lib/bus.js';
 import { logger } from '../../lib/logger.js';
 import { User } from '../../models/User.js';
 import { estPubliee } from '../seances/seances.service.js';
+import { envoyerPush } from './push.service.js';
 
 /**
  * ═══ LES NOTIFICATIONS (2026-10-31, demande du porteur : « des notifications lors de la
@@ -25,7 +26,10 @@ import { estPubliee } from '../seances/seances.service.js';
 export function notifier(utilisateurIds, notification) {
   const ids = [...new Set((utilisateurIds ?? []).map(String))];
   if (ids.length === 0) return;
+  // Les sessions OUVERTES, par la socket…
   bus.emit(EVENEMENTS.NOTIFICATION, { utilisateurIds: ids, notification });
+  // …et les appareils abonnés, même fermés : navigateur (Web Push), Android (FCM) — 2026-11-01.
+  envoyerPush(ids, notification).catch((erreur) => logger.warn({ err: erreur }, 'Notifications push non envoyées'));
 }
 
 /**

@@ -26,6 +26,8 @@
 #   ANDROID_KEYSTORE                   le magasin de clés Android, en base64
 #   ANDROID_KEYSTORE_MOT_DE_PASSE      son mot de passe
 #   ANDROID_KEY_ALIAS                  l'alias de la clé (« edtpro »)
+#   GOOGLE_SERVICES_JSON               facultatif : le google-services.json du projet Firebase —
+#                                      les notifications Android application fermée (2026-11-01)
 #
 # ⚠️ LA CLÉ ANDROID EST DÉFINITIVE : une APK signée par une autre clé ne s'installe PAS par-dessus
 #    l'ancienne — il faudrait désinstaller l'application. Sauvegardez le magasin et son mot de passe.
@@ -197,8 +199,14 @@ jobs:
       - name: Projet Android (généré, puis préparé)
         working-directory: frontend
         shell: bash
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
           npx tauri android init --ci
+          # Firebase (notifications application fermée, 2026-11-01) : seulement si le secret existe.
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > src-tauri/gen/android/app/google-services.json
+          fi
           node scripts/preparer-android.mjs "$VERSION"
           npx tauri icon public/favicon.png
 

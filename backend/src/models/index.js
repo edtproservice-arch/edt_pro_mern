@@ -68,3 +68,4 @@ export { Reaffectation } from './Reaffectation.js';
 export { DemandeDocument, TYPES_DEMANDE, STATUTS_DEMANDE } from './DemandeDocument.js';
 /* Les traces de génération automatique — le corpus d'entraînement (F6 · d). */
 export { TraceGeneration, STATUTS_TRACE, CAUSES_FIGEAGE } from './TraceGeneration.js';
+export { AbonnementPush } from './AbonnementPush.js';

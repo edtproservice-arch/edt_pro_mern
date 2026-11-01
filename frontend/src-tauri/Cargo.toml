@@ -14,7 +14,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# tray-icon : l'icône de la zone de notification de Windows (2026-11-01).
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-opener = "2"
 tauri-plugin-process = "2"
 # Notifications du système — Windows et Android (2026-10-31).
@@ -25,6 +26,9 @@ serde_json = "1"
 # Mise à jour automatique : desktop uniquement (le plugin n'existe pas sur mobile).
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
+# Démarrer avec Windows, en arrière-plan ; une seule instance (2026-11-01).
+tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
 
 # Scan du QR de la carte de stagiaire : mobile uniquement (2026-10-31).
 [target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]

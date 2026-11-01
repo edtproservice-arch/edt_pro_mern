@@ -21,6 +21,7 @@ import absencesStagiairesRoutes from './modules/absencesStagiaires/absencesStagi
 import avancementRoutes from './modules/avancement/avancement.routes.js';
 import meteoRoutes from './modules/meteo/meteo.routes.js';
 import messagerieRoutes from './modules/messagerie/messagerie.routes.js';
+import notificationsRoutes from './modules/notifications/notifications.routes.js';
 import annoncesRoutes from './modules/annonces/annonces.routes.js';
 import propositionsRoutes from './modules/propositions/propositions.routes.js';
 import consultationRoutes from './modules/consultation/consultation.routes.js';
@@ -158,6 +159,7 @@ export function createApp() {
   app.use('/api/v2/avancement', avancementRoutes); // F7 → Phase 7
   app.use('/api/v2/meteo', meteoRoutes); // l'emblème de la salutation, sur l'accueil
   app.use('/api/v2/messages', messagerieRoutes); // F10     → Phase 9 (a)
+  app.use('/api/v2/notifications', notificationsRoutes); // abonnements push — 2026-11-01
   // Annonces du bandeau passant, doublées en messagerie (2026-10-10).
   app.use('/api/v2/annonces', annoncesRoutes);
   app.use('/api/v2/propositions', propositionsRoutes); // F10 → Phase 9 (b)

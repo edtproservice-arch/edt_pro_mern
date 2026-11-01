@@ -172,6 +172,18 @@ const etablissementSchema = new mongoose.Schema(
      * doublon disparaît par construction : les séances sont unitaires, il n'y a
      * plus de ligne de semaine à marquer. Une seule vérité, celle-ci.
      */
+    /**
+     * ═══ DÉMO PUBLIQUE (2026-11-01, `modules/demo`) ═══
+     * `modeleDemo` : l'établissement FICTIF que l'on copie pour chaque visiteur (un seul).
+     * `demo` : une de ces copies, effacée après `demoExpireLe`. Ni l'un ni l'autre ne paraît
+     * dans les listes de l'administration.
+     */
+    modeleDemo: { type: Boolean, default: false, index: true },
+    demo: { type: Boolean, default: false, index: true },
+    demoExpireLe: { type: Date, default: null },
+    /** Pour le modèle : la semaine « AAAA-Wn » autour de laquelle ses séances ont été construites. */
+    demoSemaineReference: { type: String, default: null },
+
     publications: [
       {
         _id: false,

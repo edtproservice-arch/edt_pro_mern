@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import { env } from './env.js';
 import { logger } from '../lib/logger.js';
+import { estAdresseDemo, estRequeteDemo } from '../lib/contexteDemo.js';
 
 /**
  * Envoi d'e-mails. ← remplace PHPMailer, instancié et reconfiguré à la main
@@ -267,6 +268,12 @@ const echapper = (valeur) =>
  *   hameçonnage, aux yeux du lecteur comme des filtres.
  */
 export async function envoyerEmail({ destinataire, sujet, texte, raison, html }) {
+  // ⚠️ LA DÉMO N'ENVOIE RIEN (2026-11-01) : ni depuis une requête de démo, ni vers une adresse
+  // de démo (une tâche de fond, comme les avis de stage, n'a pas de requête). Voir `contexteDemo`.
+  if (estRequeteDemo() || estAdresseDemo(destinataire)) {
+    logger.info({ sujet }, 'Démo — e-mail non envoyé');
+    return { envoye: false, demo: true };
+  }
   if (!transport) {
     logger.warn({ destinataire, sujet, texte }, 'SMTP non configuré — e-mail non envoyé');
     return { envoye: false };

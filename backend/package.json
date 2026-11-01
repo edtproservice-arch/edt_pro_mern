@@ -13,7 +13,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "init:db": "node --env-file=.env scripts/initialiser-collections.js",
-    "importer:reseau": "node --env-file=.env scripts/importer-reseau.js"
+    "importer:reseau": "node --env-file=.env scripts/importer-reseau.js",
+    "creer:modele-demo": "node --env-file=.env scripts/creer-modele-demo.js",
+    "demo:locale": "node scripts/demo-locale.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

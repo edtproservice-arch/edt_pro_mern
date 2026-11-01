@@ -92,6 +92,13 @@ const userSchema = new mongoose.Schema(
      * `modules/auth/jetonCarte.js`.
      */
     versionCarte: { type: Number, default: 1, min: 1 },
+
+    /**
+     * Un compte du BAC À SABLE de la démo publique (2026-11-01, `modules/demo`) : créé pour un
+     * visiteur, effacé avec son établissement de démo. Adresse en `@demo.invalid`, mot de passe
+     * aléatoire jamais communiqué — on n'y entre que par « Essayer la démo ».
+     */
+    demo: { type: Boolean, default: false, index: true },
   },
   { timestamps: true, strict: true }
 );

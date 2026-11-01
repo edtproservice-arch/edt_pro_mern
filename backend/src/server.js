@@ -5,6 +5,7 @@ import { logger } from './lib/logger.js';
 import { attacherTempsReel } from './modules/tempsReel/serveur.js';
 import { retenirToutesLesRentrees } from './modules/calendrierNational/calendrierNational.service.js';
 import { demarrerAvisPeriodes } from './modules/avisPeriodes/avisPeriodes.service.js';
+import { demarrerNettoyageDemo } from './modules/demo/demo.service.js';
 
 /** Point d'entrée : connexion base + écoute. Rien d'autre. */
 async function demarrer() {
@@ -29,12 +30,16 @@ async function demarrer() {
   // Avis automatique des stages et formations, une semaine avant (2026-10-10).
   const arreterAvis = demarrerAvisPeriodes();
 
+  // Démo publique : les bacs à sable de plus de 24 h sont effacés (2026-11-01).
+  const arreterMenageDemo = demarrerNettoyageDemo();
+
   for (const signal of ['SIGINT', 'SIGTERM']) {
     process.on(signal, async () => {
       logger.info(`${signal} reçu — arrêt en cours`);
       // ⚠️ Les sockets d'abord : `server.close` attend la fin de TOUTES les
       // connexions, et une socket temps réel ne se ferme jamais d'elle-même.
       arreterAvis();
+      arreterMenageDemo();
       await tempsReel.fermer();
       server.close(() => process.exit(0));
     });

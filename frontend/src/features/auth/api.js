@@ -34,6 +34,15 @@ export function seConnecterParCarte(jeton) {
   return api.post('/api/v2/auth/carte', { jeton, appareil: decrireAppareil() });
 }
 
+/**
+ * « Essayer la démo » (2026-11-01) : le serveur crée un bac à sable fictif et y ouvre une
+ * session avec le rôle choisi — sans compte. Voir `backend/src/modules/demo`.
+ */
+export function essayerDemo(role) {
+  oublierSemaineChoisie();
+  return api.post('/api/v2/demo', { role, appareil: decrireAppareil() });
+}
+
 export function sInscrire(valeurs) {
   return api.post('/api/v2/auth/inscription', valeurs);
 }

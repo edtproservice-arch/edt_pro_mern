@@ -2,6 +2,8 @@ import { User } from '../models/User.js';
 import { unauthorized } from '../lib/httpError.js';
 import { lireAccessToken, verifierAccessToken } from '../modules/auth/tokens.js';
 import { ROLES, STATUTS_COMPTE } from 'shared/constants';
+import { executerEnDemo } from '../lib/contexteDemo.js';
+import { verifierActionDemo } from './actionsDemo.js';
 
 /**
  * Vérifie un access token et charge le compte qu'il désigne.
@@ -85,6 +87,12 @@ export async function authenticate(req, res, next) {
     req.utilisateur = utilisateur;
     if (impersonateur) req.impersonateur = impersonateur;
 
+    // Un compte de démo (2026-11-01) : certaines actions sont fermées, et la suite de la
+    // requête s'exécute « en démo » — aucun e-mail, aucune notification poussée n'en sort.
+    if (utilisateur.demo) {
+      verifierActionDemo(req);
+      return executerEnDemo(next);
+    }
     return next();
   } catch (error) {
     return next(error);

@@ -23,6 +23,8 @@ export const SEUILS = {
   // Plus strict que la validation : un renvoi déclenche un e-mail réel, donc
   // un abus remplit la boîte de la victime et brûle le quota d'envoi.
   renvoi: { fenetreMs: 15 * 60 * 1000, maximum: 5 },
+  // Chaque démo copie un établissement entier : six par heure et par adresse suffisent largement.
+  demo: { fenetreMs: 60 * 60 * 1000, maximum: 6 },
 };
 
 /**
@@ -59,3 +61,7 @@ export const limiteurInscription = creerLimiteur(SEUILS.inscription);
 export const limiteurCode = creerLimiteur(SEUILS.code);
 
 export const limiteurRenvoi = creerLimiteur(SEUILS.renvoi);
+
+// ⚠️ SEULES LES DÉMOS CRÉÉES COMPTENT (2026-11-01) : sans modèle en base, chaque essai échouait
+// (503) ET consommait le quota — le visiteur se retrouvait bloqué une heure sans avoir rien vu.
+export const limiteurDemo = creerLimiteur(SEUILS.demo, { skipFailedRequests: true });

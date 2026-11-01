@@ -365,10 +365,16 @@ export async function envoyer(
     reclamation = null,
   }
 ) {
-  const expediteur = await User.findById(expediteurId).select('role etablissementIds nomComplet').lean();
+  const expediteur = await User.findById(expediteurId).select('role etablissementIds nomComplet demo').lean();
   if (!expediteur) throw notFound('Compte introuvable', { code: 'COMPTE_INTROUVABLE' });
 
-  const cibles = await User.find({ _id: { $in: destinataires }, estActif: true })
+  // ⚠️ UN COMPTE DE DÉMO N'ÉCRIT QU'AUX COMPTES DE SON BAC À SABLE (2026-11-01) : sans ce filtre,
+  // un visiteur pourrait écrire aux administrateurs — une porte ouverte au pourriel.
+  const cibles = await User.find({
+    _id: { $in: destinataires },
+    estActif: true,
+    ...(expediteur.demo ? { demo: true } : {}),
+  })
     .select('nomComplet role etablissementIds')
     .lean();
 
@@ -685,7 +691,7 @@ export async function supprimerBrouillon(utilisateurId, id) {
  * destinataires que le serveur refuse.
  */
 export async function correspondants(utilisateurId) {
-  const moi = await User.findById(utilisateurId).select('role etablissementIds').lean();
+  const moi = await User.findById(utilisateurId).select('role etablissementIds demo').lean();
   if (!moi) throw notFound('Compte introuvable', { code: 'COMPTE_INTROUVABLE' });
 
   /*
@@ -709,8 +715,9 @@ export async function correspondants(utilisateurId) {
     .sort({ nomComplet: 1 })
     .lean();
 
+  // Un compte de démo ne voit pas les administrateurs (voir `envoyer`).
   const admins =
-    (moi.etablissementIds ?? []).length > 0
+    (moi.etablissementIds ?? []).length > 0 && !moi.demo
       ? await User.find({ role: ROLES.ADMIN, estActif: true })
           .select('nomComplet email role etablissementIds')
           .lean()

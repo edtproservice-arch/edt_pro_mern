@@ -4,6 +4,7 @@ import cookieParser from 'cookie-parser';
 import { env } from './config/env.js';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
 import authRoutes from './modules/auth/auth.routes.js';
+import demoRoutes from './modules/demo/demo.routes.js';
 import devicesRoutes from './modules/auth/devices.routes.js';
 import adminRoutes from './modules/admin/admin.routes.js';
 import etablissementsRoutes from './modules/etablissements/etablissements.routes.js';
@@ -110,6 +111,7 @@ export function createApp() {
    * exactement ce que `public/data/etablissements.json` exposait déjà en clair.
    */
   app.use('/api/v2/reseau', reseauRoutes); //                    F1  — Phase 3
+  app.use('/api/v2/demo', demoRoutes); // démo publique, un bac à sable par visiteur — 2026-11-01
   app.use('/api/v2/auth', authRoutes); //                        F1  — Phase 3
   app.use('/api/v2/auth/appareils', devicesRoutes); //           F1  — Phase 3
   /*

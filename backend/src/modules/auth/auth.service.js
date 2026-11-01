@@ -732,7 +732,15 @@ export function presenter(utilisateur) {
     estVerifie: utilisateur.estVerifie,
     configurationTerminee: utilisateur.configurationTerminee,
     etablissementIds: utilisateur.etablissementIds,
+    // Le bac à sable de la démo publique (2026-11-01) : l'application affiche son bandeau.
+    demo: Boolean(utilisateur.demo),
   };
+}
+
+/** Ouvre la session d'un compte de démo (`modules/demo`) — sans mot de passe ni code. */
+export async function connecterDemo(utilisateur, appareil, ip) {
+  if (!utilisateur?.demo) throw forbidden('Compte de démonstration attendu', { code: 'DEMO_ATTENDUE' });
+  return ouvrirSession(utilisateur, appareil, ip);
 }
 
 /**

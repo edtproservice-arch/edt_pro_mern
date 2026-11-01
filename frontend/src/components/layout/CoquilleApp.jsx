@@ -14,6 +14,7 @@ import { FournirEnTetePage } from './enTetePage';
 import { EmplacementPanneauDroit, FournirPanneauDroit } from './PanneauDroit';
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import BandeauUsurpation from './BandeauUsurpation';
+import BandeauDemo from './BandeauDemo';
 import BandeauCollaboration from './BandeauCollaboration';
 import NotificationsSession from './NotificationsSession';
 import BarreLaterale from './BarreLaterale';
@@ -313,6 +314,7 @@ export default function CoquilleApp() {
             un message de la page ; au-dessus, il encadre l'application entière —
             ce qu'il décrit. Frère du conteneur défilant, il ne bouge jamais.
           */}
+          <BandeauDemo utilisateur={utilisateur} />
           <BandeauUsurpation
             impersonateur={session.data?.impersonateur}
             utilisateur={utilisateur}
@@ -404,6 +406,7 @@ export default function CoquilleApp() {
           devant l'avertissement le plus important de l'écran. En tête de la
           colonne, il coiffe l'application entière, ce qu'il décrit.
         */}
+        <BandeauDemo utilisateur={utilisateur} />
         <BandeauUsurpation
           impersonateur={session.data?.impersonateur}
           utilisateur={utilisateur}

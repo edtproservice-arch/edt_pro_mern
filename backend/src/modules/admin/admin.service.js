@@ -42,7 +42,8 @@ export async function listerUtilisateurs({
   page,
   parPage,
 }) {
-  const filtre = {};
+  // Les comptes du bac à sable de la démo publique ne sont pas des comptes du parc (2026-11-01).
+  const filtre = { demo: { $ne: true } };
   if (statut) filtre.statut = statut;
   if (role) filtre.role = role;
   if (actif) filtre.estActif = actif === 'oui';
@@ -180,6 +181,7 @@ export async function statistiques() {
      * collection — et autant de vérités qui peuvent diverger.
      */
     User.aggregate([
+      { $match: { demo: { $ne: true } } },
       {
         $group: {
           _id: { role: '$role', statut: '$statut' },
@@ -192,7 +194,7 @@ export async function statistiques() {
       },
     ]),
     User.aggregate([
-      { $match: { createdAt: { $gte: debutSerie } } },
+      { $match: { createdAt: { $gte: debutSerie }, demo: { $ne: true } } },
       {
         $group: {
           /*
@@ -212,7 +214,7 @@ export async function statistiques() {
       },
     ]),
     /* Les huit dernières connexions — un signe de vie, pas un annuaire. */
-    User.find({ derniereConnexion: { $ne: null } })
+    User.find({ derniereConnexion: { $ne: null }, demo: { $ne: true } })
       .sort({ derniereConnexion: -1 })
       .limit(8)
       .select('nomComplet email role derniereConnexion'),
@@ -223,6 +225,7 @@ export async function statistiques() {
      */
     User.countDocuments({
       derniereActivite: { $gte: new Date(Date.now() - SEUIL_EN_LIGNE_MS) },
+      demo: { $ne: true },
     }),
     /*
      * ═══ ⚠️ LES ÉTABLISSEMENTS QUI PORTENT DES COMPTES ═══ (demande du porteur,
@@ -310,8 +313,10 @@ export async function statistiques() {
  */
 export async function listerEtablissements() {
   const [etablissements, comptes] = await Promise.all([
-    Etablissement.find().select('nom').sort({ nom: 1 }),
+    // Ni le modèle de la démo, ni ses copies (2026-11-01).
+    Etablissement.find({ demo: { $ne: true }, modeleDemo: { $ne: true } }).select('nom').sort({ nom: 1 }),
     User.aggregate([
+      { $match: { demo: { $ne: true } } },
       { $unwind: '$etablissementIds' },
       { $group: { _id: '$etablissementIds', total: { $sum: 1 } } },
     ]),
@@ -596,7 +601,7 @@ export async function purgerComptes(ids) {
  */
 export async function trouverComptesOrphelins() {
   const existants = new Set((await Etablissement.find({}).select('_id').lean()).map((e) => String(e._id)));
-  const comptes = await User.find({ role: { $in: ROLES_GERABLES } })
+  const comptes = await User.find({ role: { $in: ROLES_GERABLES }, demo: { $ne: true } })
     .select('nomComplet email role etablissementIds')
     .sort({ nomComplet: 1 })
     .lean();

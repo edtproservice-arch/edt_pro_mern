@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { logger } from '../../lib/logger.js';
 import { AbonnementPush } from '../../models/AbonnementPush.js';
+import { estRequeteDemo } from '../../lib/contexteDemo.js';
 
 /**
  * ═══ LES NOTIFICATIONS PUSH — MÊME FERMÉ (2026-11-01, demande du porteur : « comme Facebook,
@@ -69,7 +70,8 @@ export async function retirer(utilisateurId, cle) {
  * @param {{ genre: string, titre: string, corps?: string, lien?: string }} notification
  */
 export async function envoyerPush(utilisateurIds, notification) {
-  if (!utilisateurIds?.length) return;
+  // La démo ne pousse rien hors de l'application (2026-11-01) — les toasts en direct restent.
+  if (!utilisateurIds?.length || estRequeteDemo()) return;
   const abonnements = await AbonnementPush.find({ utilisateurId: { $in: utilisateurIds } }).lean();
   if (abonnements.length === 0) return;
   const oublier = [];

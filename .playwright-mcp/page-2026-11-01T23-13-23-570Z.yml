@@ -1,0 +1,149 @@
+- generic [ref=f21e2]:
+  - generic [ref=f21e3]:
+    - generic [ref=f21e6]:
+      - generic [ref=f21e7]:
+        - generic [ref=f21e8]:
+          - link [ref=f21e9] [cursor=pointer]:
+            - /url: /app
+            - img "EDT Pro" [ref=f21e10]
+          - button "Épingler la barre latérale" [ref=f21e11] [cursor=pointer]
+        - list [ref=f21e13]:
+          - listitem [ref=f21e14]:
+            - button "EFP Démo 2026-2027" [ref=f21e15] [cursor=pointer]:
+              - generic [ref=f21e21]:
+                - generic [ref=f21e22]: EFP Démo
+                - generic [ref=f21e23]: 2026-2027
+      - generic [ref=f21e27]:
+        - list [ref=f21e29]:
+          - listitem [ref=f21e30]:
+            - link "Accueil" [ref=f21e31] [cursor=pointer]:
+              - /url: /app
+          - listitem [ref=f21e36]:
+            - link "Messagerie" [ref=f21e37] [cursor=pointer]:
+              - /url: /app/messagerie
+            - generic: "1"
+          - listitem [ref=f21e42]:
+            - link "Annonces" [ref=f21e43] [cursor=pointer]:
+              - /url: /app/annonces
+        - generic [ref=f21e48]:
+          - generic [ref=f21e49]: Navigation
+          - list [ref=f21e50]:
+            - listitem [ref=f21e51]:
+              - link "Emploi" [ref=f21e52] [cursor=pointer]:
+                - /url: /app/emploi
+            - listitem [ref=f21e56]:
+              - link "Édition" [ref=f21e57] [cursor=pointer]:
+                - /url: /app/edition
+            - listitem [ref=f21e66]:
+              - link "Avancement" [ref=f21e67] [cursor=pointer]:
+                - /url: /app/avancement
+            - listitem [ref=f21e72]:
+              - link "Absences" [ref=f21e73] [cursor=pointer]:
+                - /url: /app/absences
+            - listitem [ref=f21e80]:
+              - link "Documents" [ref=f21e81] [cursor=pointer]:
+                - /url: /app/documents
+        - generic [ref=f21e86]:
+          - generic [ref=f21e87]: Paramètres
+          - list [ref=f21e88]:
+            - listitem [ref=f21e89]:
+              - button "Paramètres" [ref=f21e90] [cursor=pointer]
+      - generic [ref=f21e97]:
+        - list [ref=f21e98]:
+          - listitem [ref=f21e99]:
+            - link "Application bureau Windows" [ref=f21e100] [cursor=pointer]:
+              - /url: https://edtpro.tech/telechargements/EDT-Pro_x64-setup.exe
+              - generic [ref=f21e104]: Application bureau
+              - generic [ref=f21e105]: Windows
+        - list [ref=f21e106]:
+          - listitem [ref=f21e107]:
+            - button "DD Direction de la démo directeur-1-f6b95e@demo.invalid" [ref=f21e108] [cursor=pointer]:
+              - generic [ref=f21e109]: DD
+              - generic [ref=f21e111]:
+                - generic [ref=f21e112]: Direction de la démo
+                - generic [ref=f21e113]: directeur-1-f6b95e@demo.invalid
+      - button "Toggle Sidebar" [ref=f21e117]
+    - main [ref=f21e118]:
+      - generic [ref=f21e120]:
+        - paragraph [ref=f21e121]:
+          - generic [ref=f21e124]:
+            - strong [ref=f21e125]: Démo
+            - text: "— établissement fictif : tout fonctionne, rien n’en sort, et cette copie est effacée dans les 24 heures."
+        - generic [ref=f21e126]:
+          - button "Quitter la démo" [ref=f21e127] [cursor=pointer]
+          - button "Inscrire mon établissement" [ref=f21e128] [cursor=pointer]
+      - generic [ref=f21e129]:
+        - button "Toggle Sidebar" [ref=f21e130] [cursor=pointer]
+        - navigation "breadcrumb" [ref=f21e132]:
+          - list [ref=f21e133]:
+            - listitem [ref=f21e134]:
+              - link "Annonces" [disabled] [ref=f21e135]
+        - generic [ref=f21e136]:
+          - button "Ajouter aux favoris" [ref=f21e137] [cursor=pointer]
+          - button "Actions de la page" [ref=f21e139] [cursor=pointer]
+      - region "Annonces" [ref=f21e142]:
+        - generic [ref=f21e143]:
+          - paragraph [ref=f21e145]: Une note ou une information pour les formateurs de l’établissement, dans leur bandeau et leur messagerie.
+          - generic [ref=f21e146]:
+            - generic [ref=f21e147]:
+              - generic [ref=f21e153]:
+                - heading "Nouvelle annonce" [level=3] [ref=f21e154]
+                - paragraph [ref=f21e155]: Pour les formateurs de l’établissement — dans leur bandeau et leur messagerie.
+              - generic [ref=f21e156]:
+                - generic [ref=f21e157]:
+                  - generic [ref=f21e158]:
+                    - generic [ref=f21e159]: Message
+                    - generic [ref=f21e160]: 0 / 500
+                  - textbox "Message" [ref=f21e161]:
+                    - /placeholder: "Ex. : Réunion pédagogique jeudi à 10 h en salle de conférence."
+                - group "Degré d’importance" [ref=f21e162]:
+                  - radiogroup "Degré d’importance" [ref=f21e164]:
+                    - radio "Information À titre informatif" [checked] [ref=f21e165] [cursor=pointer]:
+                      - generic [ref=f21e169]:
+                        - generic [ref=f21e170]: Information
+                        - generic [ref=f21e171]: À titre informatif
+                    - radio "Importante À lire sans tarder" [ref=f21e172] [cursor=pointer]:
+                      - generic [ref=f21e176]:
+                        - generic [ref=f21e177]: Importante
+                        - generic [ref=f21e178]: À lire sans tarder
+                    - radio "Urgente Bandeau rouge, en tête" [ref=f21e179] [cursor=pointer]:
+                      - generic [ref=f21e186]:
+                        - generic [ref=f21e187]: Urgente
+                        - generic [ref=f21e188]: Bandeau rouge, en tête
+                - generic [ref=f21e189]:
+                  - generic [ref=f21e190]:
+                    - generic [ref=f21e191]: À partir du
+                    - button "À partir du" [ref=f21e192] [cursor=pointer]: 1 novembre 2026
+                  - generic [ref=f21e193]:
+                    - generic [ref=f21e194]: Jusqu’au
+                    - button "Jusqu’au" [ref=f21e195] [cursor=pointer]: 8 novembre 2026
+                  - generic [ref=f21e196]:
+                    - generic [ref=f21e197]: Formateurs
+                    - button "Tous les formateurs" [ref=f21e198] [cursor=pointer]
+                - generic [ref=f21e199]:
+                  - generic [ref=f21e200]: Page liée (facultatif)
+                  - combobox "Page liée (facultatif)" [ref=f21e201] [cursor=pointer]:
+                    - generic: Aucune — l’annonce ne mène nulle part
+                  - paragraph [ref=f21e204]: Un clic sur l’annonce, dans le bandeau ou la messagerie, ouvrira cette page.
+                - generic [ref=f21e205]:
+                  - paragraph [ref=f21e206]: Aperçu dans le bandeau
+                  - generic [ref=f21e207]:
+                    - generic [ref=f21e208]: À la une
+                    - generic [ref=f21e212]: Votre message apparaîtra ici…
+              - generic [ref=f21e216]:
+                - paragraph [ref=f21e217]:
+                  - strong [ref=f21e218]: Tous les formateurs
+                  - text: · jusqu’au 08 nov. 2026 · copie en messagerie immédiate
+                - button "Publier" [disabled]
+            - generic [ref=f21e219]:
+              - heading "Mes annonces" [level=3] [ref=f21e220]
+              - list [ref=f21e221]:
+                - listitem [ref=f21e222]:
+                  - generic [ref=f21e223]:
+                    - generic [ref=f21e224]:
+                      - generic [ref=f21e225]: Information
+                      - generic [ref=f21e228]: Programmée
+                      - generic [ref=f21e229]: du 08 nov. 2026 au 22 nov. 2026 · 0 destinataire(s)
+                    - paragraph [ref=f21e230]: "Bienvenue dans la démo d’EDT Pro : explorez, modifiez, publiez — rien de ce que vous faites ici ne quitte la démo."
+                  - button "Annuler" [ref=f21e231] [cursor=pointer]
+  - region "Notifications alt+T"

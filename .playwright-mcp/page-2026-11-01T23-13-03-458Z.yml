@@ -1,0 +1,155 @@
+- generic [ref=f19e2]:
+  - generic [ref=f19e3]:
+    - generic [ref=f19e6]:
+      - generic [ref=f19e7]:
+        - generic [ref=f19e8]:
+          - link [ref=f19e9] [cursor=pointer]:
+            - /url: /app
+            - img "EDT Pro" [ref=f19e10]
+          - button "Épingler la barre latérale" [ref=f19e11] [cursor=pointer]
+        - list [ref=f19e13]:
+          - listitem [ref=f19e14]:
+            - button "EFP Démo 2026-2027" [ref=f19e15] [cursor=pointer]:
+              - generic [ref=f19e21]:
+                - generic [ref=f19e22]: EFP Démo
+                - generic [ref=f19e23]: 2026-2027
+      - generic [ref=f19e27]:
+        - list [ref=f19e29]:
+          - listitem [ref=f19e30]:
+            - link "Accueil" [ref=f19e31] [cursor=pointer]:
+              - /url: /app
+          - listitem [ref=f19e36]:
+            - link "Messagerie" [ref=f19e37] [cursor=pointer]:
+              - /url: /app/messagerie
+            - generic: "1"
+          - listitem [ref=f19e42]:
+            - link "Annonces" [ref=f19e43] [cursor=pointer]:
+              - /url: /app/annonces
+        - generic [ref=f19e48]:
+          - generic [ref=f19e49]: Navigation
+          - list [ref=f19e50]:
+            - listitem [ref=f19e51]:
+              - link "Emploi" [ref=f19e52] [cursor=pointer]:
+                - /url: /app/emploi
+            - listitem [ref=f19e56]:
+              - link "Édition" [ref=f19e57] [cursor=pointer]:
+                - /url: /app/edition
+            - listitem [ref=f19e66]:
+              - link "Avancement" [ref=f19e67] [cursor=pointer]:
+                - /url: /app/avancement
+            - listitem [ref=f19e72]:
+              - link "Absences" [ref=f19e73] [cursor=pointer]:
+                - /url: /app/absences
+            - listitem [ref=f19e80]:
+              - link "Documents" [ref=f19e81] [cursor=pointer]:
+                - /url: /app/documents
+        - generic [ref=f19e86]:
+          - generic [ref=f19e87]: Paramètres
+          - list [ref=f19e88]:
+            - listitem [ref=f19e89]:
+              - button "Paramètres" [ref=f19e90] [cursor=pointer]
+      - generic [ref=f19e97]:
+        - list [ref=f19e98]:
+          - listitem [ref=f19e99]:
+            - link "Application bureau Windows" [ref=f19e100] [cursor=pointer]:
+              - /url: https://edtpro.tech/telechargements/EDT-Pro_x64-setup.exe
+              - generic [ref=f19e104]: Application bureau
+              - generic [ref=f19e105]: Windows
+        - list [ref=f19e106]:
+          - listitem [ref=f19e107]:
+            - button "DD Direction de la démo directeur-1-f6b95e@demo.invalid" [ref=f19e108] [cursor=pointer]:
+              - generic [ref=f19e109]: DD
+              - generic [ref=f19e111]:
+                - generic [ref=f19e112]: Direction de la démo
+                - generic [ref=f19e113]: directeur-1-f6b95e@demo.invalid
+      - button "Toggle Sidebar" [ref=f19e117]
+    - main [ref=f19e118]:
+      - generic [ref=f19e120]:
+        - paragraph [ref=f19e121]:
+          - generic [ref=f19e124]:
+            - strong [ref=f19e125]: Démo
+            - text: "— établissement fictif : tout fonctionne, rien n’en sort, et cette copie est effacée dans les 24 heures."
+        - generic [ref=f19e126]:
+          - button "Quitter la démo" [ref=f19e127] [cursor=pointer]
+          - button "Inscrire mon établissement" [ref=f19e128] [cursor=pointer]
+      - generic [ref=f19e129]:
+        - button "Toggle Sidebar" [ref=f19e130] [cursor=pointer]
+        - navigation "breadcrumb" [ref=f19e132]:
+          - list [ref=f19e133]:
+            - listitem [ref=f19e134]:
+              - link "Documents" [disabled] [ref=f19e135]
+        - generic [ref=f19e136]:
+          - generic [ref=f19e137]: Modifié à l’instant
+          - 'generic "Collaboration : Reconnexion…" [ref=f19e140]'
+          - button "Ajouter aux favoris" [ref=f19e142] [cursor=pointer]
+          - button "Actions de la page" [ref=f19e144] [cursor=pointer]
+      - region "Documents" [ref=f19e147]:
+        - generic [ref=f19e148]:
+          - generic [ref=f19e149]:
+            - button "Importer une base Konosys" [ref=f19e151] [cursor=pointer]
+            - alert [ref=f19e152]:
+              - generic [ref=f19e155]: "Base 2026-2027 : 24 stagiaire(s), importée le 8 novembre 2026."
+          - generic [ref=f19e156]:
+            - button "24 Stagiaires personnes distinctes" [ref=f19e157] [cursor=pointer]:
+              - generic [ref=f19e164]:
+                - generic [ref=f19e165]: "24"
+                - generic [ref=f19e166]: Stagiaires
+                - generic [ref=f19e167]: personnes distinctes
+            - button "2 Filières représentées" [ref=f19e170] [cursor=pointer]:
+              - generic [ref=f19e175]:
+                - generic [ref=f19e176]: "2"
+                - generic [ref=f19e177]: Filières
+                - generic [ref=f19e178]: représentées
+            - button "4 Groupes inscriptions comprises" [ref=f19e181] [cursor=pointer]:
+              - generic [ref=f19e187]:
+                - generic [ref=f19e188]: "4"
+                - generic [ref=f19e189]: Groupes
+                - generic [ref=f19e190]: inscriptions comprises
+          - generic [ref=f19e194]:
+            - generic [ref=f19e195]:
+              - heading "Documents imprimables" [level=2] [ref=f19e197]
+              - searchbox "Rechercher un document" [ref=f19e202]
+            - generic [ref=f19e203]:
+              - button "Examen 19 documents Convocation à l’EFF Feuille de présence EFF Feuille de présence CC/EFM + 16" [ref=f19e204] [cursor=pointer]:
+                - generic [ref=f19e205]:
+                  - generic [ref=f19e209]: Examen
+                  - generic [ref=f19e210]: 19 documents
+                - generic [ref=f19e213]:
+                  - generic "Convocation à l’EFF" [ref=f19e214]
+                  - generic "Feuille de présence EFF" [ref=f19e221]
+                  - generic "Feuille de présence CC/EFM" [ref=f19e228]
+                  - generic [ref=f19e239]: + 16
+              - button "Absences 2 documents Feuille d’absence hebdomadaire Billet d’absence" [ref=f19e240] [cursor=pointer]:
+                - generic [ref=f19e241]:
+                  - generic [ref=f19e246]: Absences
+                  - generic [ref=f19e247]: 2 documents
+                - generic [ref=f19e250]:
+                  - generic "Feuille d’absence hebdomadaire" [ref=f19e251]
+                  - generic "Billet d’absence" [ref=f19e262]
+              - button "Diplômes 5 documents Check-list des diplômes Liste de vérification Retrait définitif du Bac + 2" [ref=f19e272] [cursor=pointer]:
+                - generic [ref=f19e273]:
+                  - generic [ref=f19e277]: Diplômes
+                  - generic [ref=f19e278]: 5 documents
+                - generic [ref=f19e281]:
+                  - generic "Check-list des diplômes" [ref=f19e282]
+                  - generic "Liste de vérification" [ref=f19e289]
+                  - generic "Retrait définitif du Bac" [ref=f19e297]
+                  - generic [ref=f19e304]: + 2
+              - button "Administration 7 documents Carte de stagiaire Convention de stage Formulaire de transfert + 4" [ref=f19e305] [cursor=pointer]:
+                - generic [ref=f19e306]:
+                  - generic [ref=f19e310]: Administration
+                  - generic [ref=f19e311]: 7 documents
+                - generic [ref=f19e314]:
+                  - generic "Carte de stagiaire" [ref=f19e315]
+                  - generic "Convention de stage" [ref=f19e325]
+                  - generic "Formulaire de transfert" [ref=f19e332]
+                  - generic [ref=f19e341]: + 4
+              - button "Discipline 3 documents Fiche de réclamation PV de sanction d’assiduité PV du conseil de discipline" [ref=f19e342] [cursor=pointer]:
+                - generic [ref=f19e343]:
+                  - generic [ref=f19e350]: Discipline
+                  - generic [ref=f19e351]: 3 documents
+                - generic [ref=f19e354]:
+                  - generic "Fiche de réclamation" [ref=f19e355]
+                  - generic "PV de sanction d’assiduité" [ref=f19e363]
+                  - generic "PV du conseil de discipline" [ref=f19e370]
+  - region "Notifications alt+T"

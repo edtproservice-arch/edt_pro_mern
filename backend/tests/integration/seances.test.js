@@ -3148,3 +3148,45 @@ describe('Import d’une semaine — pas de copie sur un jour fermé (2026-10-19
     expect(await Seance.countDocuments({ etablissementId: etablissement.id, semaine: CIBLE })).toBe(0);
   });
 });
+
+/*
+ * ═══ AFFICHÉ / MASQUÉ (2026-11-02, demande du porteur) ═══ Un formateur
+ * masqué depuis la page Formateurs n'a plus de ligne en Emploi ni en Édition,
+ * donc rien à l'impression ; ses séances, elles, restent.
+ */
+describe('PATCH /base/formateurs/affichage', () => {
+  const afficher = (matricule, masque) =>
+    request(app).patch('/api/v2/base/formateurs/affichage').set('Cookie', cookies).send({ matricule, masque });
+
+  it('marque le formateur masqué dans le contexte, puis le réaffiche', async () => {
+    expect((await afficher('9863', true)).status).toBe(200);
+
+    let contexte = await request(app).get('/api/v2/seances/contexte').set('Cookie', cookies);
+    expect(contexte.body.formateurs.find((f) => f.matricule === '9863').masque).toBe(true);
+    expect(contexte.body.formateurs.find((f) => f.matricule === '4211').masque).toBe(false);
+
+    const base = await request(app).get('/api/v2/base').set('Cookie', cookies);
+    expect(base.body.base.formateursMasques).toEqual(['9863']);
+
+    await afficher('9863', false);
+    contexte = await request(app).get('/api/v2/seances/contexte').set('Cookie', cookies);
+    expect(contexte.body.formateurs.find((f) => f.matricule === '9863').masque).toBe(false);
+  });
+
+  it('⚠️ ne l’imprime plus, mais garde ses séances', async () => {
+    await poser();
+    await afficher('9863', true);
+    await afficher('4211', true);
+
+    // Plus aucun formateur affiché : l'export par formateur n'a rien à sortir.
+    const reponse = await request(app)
+      .post(`/api/v2/seances/${SEMAINE}/individuel`)
+      .set('Cookie', cookies)
+      .send({ format: 'xlsx', axe: 'formateur' });
+    expect(reponse.status).toBe(400);
+    expect(reponse.body.code).toBe('EXPORT_VIDE');
+
+    const grille = await request(app).get(`/api/v2/seances/${SEMAINE}`).set('Cookie', cookies);
+    expect(grille.body.seances).toHaveLength(1);
+  });
+});

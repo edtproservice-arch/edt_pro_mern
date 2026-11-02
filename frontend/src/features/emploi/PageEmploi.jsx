@@ -574,7 +574,8 @@ export default function PageEmploi() {
     () =>
       axeGroupe
         ? (contexte.data?.groupes ?? [])
-        : (contexte.data?.formateurs ?? []).map((f) => f.matricule),
+        : // Masqués depuis la page Formateurs (2026-11-02) : pas de ligne.
+          (contexte.data?.formateurs ?? []).filter((f) => !f.masque).map((f) => f.matricule),
     [axeGroupe, contexte.data]
   );
   const groupesSoir = contexte.data?.groupesSoir ?? [];
@@ -1704,8 +1705,15 @@ export default function PageEmploi() {
           ⚠️ `pb-20` : la barre flottante se pose PAR-DESSUS le bas de page.
           Sans cette marge, elle masque la dernière ligne de la grille — le
           dernier formateur devient illisible sans qu'on comprenne pourquoi.
+          ⚠️ SEULEMENT QUAND ELLE EST AFFICHÉE (2026-11-02, demande du porteur :
+          moins d'espace sous le tableau) — même condition que `BarreFlottante`.
         */
-        <div className="space-y-3 pb-20">
+        <div
+          className={cn(
+            'space-y-3',
+            (selection.size > 0 || Boolean(pressePapiers) || historique.passe.length > 0) && 'pb-20'
+          )}
+        >
 
           {/*
             ⚠️ EN PIED D'ÉCRAN, ET SEULEMENT QUAND ELLE SERT. Ces gestes

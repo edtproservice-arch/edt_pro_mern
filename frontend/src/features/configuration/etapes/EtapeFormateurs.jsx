@@ -12,6 +12,7 @@ import {
   chargerBase,
   chargerContraintesFormateurs,
   chargerEtablissementCourant,
+  definirAffichageFormateur,
   modifierListeFormateurs,
 } from '../api';
 import AjoutFormateur from './AjoutFormateur';
@@ -168,6 +169,25 @@ export default function EtapeFormateurs({
     onSuccess: () => cache.invalidateQueries({ queryKey: ['base'] }),
     onError: (erreur) =>
       toast.error('Enregistrement impossible', { description: erreur.message }),
+  });
+
+  /*
+   * Affiché / masqué dans Emploi et Édition (2026-11-02) — enregistré AUSSITÔT :
+   * c'est un interrupteur, pas une correction à valider avec les autres.
+   */
+  const masques = useMemo(() => new Set(data?.base?.formateursMasques ?? []), [data]);
+  const affichage = useMutation({
+    mutationFn: ({ matricule, masque }) => definirAffichageFormateur(matricule, masque),
+    onSuccess: (_, { nom, masque }) => {
+      cache.invalidateQueries({ queryKey: ['base'] });
+      cache.invalidateQueries({ queryKey: ['emploi', 'contexte'] });
+      toast.success(masque ? `${nom} masqué` : `${nom} affiché`, {
+        description: masque
+          ? 'Il n’apparaît plus dans Emploi ni dans Édition.'
+          : 'Il réapparaît dans Emploi et Édition.',
+      });
+    },
+    onError: (erreur) => toast.error('Modification impossible', { description: erreur.message }),
   });
 
   const [aRetirer, setARetirer] = useState(null);
@@ -415,6 +435,18 @@ export default function EtapeFormateurs({
               salles={salles}
               onRetirer={avecAjout ? () => setARetirer(formateur) : undefined}
               mutualise={mutualises.parMatricule.get(String(formateur.matricule ?? '').trim())}
+              masque={masques.has(String(formateur.matricule ?? '').trim())}
+              onAffichage={
+                avecAjout
+                  ? (masque) =>
+                      affichage.mutate({
+                        matricule: String(formateur.matricule ?? '').trim(),
+                        masque,
+                        nom: formateur.nomComplet,
+                      })
+                  : undefined
+              }
+              affichageEnCours={affichage.isPending}
             />
           ))}
         </div>

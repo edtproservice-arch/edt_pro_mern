@@ -219,7 +219,7 @@ export async function contexte(etablissementId, anneeScolaire) {
     Base.findOne({ etablissementId, anneeScolaire }).select(
       'formateurs groupes affectations groupeFilieres sallesAffectations groupeModes'
     ),
-    Etablissement.findById(etablissementId).select('espaces groupesFq publications'),
+    Etablissement.findById(etablissementId).select('espaces groupesFq publications formateursMasques'),
   ]);
   // Les espaces qu'un autre établissement me prête : ils se choisissent comme les miens (2026-09-21).
   const empruntes = await libellesEmpruntes(etablissementId);
@@ -234,11 +234,15 @@ export async function contexte(etablissementId, anneeScolaire) {
    * l'écran à retraduire, et c'est exactement l'endroit où les « formateurs qui
    * disparaissent » se fabriquent.
    */
+  // Masqués depuis la page Formateurs (2026-11-02) : ni ligne en Emploi et
+  // Édition, ni page à l'impression. Le NOM reste connu (vues par groupe).
+  const masques = new Set(etablissement?.formateursMasques ?? []);
   const formateurs = (base.formateurs ?? [])
     .filter((formateur) => String(formateur.matricule ?? '').trim() !== '')
     .map((formateur) => ({
       matricule: String(formateur.matricule).trim(),
       nom: formateur.nomComplet,
+      masque: masques.has(String(formateur.matricule).trim()),
     }))
     .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
 

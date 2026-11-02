@@ -193,7 +193,8 @@ export default function PageEdition() {
        chaque tableau décide seul de sa colonne S5, et restreindre la liste aux
        groupes CDS ferait disparaître tous les autres. */
     if (axe === 'groupe') return periode === 'soir' && !detaillee ? groupesDuSoir(groupes) : groupes;
-    return formateurs.map((formateur) => formateur.matricule);
+    // Masqués depuis la page Formateurs (2026-11-02) : ni ligne, ni page imprimée.
+    return formateurs.filter((formateur) => !formateur.masque).map((formateur) => formateur.matricule);
   }, [axe, periode, detaillee, groupes, formateurs, contexte.data?.salles, seances]);
 
   /*

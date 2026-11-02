@@ -184,6 +184,17 @@ const etablissementSchema = new mongoose.Schema(
     /** Pour le modèle : la semaine « AAAA-Wn » autour de laquelle ses séances ont été construites. */
     demoSemaineReference: { type: String, default: null },
 
+    /**
+     * Les formateurs MASQUÉS — absents des lignes d'Emploi et d'Édition, donc
+     * de l'impression (2026-11-02, demande du porteur : un bouton
+     * « Affiché / Masqué » sur la page Formateurs).
+     *
+     * ⚠️ PAR MATRICULE, ET ICI PLUTÔT QUE DANS `Base.formateurs` : la base se
+     * reconstruit à chaque import e-note et à chaque enregistrement de la carte,
+     * qui auraient fait revenir le formateur sans que personne ne le demande.
+     */
+    formateursMasques: [{ type: String, trim: true }],
+
     publications: [
       {
         _id: false,

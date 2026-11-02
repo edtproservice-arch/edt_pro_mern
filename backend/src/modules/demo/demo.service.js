@@ -1,12 +1,14 @@
 import crypto from 'node:crypto';
 import mongoose from 'mongoose';
-import { ROLES, STATUTS_COMPTE } from 'shared/constants';
-import { anneeScolaireCourante, semaineDansAnnee } from 'shared/domain';
+import { JOURS, ROLES, STATUTS_COMPTE } from 'shared/constants';
+import { SALLE_DISTANCIEL, anneeScolaireCourante, dateDuJour, jourFerie, semaineDansAnnee, vacances } from 'shared/domain';
 import * as tousLesModeles from '../../models/index.js';
 import { Annonce } from '../../models/Annonce.js';
 import { HttpError, badRequest } from '../../lib/httpError.js';
 import { logger } from '../../lib/logger.js';
 import { DOMAINE_DEMO } from '../../lib/contexteDemo.js';
+import { obtenirNationaux } from '../calendrier/joursFeries.service.js';
+import { obtenir as obtenirCalendrierNational } from '../calendrierNational/calendrierNational.service.js';
 
 /**
  * ═══ LA DÉMO PUBLIQUE : UN BAC À SABLE PAR VISITEUR (2026-11-01, demande du porteur) ═══
@@ -54,6 +56,8 @@ export const DUREE_DEMO_MS = 24 * 3600 * 1000;
 export const MAXIMUM_DEMOS_ACTIVES = 300;
 
 const SEMAINE = /^(\d{4})-W(\d+)$/;
+/** Une semaine écrite « S12 » (chronogrammes) : décalée comme les autres. */
+const SEMAINE_COURTE = /^S(\d+)$/;
 const JOUR_TEXTE = /^\d{4}-\d{2}-\d{2}$/;
 /** Les champs qui portent une date en texte « AAAA-MM-JJ ». */
 const DATES_TEXTE = new Set(['date', 'debut', 'fin']);
@@ -89,6 +93,8 @@ function creerRemplacement({ ids, chaines, anneeModele, annee, decalage }) {
       if (DATES_TEXTE.has(cle) && JOUR_TEXTE.test(valeur)) {
         return new Date(Date.parse(`${valeur}T12:00:00Z`) + decalageMs).toISOString().slice(0, 10);
       }
+      const courte = cle === 'semaine' ? SEMAINE_COURTE.exec(valeur) : null;
+      if (courte) return `S${Math.max(1, Number(courte[1]) + decalage)}`;
       const semaine = SEMAINE.exec(valeur);
       if (semaine && Number(semaine[1]) === anneeModele) return `${annee}-W${Math.max(1, Number(semaine[2]) + decalage)}`;
     }
@@ -96,6 +102,74 @@ function creerRemplacement({ ids, chaines, anneeModele, annee, decalage }) {
     return valeur;
   };
   return remplacer;
+}
+
+/**
+ * ═══ PAS DE COURS UN JOUR FÉRIÉ NI EN VACANCES (2026-11-02, signalé par le porteur : « il place
+ * des séances en jour férié ») ═══ Les séances du modèle sont décalées vers la semaine du
+ * visiteur : un jour ordinaire du modèle peut tomber, une fois décalé, sur la Marche verte ou en
+ * vacances. Le tri se fait donc ICI, après décalage, avec le calendrier officiel de l'application
+ * (fériés nationaux, vacances du calendrier national).
+ *
+ * ⚠️ UN CALENDRIER INJOIGNABLE NE BLOQUE PAS LA DÉMO : sans lui, on garde toutes les séances.
+ */
+async function jourSansCours(anneeScolaire) {
+  const [feries, national] = await Promise.all([
+    obtenirNationaux(anneeScolaire)
+      .then((resultat) => resultat?.jours ?? [])
+      .catch(() => []),
+    obtenirCalendrierNational(anneeScolaire)
+      .then((resultat) => resultat?.vacances ?? [])
+      .catch(() => []),
+  ]);
+  return (date) => Boolean(date && (jourFerie(date, feries) || vacances(date, national)));
+}
+
+const CRENEAUX = ['S1', 'S2', 'S3', 'S4'];
+
+/**
+ * Les séances tombées un jour sans cours sont DÉPLACÉES, comme le ferait une direction : sur un
+ * autre créneau de la même semaine où le formateur, le groupe et la salle sont libres. Ainsi le
+ * volume de la semaine reste celui du chronogramme (« conforme »). Sa salle si elle est libre,
+ * sinon une autre salle libre de l'établissement. Sans créneau libre, la séance est retirée. Le
+ * samedi n'a que deux créneaux, comme dans le modèle.
+ */
+function deplacerHorsJoursSansCours(seances, sansCours) {
+  const occupe = new Set();
+  const salleReelle = (salle) => Boolean(salle) && salle.trim().toUpperCase() !== SALLE_DISTANCIEL;
+  const prendre = (s, jour, seance, salle) =>
+    [s.formateurMatricule, s.groupe, salleReelle(salle) ? salle : null]
+      .filter(Boolean)
+      .map((q) => `${s.semaine}|${jour}|${seance}|${q}`);
+  const libre = (s, jour, seance, salle) => prendre(s, jour, seance, salle).every((cle) => !occupe.has(cle));
+  // Les salles de l'établissement : celles qu'emploient ses séances.
+  const salles = [...new Set(seances.map((s) => s.salle).filter(salleReelle))];
+
+  const gardees = seances.filter((s) => !sansCours(s.date));
+  for (const s of gardees) prendre(s, s.jour, s.seance, s.salle).forEach((c) => occupe.add(c));
+
+  for (const s of seances.filter((x) => sansCours(x.date))) {
+    let place = null;
+    for (const jour of JOURS) {
+      const date = dateDuJour(s.semaine, jour);
+      if (sansCours(date)) continue;
+      for (const creneau of CRENEAUX) {
+        if (jour === 'Samedi' && creneau > 'S2') continue;
+        // Sa salle si elle est libre, sinon une autre — à distance, pas de salle à trouver.
+        const salle = !salleReelle(s.salle)
+          ? s.salle
+          : [s.salle, ...salles].find((candidate) => libre(s, jour, creneau, candidate));
+        if (salle === undefined || !libre(s, jour, creneau, salle)) continue;
+        place = { ...s, jour, seance: creneau, date, salle };
+        break;
+      }
+      if (place) break;
+    }
+    if (!place) continue;
+    prendre(place, place.jour, place.seance, place.salle).forEach((c) => occupe.add(c));
+    gardees.push(place);
+  }
+  return gardees;
 }
 
 /** Le modèle et tout ce qui lui appartient, lu une fois. */
@@ -160,6 +234,7 @@ export async function creerBacASable({ role, maintenant = new Date() }) {
   const reference = SEMAINE.exec(etablissement.demoSemaineReference ?? '');
   const decalage = reference ? numero - Number(reference[2]) : 0;
   const remplacer = creerRemplacement({ ids, chaines, anneeModele: etablissement.anneeScolaire, annee, decalage });
+  const sansCours = await jourSansCours(annee);
 
   // ── L'établissement ─────────────────────────────────────────────────────
   const copieEtablissement = {
@@ -191,7 +266,11 @@ export async function creerBacASable({ role, maintenant = new Date() }) {
 
     // ── Le reste ──────────────────────────────────────────────────────────
     for (const [nom, docs] of Object.entries(parCollection)) {
-      if (docs.length) await modeles[nom].collection.insertMany(docs.map((doc) => remplacer(doc)));
+      let copies = docs.map((doc) => remplacer(doc));
+      if (nom === 'Seance') copies = deplacerHorsJoursSansCours(copies, sansCours);
+      // Une absence notée un jour férié n'a pas de sens : elle est retirée.
+      if (nom === 'AbsenceStagiaire') copies = copies.filter((copie) => !sansCours(copie.date));
+      if (copies.length) await modeles[nom].collection.insertMany(copies);
     }
   } catch (erreur) {
     await effacerBacASable(idEtablissement).catch(() => {});
@@ -205,6 +284,26 @@ export async function creerBacASable({ role, maintenant = new Date() }) {
   }
   logger.info({ etablissementId: String(idEtablissement), role }, 'Démo — bac à sable créé');
   return compte;
+}
+
+/**
+ * Le compte d'un AUTRE rôle dans la copie que le visiteur a déjà (2026-11-02, signalé par le
+ * porteur : « Essayer comme formateur et stagiaire ne marche pas » — chaque changement de rôle
+ * créait une copie de plus et épuisait la limite par adresse). La copie contient déjà la
+ * direction, les formateurs et le stagiaire : changer de rôle, c'est changer de compte, pas de
+ * copie. Rien si le visiteur n'est pas en démo ou si sa copie a expiré.
+ */
+export async function compteDuMemeBac(utilisateur, role) {
+  if (!utilisateur?.demo || !ROLES_DEMO.includes(role)) return null;
+  const copie = await modeles.Etablissement.findOne({
+    _id: { $in: utilisateur.etablissementIds ?? [] },
+    demo: true,
+    demoExpireLe: { $gt: new Date() },
+  })
+    .select('_id')
+    .lean();
+  if (!copie) return null;
+  return modeles.User.findOne({ etablissementIds: copie._id, role, demo: true }).sort({ _id: 1 });
 }
 
 /** Efface une copie de démo et tout ce qui lui appartient. Ne touche JAMAIS à autre chose. */

@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Eye, EyeOff, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,6 +38,11 @@ export default function LigneFormateur({
   salles,
   onRetirer,
   mutualise,
+  // Affiché / masqué dans Emploi et Édition (2026-11-02). Sans `onAffichage`,
+  // pas de bouton (assistant de configuration).
+  masque = false,
+  onAffichage,
+  affichageEnCours = false,
 }) {
   const cle = formateur.nomComplet;
   const matricule = String(valeur(cle, 'matricule', formateur.matricule)).trim();
@@ -92,6 +97,37 @@ export default function LigneFormateur({
             </span>
           </span>
         </button>
+
+        {/*
+          ═══ AFFICHÉ / MASQUÉ (2026-11-02, demande du porteur) ═══ Masqué, le
+          formateur n'a plus de ligne en Emploi ni en Édition — donc rien à
+          l'impression. Ses séances restent, et se lisent toujours par groupe.
+          ⚠️ FRÈRE du bouton qui déplie, comme le résumé des contraintes : un
+          bouton dans un bouton est invalide. ⚠️ Sans matricule, rien à masquer :
+          les lignes de la grille sont indexées par matricule.
+        */}
+        {onAffichage && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={lectureSeule || affichageEnCours || !String(formateur.matricule ?? '').trim()}
+            onClick={() => onAffichage(!masque)}
+            aria-pressed={masque}
+            title={
+              masque
+                ? 'Masqué : absent d’Emploi et d’Édition. Cliquer pour l’afficher.'
+                : 'Affiché dans Emploi et Édition. Cliquer pour le masquer.'
+            }
+            className={cn(
+              'mx-2 h-7 shrink-0 gap-1.5 text-xs',
+              masque && 'border-dashed text-muted-foreground'
+            )}
+          >
+            {masque ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+            {masque ? 'Masqué' : 'Affiché'}
+          </Button>
+        )}
 
         {avecContraintes && (
           <div className="w-full shrink-0 px-2 pb-2 sm:w-60 sm:border-l sm:pb-0 sm:pl-2">

@@ -1,0 +1,1635 @@
+- generic [ref=f2e2]:
+  - generic [ref=f2e3]:
+    - banner [ref=f2e4]:
+      - generic [ref=f2e5]:
+        - link [ref=f2e6] [cursor=pointer]:
+          - /url: /
+          - img "eDTpro" [ref=f2e7]
+        - navigation "Sections de la page" [ref=f2e8]:
+          - link "Démo" [ref=f2e9] [cursor=pointer]:
+            - /url: "#demo-en-direct"
+          - link "Fonctionnalités" [ref=f2e10] [cursor=pointer]:
+            - /url: "#fonctionnalites"
+          - link "Partout" [ref=f2e11] [cursor=pointer]:
+            - /url: "#partout"
+          - link "Tarifs" [ref=f2e12] [cursor=pointer]:
+            - /url: "#tarifs"
+          - link "Questions" [ref=f2e13] [cursor=pointer]:
+            - /url: "#questions"
+        - generic [ref=f2e14]:
+          - link "Se connecter" [ref=f2e15] [cursor=pointer]:
+            - /url: /connexion
+          - link "Essayer la démo" [ref=f2e16] [cursor=pointer]:
+            - /url: "#demo-en-direct"
+    - generic [ref=f2e17]:
+      - generic [ref=f2e18]:
+        - heading [level=1] [ref=f2e20]:
+          - text: Organisez tout avec
+          - emphasis [ref=f2e21]: eDTpro
+        - paragraph [ref=f2e22]: Les emplois du temps, l’avancement des modules, les documents et la messagerie de votre établissement, réunis.
+        - generic [ref=f2e23]:
+          - link "Télécharger pour Windows" [ref=f2e24] [cursor=pointer]:
+            - /url: https://edtpro.tech/telechargements/EDT-Pro_x64-setup.exe
+          - link "Essayer la démo" [ref=f2e25] [cursor=pointer]:
+            - /url: "#demo-en-direct"
+        - paragraph [ref=f2e26]: Pensé pour les établissements de formation professionnelle
+        - generic [ref=f2e27]:
+          - generic [ref=f2e28]: Emplois du temps
+          - generic [ref=f2e29]: Avancement
+          - generic [ref=f2e30]: Affectations
+          - generic [ref=f2e31]: Documents
+          - generic [ref=f2e32]: Absences
+          - generic [ref=f2e33]: Messagerie
+          - generic [ref=f2e34]: Annonces
+      - iframe [ref=f2e351]:
+        - generic [ref=f3e2]:
+          - generic [ref=f3e3]:
+            - generic [ref=f3e6]:
+              - generic [ref=f3e7]:
+                - generic [ref=f3e8]:
+                  - link [ref=f3e9] [cursor=pointer]:
+                    - /url: /app
+                    - img "EDT Pro" [ref=f3e10]
+                  - button "Épingler la barre latérale" [ref=f3e11] [cursor=pointer]
+                - list [ref=f3e13]:
+                  - listitem [ref=f3e14]:
+                    - button "EFP Démo 2026-2027" [ref=f3e15] [cursor=pointer]:
+                      - generic [ref=f3e21]:
+                        - generic [ref=f3e22]: EFP Démo
+                        - generic [ref=f3e23]: 2026-2027
+              - generic [ref=f3e27]:
+                - list [ref=f3e29]:
+                  - listitem [ref=f3e30]:
+                    - link "Accueil" [ref=f3e31] [cursor=pointer]:
+                      - /url: /app
+                  - listitem [ref=f3e36]:
+                    - link "Messagerie" [ref=f3e37] [cursor=pointer]:
+                      - /url: /app/messagerie
+                    - generic: "4"
+                  - listitem [ref=f3e42]:
+                    - link "Annonces" [ref=f3e43] [cursor=pointer]:
+                      - /url: /app/annonces
+                - generic [ref=f3e48]:
+                  - generic [ref=f3e49]: Navigation
+                  - list [ref=f3e50]:
+                    - listitem [ref=f3e51]:
+                      - link "Emploi" [ref=f3e52] [cursor=pointer]:
+                        - /url: /app/emploi
+                    - listitem [ref=f3e56]:
+                      - link "Édition" [ref=f3e57] [cursor=pointer]:
+                        - /url: /app/edition
+                    - listitem [ref=f3e66]:
+                      - link "Avancement" [ref=f3e67] [cursor=pointer]:
+                        - /url: /app/avancement
+                    - listitem [ref=f3e72]:
+                      - link "Absences" [ref=f3e73] [cursor=pointer]:
+                        - /url: /app/absences
+                    - listitem [ref=f3e80]:
+                      - link "Documents" [ref=f3e81] [cursor=pointer]:
+                        - /url: /app/documents
+                - generic [ref=f3e86]:
+                  - generic [ref=f3e87]: Paramètres
+                  - list [ref=f3e88]:
+                    - listitem [ref=f3e89]:
+                      - button "Paramètres" [ref=f3e90] [cursor=pointer]
+              - generic [ref=f3e97]:
+                - list [ref=f3e98]:
+                  - listitem [ref=f3e99]:
+                    - link "Application bureau Windows" [ref=f3e100] [cursor=pointer]:
+                      - /url: https://edtpro.tech/telechargements/EDT-Pro_x64-setup.exe
+                      - generic [ref=f3e104]: Application bureau
+                      - generic [ref=f3e105]: Windows
+                - list [ref=f3e106]:
+                  - listitem [ref=f3e107]:
+                    - button "DD Direction de la démo directeur-1-87f715@demo.invalid" [ref=f3e108] [cursor=pointer]:
+                      - generic [ref=f3e109]: DD
+                      - generic [ref=f3e111]:
+                        - generic [ref=f3e112]: Direction de la démo
+                        - generic [ref=f3e113]: directeur-1-87f715@demo.invalid
+              - button "Toggle Sidebar" [ref=f3e117]
+            - main [ref=f3e118]:
+              - generic [ref=f3e119]:
+                - button "Toggle Sidebar" [ref=f3e120] [cursor=pointer]
+                - navigation "breadcrumb" [ref=f3e122]:
+                  - list [ref=f3e123]:
+                    - listitem [ref=f3e124]:
+                      - link "Emploi" [disabled] [ref=f3e125]
+                - generic [ref=f3e126]:
+                  - generic [ref=f3e127]: Modifié il y a 1 h
+                  - generic [ref=f3e128]:
+                    - 'generic "Collaboration : Reconnexion…" [ref=f3e130]'
+                    - button "Partager" [ref=f3e132] [cursor=pointer]
+                  - button "Ajouter aux favoris" [ref=f3e133] [cursor=pointer]
+                  - button "Actions de la page" [ref=f3e135] [cursor=pointer]
+              - region "Emploi du temps" [ref=f3e138]:
+                - generic [ref=f3e139]:
+                  - generic [ref=f3e140]:
+                    - group [ref=f3e142]:
+                      - button "Jour" [ref=f3e143] [cursor=pointer]
+                      - button "Soir" [ref=f3e144] [cursor=pointer]
+                    - generic [ref=f3e145]:
+                      - button "Semaine précédente" [ref=f3e146] [cursor=pointer]
+                      - button "S9 du 2 nov au 8 nov" [ref=f3e147] [cursor=pointer]:
+                        - strong [ref=f3e148]: S9
+                        - generic [ref=f3e149]: du 2 nov au 8 nov
+                      - button "Revenir à la semaine du jour" [disabled]
+                      - button "Semaine suivante" [ref=f3e150] [cursor=pointer]
+                    - generic [ref=f3e151]:
+                      - generic [ref=f3e152]: 48 séance(s)
+                      - generic [ref=f3e153]: Par formateur
+                      - switch "Par formateur Par groupe" [ref=f3e154] [cursor=pointer]
+                      - generic [ref=f3e155]: Par groupe
+                  - generic [ref=f3e156]:
+                    - button "Publiée" [ref=f3e158] [cursor=pointer]
+                    - button "Importer" [ref=f3e159] [cursor=pointer]
+                    - button "Statistiques" [ref=f3e160] [cursor=pointer]
+                    - group [ref=f3e161]:
+                      - button "Générer" [ref=f3e162] [cursor=pointer]
+                      - button "Liée" [ref=f3e163] [cursor=pointer]
+                      - button "100 %" [ref=f3e164] [cursor=pointer]
+                    - generic [ref=f3e166]:
+                      - group [ref=f3e167]:
+                        - button "Réduire la grille" [ref=f3e168] [cursor=pointer]
+                        - generic [ref=f3e169]: 100 %
+                        - button "Agrandir la grille" [ref=f3e170] [cursor=pointer]
+                        - button "Revenir à la taille normale" [disabled]
+                      - button "Activer Ctrl" [ref=f3e171] [cursor=pointer]:
+                        - text: Activer
+                        - generic: Ctrl
+                      - button "Réinitialiser" [ref=f3e172] [cursor=pointer]
+                  - generic [ref=f3e174]:
+                    - generic [ref=f3e175]:
+                      - generic [ref=f3e179]: Emploi du temps lié au chronogramme
+                      - generic [ref=f3e180]: S9 - 2026
+                      - button "Masquer le bandeau" [ref=f3e181] [cursor=pointer]
+                    - table [ref=f3e186]:
+                      - rowgroup [ref=f3e214]:
+                        - row [ref=f3e215]:
+                          - columnheader [ref=f3e216]:
+                            - generic [ref=f3e217]:
+                              - text: Formateur
+                              - button "Filtrer « Formateur »" [ref=f3e218] [cursor=pointer]
+                          - columnheader [ref=f3e220]
+                          - columnheader "Lundi 02/11" [ref=f3e221]:
+                            - generic [ref=f3e222]: Lundi
+                            - generic [ref=f3e223]: 02/11
+                          - columnheader "Mardi 03/11" [ref=f3e224]:
+                            - generic [ref=f3e225]: Mardi
+                            - generic [ref=f3e226]: 03/11
+                          - columnheader "Mercredi 04/11" [ref=f3e227]:
+                            - generic [ref=f3e228]: Mercredi
+                            - generic [ref=f3e229]: 04/11
+                          - columnheader "Jeudi 05/11" [ref=f3e230]:
+                            - generic [ref=f3e231]: Jeudi
+                            - generic [ref=f3e232]: 05/11
+                          - columnheader "Vendredi 06/11" [ref=f3e233]:
+                            - generic [ref=f3e234]: Vendredi
+                            - generic [ref=f3e235]: 06/11
+                          - columnheader "Samedi 07/11" [ref=f3e236]:
+                            - generic [ref=f3e237]: Samedi
+                            - generic [ref=f3e238]: 07/11
+                        - row [ref=f3e239]:
+                          - columnheader "S1" [ref=f3e240]
+                          - columnheader "S2" [ref=f3e241]
+                          - columnheader "S3" [ref=f3e242]
+                          - columnheader "S4" [ref=f3e243]
+                          - columnheader "S1" [ref=f3e244]
+                          - columnheader "S2" [ref=f3e245]
+                          - columnheader "S3" [ref=f3e246]
+                          - columnheader "S4" [ref=f3e247]
+                          - columnheader "S1" [ref=f3e248]
+                          - columnheader "S2" [ref=f3e249]
+                          - columnheader "S3" [ref=f3e250]
+                          - columnheader "S4" [ref=f3e251]
+                          - columnheader "S1" [ref=f3e252]
+                          - columnheader "S2" [ref=f3e253]
+                          - columnheader "S3" [ref=f3e254]
+                          - columnheader "S4" [ref=f3e255]
+                          - columnheader "S1" [ref=f3e256]
+                          - columnheader "S2" [ref=f3e257]
+                          - columnheader "S3" [ref=f3e258]
+                          - columnheader "S4" [ref=f3e259]
+                          - columnheader "S1" [ref=f3e260]
+                          - columnheader "S2" [ref=f3e261]
+                          - columnheader "S3" [ref=f3e262]
+                          - columnheader "S4" [ref=f3e263]
+                      - rowgroup [ref=f3e264]:
+                        - row [ref=f3e265]:
+                          - rowheader "Hicham Tazi 20 h" [ref=f3e266]:
+                            - generic [ref=f3e267]: Hicham Tazi
+                            - generic [ref=f3e268]: 20 h
+                          - cell "Grp" [ref=f3e269]
+                          - cell "DEV102 30h" [ref=f3e270]:
+                            - generic [ref=f3e271]:
+                              - button "DEV102" [ref=f3e272] [cursor=pointer]
+                              - generic [ref=f3e274]: 30h
+                          - cell "GE101 30h" [ref=f3e275]:
+                            - generic [ref=f3e276]:
+                              - button "GE101" [ref=f3e277] [cursor=pointer]
+                              - generic [ref=f3e279]: 30h
+                          - cell "GE101 30h" [ref=f3e280]:
+                            - generic [ref=f3e281]:
+                              - button "GE101" [ref=f3e282] [cursor=pointer]
+                              - generic [ref=f3e284]: 30h
+                          - cell [ref=f3e285]:
+                            - button [ref=f3e287] [cursor=pointer]
+                          - cell [ref=f3e288]:
+                            - button [ref=f3e290] [cursor=pointer]
+                          - cell [ref=f3e291]:
+                            - button [ref=f3e293] [cursor=pointer]
+                          - cell "DEV102 30h" [ref=f3e294]:
+                            - generic [ref=f3e295]:
+                              - button "DEV102" [ref=f3e296] [cursor=pointer]
+                              - generic [ref=f3e298]: 30h
+                          - cell [ref=f3e299]:
+                            - button [ref=f3e301] [cursor=pointer]
+                          - cell [ref=f3e302]:
+                            - button [ref=f3e304] [cursor=pointer]
+                          - cell [ref=f3e305]:
+                            - button [ref=f3e307] [cursor=pointer]
+                          - cell [ref=f3e308]:
+                            - button [ref=f3e310] [cursor=pointer]
+                          - cell [ref=f3e311]:
+                            - button [ref=f3e313] [cursor=pointer]
+                          - cell "GE102 30h" [ref=f3e314]:
+                            - generic [ref=f3e315]:
+                              - button "GE102" [ref=f3e316] [cursor=pointer]
+                              - generic [ref=f3e318]: 30h
+                          - cell "GE102 30h" [ref=f3e319]:
+                            - generic [ref=f3e320]:
+                              - button "GE102" [ref=f3e321] [cursor=pointer]
+                              - generic [ref=f3e323]: 30h
+                          - cell "DEV101 30h" [ref=f3e324]:
+                            - generic [ref=f3e325]:
+                              - button "DEV101" [ref=f3e326] [cursor=pointer]
+                              - generic [ref=f3e328]: 30h
+                          - cell "DEV101 30h" [ref=f3e329]:
+                            - generic [ref=f3e330]:
+                              - button "DEV101" [ref=f3e331] [cursor=pointer]
+                              - generic [ref=f3e333]: 30h
+                          - cell [ref=f3e334]:
+                            - button [disabled] [ref=f3e336]
+                          - cell [ref=f3e337]:
+                            - button [disabled] [ref=f3e339]
+                          - cell [ref=f3e340]:
+                            - button [disabled] [ref=f3e342]
+                          - cell [ref=f3e343]:
+                            - button [disabled] [ref=f3e345]
+                          - cell [ref=f3e346]:
+                            - button [ref=f3e348] [cursor=pointer]
+                          - cell [ref=f3e349]:
+                            - button [ref=f3e351] [cursor=pointer]
+                          - cell [ref=f3e352]:
+                            - button [ref=f3e354] [cursor=pointer]
+                          - cell [ref=f3e355]:
+                            - button [ref=f3e357] [cursor=pointer]
+                        - row [ref=f3e358]:
+                          - cell "Mod" [ref=f3e359]
+                          - cell "M104 1 19%" [ref=f3e360]:
+                            - generic [ref=f3e361]:
+                              - button "M104" [ref=f3e362] [cursor=pointer]
+                              - generic [ref=f3e365]:
+                                - generic [ref=f3e366]: "1"
+                                - generic [ref=f3e367]: 19%
+                          - cell "M104 1 19%" [ref=f3e368]:
+                            - generic [ref=f3e369]:
+                              - button "M104" [ref=f3e370] [cursor=pointer]
+                              - generic [ref=f3e373]:
+                                - generic [ref=f3e374]: "1"
+                                - generic [ref=f3e375]: 19%
+                          - cell "M104 1 21%" [ref=f3e376]:
+                            - generic [ref=f3e377]:
+                              - button "M104" [ref=f3e378] [cursor=pointer]
+                              - generic [ref=f3e381]:
+                                - generic [ref=f3e382]: "1"
+                                - generic [ref=f3e383]: 21%
+                          - cell [ref=f3e384]:
+                            - button [ref=f3e386] [cursor=pointer]
+                          - cell [ref=f3e387]:
+                            - button [ref=f3e389] [cursor=pointer]
+                          - cell [ref=f3e390]:
+                            - button [ref=f3e392] [cursor=pointer]
+                          - cell "M104 1 21%" [ref=f3e393]:
+                            - generic [ref=f3e394]:
+                              - button "M104" [ref=f3e395] [cursor=pointer]
+                              - generic [ref=f3e398]:
+                                - generic [ref=f3e399]: "1"
+                                - generic [ref=f3e400]: 21%
+                          - cell [ref=f3e401]:
+                            - button [ref=f3e403] [cursor=pointer]
+                          - cell [ref=f3e404]:
+                            - button [ref=f3e406] [cursor=pointer]
+                          - cell [ref=f3e407]:
+                            - button [ref=f3e409] [cursor=pointer]
+                          - cell [ref=f3e410]:
+                            - button [ref=f3e412] [cursor=pointer]
+                          - cell [ref=f3e413]:
+                            - button [ref=f3e415] [cursor=pointer]
+                          - cell "M104 1 19%" [ref=f3e416]:
+                            - generic [ref=f3e417]:
+                              - button "M104" [ref=f3e418] [cursor=pointer]
+                              - generic [ref=f3e421]:
+                                - generic [ref=f3e422]: "1"
+                                - generic [ref=f3e423]: 19%
+                          - cell "M104 1 21%" [ref=f3e424]:
+                            - generic [ref=f3e425]:
+                              - button "M104" [ref=f3e426] [cursor=pointer]
+                              - generic [ref=f3e429]:
+                                - generic [ref=f3e430]: "1"
+                                - generic [ref=f3e431]: 21%
+                          - cell "M104 1 19%" [ref=f3e432]:
+                            - generic [ref=f3e433]:
+                              - button "M104" [ref=f3e434] [cursor=pointer]
+                              - generic [ref=f3e437]:
+                                - generic [ref=f3e438]: "1"
+                                - generic [ref=f3e439]: 19%
+                          - cell "M104 1 21%" [ref=f3e440]:
+                            - generic [ref=f3e441]:
+                              - button "M104" [ref=f3e442] [cursor=pointer]
+                              - generic [ref=f3e445]:
+                                - generic [ref=f3e446]: "1"
+                                - generic [ref=f3e447]: 21%
+                          - cell [ref=f3e448]:
+                            - button [disabled] [ref=f3e450]
+                          - cell [ref=f3e451]:
+                            - button [disabled] [ref=f3e453]
+                          - cell [ref=f3e454]:
+                            - button [disabled] [ref=f3e456]
+                          - cell [ref=f3e457]:
+                            - button [disabled] [ref=f3e459]
+                          - cell [ref=f3e460]:
+                            - button [ref=f3e462] [cursor=pointer]
+                          - cell [ref=f3e463]:
+                            - button [ref=f3e465] [cursor=pointer]
+                          - cell [ref=f3e466]:
+                            - button [ref=f3e468] [cursor=pointer]
+                          - cell [ref=f3e469]:
+                            - button [ref=f3e471] [cursor=pointer]
+                        - row [ref=f3e472]:
+                          - cell "Esp" [ref=f3e473]
+                          - cell [ref=f3e474]:
+                            - button "Salle 4" [ref=f3e476] [cursor=pointer]
+                          - cell [ref=f3e478]:
+                            - button "Salle 3" [ref=f3e480] [cursor=pointer]
+                          - cell [ref=f3e482]:
+                            - button "Salle 3" [ref=f3e484] [cursor=pointer]
+                          - cell [ref=f3e486]:
+                            - button [ref=f3e488] [cursor=pointer]
+                          - cell [ref=f3e489]:
+                            - button [ref=f3e491] [cursor=pointer]
+                          - cell [ref=f3e492]:
+                            - button [ref=f3e494] [cursor=pointer]
+                          - cell [ref=f3e495]:
+                            - button "Salle 2" [ref=f3e497] [cursor=pointer]
+                          - cell [ref=f3e499]:
+                            - button [ref=f3e501] [cursor=pointer]
+                          - cell [ref=f3e502]:
+                            - button [ref=f3e504] [cursor=pointer]
+                          - cell [ref=f3e505]:
+                            - button [ref=f3e507] [cursor=pointer]
+                          - cell [ref=f3e508]:
+                            - button [ref=f3e510] [cursor=pointer]
+                          - cell [ref=f3e511]:
+                            - button [ref=f3e513] [cursor=pointer]
+                          - cell [ref=f3e514]:
+                            - button "Salle 2" [ref=f3e516] [cursor=pointer]
+                          - cell [ref=f3e518]:
+                            - button "Salle 1" [ref=f3e520] [cursor=pointer]
+                          - cell [ref=f3e522]:
+                            - button "Salle 1" [ref=f3e524] [cursor=pointer]
+                          - cell [ref=f3e526]:
+                            - button "Salle 1" [ref=f3e528] [cursor=pointer]
+                          - cell [ref=f3e530]:
+                            - button [disabled] [ref=f3e532]
+                          - cell [ref=f3e533]:
+                            - button [disabled] [ref=f3e535]
+                          - cell [ref=f3e536]:
+                            - button [disabled] [ref=f3e538]
+                          - cell [ref=f3e539]:
+                            - button [disabled] [ref=f3e541]
+                          - cell [ref=f3e542]:
+                            - button [ref=f3e544] [cursor=pointer]
+                          - cell [ref=f3e545]:
+                            - button [ref=f3e547] [cursor=pointer]
+                          - cell [ref=f3e548]:
+                            - button [ref=f3e550] [cursor=pointer]
+                          - cell [ref=f3e551]:
+                            - button [ref=f3e553] [cursor=pointer]
+                        - row [ref=f3e554]:
+                          - rowheader "Imane Lahlou 20 h" [ref=f3e555]:
+                            - generic [ref=f3e556]: Imane Lahlou
+                            - generic [ref=f3e557]: 20 h
+                          - cell "Grp" [ref=f3e558]
+                          - cell "GE102 30h" [ref=f3e559]:
+                            - generic [ref=f3e560]:
+                              - button "GE102" [ref=f3e561] [cursor=pointer]
+                              - generic [ref=f3e563]: 30h
+                          - cell [ref=f3e564]:
+                            - button [ref=f3e566] [cursor=pointer]
+                          - cell "DEV101 30h" [ref=f3e567]:
+                            - generic [ref=f3e568]:
+                              - button "DEV101" [ref=f3e569] [cursor=pointer]
+                              - generic [ref=f3e571]: 30h
+                          - cell [ref=f3e572]:
+                            - button [ref=f3e574] [cursor=pointer]
+                          - cell "DEV102 30h" [ref=f3e575]:
+                            - generic [ref=f3e576]:
+                              - button "DEV102" [ref=f3e577] [cursor=pointer]
+                              - generic [ref=f3e579]: 30h
+                          - cell [ref=f3e580]:
+                            - button [ref=f3e582] [cursor=pointer]
+                          - cell "GE102 30h" [ref=f3e583]:
+                            - generic [ref=f3e584]:
+                              - button "GE102" [ref=f3e585] [cursor=pointer]
+                              - generic [ref=f3e587]: 30h
+                          - cell "GE101 30h" [ref=f3e588]:
+                            - generic [ref=f3e589]:
+                              - button "GE101" [ref=f3e590] [cursor=pointer]
+                              - generic [ref=f3e592]: 30h
+                          - cell [ref=f3e593]:
+                            - button [ref=f3e595] [cursor=pointer]
+                          - cell [ref=f3e596]:
+                            - button [ref=f3e598] [cursor=pointer]
+                          - cell [ref=f3e599]:
+                            - button [ref=f3e601] [cursor=pointer]
+                          - cell [ref=f3e602]:
+                            - button [ref=f3e604] [cursor=pointer]
+                          - cell "DEV101 30h" [ref=f3e605]:
+                            - generic [ref=f3e606]:
+                              - button "DEV101" [ref=f3e607] [cursor=pointer]
+                              - generic [ref=f3e609]: 30h
+                          - cell [ref=f3e610]:
+                            - button [ref=f3e612] [cursor=pointer]
+                          - cell "GE101 30h" [ref=f3e613]:
+                            - generic [ref=f3e614]:
+                              - button "GE101" [ref=f3e615] [cursor=pointer]
+                              - generic [ref=f3e617]: 30h
+                          - cell "DEV102 30h" [ref=f3e618]:
+                            - generic [ref=f3e619]:
+                              - button "DEV102" [ref=f3e620] [cursor=pointer]
+                              - generic [ref=f3e622]: 30h
+                          - cell [ref=f3e623]:
+                            - button [disabled] [ref=f3e625]
+                          - cell [ref=f3e626]:
+                            - button [disabled] [ref=f3e628]
+                          - cell [ref=f3e629]:
+                            - button [disabled] [ref=f3e631]
+                          - cell [ref=f3e632]:
+                            - button [disabled] [ref=f3e634]
+                          - cell [ref=f3e635]:
+                            - button [ref=f3e637] [cursor=pointer]
+                          - cell [ref=f3e638]:
+                            - button [ref=f3e640] [cursor=pointer]
+                          - cell [ref=f3e641]:
+                            - button [ref=f3e643] [cursor=pointer]
+                          - cell [ref=f3e644]:
+                            - button [ref=f3e646] [cursor=pointer]
+                        - row [ref=f3e647]:
+                          - cell "Mod" [ref=f3e648]
+                          - cell "M105 1 19%" [ref=f3e649]:
+                            - generic [ref=f3e650]:
+                              - button "M105" [ref=f3e651] [cursor=pointer]
+                              - generic [ref=f3e654]:
+                                - generic [ref=f3e655]: "1"
+                                - generic [ref=f3e656]: 19%
+                          - cell [ref=f3e657]:
+                            - button [ref=f3e659] [cursor=pointer]
+                          - cell "M105 1 19%" [ref=f3e660]:
+                            - generic [ref=f3e661]:
+                              - button "M105" [ref=f3e662] [cursor=pointer]
+                              - generic [ref=f3e665]:
+                                - generic [ref=f3e666]: "1"
+                                - generic [ref=f3e667]: 19%
+                          - cell [ref=f3e668]:
+                            - button [ref=f3e670] [cursor=pointer]
+                          - cell "M105 1 19%" [ref=f3e671]:
+                            - generic [ref=f3e672]:
+                              - button "M105" [ref=f3e673] [cursor=pointer]
+                              - generic [ref=f3e676]:
+                                - generic [ref=f3e677]: "1"
+                                - generic [ref=f3e678]: 19%
+                          - cell [ref=f3e679]:
+                            - button [ref=f3e681] [cursor=pointer]
+                          - cell "M105 1 21%" [ref=f3e682]:
+                            - generic [ref=f3e683]:
+                              - button "M105" [ref=f3e684] [cursor=pointer]
+                              - generic [ref=f3e687]:
+                                - generic [ref=f3e688]: "1"
+                                - generic [ref=f3e689]: 21%
+                          - cell "M105 1 19%" [ref=f3e690]:
+                            - generic [ref=f3e691]:
+                              - button "M105" [ref=f3e692] [cursor=pointer]
+                              - generic [ref=f3e695]:
+                                - generic [ref=f3e696]: "1"
+                                - generic [ref=f3e697]: 19%
+                          - cell [ref=f3e698]:
+                            - button [ref=f3e700] [cursor=pointer]
+                          - cell [ref=f3e701]:
+                            - button [ref=f3e703] [cursor=pointer]
+                          - cell [ref=f3e704]:
+                            - button [ref=f3e706] [cursor=pointer]
+                          - cell [ref=f3e707]:
+                            - button [ref=f3e709] [cursor=pointer]
+                          - cell "M105 1 21%" [ref=f3e710]:
+                            - generic [ref=f3e711]:
+                              - button "M105" [ref=f3e712] [cursor=pointer]
+                              - generic [ref=f3e715]:
+                                - generic [ref=f3e716]: "1"
+                                - generic [ref=f3e717]: 21%
+                          - cell [ref=f3e718]:
+                            - button [ref=f3e720] [cursor=pointer]
+                          - cell "M105 1 21%" [ref=f3e721]:
+                            - generic [ref=f3e722]:
+                              - button "M105" [ref=f3e723] [cursor=pointer]
+                              - generic [ref=f3e726]:
+                                - generic [ref=f3e727]: "1"
+                                - generic [ref=f3e728]: 21%
+                          - cell "M105 1 21%" [ref=f3e729]:
+                            - generic [ref=f3e730]:
+                              - button "M105" [ref=f3e731] [cursor=pointer]
+                              - generic [ref=f3e734]:
+                                - generic [ref=f3e735]: "1"
+                                - generic [ref=f3e736]: 21%
+                          - cell [ref=f3e737]:
+                            - button [disabled] [ref=f3e739]
+                          - cell [ref=f3e740]:
+                            - button [disabled] [ref=f3e742]
+                          - cell [ref=f3e743]:
+                            - button [disabled] [ref=f3e745]
+                          - cell [ref=f3e746]:
+                            - button [disabled] [ref=f3e748]
+                          - cell [ref=f3e749]:
+                            - button [ref=f3e751] [cursor=pointer]
+                          - cell [ref=f3e752]:
+                            - button [ref=f3e754] [cursor=pointer]
+                          - cell [ref=f3e755]:
+                            - button [ref=f3e757] [cursor=pointer]
+                          - cell [ref=f3e758]:
+                            - button [ref=f3e760] [cursor=pointer]
+                        - row [ref=f3e761]:
+                          - cell "Esp" [ref=f3e762]
+                          - cell [ref=f3e763]:
+                            - button "Salle 2" [ref=f3e765] [cursor=pointer]
+                          - cell [ref=f3e767]:
+                            - button [ref=f3e769] [cursor=pointer]
+                          - cell [ref=f3e770]:
+                            - button "Salle 4" [ref=f3e772] [cursor=pointer]
+                          - cell [ref=f3e774]:
+                            - button [ref=f3e776] [cursor=pointer]
+                          - cell [ref=f3e777]:
+                            - button "Salle 3" [ref=f3e779] [cursor=pointer]
+                          - cell [ref=f3e781]:
+                            - button [ref=f3e783] [cursor=pointer]
+                          - cell [ref=f3e784]:
+                            - button "Salle 3" [ref=f3e786] [cursor=pointer]
+                          - cell [ref=f3e788]:
+                            - button "Salle 2" [ref=f3e790] [cursor=pointer]
+                          - cell [ref=f3e792]:
+                            - button [ref=f3e794] [cursor=pointer]
+                          - cell [ref=f3e795]:
+                            - button [ref=f3e797] [cursor=pointer]
+                          - cell [ref=f3e798]:
+                            - button [ref=f3e800] [cursor=pointer]
+                          - cell [ref=f3e801]:
+                            - button [ref=f3e803] [cursor=pointer]
+                          - cell [ref=f3e804]:
+                            - button "Salle 1" [ref=f3e806] [cursor=pointer]
+                          - cell [ref=f3e808]:
+                            - button [ref=f3e810] [cursor=pointer]
+                          - cell [ref=f3e811]:
+                            - button "Salle 3" [ref=f3e813] [cursor=pointer]
+                          - cell [ref=f3e815]:
+                            - button "Salle 2" [ref=f3e817] [cursor=pointer]
+                          - cell [ref=f3e819]:
+                            - button [disabled] [ref=f3e821]
+                          - cell [ref=f3e822]:
+                            - button [disabled] [ref=f3e824]
+                          - cell [ref=f3e825]:
+                            - button [disabled] [ref=f3e827]
+                          - cell [ref=f3e828]:
+                            - button [disabled] [ref=f3e830]
+                          - cell [ref=f3e831]:
+                            - button [ref=f3e833] [cursor=pointer]
+                          - cell [ref=f3e834]:
+                            - button [ref=f3e836] [cursor=pointer]
+                          - cell [ref=f3e837]:
+                            - button [ref=f3e839] [cursor=pointer]
+                          - cell [ref=f3e840]:
+                            - button [ref=f3e842] [cursor=pointer]
+                        - row [ref=f3e843]:
+                          - rowheader "Nadia Amrani 20 h" [ref=f3e844]:
+                            - generic [ref=f3e845]: Nadia Amrani
+                            - generic [ref=f3e846]: 20 h
+                          - cell "Grp" [ref=f3e847]
+                          - cell "DEV101 30h" [ref=f3e848]:
+                            - generic [ref=f3e849]:
+                              - button "DEV101" [ref=f3e850] [cursor=pointer]
+                              - generic [ref=f3e852]: 30h
+                          - cell "DEV102 30h" [ref=f3e853]:
+                            - generic [ref=f3e854]:
+                              - button "DEV102" [ref=f3e855] [cursor=pointer]
+                              - generic [ref=f3e857]: 30h
+                          - cell "GE102 30h" [ref=f3e858]:
+                            - generic [ref=f3e859]:
+                              - button "GE102" [ref=f3e860] [cursor=pointer]
+                              - generic [ref=f3e862]: 30h
+                          - cell "GE101 30h" [ref=f3e863]:
+                            - generic [ref=f3e864]:
+                              - button "GE101" [ref=f3e865] [cursor=pointer]
+                              - generic [ref=f3e867]: 30h
+                          - cell "GE102 30h" [ref=f3e868]:
+                            - generic [ref=f3e869]:
+                              - button "GE102" [ref=f3e870] [cursor=pointer]
+                              - generic [ref=f3e872]: 30h
+                          - cell "DEV101 30h" [ref=f3e873]:
+                            - generic [ref=f3e874]:
+                              - button "DEV101" [ref=f3e875] [cursor=pointer]
+                              - generic [ref=f3e877]: 30h
+                          - cell [ref=f3e878]:
+                            - button [ref=f3e880] [cursor=pointer]
+                          - cell [ref=f3e881]:
+                            - button [ref=f3e883] [cursor=pointer]
+                          - cell [ref=f3e884]:
+                            - button [ref=f3e886] [cursor=pointer]
+                          - cell [ref=f3e887]:
+                            - button [ref=f3e889] [cursor=pointer]
+                          - cell [ref=f3e890]:
+                            - button [ref=f3e892] [cursor=pointer]
+                          - cell [ref=f3e893]:
+                            - button [ref=f3e895] [cursor=pointer]
+                          - cell [ref=f3e896]:
+                            - button [ref=f3e898] [cursor=pointer]
+                          - cell [ref=f3e899]:
+                            - button [ref=f3e901] [cursor=pointer]
+                          - cell "DEV102 30h" [ref=f3e902]:
+                            - generic [ref=f3e903]:
+                              - button "DEV102" [ref=f3e904] [cursor=pointer]
+                              - generic [ref=f3e906]: 30h
+                          - cell "GE101 30h" [ref=f3e907]:
+                            - generic [ref=f3e908]:
+                              - button "GE101" [ref=f3e909] [cursor=pointer]
+                              - generic [ref=f3e911]: 30h
+                          - cell [ref=f3e912]:
+                            - button [disabled] [ref=f3e914]
+                          - cell [ref=f3e915]:
+                            - button [disabled] [ref=f3e917]
+                          - cell [ref=f3e918]:
+                            - button [disabled] [ref=f3e920]
+                          - cell [ref=f3e921]:
+                            - button [disabled] [ref=f3e923]
+                          - cell [ref=f3e924]:
+                            - button [ref=f3e926] [cursor=pointer]
+                          - cell [ref=f3e927]:
+                            - button [ref=f3e929] [cursor=pointer]
+                          - cell [ref=f3e930]:
+                            - button [ref=f3e932] [cursor=pointer]
+                          - cell [ref=f3e933]:
+                            - button [ref=f3e935] [cursor=pointer]
+                        - row [ref=f3e936]:
+                          - cell "Mod" [ref=f3e937]
+                          - cell "M101 1 25%" [ref=f3e938]:
+                            - generic [ref=f3e939]:
+                              - button "M101" [ref=f3e940] [cursor=pointer]
+                              - generic [ref=f3e943]:
+                                - generic [ref=f3e944]: "1"
+                                - generic [ref=f3e945]: 25%
+                          - cell "M101 1 25%" [ref=f3e946]:
+                            - generic [ref=f3e947]:
+                              - button "M101" [ref=f3e948] [cursor=pointer]
+                              - generic [ref=f3e951]:
+                                - generic [ref=f3e952]: "1"
+                                - generic [ref=f3e953]: 25%
+                          - cell "M101 1 25%" [ref=f3e954]:
+                            - generic [ref=f3e955]:
+                              - button "M101" [ref=f3e956] [cursor=pointer]
+                              - generic [ref=f3e959]:
+                                - generic [ref=f3e960]: "1"
+                                - generic [ref=f3e961]: 25%
+                          - cell "M101 1 25%" [ref=f3e962]:
+                            - generic [ref=f3e963]:
+                              - button "M101" [ref=f3e964] [cursor=pointer]
+                              - generic [ref=f3e967]:
+                                - generic [ref=f3e968]: "1"
+                                - generic [ref=f3e969]: 25%
+                          - cell "M101 1 28%" [ref=f3e970]:
+                            - generic [ref=f3e971]:
+                              - button "M101" [ref=f3e972] [cursor=pointer]
+                              - generic [ref=f3e975]:
+                                - generic [ref=f3e976]: "1"
+                                - generic [ref=f3e977]: 28%
+                          - cell "M101 1 28%" [ref=f3e978]:
+                            - generic [ref=f3e979]:
+                              - button "M101" [ref=f3e980] [cursor=pointer]
+                              - generic [ref=f3e983]:
+                                - generic [ref=f3e984]: "1"
+                                - generic [ref=f3e985]: 28%
+                          - cell [ref=f3e986]:
+                            - button [ref=f3e988] [cursor=pointer]
+                          - cell [ref=f3e989]:
+                            - button [ref=f3e991] [cursor=pointer]
+                          - cell [ref=f3e992]:
+                            - button [ref=f3e994] [cursor=pointer]
+                          - cell [ref=f3e995]:
+                            - button [ref=f3e997] [cursor=pointer]
+                          - cell [ref=f3e998]:
+                            - button [ref=f3e1000] [cursor=pointer]
+                          - cell [ref=f3e1001]:
+                            - button [ref=f3e1003] [cursor=pointer]
+                          - cell [ref=f3e1004]:
+                            - button [ref=f3e1006] [cursor=pointer]
+                          - cell [ref=f3e1007]:
+                            - button [ref=f3e1009] [cursor=pointer]
+                          - cell "M101 1 28%" [ref=f3e1010]:
+                            - generic [ref=f3e1011]:
+                              - button "M101" [ref=f3e1012] [cursor=pointer]
+                              - generic [ref=f3e1015]:
+                                - generic [ref=f3e1016]: "1"
+                                - generic [ref=f3e1017]: 28%
+                          - cell "M101 1 28%" [ref=f3e1018]:
+                            - generic [ref=f3e1019]:
+                              - button "M101" [ref=f3e1020] [cursor=pointer]
+                              - generic [ref=f3e1023]:
+                                - generic [ref=f3e1024]: "1"
+                                - generic [ref=f3e1025]: 28%
+                          - cell [ref=f3e1026]:
+                            - button [disabled] [ref=f3e1028]
+                          - cell [ref=f3e1029]:
+                            - button [disabled] [ref=f3e1031]
+                          - cell [ref=f3e1032]:
+                            - button [disabled] [ref=f3e1034]
+                          - cell [ref=f3e1035]:
+                            - button [disabled] [ref=f3e1037]
+                          - cell [ref=f3e1038]:
+                            - button [ref=f3e1040] [cursor=pointer]
+                          - cell [ref=f3e1041]:
+                            - button [ref=f3e1043] [cursor=pointer]
+                          - cell [ref=f3e1044]:
+                            - button [ref=f3e1046] [cursor=pointer]
+                          - cell [ref=f3e1047]:
+                            - button [ref=f3e1049] [cursor=pointer]
+                        - row [ref=f3e1050]:
+                          - cell "Esp" [ref=f3e1051]
+                          - cell [ref=f3e1052]:
+                            - button "Salle 3" [ref=f3e1054] [cursor=pointer]
+                          - cell [ref=f3e1056]:
+                            - button "Salle 2" [ref=f3e1058] [cursor=pointer]
+                          - cell [ref=f3e1060]:
+                            - button "Salle 2" [ref=f3e1062] [cursor=pointer]
+                          - cell [ref=f3e1064]:
+                            - button "Salle 1" [ref=f3e1066] [cursor=pointer]
+                          - cell [ref=f3e1068]:
+                            - button "Salle 2" [ref=f3e1070] [cursor=pointer]
+                          - cell [ref=f3e1072]:
+                            - button "Salle 1" [ref=f3e1074] [cursor=pointer]
+                          - cell [ref=f3e1076]:
+                            - button [ref=f3e1078] [cursor=pointer]
+                          - cell [ref=f3e1079]:
+                            - button [ref=f3e1081] [cursor=pointer]
+                          - cell [ref=f3e1082]:
+                            - button [ref=f3e1084] [cursor=pointer]
+                          - cell [ref=f3e1085]:
+                            - button [ref=f3e1087] [cursor=pointer]
+                          - cell [ref=f3e1088]:
+                            - button [ref=f3e1090] [cursor=pointer]
+                          - cell [ref=f3e1091]:
+                            - button [ref=f3e1093] [cursor=pointer]
+                          - cell [ref=f3e1094]:
+                            - button [ref=f3e1096] [cursor=pointer]
+                          - cell [ref=f3e1097]:
+                            - button [ref=f3e1099] [cursor=pointer]
+                          - cell [ref=f3e1100]:
+                            - button "Salle 2" [ref=f3e1102] [cursor=pointer]
+                          - cell [ref=f3e1104]:
+                            - button "Salle 3" [ref=f3e1106] [cursor=pointer]
+                          - cell [ref=f3e1108]:
+                            - button [disabled] [ref=f3e1110]
+                          - cell [ref=f3e1111]:
+                            - button [disabled] [ref=f3e1113]
+                          - cell [ref=f3e1114]:
+                            - button [disabled] [ref=f3e1116]
+                          - cell [ref=f3e1117]:
+                            - button [disabled] [ref=f3e1119]
+                          - cell [ref=f3e1120]:
+                            - button [ref=f3e1122] [cursor=pointer]
+                          - cell [ref=f3e1123]:
+                            - button [ref=f3e1125] [cursor=pointer]
+                          - cell [ref=f3e1126]:
+                            - button [ref=f3e1128] [cursor=pointer]
+                          - cell [ref=f3e1129]:
+                            - button [ref=f3e1131] [cursor=pointer]
+                        - row [ref=f3e1132]:
+                          - rowheader "Omar Bennis 20 h" [ref=f3e1133]:
+                            - generic [ref=f3e1134]: Omar Bennis
+                            - generic [ref=f3e1135]: 20 h
+                          - cell "Grp" [ref=f3e1136]
+                          - cell [ref=f3e1137]:
+                            - button [ref=f3e1139] [cursor=pointer]
+                          - cell [ref=f3e1140]:
+                            - button [ref=f3e1142] [cursor=pointer]
+                          - cell [ref=f3e1143]:
+                            - button [ref=f3e1145] [cursor=pointer]
+                          - cell "DEV102 30h" [ref=f3e1146]:
+                            - generic [ref=f3e1147]:
+                              - button "DEV102" [ref=f3e1148] [cursor=pointer]
+                              - generic [ref=f3e1150]: 30h
+                          - cell "DEV101 30h" [ref=f3e1151]:
+                            - generic [ref=f3e1152]:
+                              - button "DEV101" [ref=f3e1153] [cursor=pointer]
+                              - generic [ref=f3e1155]: 30h
+                          - cell "GE101 30h" [ref=f3e1156]:
+                            - generic [ref=f3e1157]:
+                              - button "GE101" [ref=f3e1158] [cursor=pointer]
+                              - generic [ref=f3e1160]: 30h
+                          - cell "GE101 30h" [ref=f3e1161]:
+                            - generic [ref=f3e1162]:
+                              - button "GE101" [ref=f3e1163] [cursor=pointer]
+                              - generic [ref=f3e1165]: 30h
+                          - cell [ref=f3e1166]:
+                            - button [ref=f3e1168] [cursor=pointer]
+                          - cell "DEV101 30h" [ref=f3e1169]:
+                            - generic [ref=f3e1170]:
+                              - button "DEV101" [ref=f3e1171] [cursor=pointer]
+                              - generic [ref=f3e1173]: 30h
+                          - cell [ref=f3e1174]:
+                            - button [ref=f3e1176] [cursor=pointer]
+                          - cell [ref=f3e1177]:
+                            - button [ref=f3e1179] [cursor=pointer]
+                          - cell "GE102 30h" [ref=f3e1180]:
+                            - generic [ref=f3e1181]:
+                              - button "GE102" [ref=f3e1182] [cursor=pointer]
+                              - generic [ref=f3e1184]: 30h
+                          - cell [ref=f3e1185]:
+                            - button [ref=f3e1187] [cursor=pointer]
+                          - cell [ref=f3e1188]:
+                            - button [ref=f3e1190] [cursor=pointer]
+                          - cell [ref=f3e1191]:
+                            - button [ref=f3e1193] [cursor=pointer]
+                          - cell [ref=f3e1194]:
+                            - button [ref=f3e1196] [cursor=pointer]
+                          - cell [ref=f3e1197]:
+                            - button [disabled] [ref=f3e1199]
+                          - cell [ref=f3e1200]:
+                            - button [disabled] [ref=f3e1202]
+                          - cell [ref=f3e1203]:
+                            - button [disabled] [ref=f3e1205]
+                          - cell [ref=f3e1206]:
+                            - button [disabled] [ref=f3e1208]
+                          - cell "GE102 30h" [ref=f3e1209]:
+                            - generic [ref=f3e1210]:
+                              - button "GE102" [ref=f3e1211] [cursor=pointer]
+                              - generic [ref=f3e1213]: 30h
+                          - cell "DEV102 30h" [ref=f3e1214]:
+                            - generic [ref=f3e1215]:
+                              - button "DEV102" [ref=f3e1216] [cursor=pointer]
+                              - generic [ref=f3e1218]: 30h
+                          - cell [ref=f3e1219]:
+                            - button [ref=f3e1221] [cursor=pointer]
+                          - cell [ref=f3e1222]:
+                            - button [ref=f3e1224] [cursor=pointer]
+                        - row [ref=f3e1225]:
+                          - cell "Mod" [ref=f3e1226]
+                          - cell [ref=f3e1227]:
+                            - button [ref=f3e1229] [cursor=pointer]
+                          - cell [ref=f3e1230]:
+                            - button [ref=f3e1232] [cursor=pointer]
+                          - cell [ref=f3e1233]:
+                            - button [ref=f3e1235] [cursor=pointer]
+                          - cell "M106 1 19%" [ref=f3e1236]:
+                            - generic [ref=f3e1237]:
+                              - button "M106" [ref=f3e1238] [cursor=pointer]
+                              - generic [ref=f3e1241]:
+                                - generic [ref=f3e1242]: "1"
+                                - generic [ref=f3e1243]: 19%
+                          - cell "M106 1 19%" [ref=f3e1244]:
+                            - generic [ref=f3e1245]:
+                              - button "M106" [ref=f3e1246] [cursor=pointer]
+                              - generic [ref=f3e1249]:
+                                - generic [ref=f3e1250]: "1"
+                                - generic [ref=f3e1251]: 19%
+                          - cell "M106 1 19%" [ref=f3e1252]:
+                            - generic [ref=f3e1253]:
+                              - button "M106" [ref=f3e1254] [cursor=pointer]
+                              - generic [ref=f3e1257]:
+                                - generic [ref=f3e1258]: "1"
+                                - generic [ref=f3e1259]: 19%
+                          - cell "M106 1 21%" [ref=f3e1260]:
+                            - generic [ref=f3e1261]:
+                              - button "M106" [ref=f3e1262] [cursor=pointer]
+                              - generic [ref=f3e1265]:
+                                - generic [ref=f3e1266]: "1"
+                                - generic [ref=f3e1267]: 21%
+                          - cell [ref=f3e1268]:
+                            - button [ref=f3e1270] [cursor=pointer]
+                          - cell "M106 1 21%" [ref=f3e1271]:
+                            - generic [ref=f3e1272]:
+                              - button "M106" [ref=f3e1273] [cursor=pointer]
+                              - generic [ref=f3e1276]:
+                                - generic [ref=f3e1277]: "1"
+                                - generic [ref=f3e1278]: 21%
+                          - cell [ref=f3e1279]:
+                            - button [ref=f3e1281] [cursor=pointer]
+                          - cell [ref=f3e1282]:
+                            - button [ref=f3e1284] [cursor=pointer]
+                          - cell "M106 1 19%" [ref=f3e1285]:
+                            - generic [ref=f3e1286]:
+                              - button "M106" [ref=f3e1287] [cursor=pointer]
+                              - generic [ref=f3e1290]:
+                                - generic [ref=f3e1291]: "1"
+                                - generic [ref=f3e1292]: 19%
+                          - cell [ref=f3e1293]:
+                            - button [ref=f3e1295] [cursor=pointer]
+                          - cell [ref=f3e1296]:
+                            - button [ref=f3e1298] [cursor=pointer]
+                          - cell [ref=f3e1299]:
+                            - button [ref=f3e1301] [cursor=pointer]
+                          - cell [ref=f3e1302]:
+                            - button [ref=f3e1304] [cursor=pointer]
+                          - cell [ref=f3e1305]:
+                            - button [disabled] [ref=f3e1307]
+                          - cell [ref=f3e1308]:
+                            - button [disabled] [ref=f3e1310]
+                          - cell [ref=f3e1311]:
+                            - button [disabled] [ref=f3e1313]
+                          - cell [ref=f3e1314]:
+                            - button [disabled] [ref=f3e1316]
+                          - cell "M106 1 21%" [ref=f3e1317]:
+                            - generic [ref=f3e1318]:
+                              - button "M106" [ref=f3e1319] [cursor=pointer]
+                              - generic [ref=f3e1322]:
+                                - generic [ref=f3e1323]: "1"
+                                - generic [ref=f3e1324]: 21%
+                          - cell "M106 1 21%" [ref=f3e1325]:
+                            - generic [ref=f3e1326]:
+                              - button "M106" [ref=f3e1327] [cursor=pointer]
+                              - generic [ref=f3e1330]:
+                                - generic [ref=f3e1331]: "1"
+                                - generic [ref=f3e1332]: 21%
+                          - cell [ref=f3e1333]:
+                            - button [ref=f3e1335] [cursor=pointer]
+                          - cell [ref=f3e1336]:
+                            - button [ref=f3e1338] [cursor=pointer]
+                        - row [ref=f3e1339]:
+                          - cell "Esp" [ref=f3e1340]
+                          - cell [ref=f3e1341]:
+                            - button [ref=f3e1343] [cursor=pointer]
+                          - cell [ref=f3e1344]:
+                            - button [ref=f3e1346] [cursor=pointer]
+                          - cell [ref=f3e1347]:
+                            - button [ref=f3e1349] [cursor=pointer]
+                          - cell [ref=f3e1350]:
+                            - button "TEAMS" [ref=f3e1352] [cursor=pointer]
+                          - cell [ref=f3e1354]:
+                            - button "TEAMS" [ref=f3e1356] [cursor=pointer]
+                          - cell [ref=f3e1358]:
+                            - button "TEAMS" [ref=f3e1360] [cursor=pointer]
+                          - cell [ref=f3e1362]:
+                            - button "TEAMS" [ref=f3e1364] [cursor=pointer]
+                          - cell [ref=f3e1366]:
+                            - button [ref=f3e1368] [cursor=pointer]
+                          - cell [ref=f3e1369]:
+                            - button "TEAMS" [ref=f3e1371] [cursor=pointer]
+                          - cell [ref=f3e1373]:
+                            - button [ref=f3e1375] [cursor=pointer]
+                          - cell [ref=f3e1376]:
+                            - button [ref=f3e1378] [cursor=pointer]
+                          - cell [ref=f3e1379]:
+                            - button "TEAMS" [ref=f3e1381] [cursor=pointer]
+                          - cell [ref=f3e1383]:
+                            - button [ref=f3e1385] [cursor=pointer]
+                          - cell [ref=f3e1386]:
+                            - button [ref=f3e1388] [cursor=pointer]
+                          - cell [ref=f3e1389]:
+                            - button [ref=f3e1391] [cursor=pointer]
+                          - cell [ref=f3e1392]:
+                            - button [ref=f3e1394] [cursor=pointer]
+                          - cell [ref=f3e1395]:
+                            - button [disabled] [ref=f3e1397]
+                          - cell [ref=f3e1398]:
+                            - button [disabled] [ref=f3e1400]
+                          - cell [ref=f3e1401]:
+                            - button [disabled] [ref=f3e1403]
+                          - cell [ref=f3e1404]:
+                            - button [disabled] [ref=f3e1406]
+                          - cell [ref=f3e1407]:
+                            - button "TEAMS" [ref=f3e1409] [cursor=pointer]
+                          - cell [ref=f3e1411]:
+                            - button "TEAMS" [ref=f3e1413] [cursor=pointer]
+                          - cell [ref=f3e1415]:
+                            - button [ref=f3e1417] [cursor=pointer]
+                          - cell [ref=f3e1418]:
+                            - button [ref=f3e1420] [cursor=pointer]
+                        - row [ref=f3e1421]:
+                          - rowheader "Salma Idrissi 20 h" [ref=f3e1422]:
+                            - generic [ref=f3e1423]: Salma Idrissi
+                            - generic [ref=f3e1424]: 20 h
+                          - cell "Grp" [ref=f3e1425]
+                          - cell [ref=f3e1426]:
+                            - button [ref=f3e1428] [cursor=pointer]
+                          - cell "DEV101 30h" [ref=f3e1429]:
+                            - generic [ref=f3e1430]:
+                              - button "DEV101" [ref=f3e1431] [cursor=pointer]
+                              - generic [ref=f3e1433]: 30h
+                          - cell "DEV102 30h" [ref=f3e1434]:
+                            - generic [ref=f3e1435]:
+                              - button "DEV102" [ref=f3e1436] [cursor=pointer]
+                              - generic [ref=f3e1438]: 30h
+                          - cell "GE102 30h" [ref=f3e1439]:
+                            - generic [ref=f3e1440]:
+                              - button "GE102" [ref=f3e1441] [cursor=pointer]
+                              - generic [ref=f3e1443]: 30h
+                          - cell [ref=f3e1444]:
+                            - button [ref=f3e1446] [cursor=pointer]
+                          - cell [ref=f3e1447]:
+                            - button [ref=f3e1449] [cursor=pointer]
+                          - cell "DEV101 30h" [ref=f3e1450]:
+                            - generic [ref=f3e1451]:
+                              - button "DEV101" [ref=f3e1452] [cursor=pointer]
+                              - generic [ref=f3e1454]: 30h
+                          - cell "GE102 30h" [ref=f3e1455]:
+                            - generic [ref=f3e1456]:
+                              - button "GE102" [ref=f3e1457] [cursor=pointer]
+                              - generic [ref=f3e1459]: 30h
+                          - cell "GE101 30h" [ref=f3e1460]:
+                            - generic [ref=f3e1461]:
+                              - button "GE101" [ref=f3e1462] [cursor=pointer]
+                              - generic [ref=f3e1464]: 30h
+                          - cell [ref=f3e1465]:
+                            - button [ref=f3e1467] [cursor=pointer]
+                          - cell "GE101 30h" [ref=f3e1468]:
+                            - generic [ref=f3e1469]:
+                              - button "GE101" [ref=f3e1470] [cursor=pointer]
+                              - generic [ref=f3e1472]: 30h
+                          - cell "DEV102 30h" [ref=f3e1473]:
+                            - generic [ref=f3e1474]:
+                              - button "DEV102" [ref=f3e1475] [cursor=pointer]
+                              - generic [ref=f3e1477]: 30h
+                          - cell [ref=f3e1478]:
+                            - button [ref=f3e1480] [cursor=pointer]
+                          - cell [ref=f3e1481]:
+                            - button [ref=f3e1483] [cursor=pointer]
+                          - cell [ref=f3e1484]:
+                            - button [ref=f3e1486] [cursor=pointer]
+                          - cell [ref=f3e1487]:
+                            - button [ref=f3e1489] [cursor=pointer]
+                          - cell [ref=f3e1490]:
+                            - button [disabled] [ref=f3e1492]
+                          - cell [ref=f3e1493]:
+                            - button [disabled] [ref=f3e1495]
+                          - cell [ref=f3e1496]:
+                            - button [disabled] [ref=f3e1498]
+                          - cell [ref=f3e1499]:
+                            - button [disabled] [ref=f3e1501]
+                          - cell [ref=f3e1502]:
+                            - button [ref=f3e1504] [cursor=pointer]
+                          - cell [ref=f3e1505]:
+                            - button [ref=f3e1507] [cursor=pointer]
+                          - cell [ref=f3e1508]:
+                            - button [ref=f3e1510] [cursor=pointer]
+                          - cell [ref=f3e1511]:
+                            - button [ref=f3e1513] [cursor=pointer]
+                        - row [ref=f3e1514]:
+                          - cell "Mod" [ref=f3e1515]
+                          - cell [ref=f3e1516]:
+                            - button [ref=f3e1518] [cursor=pointer]
+                          - cell "M103 1 19%" [ref=f3e1519]:
+                            - generic [ref=f3e1520]:
+                              - button "M103" [ref=f3e1521] [cursor=pointer]
+                              - generic [ref=f3e1524]:
+                                - generic [ref=f3e1527]: "1"
+                                - generic [ref=f3e1528]: 19%
+                          - cell "M103 1 19%" [ref=f3e1529]:
+                            - generic [ref=f3e1530]:
+                              - button "M103" [ref=f3e1531] [cursor=pointer]
+                              - generic [ref=f3e1534]:
+                                - generic [ref=f3e1537]: "1"
+                                - generic [ref=f3e1538]: 19%
+                          - cell "M103 1 19%" [ref=f3e1539]:
+                            - generic [ref=f3e1540]:
+                              - button "M103" [ref=f3e1541] [cursor=pointer]
+                              - generic [ref=f3e1544]:
+                                - generic [ref=f3e1547]: "1"
+                                - generic [ref=f3e1548]: 19%
+                          - cell [ref=f3e1549]:
+                            - button [ref=f3e1551] [cursor=pointer]
+                          - cell [ref=f3e1552]:
+                            - button [ref=f3e1554] [cursor=pointer]
+                          - cell "M103 1 21%" [ref=f3e1555]:
+                            - generic [ref=f3e1556]:
+                              - button "M103" [ref=f3e1557] [cursor=pointer]
+                              - generic [ref=f3e1560]:
+                                - generic [ref=f3e1563]: "1"
+                                - generic [ref=f3e1564]: 21%
+                          - cell "M103 1 21%" [ref=f3e1565]:
+                            - generic [ref=f3e1566]:
+                              - button "M103" [ref=f3e1567] [cursor=pointer]
+                              - generic [ref=f3e1570]:
+                                - generic [ref=f3e1573]: "1"
+                                - generic [ref=f3e1574]: 21%
+                          - cell "M103 1 19%" [ref=f3e1575]:
+                            - generic [ref=f3e1576]:
+                              - button "M103" [ref=f3e1577] [cursor=pointer]
+                              - generic [ref=f3e1580]:
+                                - generic [ref=f3e1583]: "1"
+                                - generic [ref=f3e1584]: 19%
+                          - cell [ref=f3e1585]:
+                            - button [ref=f3e1587] [cursor=pointer]
+                          - cell "M103 1 21%" [ref=f3e1588]:
+                            - generic [ref=f3e1589]:
+                              - button "M103" [ref=f3e1590] [cursor=pointer]
+                              - generic [ref=f3e1593]:
+                                - generic [ref=f3e1596]: "1"
+                                - generic [ref=f3e1597]: 21%
+                          - cell "M103 1 21%" [ref=f3e1598]:
+                            - generic [ref=f3e1599]:
+                              - button "M103" [ref=f3e1600] [cursor=pointer]
+                              - generic [ref=f3e1603]:
+                                - generic [ref=f3e1606]: "1"
+                                - generic [ref=f3e1607]: 21%
+                          - cell [ref=f3e1608]:
+                            - button [ref=f3e1610] [cursor=pointer]
+                          - cell [ref=f3e1611]:
+                            - button [ref=f3e1613] [cursor=pointer]
+                          - cell [ref=f3e1614]:
+                            - button [ref=f3e1616] [cursor=pointer]
+                          - cell [ref=f3e1617]:
+                            - button [ref=f3e1619] [cursor=pointer]
+                          - cell [ref=f3e1620]:
+                            - button [disabled] [ref=f3e1622]
+                          - cell [ref=f3e1623]:
+                            - button [disabled] [ref=f3e1625]
+                          - cell [ref=f3e1626]:
+                            - button [disabled] [ref=f3e1628]
+                          - cell [ref=f3e1629]:
+                            - button [disabled] [ref=f3e1631]
+                          - cell [ref=f3e1632]:
+                            - button [ref=f3e1634] [cursor=pointer]
+                          - cell [ref=f3e1635]:
+                            - button [ref=f3e1637] [cursor=pointer]
+                          - cell [ref=f3e1638]:
+                            - button [ref=f3e1640] [cursor=pointer]
+                          - cell [ref=f3e1641]:
+                            - button [ref=f3e1643] [cursor=pointer]
+                        - row [ref=f3e1644]:
+                          - cell "Esp" [ref=f3e1645]
+                          - cell [ref=f3e1646]:
+                            - button [ref=f3e1648] [cursor=pointer]
+                          - cell [ref=f3e1649]:
+                            - button "Salle 1" [ref=f3e1651] [cursor=pointer]
+                          - cell [ref=f3e1653]:
+                            - button "Salle 1" [ref=f3e1655] [cursor=pointer]
+                          - cell [ref=f3e1657]:
+                            - button "Salle 3" [ref=f3e1659] [cursor=pointer]
+                          - cell [ref=f3e1661]:
+                            - button [ref=f3e1663] [cursor=pointer]
+                          - cell [ref=f3e1664]:
+                            - button [ref=f3e1666] [cursor=pointer]
+                          - cell [ref=f3e1667]:
+                            - button "Salle 1" [ref=f3e1669] [cursor=pointer]
+                          - cell [ref=f3e1671]:
+                            - button "Salle 1" [ref=f3e1673] [cursor=pointer]
+                          - cell [ref=f3e1675]:
+                            - button "Salle 1" [ref=f3e1677] [cursor=pointer]
+                          - cell [ref=f3e1679]:
+                            - button [ref=f3e1681] [cursor=pointer]
+                          - cell [ref=f3e1682]:
+                            - button "Salle 2" [ref=f3e1684] [cursor=pointer]
+                          - cell [ref=f3e1686]:
+                            - button "Salle 1" [ref=f3e1688] [cursor=pointer]
+                          - cell [ref=f3e1690]:
+                            - button [ref=f3e1692] [cursor=pointer]
+                          - cell [ref=f3e1693]:
+                            - button [ref=f3e1695] [cursor=pointer]
+                          - cell [ref=f3e1696]:
+                            - button [ref=f3e1698] [cursor=pointer]
+                          - cell [ref=f3e1699]:
+                            - button [ref=f3e1701] [cursor=pointer]
+                          - cell [ref=f3e1702]:
+                            - button [disabled] [ref=f3e1704]
+                          - cell [ref=f3e1705]:
+                            - button [disabled] [ref=f3e1707]
+                          - cell [ref=f3e1708]:
+                            - button [disabled] [ref=f3e1710]
+                          - cell [ref=f3e1711]:
+                            - button [disabled] [ref=f3e1713]
+                          - cell [ref=f3e1714]:
+                            - button [ref=f3e1716] [cursor=pointer]
+                          - cell [ref=f3e1717]:
+                            - button [ref=f3e1719] [cursor=pointer]
+                          - cell [ref=f3e1720]:
+                            - button [ref=f3e1722] [cursor=pointer]
+                          - cell [ref=f3e1723]:
+                            - button [ref=f3e1725] [cursor=pointer]
+                        - row [ref=f3e1726]:
+                          - rowheader "Youssef Berrada 20 h" [ref=f3e1727]:
+                            - generic [ref=f3e1728]: Youssef Berrada
+                            - generic [ref=f3e1729]: 20 h
+                          - cell "Grp" [ref=f3e1730]
+                          - cell "GE101 30h" [ref=f3e1731]:
+                            - generic [ref=f3e1732]:
+                              - button "GE101" [ref=f3e1733] [cursor=pointer]
+                              - generic [ref=f3e1735]: 30h
+                          - cell "GE102 30h" [ref=f3e1736]:
+                            - generic [ref=f3e1737]:
+                              - button "GE102" [ref=f3e1738] [cursor=pointer]
+                              - generic [ref=f3e1740]: 30h
+                          - cell [ref=f3e1741]:
+                            - button [ref=f3e1743] [cursor=pointer]
+                          - cell [ref=f3e1744]:
+                            - button [ref=f3e1746] [cursor=pointer]
+                          - cell "GE101 30h" [ref=f3e1747]:
+                            - generic [ref=f3e1748]:
+                              - button "GE101" [ref=f3e1749] [cursor=pointer]
+                              - generic [ref=f3e1751]: 30h
+                          - cell "DEV102 30h" [ref=f3e1752]:
+                            - generic [ref=f3e1753]:
+                              - button "DEV102" [ref=f3e1754] [cursor=pointer]
+                              - generic [ref=f3e1756]: 30h
+                          - cell [ref=f3e1757]:
+                            - button [ref=f3e1759] [cursor=pointer]
+                          - cell [ref=f3e1760]:
+                            - button [ref=f3e1762] [cursor=pointer]
+                          - cell "GE102 30h" [ref=f3e1763]:
+                            - generic [ref=f3e1764]:
+                              - button "GE102" [ref=f3e1765] [cursor=pointer]
+                              - generic [ref=f3e1767]: 30h
+                          - cell "DEV101 30h" [ref=f3e1768]:
+                            - generic [ref=f3e1769]:
+                              - button "DEV101" [ref=f3e1770] [cursor=pointer]
+                              - generic [ref=f3e1772]: 30h
+                          - cell "DEV102 30h" [ref=f3e1773]:
+                            - generic [ref=f3e1774]:
+                              - button "DEV102" [ref=f3e1775] [cursor=pointer]
+                              - generic [ref=f3e1777]: 30h
+                          - cell [ref=f3e1778]:
+                            - button [ref=f3e1780] [cursor=pointer]
+                          - cell [ref=f3e1781]:
+                            - button [ref=f3e1783] [cursor=pointer]
+                          - cell [ref=f3e1784]:
+                            - button [ref=f3e1786] [cursor=pointer]
+                          - cell [ref=f3e1787]:
+                            - button [ref=f3e1789] [cursor=pointer]
+                          - cell [ref=f3e1790]:
+                            - button [ref=f3e1792] [cursor=pointer]
+                          - cell [ref=f3e1793]:
+                            - button [disabled] [ref=f3e1795]
+                          - cell [ref=f3e1796]:
+                            - button [disabled] [ref=f3e1798]
+                          - cell [ref=f3e1799]:
+                            - button [disabled] [ref=f3e1801]
+                          - cell [ref=f3e1802]:
+                            - button [disabled] [ref=f3e1804]
+                          - cell [ref=f3e1805]:
+                            - button [ref=f3e1807] [cursor=pointer]
+                          - cell "DEV101 30h" [ref=f3e1808]:
+                            - generic [ref=f3e1809]:
+                              - button "DEV101" [ref=f3e1810] [cursor=pointer]
+                              - generic [ref=f3e1812]: 30h
+                          - cell [ref=f3e1813]:
+                            - button [ref=f3e1815] [cursor=pointer]
+                          - cell [ref=f3e1816]:
+                            - button [ref=f3e1818] [cursor=pointer]
+                        - row [ref=f3e1819]:
+                          - cell "Mod" [ref=f3e1820]
+                          - cell "M102 1 19%" [ref=f3e1821]:
+                            - generic [ref=f3e1822]:
+                              - button "M102" [ref=f3e1823] [cursor=pointer]
+                              - generic [ref=f3e1826]:
+                                - generic [ref=f3e1827]: "1"
+                                - generic [ref=f3e1828]: 19%
+                          - cell "M102 1 19%" [ref=f3e1829]:
+                            - generic [ref=f3e1830]:
+                              - button "M102" [ref=f3e1831] [cursor=pointer]
+                              - generic [ref=f3e1834]:
+                                - generic [ref=f3e1835]: "1"
+                                - generic [ref=f3e1836]: 19%
+                          - cell [ref=f3e1837]:
+                            - button [ref=f3e1839] [cursor=pointer]
+                          - cell [ref=f3e1840]:
+                            - button [ref=f3e1842] [cursor=pointer]
+                          - cell "M102 1 21%" [ref=f3e1843]:
+                            - generic [ref=f3e1844]:
+                              - button "M102" [ref=f3e1845] [cursor=pointer]
+                              - generic [ref=f3e1848]:
+                                - generic [ref=f3e1849]: "1"
+                                - generic [ref=f3e1850]: 21%
+                          - cell "M102 1 19%" [ref=f3e1851]:
+                            - generic [ref=f3e1852]:
+                              - button "M102" [ref=f3e1853] [cursor=pointer]
+                              - generic [ref=f3e1856]:
+                                - generic [ref=f3e1857]: "1"
+                                - generic [ref=f3e1858]: 19%
+                          - cell [ref=f3e1859]:
+                            - button [ref=f3e1861] [cursor=pointer]
+                          - cell [ref=f3e1862]:
+                            - button [ref=f3e1864] [cursor=pointer]
+                          - cell "M102 1 21%" [ref=f3e1865]:
+                            - generic [ref=f3e1866]:
+                              - button "M102" [ref=f3e1867] [cursor=pointer]
+                              - generic [ref=f3e1870]:
+                                - generic [ref=f3e1871]: "1"
+                                - generic [ref=f3e1872]: 21%
+                          - cell "M102 1 19%" [ref=f3e1873]:
+                            - generic [ref=f3e1874]:
+                              - button "M102" [ref=f3e1875] [cursor=pointer]
+                              - generic [ref=f3e1878]:
+                                - generic [ref=f3e1879]: "1"
+                                - generic [ref=f3e1880]: 19%
+                          - cell "M102 1 21%" [ref=f3e1881]:
+                            - generic [ref=f3e1882]:
+                              - button "M102" [ref=f3e1883] [cursor=pointer]
+                              - generic [ref=f3e1886]:
+                                - generic [ref=f3e1887]: "1"
+                                - generic [ref=f3e1888]: 21%
+                          - cell [ref=f3e1889]:
+                            - button [ref=f3e1891] [cursor=pointer]
+                          - cell [ref=f3e1892]:
+                            - button [ref=f3e1894] [cursor=pointer]
+                          - cell [ref=f3e1895]:
+                            - button [ref=f3e1897] [cursor=pointer]
+                          - cell [ref=f3e1898]:
+                            - button [ref=f3e1900] [cursor=pointer]
+                          - cell [ref=f3e1901]:
+                            - button [ref=f3e1903] [cursor=pointer]
+                          - cell [ref=f3e1904]:
+                            - button [disabled] [ref=f3e1906]
+                          - cell [ref=f3e1907]:
+                            - button [disabled] [ref=f3e1909]
+                          - cell [ref=f3e1910]:
+                            - button [disabled] [ref=f3e1912]
+                          - cell [ref=f3e1913]:
+                            - button [disabled] [ref=f3e1915]
+                          - cell [ref=f3e1916]:
+                            - button [ref=f3e1918] [cursor=pointer]
+                          - cell "M102 1 21%" [ref=f3e1919]:
+                            - generic [ref=f3e1920]:
+                              - button "M102" [ref=f3e1921] [cursor=pointer]
+                              - generic [ref=f3e1924]:
+                                - generic [ref=f3e1925]: "1"
+                                - generic [ref=f3e1926]: 21%
+                          - cell [ref=f3e1927]:
+                            - button [ref=f3e1929] [cursor=pointer]
+                          - cell [ref=f3e1930]:
+                            - button [ref=f3e1932] [cursor=pointer]
+                        - row [ref=f3e1933]:
+                          - cell "Esp" [ref=f3e1934]
+                          - cell [ref=f3e1935]:
+                            - button "Salle 1" [ref=f3e1937] [cursor=pointer]
+                          - cell [ref=f3e1939]:
+                            - button "Salle 4" [ref=f3e1941] [cursor=pointer]
+                          - cell [ref=f3e1943]:
+                            - button [ref=f3e1945] [cursor=pointer]
+                          - cell [ref=f3e1946]:
+                            - button [ref=f3e1948] [cursor=pointer]
+                          - cell [ref=f3e1949]:
+                            - button "Salle 1" [ref=f3e1951] [cursor=pointer]
+                          - cell [ref=f3e1953]:
+                            - button "Salle 2" [ref=f3e1955] [cursor=pointer]
+                          - cell [ref=f3e1957]:
+                            - button [ref=f3e1959] [cursor=pointer]
+                          - cell [ref=f3e1960]:
+                            - button [ref=f3e1962] [cursor=pointer]
+                          - cell [ref=f3e1963]:
+                            - button "Salle 2" [ref=f3e1965] [cursor=pointer]
+                          - cell [ref=f3e1967]:
+                            - button "Salle 1" [ref=f3e1969] [cursor=pointer]
+                          - cell [ref=f3e1971]:
+                            - button "Salle 1" [ref=f3e1973] [cursor=pointer]
+                          - cell [ref=f3e1975]:
+                            - button [ref=f3e1977] [cursor=pointer]
+                          - cell [ref=f3e1978]:
+                            - button [ref=f3e1980] [cursor=pointer]
+                          - cell [ref=f3e1981]:
+                            - button [ref=f3e1983] [cursor=pointer]
+                          - cell [ref=f3e1984]:
+                            - button [ref=f3e1986] [cursor=pointer]
+                          - cell [ref=f3e1987]:
+                            - button [ref=f3e1989] [cursor=pointer]
+                          - cell [ref=f3e1990]:
+                            - button [disabled] [ref=f3e1992]
+                          - cell [ref=f3e1993]:
+                            - button [disabled] [ref=f3e1995]
+                          - cell [ref=f3e1996]:
+                            - button [disabled] [ref=f3e1998]
+                          - cell [ref=f3e1999]:
+                            - button [disabled] [ref=f3e2001]
+                          - cell [ref=f3e2002]:
+                            - button [ref=f3e2004] [cursor=pointer]
+                          - cell [ref=f3e2005]:
+                            - button "Salle 1" [ref=f3e2007] [cursor=pointer]
+                          - cell [ref=f3e2009]:
+                            - button [ref=f3e2011] [cursor=pointer]
+                          - cell [ref=f3e2012]:
+                            - button [ref=f3e2014] [cursor=pointer]
+          - region "Notifications alt+T"
+    - generic [ref=f2e49]:
+      - heading "Démarrer" [level=2] [ref=f2e50]
+      - paragraph [ref=f2e51]:
+        - text: Essayez
+        - emphasis [ref=f2e52]: eDTpro
+        - text: comme si vous étiez connecté, sans créer de compte.
+      - generic [ref=f2e53]:
+        - generic [ref=f2e54]:
+          - generic [ref=f2e55]: Direction
+          - generic [ref=f2e63]: Construisez et publiez les emplois du temps, répartissez les modules, suivez l’avancement et les heures de toute l’équipe.
+          - button "Essayer comme directeur" [ref=f2e352] [cursor=pointer]
+        - generic [ref=f2e66]:
+          - generic [ref=f2e67]: Formateur
+          - generic [ref=f2e75]: Votre emploi du temps de la semaine, vos affectations, l’avancement de vos modules et vos documents prêts à imprimer.
+          - button "Essayer comme formateur" [ref=f2e353] [cursor=pointer]
+        - generic [ref=f2e78]:
+          - generic [ref=f2e79]: Stagiaire
+          - generic [ref=f2e85]: L’emploi du temps de votre groupe, vos absences, les annonces et les messages de l’établissement.
+          - button "Essayer comme stagiaire" [ref=f2e354] [cursor=pointer]
+      - paragraph [ref=f2e88]: Données fictives · votre copie est effacée après 24 h · aucun e-mail ni notification n’en sort.
+    - generic [ref=f2e90]:
+      - heading "La façon la plus simple de tenir l’emploi du temps" [level=2] [ref=f2e91]
+      - generic [ref=f2e92]:
+        - generic [ref=f2e93]:
+          - generic [ref=f2e94]:
+            - heading "Le tableau de bord de la direction" [level=3] [ref=f2e95]
+            - paragraph [ref=f2e96]: "Taux d’avancement, charge des formateurs, absences et retards, groupes en retard : l’état de l’établissement en un coup d’œil."
+          - img "Le tableau de bord de la direction" [ref=f2e100]
+        - generic [ref=f2e101]:
+          - generic [ref=f2e102]:
+            - heading "Conçu pour construire la semaine" [level=3] [ref=f2e103]
+            - paragraph [ref=f2e104]: "Groupes, formateurs, salles, présentiel ou à distance : la direction construit la semaine et la publie. Chacun la reçoit aussitôt, avec une notification."
+          - img "Conçu pour construire la semaine" [ref=f2e108]
+        - generic [ref=f2e109]:
+          - generic [ref=f2e110]:
+            - heading "Retoucher sans tout refaire" [level=3] [ref=f2e111]
+            - paragraph [ref=f2e112]: "Par formateur, par groupe ou par salle : chaque séance se corrige dans la grille, et la semaine se télécharge prête à afficher."
+          - img "Retoucher sans tout refaire" [ref=f2e116]
+        - generic [ref=f2e117]:
+          - generic [ref=f2e118]:
+            - heading "L’avancement de chaque module" [level=3] [ref=f2e119]
+            - paragraph [ref=f2e120]: "Heures affectées et heures réalisées, module par module et groupe par groupe : le retard se voit avant de devenir un problème."
+          - img "L’avancement de chaque module" [ref=f2e124]
+        - generic [ref=f2e125]:
+          - generic [ref=f2e126]:
+            - heading "L’appel et les absences" [level=3] [ref=f2e127]
+            - paragraph [ref=f2e128]: Les formateurs font l’appel depuis leur séance ; la direction suit les appels non validés, le registre et les notes de discipline.
+          - img "L’appel et les absences" [ref=f2e132]
+        - generic [ref=f2e133]:
+          - generic [ref=f2e134]:
+            - heading "Les documents prêts à imprimer" [level=3] [ref=f2e135]
+            - paragraph [ref=f2e136]: "Examens, absences, diplômes, administration, discipline : les documents se remplissent à partir de la liste de vos stagiaires."
+          - img "Les documents prêts à imprimer" [ref=f2e140]
+        - generic [ref=f2e141]:
+          - generic [ref=f2e142]:
+            - heading "Une messagerie interne" [level=3] [ref=f2e143]
+            - paragraph [ref=f2e144]: Écrire aux formateurs et lire leurs réponses, sans quitter l’application ni échanger d’adresses.
+          - img "Une messagerie interne" [ref=f2e148]
+        - generic [ref=f2e149]:
+          - generic [ref=f2e150]:
+            - heading "Des annonces qui se voient" [level=3] [ref=f2e151]
+            - paragraph [ref=f2e152]: "Une information, importante ou urgente : elle s’affiche dans le bandeau des formateurs et arrive dans leur messagerie."
+          - img "Des annonces qui se voient" [ref=f2e156]
+        - generic [ref=f2e157]:
+          - generic [ref=f2e158]:
+            - heading "Dans la poche de toute l’équipe" [level=3] [ref=f2e159]
+            - paragraph [ref=f2e160]: "Formateurs et stagiaires retrouvent leur semaine sur téléphone : séances du jour, groupes, modules et salles."
+          - generic [ref=f2e164]:
+            - generic [ref=f2e166]: 9:41
+            - img "L’emploi du temps d’un formateur sur téléphone" [ref=f2e176]
+    - generic [ref=f2e178]:
+      - heading [level=2] [ref=f2e179]:
+        - emphasis [ref=f2e180]: eDTpro
+        - text: ", partout où vous êtes"
+      - paragraph [ref=f2e181]: Le même établissement, à jour sur chaque appareil.
+      - generic [ref=f2e182]:
+        - generic [ref=f2e183]:
+          - generic [ref=f2e186]: Sur le web
+          - link "Ouvrir eDTpro" [ref=f2e188] [cursor=pointer]:
+            - /url: /connexion
+        - generic [ref=f2e189]:
+          - generic [ref=f2e191]:
+            - generic [ref=f2e192]:
+              - generic [ref=f2e193]: eDTpro · maintenant
+              - paragraph [ref=f2e197]: Emploi du temps publié
+              - paragraph [ref=f2e198]: Semaine S9 — 48 séances, à jour pour toute l’équipe.
+            - generic [ref=f2e199]: Démarrer avec Windows
+          - generic [ref=f2e202]: Sur Windows
+          - link "Télécharger pour Windows" [ref=f2e204] [cursor=pointer]:
+            - /url: https://edtpro.tech/telechargements/EDT-Pro_x64-setup.exe
+        - generic [ref=f2e205]:
+          - generic [ref=f2e209]: Sur Android
+          - generic [ref=f2e210]:
+            - button "Bientôt sur Google Play" [disabled]
+        - generic [ref=f2e211]:
+          - generic [aria-hidden] [ref=f2e213]:
+            - generic:
+              - paragraph: Mot de passe oublié ?
+              - button: Se connecter
+              - generic: ou
+              - button: Scanner ma carte
+          - generic [ref=f2e214]: Pour les stagiaires
+          - link "Se connecter" [ref=f2e216] [cursor=pointer]:
+            - /url: /connexion
+    - generic [ref=f2e218]:
+      - heading "Tarifs" [level=2] [ref=f2e219]
+      - paragraph [ref=f2e220]: Un mois pour essayer, puis l’abonnement qui vous convient.
+      - generic [ref=f2e221]:
+        - generic [ref=f2e222]:
+          - generic [ref=f2e223]:
+            - generic [ref=f2e224]: Essai gratuit
+            - paragraph [ref=f2e225]: 0 MADpendant 1 mois
+            - generic [ref=f2e226]: Pour découvrir eDTpro avec votre propre établissement, sans engagement.
+          - list [ref=f2e228]:
+            - listitem [ref=f2e229]: Toutes les fonctionnalités
+            - listitem [ref=f2e232]: Web et application Windows
+            - listitem [ref=f2e235]: Sans engagement
+          - link "Commencer l’essai" [ref=f2e239] [cursor=pointer]:
+            - /url: /inscription
+        - generic [ref=f2e240]:
+          - generic [ref=f2e241]:
+            - generic [ref=f2e242]: 6 mois
+            - paragraph [ref=f2e243]: 600 MADpour 6 mois
+            - generic [ref=f2e244]: Pour couvrir un semestre de formation.
+          - list [ref=f2e246]:
+            - listitem [ref=f2e247]: Toutes les fonctionnalités
+            - listitem [ref=f2e250]: Web et application Windows
+            - listitem [ref=f2e253]: Assistance par e-mail
+          - link "Inscrire mon établissement" [ref=f2e257] [cursor=pointer]:
+            - /url: /inscription
+        - generic [ref=f2e258]:
+          - generic [ref=f2e259]:
+            - generic [ref=f2e260]: Annuel
+            - paragraph [ref=f2e261]: 1 000 MADpar an
+            - generic [ref=f2e262]: Pour tenir les emplois du temps de votre établissement toute l’année.
+          - list [ref=f2e264]:
+            - listitem [ref=f2e265]: Toutes les fonctionnalités
+            - listitem [ref=f2e268]: Web et application Windows
+            - listitem [ref=f2e271]: Assistance par e-mail
+          - link "Inscrire mon établissement" [ref=f2e275] [cursor=pointer]:
+            - /url: /inscription
+    - generic [ref=f2e277]:
+      - heading "Questions fréquentes" [level=2] [ref=f2e278]
+      - generic [ref=f2e279]:
+        - button "La démo est-elle vraiment l’application ?" [ref=f2e281] [cursor=pointer]
+        - button "À qui s’adresse eDTpro ?" [ref=f2e285] [cursor=pointer]
+        - button "Comment inscrire mon établissement ?" [ref=f2e289] [cursor=pointer]
+        - button "Les formateurs et les stagiaires doivent-ils s’inscrire ?" [ref=f2e293] [cursor=pointer]
+        - button "Chaque établissement a-t-il son propre espace ?" [ref=f2e297] [cursor=pointer]
+    - generic [ref=f2e301]:
+      - heading [level=2] [ref=f2e302]:
+        - text: Commencez avec
+        - emphasis [ref=f2e303]: eDTpro
+      - paragraph [ref=f2e304]: Sur le web, sur Windows, et bientôt sur Android.
+      - generic [ref=f2e305]:
+        - link "Télécharger pour Windows" [ref=f2e306] [cursor=pointer]:
+          - /url: https://edtpro.tech/telechargements/EDT-Pro_x64-setup.exe
+        - link "Essayer la démo" [ref=f2e307] [cursor=pointer]:
+          - /url: "#demo-en-direct"
+    - contentinfo [ref=f2e308]:
+      - generic [ref=f2e309]:
+        - generic [ref=f2e310]:
+          - paragraph [ref=f2e311]: Produit
+          - list [ref=f2e312]:
+            - listitem [ref=f2e313]:
+              - link "Démo" [ref=f2e314] [cursor=pointer]:
+                - /url: "#demarrer"
+            - listitem [ref=f2e315]:
+              - link "Fonctionnalités" [ref=f2e316] [cursor=pointer]:
+                - /url: "#fonctionnalites"
+            - listitem [ref=f2e317]:
+              - link "Tarifs" [ref=f2e318] [cursor=pointer]:
+                - /url: "#tarifs"
+            - listitem [ref=f2e319]:
+              - link "Télécharger pour Windows" [ref=f2e320] [cursor=pointer]:
+                - /url: https://edtpro.tech/telechargements/EDT-Pro_x64-setup.exe
+        - generic [ref=f2e321]:
+          - paragraph [ref=f2e322]: Établissements
+          - list [ref=f2e323]:
+            - listitem [ref=f2e324]:
+              - link "Inscrire mon établissement" [ref=f2e325] [cursor=pointer]:
+                - /url: /inscription
+            - listitem [ref=f2e326]:
+              - link "Se connecter" [ref=f2e327] [cursor=pointer]:
+                - /url: /connexion
+        - generic [ref=f2e328]:
+          - paragraph [ref=f2e329]: Assistance
+          - list [ref=f2e330]:
+            - listitem [ref=f2e331]:
+              - link "Questions fréquentes" [ref=f2e332] [cursor=pointer]:
+                - /url: "#questions"
+            - listitem [ref=f2e333]:
+              - link "Nous écrire" [ref=f2e334] [cursor=pointer]:
+                - /url: mailto:edtproservice@gmail.com
+        - generic [ref=f2e335]:
+          - paragraph [ref=f2e336]: Applications
+          - list [ref=f2e337]:
+            - listitem [ref=f2e338]:
+              - link "Windows" [ref=f2e339] [cursor=pointer]:
+                - /url: https://edtpro.tech/telechargements/EDT-Pro_x64-setup.exe
+            - listitem [ref=f2e340]:
+              - link "Android (bientôt)" [ref=f2e341] [cursor=pointer]:
+                - /url: "#partout"
+      - generic [ref=f2e342]:
+        - img "eDTpro" [ref=f2e343]
+        - paragraph [ref=f2e344]:
+          - text: © 2026
+          - emphasis [ref=f2e345]: eDTpro
+          - text: . Tous droits réservés.
+        - link "edtproservice@gmail.com" [ref=f2e346] [cursor=pointer]:
+          - /url: mailto:edtproservice@gmail.com
+  - region "Notifications alt+T"

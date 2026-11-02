@@ -9,6 +9,8 @@
  * son arrivée.
  */
 export const PAGES_PUBLIQUES = [
+  // La page d'accueil (2026-11-01) : elle vérifie la session — un 401 y est l'état normal d'un visiteur.
+  '/',
   '/connexion',
   '/inscription',
   '/verification',
@@ -21,6 +23,8 @@ export const PAGES_PUBLIQUES = [
 
 /** Ce chemin est-il celui d'une page publique ? (`/verification?email=…` : le chemin seul.) */
 export function estPagePublique(chemin) {
-  const propre = String(chemin ?? '').split(/[?#]/)[0].replace(/\/+$/, '') || '/';
+  // ⚠️ Un chemin INCONNU n'est pas public — avec `/` dans la liste, le vide ramené à `/` le deviendrait.
+  if (!chemin) return false;
+  const propre = String(chemin).split(/[?#]/)[0].replace(/\/+$/, '') || '/';
   return PAGES_PUBLIQUES.some((page) => propre === page || propre.startsWith(`${page}/`));
 }

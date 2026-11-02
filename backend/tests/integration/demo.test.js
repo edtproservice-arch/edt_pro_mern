@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { ROLES, STATUTS_COMPTE } from 'shared/constants';
-import { anneeScolaireCourante, semaineDansAnnee } from 'shared/domain';
+import { anneeScolaireCourante, dateDuJour, enJour, semaineDansAnnee } from 'shared/domain';
 import { createApp } from '../../src/app.js';
 import { AbsenceStagiaire, Base, Etablissement, Message, Seance, Stagiaire, User } from '../../src/models/index.js';
 import { construireModele } from '../../scripts/creer-modele-demo.js';
@@ -16,8 +16,20 @@ import { executerEnDemo } from '../../src/lib/contexteDemo.js';
  * Ce qui compte : la copie est complète et à jour, elle ne se mêle à RIEN d'autre, rien n'en
  * sort (e-mails, messages vers de vrais comptes, actions fermées), et elle disparaît après 24 h.
  */
+/*
+ * Les fériés viennent d'une API externe : ici, un seul, connu — le mercredi de la semaine en
+ * cours —, pour vérifier que la copie n'y place aucune séance (2026-11-02).
+ */
+const feries = vi.hoisted(() => ({ jours: [] }));
+vi.mock('../../src/modules/calendrier/joursFeries.service.js', async (original) => ({
+  ...(await original()),
+  obtenirNationaux: async () => ({ jours: feries.jours, complet: true, recupereLe: new Date() }),
+}));
+
 const app = createApp();
 const ANNEE = anneeScolaireCourante();
+const MERCREDI = dateDuJour(`${ANNEE}-W${Math.max(1, semaineDansAnnee(ANNEE, new Date()).numero)}`, 'Mercredi');
+feries.jours = [{ date: enJour(MERCREDI), libelle: 'Férié de test' }];
 
 const essayer = (role) => request(app).post('/api/v2/demo').send({ role });
 const cookiesDe = (reponse) => reponse.headers['set-cookie'];
@@ -27,12 +39,15 @@ beforeEach(async () => {
 });
 
 describe('le modèle', () => {
-  it('est un établissement fictif complet, avec ses trois comptes de démo', async () => {
+  it('est un établissement fictif complet, avec ses comptes de démo (direction, 6 formateurs, stagiaire)', async () => {
     const modele = await Etablissement.findOne({ modeleDemo: true }).lean();
     expect(modele).toBeTruthy();
     expect(modele.demoSemaineReference).toMatch(/^\d{4}-W\d+$/);
     const comptes = await User.find({ etablissementIds: modele._id }).lean();
-    expect(comptes.map((c) => c.role).sort()).toEqual([ROLES.DIRECTEUR, ROLES.FORMATEUR, ROLES.STAGIAIRE].sort());
+    const roles = comptes.map((c) => c.role);
+    expect(roles.filter((r) => r === ROLES.DIRECTEUR)).toHaveLength(1);
+    expect(roles.filter((r) => r === ROLES.FORMATEUR)).toHaveLength(6);
+    expect(roles.filter((r) => r === ROLES.STAGIAIRE)).toHaveLength(1);
     expect(comptes.every((c) => c.demo && c.email.endsWith('@demo.invalid'))).toBe(true);
     expect(await Seance.countDocuments({ etablissementId: modele._id })).toBeGreaterThan(100);
     expect(await Stagiaire.countDocuments({ etablissementId: modele._id })).toBe(24);
@@ -43,6 +58,33 @@ describe('le modèle', () => {
     await construireModele();
     expect(await Etablissement.countDocuments({ modeleDemo: true })).toBe(1);
     expect(await User.countDocuments({ email: 'modele-directeur@demo.invalid' })).toBe(1);
+  });
+});
+
+describe('la messagerie du modèle', () => {
+  it('porte le chronogramme d’une formatrice, renvoyé au directeur pour validation', async () => {
+    const reponse = await essayer(ROLES.DIRECTEUR);
+    const directeurId = reponse.body.utilisateur.id ?? reponse.body.utilisateur._id;
+    const recus = await Message.find({ destinataireId: directeurId }).lean();
+    expect(recus.length).toBeGreaterThanOrEqual(6);
+    const chronogramme = recus.find((m) => m.chronogrammeFormateur);
+    expect(chronogramme?.sujet).toBe('Chronogramme rempli — à valider');
+  });
+});
+
+describe('changer de rôle dans sa démo', () => {
+  it('ouvre le compte demandé DANS LA MÊME COPIE, sans en créer une nouvelle', async () => {
+    const direction = await essayer(ROLES.DIRECTEUR);
+    const copie = direction.body.utilisateur.etablissementIds[0];
+    const avant = await Etablissement.countDocuments({ demo: true });
+
+    for (const role of [ROLES.FORMATEUR, ROLES.STAGIAIRE, ROLES.DIRECTEUR]) {
+      const reponse = await request(app).post('/api/v2/demo').set('Cookie', cookiesDe(direction)).send({ role });
+      expect(reponse.status).toBe(200);
+      expect(reponse.body.utilisateur.role).toBe(role);
+      expect(reponse.body.utilisateur.etablissementIds[0]).toBe(copie);
+    }
+    expect(await Etablissement.countDocuments({ demo: true })).toBe(avant);
   });
 });
 
@@ -57,10 +99,15 @@ describe('POST /api/v2/demo', () => {
     expect(copie.complexe).toMatch(/^Démo [0-9A-F]{6}$/);
     expect(copie.demoExpireLe.getTime()).toBeGreaterThan(Date.now() + 23 * 3600 * 1000);
 
+    // Rien le jour férié : ses séances sont déplacées dans la semaine (au pire retirées).
     const modele = await Etablissement.findOne({ modeleDemo: true }).lean();
-    expect(await Seance.countDocuments({ etablissementId: copie._id })).toBe(
-      await Seance.countDocuments({ etablissementId: modele._id })
-    );
+    const auFerie = await Seance.countDocuments({ etablissementId: modele._id, date: MERCREDI });
+    expect(auFerie).toBeGreaterThan(0);
+    expect(await Seance.countDocuments({ etablissementId: copie._id, date: MERCREDI })).toBe(0);
+    const total = await Seance.countDocuments({ etablissementId: modele._id });
+    const copiees = await Seance.countDocuments({ etablissementId: copie._id });
+    expect(copiees).toBeLessThanOrEqual(total);
+    expect(copiees).toBeGreaterThan(total - auFerie); // au moins une a trouvé un autre créneau
 
     const moi = await request(app).get('/api/v2/auth/moi').set('Cookie', cookiesDe(reponse));
     expect(moi.status).toBe(200);

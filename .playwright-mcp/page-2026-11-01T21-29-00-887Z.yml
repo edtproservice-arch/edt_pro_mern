@@ -1,0 +1,169 @@
+- generic [ref=f16e2]:
+  - generic [ref=f16e3]:
+    - banner [ref=f16e4]:
+      - generic [ref=f16e5]:
+        - link [ref=f16e6] [cursor=pointer]:
+          - /url: /
+          - img "EDT Pro" [ref=f16e7]
+        - generic [ref=f16e8]:
+          - link "Se connecter" [ref=f16e9] [cursor=pointer]:
+            - /url: /connexion
+          - link "Essayer la démo" [ref=f16e10] [cursor=pointer]:
+            - /url: "#demo-en-direct"
+    - generic [ref=f16e11]:
+      - generic [ref=f16e12]:
+        - heading "Organisez tout avec EDT Pro" [level=1] [ref=f16e14]
+        - paragraph [ref=f16e15]: Les emplois du temps, l’avancement des modules, les documents et la messagerie de votre établissement, réunis.
+        - generic [ref=f16e16]:
+          - link "Télécharger pour Windows" [ref=f16e17] [cursor=pointer]:
+            - /url: https://edtpro.tech/telechargements/EDT-Pro_x64-setup.exe
+          - link "Essayer la démo" [ref=f16e18] [cursor=pointer]:
+            - /url: "#demo-en-direct"
+        - paragraph [ref=f16e19]: Pensé pour les établissements de formation professionnelle
+        - generic [ref=f16e20]:
+          - generic [ref=f16e21]: Emplois du temps
+          - generic [ref=f16e22]: Avancement
+          - generic [ref=f16e23]: Affectations
+          - generic [ref=f16e24]: Documents
+          - generic [ref=f16e25]: Absences
+          - generic [ref=f16e26]: Messagerie
+          - generic [ref=f16e27]: Annonces
+      - generic [ref=f16e29]:
+        - generic [ref=f16e30]: EDT Pro
+        - generic [ref=f16e35]:
+          - img "L’emploi du temps d’un établissement dans EDT Pro" [ref=f16e36]
+          - generic [ref=f16e38]:
+            - paragraph [ref=f16e39]: Essayez EDT Pro ici, en direct
+            - paragraph [ref=f16e40]: "La vraie application, dans un établissement fictif. Choisissez votre rôle :"
+            - generic [ref=f16e41]:
+              - button "Direction" [ref=f16e42] [cursor=pointer]
+              - button "Formateur" [ref=f16e43] [cursor=pointer]
+              - button "Stagiaire" [ref=f16e44] [cursor=pointer]
+            - paragraph [ref=f16e45]: Sans compte · effacée après 24 h · rien n’en sort
+    - generic [ref=f16e47]:
+      - heading "Démarrer" [level=2] [ref=f16e48]
+      - paragraph [ref=f16e49]: Essayez EDT Pro comme si vous étiez connecté, sans créer de compte.
+      - generic [ref=f16e50]:
+        - generic [ref=f16e51]:
+          - generic [ref=f16e52]: Direction
+          - generic [ref=f16e60]: Construisez et publiez les emplois du temps, répartissez les modules, suivez l’avancement et les heures de toute l’équipe.
+          - button "Essayer comme directeur" [ref=f16e63] [cursor=pointer]
+        - generic [ref=f16e64]:
+          - generic [ref=f16e65]: Formateur
+          - generic [ref=f16e73]: Votre emploi du temps de la semaine, vos affectations, l’avancement de vos modules et vos documents prêts à imprimer.
+          - button "Essayer comme formateur" [ref=f16e76] [cursor=pointer]
+        - generic [ref=f16e77]:
+          - generic [ref=f16e78]: Stagiaire
+          - generic [ref=f16e84]: L’emploi du temps de votre groupe, vos absences, les annonces et les messages de l’établissement.
+          - button "Essayer comme stagiaire" [ref=f16e87] [cursor=pointer]
+      - paragraph [ref=f16e88]: Données fictives · votre copie est effacée après 24 h · aucun e-mail ni notification n’en sort.
+    - generic [ref=f16e90]:
+      - heading "La façon la plus simple de tenir l’emploi du temps" [level=2] [ref=f16e91]
+      - generic [ref=f16e92]:
+        - generic [ref=f16e93]:
+          - generic [ref=f16e94]:
+            - heading "Conçu pour construire la semaine" [level=3] [ref=f16e95]
+            - paragraph [ref=f16e96]: "Groupes, formateurs, salles, présentiel ou à distance : la direction construit la semaine et la publie. Chacun la reçoit aussitôt, avec une notification."
+          - generic [ref=f16e100]:
+            - img "L’emploi du temps d’un formateur"
+        - generic [ref=f16e101]:
+          - generic [ref=f16e102]:
+            - heading "L’avancement de chaque module" [level=3] [ref=f16e103]
+            - paragraph [ref=f16e104]: "Heures affectées et heures réalisées, module par module et groupe par groupe : le retard se voit avant de devenir un problème."
+          - generic [ref=f16e107]:
+            - img "Le graphique d’avancement"
+        - generic [ref=f16e108]:
+          - generic [ref=f16e109]:
+            - heading "Dans la poche de toute l’équipe" [level=3] [ref=f16e110]
+            - paragraph [ref=f16e111]: "Affectations, documents prêts à imprimer, absences, annonces et messagerie : sur téléphone comme sur ordinateur."
+          - generic [ref=f16e114]:
+            - generic [ref=f16e115]:
+              - img "Les affectations d’un formateur"
+            - generic [ref=f16e116]:
+              - img "Les documents d’un formateur"
+    - generic [ref=f16e118]:
+      - heading "EDT Pro, partout où vous êtes" [level=2] [ref=f16e119]
+      - paragraph [ref=f16e120]: Le même établissement, à jour sur chaque appareil.
+      - generic [ref=f16e121]:
+        - generic [ref=f16e122]:
+          - generic [ref=f16e126]: Sur le web
+          - generic [ref=f16e127]: Dans tout navigateur, à l’adresse edtpro.tech.
+          - link "Ouvrir" [ref=f16e128] [cursor=pointer]:
+            - /url: /connexion
+        - generic [ref=f16e132]:
+          - generic [ref=f16e136]: Sur Windows
+          - generic [ref=f16e137]: Notifications, démarrage avec Windows, mises à jour automatiques.
+          - link "Télécharger" [ref=f16e138] [cursor=pointer]:
+            - /url: https://edtpro.tech/telechargements/EDT-Pro_x64-setup.exe
+        - generic [ref=f16e142]:
+          - generic [ref=f16e145]: Sur Android
+          - generic [ref=f16e146]: L’application arrive bientôt sur Google Play.
+          - generic [ref=f16e147]: Bientôt
+        - generic [ref=f16e148]:
+          - generic [ref=f16e152]: Pour les stagiaires
+          - generic [ref=f16e153]: Une connexion en scannant le QR code de la carte de stagiaire.
+          - link "Se connecter" [ref=f16e154] [cursor=pointer]:
+            - /url: /connexion
+    - generic [ref=f16e159]:
+      - heading "Questions fréquentes" [level=2] [ref=f16e160]
+      - generic [ref=f16e161]:
+        - button "La démo est-elle vraiment l’application ?" [ref=f16e163] [cursor=pointer]
+        - button "À qui s’adresse EDT Pro ?" [ref=f16e167] [cursor=pointer]
+        - button "Comment inscrire mon établissement ?" [ref=f16e171] [cursor=pointer]
+        - button "Les formateurs et les stagiaires doivent-ils s’inscrire ?" [ref=f16e175] [cursor=pointer]
+        - button "Chaque établissement a-t-il son propre espace ?" [ref=f16e179] [cursor=pointer]
+    - generic [ref=f16e183]:
+      - heading "Commencez avec EDT Pro" [level=2] [ref=f16e184]
+      - paragraph [ref=f16e185]: Sur le web, sur Windows, et bientôt sur Android.
+      - generic [ref=f16e186]:
+        - link "Télécharger pour Windows" [ref=f16e187] [cursor=pointer]:
+          - /url: https://edtpro.tech/telechargements/EDT-Pro_x64-setup.exe
+        - link "Essayer la démo" [ref=f16e188] [cursor=pointer]:
+          - /url: "#demo-en-direct"
+    - contentinfo [ref=f16e189]:
+      - generic [ref=f16e190]:
+        - generic [ref=f16e191]:
+          - paragraph [ref=f16e192]: Produit
+          - list [ref=f16e193]:
+            - listitem [ref=f16e194]:
+              - link "Démo" [ref=f16e195] [cursor=pointer]:
+                - /url: "#demarrer"
+            - listitem [ref=f16e196]:
+              - link "Fonctionnalités" [ref=f16e197] [cursor=pointer]:
+                - /url: "#fonctionnalites"
+            - listitem [ref=f16e198]:
+              - link "Télécharger pour Windows" [ref=f16e199] [cursor=pointer]:
+                - /url: https://edtpro.tech/telechargements/EDT-Pro_x64-setup.exe
+        - generic [ref=f16e200]:
+          - paragraph [ref=f16e201]: Établissements
+          - list [ref=f16e202]:
+            - listitem [ref=f16e203]:
+              - link "Inscrire mon établissement" [ref=f16e204] [cursor=pointer]:
+                - /url: /inscription
+            - listitem [ref=f16e205]:
+              - link "Se connecter" [ref=f16e206] [cursor=pointer]:
+                - /url: /connexion
+        - generic [ref=f16e207]:
+          - paragraph [ref=f16e208]: Assistance
+          - list [ref=f16e209]:
+            - listitem [ref=f16e210]:
+              - link "Questions fréquentes" [ref=f16e211] [cursor=pointer]:
+                - /url: "#questions"
+            - listitem [ref=f16e212]:
+              - link "Nous écrire" [ref=f16e213] [cursor=pointer]:
+                - /url: mailto:edtproservice@gmail.com
+        - generic [ref=f16e214]:
+          - paragraph [ref=f16e215]: Applications
+          - list [ref=f16e216]:
+            - listitem [ref=f16e217]:
+              - link "Windows" [ref=f16e218] [cursor=pointer]:
+                - /url: https://edtpro.tech/telechargements/EDT-Pro_x64-setup.exe
+            - listitem [ref=f16e219]:
+              - link "Android (bientôt)" [ref=f16e220] [cursor=pointer]:
+                - /url: "#partout"
+      - generic [ref=f16e221]:
+        - img "EDT Pro" [ref=f16e222]
+        - generic [ref=f16e223]: eDTpro © 2026
+        - link "edtproservice@gmail.com" [ref=f16e224] [cursor=pointer]:
+          - /url: mailto:edtproservice@gmail.com
+  - region "Notifications alt+T"

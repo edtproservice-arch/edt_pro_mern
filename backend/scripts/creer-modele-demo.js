@@ -3,7 +3,13 @@
  * Construit, avec des données ENTIÈREMENT FICTIVES, l'établissement que la page d'accueil copie
  * pour chaque visiteur (`modules/demo`) : six formateurs, quatre groupes, leurs affectations,
  * les séances de neuf semaines autour de la semaine en cours, des stagiaires, quelques absences,
- * deux messages et une annonce — et trois comptes (directeur, formateur, stagiaire).
+ * le chronogramme de l'année, une messagerie vivante et une annonce — et les comptes (direction,
+ * six formateurs, un stagiaire).
+ *
+ * ⚠️ LA MESSAGERIE MONTRE L'APPLICATION (2026-11-02, demande du porteur : « plus de messages,
+ *    par exemple le chronogramme ») : le chronogramme d'une formatrice part au directeur par la
+ *    VRAIE fonction de l'application (`renvoyerAuDirecteur`), avec sa grille ; les autres
+ *    formateurs écrivent ce qu'on lit d'ordinaire dans une boîte de direction.
  *
  * ⚠️ IL REMPLACE LE MODÈLE PRÉCÉDENT : relancer le script suffit (à chaque rentrée, ou pour
  *    rafraîchir les données). Les copies déjà ouvertes par des visiteurs ne sont pas touchées.
@@ -15,12 +21,17 @@
 import crypto from 'node:crypto';
 import mongoose from 'mongoose';
 import { JOURS, PERIODES, ROLES, STATUTS_COMPTE, TYPES_COURS } from 'shared/constants';
-import { anneeScolaireCourante, dateDuJour, semaineDansAnnee } from 'shared/domain';
+import { SALLE_DISTANCIEL, anneeScolaireCourante, dateDuJour, semaineDansAnnee, vacances } from 'shared/domain';
 import { connectDatabase } from '../src/config/db.js';
-import { retenirToutesLesRentrees } from '../src/modules/calendrierNational/calendrierNational.service.js';
+import {
+  obtenir as obtenirCalendrierNational,
+  retenirToutesLesRentrees,
+} from '../src/modules/calendrierNational/calendrierNational.service.js';
+import { renvoyerAuDirecteur } from '../src/modules/chronogramme/chronogramme.service.js';
 import {
   AbsenceStagiaire,
   Base,
+  Chronogramme,
   Etablissement,
   Message,
   Seance,
@@ -50,6 +61,7 @@ const GROUPES = Object.keys(FILIERES);
 const MODULES = ['M101', 'M102', 'M103', 'M104', 'M105', 'M106'];
 const SALLES = ['Salle 1', 'Salle 2', 'Salle 3', 'Salle 4', 'Labo info 1', 'Labo info 2'];
 const CRENEAUX = ['S1', 'S2', 'S3', 'S4'];
+const DUREE_SEANCE = 2.5; // heures — `DUREE_JOUR` du domaine de l'emploi
 
 const PRENOMS = ['Adam', 'Aya', 'Ilyas', 'Rim', 'Zakaria', 'Hiba', 'Anas', 'Lina', 'Mehdi', 'Sara', 'Ayoub', 'Nour'];
 const NOMS = ['Alaoui', 'Chraibi', 'El Fassi', 'Haddad', 'Kettani', 'Mansouri', 'Naciri', 'Ouazzani', 'Rami', 'Sebti'];
@@ -77,10 +89,10 @@ export async function construireModele(maintenant = new Date()) {
 
   // ── Les comptes et l'établissement ──────────────────────────────────────
   const idEtablissement = new mongoose.Types.ObjectId();
-  const compte = (role, nomComplet, identifiant = null, extra = {}) =>
+  const compte = (role, nomComplet, identifiant = null, extra = {}, rang = '') =>
     new User({
       nomComplet,
-      email: `modele-${role}@${DOMAINE_DEMO}`,
+      email: `modele-${role}${rang}@${DOMAINE_DEMO}`,
       identifiant,
       motDePasse: motDePasseInutilisable(),
       role,
@@ -92,9 +104,12 @@ export async function construireModele(maintenant = new Date()) {
       ...extra,
     });
   const directeur = compte(ROLES.DIRECTEUR, 'Direction de la démo', null, { configurationTerminee: true });
-  const formateur = compte(ROLES.FORMATEUR, FORMATEURS[0].nomComplet, FORMATEURS[0].matricule);
+  // Un compte par formateur : la messagerie en a besoin. ⚠️ Le PREMIER est celui qu'ouvre
+  // « Essayer comme formateur » (la copie prend le plus ancien compte du rôle).
+  const formateurs = FORMATEURS.map((f, i) => compte(ROLES.FORMATEUR, f.nomComplet, f.matricule, {}, `-${i + 1}`));
+  const [formateur] = formateurs;
   const stagiaire = compte(ROLES.STAGIAIRE, `${PRENOMS[0]} ${NOMS[0]}`, 'DM2001');
-  for (const u of [directeur, formateur, stagiaire]) await u.save();
+  for (const u of [directeur, ...formateurs, stagiaire]) await u.save();
 
   await Etablissement.create({
     _id: idEtablissement,
@@ -122,7 +137,8 @@ export async function construireModele(maintenant = new Date()) {
         groupe,
         module,
         type: m === 5 ? TYPES_COURS.SYNCHRONE : TYPES_COURS.PRESENTIEL,
-        s1Heures: m === 0 ? 30 : 75,
+        // Des volumes annuels plausibles, au-dessus de ce que la démo pose déjà (≈ 60 h).
+        s1Heures: m === 0 ? 90 : 120,
         s2Heures: 0,
         estRegional: m === 2,
         filiere: FILIERES[groupe],
@@ -151,10 +167,12 @@ export async function construireModele(maintenant = new Date()) {
         if (jour === 'Samedi' && seance > 'S2') continue;
         const cle = (quoi) => `${quoi}|${jour}|${seance}`;
         if (occupe.has(cle(a.formateur)) || occupe.has(cle(a.groupe))) continue;
+        // ⚠️ À distance, la salle est « TEAMS » : c'est elle qui fait le type de la séance
+        //    (`typeDeSeance`) — une salle vide la ferait lire présentielle, « Espace ? ».
         const distanciel = a.type === TYPES_COURS.SYNCHRONE;
-        const salle = distanciel ? '' : SALLES.find((s) => !occupe.has(cle(s)));
+        const salle = distanciel ? SALLE_DISTANCIEL : SALLES.find((s) => !occupe.has(cle(s)));
         if (salle === undefined) continue;
-        for (const q of [a.formateur, a.groupe, salle].filter(Boolean)) occupe.add(cle(q));
+        for (const q of [a.formateur, a.groupe, distanciel ? null : salle].filter(Boolean)) occupe.add(cle(q));
         seances.push({
           etablissementId: idEtablissement,
           anneeScolaire: annee,
@@ -174,6 +192,56 @@ export async function construireModele(maintenant = new Date()) {
     }
   }
   await Seance.insertMany(seances);
+
+  // ── Le chronogramme de l'année, ACCORDÉ À L'EMPLOI (2026-11-02) ─────────────
+  // Sur les semaines du modèle, exactement les heures placées (2,5 h par séance) : l'emploi est
+  // alors conforme au chronogramme, comme dans un établissement tenu. Avant, 5 h par semaine
+  // depuis la rentrée ; après, 5 h par semaine jusqu'au volume du module. Les semaines de
+  // vacances du calendrier national restent vides.
+  const { vacances: periodesVacances } = await obtenirCalendrierNational(annee).catch(() => ({ vacances: [] }));
+  const premiere = Number(semaines[0].split('-W')[1]);
+  const heures = new Map(); // « groupe|module » → Map(numéro de semaine → heures)
+  const ajouter = (groupe, module, n, h) => {
+    const cle = `${groupe}|${module}`;
+    if (!heures.has(cle)) heures.set(cle, new Map());
+    heures.get(cle).set(n, (heures.get(cle).get(n) ?? 0) + h);
+  };
+  for (const s of seances) ajouter(s.groupe, s.module, Number(s.semaine.split('-W')[1]), DUREE_SEANCE);
+  const ouvree = (n) => !vacances(dateDuJour(`${annee}-W${n}`, 'Lundi'), periodesVacances);
+  for (let n = 1; n < premiere; n += 1) {
+    if (!ouvree(n)) continue;
+    for (const a of affectations) ajouter(a.groupe, a.module, n, 2 * DUREE_SEANCE);
+  }
+  const derniere = Number(semaines.at(-1).split('-W')[1]);
+  for (const a of affectations) {
+    const cellules = heures.get(`${a.groupe}|${a.module}`) ?? new Map();
+    let total = [...cellules.values()].reduce((x, y) => x + y, 0);
+    for (let n = derniere + 1; n <= 40 && total < a.s1Heures; n += 1) {
+      if (!ouvree(n)) continue;
+      const h = Math.min(2 * DUREE_SEANCE, a.s1Heures - total);
+      ajouter(a.groupe, a.module, n, h);
+      total += h;
+    }
+  }
+  await Chronogramme.insertMany(
+    GROUPES.map((groupe) => ({
+      etablissementId: idEtablissement,
+      anneeScolaire: annee,
+      groupe,
+      planning: Object.fromEntries(
+        affectations
+          .filter((a) => a.groupe === groupe)
+          .map((a) => [
+            a.module,
+            [...(heures.get(`${groupe}|${a.module}`) ?? new Map())]
+              .sort(([x], [y]) => x - y)
+              .map(([n, h]) => ({ semaine: `S${n}`, heures: h, type: a.type === TYPES_COURS.SYNCHRONE ? 'S' : 'P' })),
+          ])
+      ),
+      version: 1,
+    }))
+  );
+
 
   // ── Les stagiaires ──────────────────────────────────────────────────────
   const stagiaires = [];
@@ -226,20 +294,64 @@ export async function construireModele(maintenant = new Date()) {
   }
   await AbsenceStagiaire.insertMany(absences.map(({ cle, ...a }) => a));
 
-  // ── Messagerie et annonce ───────────────────────────────────────────────
-  const message = await Message.create({
-    expediteurId: directeur._id,
-    destinataireId: formateur._id,
-    sujet: 'Réunion pédagogique',
-    corps: 'Bonjour, la réunion pédagogique est avancée à jeudi 10 h, salle 1. Merci de prévoir le point sur l’avancement de vos modules.',
+  // ── Messagerie ──────────────────────────────────────────────────────────
+  const ilYa = (heures) => new Date(maintenant.getTime() - heures * 3600 * 1000);
+  const ecrire = (de, a, sujet, corps, heures, extra = {}) =>
+    Message.create({ expediteurId: de._id, destinataireId: a._id, sujet, corps, createdAt: ilYa(heures), ...extra });
+  const [nadia, youssef, salma, hicham, imane, omar] = formateurs;
+
+  const reunion = await ecrire(
+    directeur,
+    nadia,
+    'Réunion pédagogique',
+    'Bonjour, la réunion pédagogique est avancée à jeudi 10 h, salle 1. Merci de prévoir le point sur l’avancement de vos modules.',
+    98,
+    { lu: true }
+  );
+  await ecrire(nadia, directeur, 'Re : Réunion pédagogique', 'Bien noté, je serai présente. Le contrôle de M102 avec DEV101 est prêt.', 96, {
+    reponseA: reunion._id,
+    lu: true,
   });
-  await Message.create({
-    expediteurId: formateur._id,
-    destinataireId: directeur._id,
-    sujet: 'Re : Réunion pédagogique',
-    corps: 'Bien noté, je serai présente. Le contrôle de M102 avec DEV101 est prêt.',
-    reponseA: message._id,
-  });
+  await ecrire(
+    hicham,
+    directeur,
+    'Vidéoprojecteur de la salle 1',
+    'Bonjour, le vidéoprojecteur de la salle 1 ne s’allume plus depuis ce matin. Pouvez-vous prévenir le service technique ? En attendant, je peux faire cours en salle 3.',
+    74,
+    { lu: true }
+  );
+  await ecrire(
+    youssef,
+    directeur,
+    'Rattrapage M102 — DEV102',
+    'Bonjour, suite à mon absence de mardi, je propose de rattraper M102 avec DEV102 samedi matin, en salle 2 si elle est libre.',
+    50,
+    { lu: true }
+  );
+  await ecrire(
+    salma,
+    directeur,
+    'Contrôle continu de M103',
+    'Le contrôle continu de M103 est prévu la semaine prochaine pour GE101. Pourriez-vous me réserver la salle 3 pour deux séances ?',
+    26
+  );
+  await ecrire(
+    imane,
+    directeur,
+    'Formation pédagogique jeudi',
+    'Je serai en formation pédagogique jeudi prochain. Mes séances avec GE102 seront à reporter ; je peux les rattraper le samedi suivant.',
+    5
+  );
+  await ecrire(
+    omar,
+    directeur,
+    'Cours à distance de M106',
+    'Les séances synchrones de M106 se feront sur Teams cette semaine ; le lien est envoyé aux groupes. Tout est prêt de mon côté.',
+    2
+  );
+  // Le chronogramme de Nadia, renvoyé pour validation PAR L'APPLICATION ELLE-MÊME (le plus récent).
+  await renvoyerAuDirecteur(idEtablissement, annee, nadia, nadia.identifiant);
+
   const fin = new Date(maintenant.getTime() + 14 * 24 * 3600 * 1000);
   await Annonce.create({
     auteurId: directeur._id,
@@ -252,7 +364,15 @@ export async function construireModele(maintenant = new Date()) {
     fin: aujourdhui(fin),
   });
 
-  return { reference, semaines: semaines.length, seances: seances.length, stagiaires: stagiaires.length, absences: absences.length };
+  return {
+    reference,
+    semaines: semaines.length,
+    seances: seances.length,
+    stagiaires: stagiaires.length,
+    absences: absences.length,
+    formateurs: formateurs.length,
+    messages: await Message.countDocuments({ destinataireId: directeur._id }),
+  };
 }
 
 // Lancé directement : `node scripts/creer-modele-demo.js`.

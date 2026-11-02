@@ -663,4 +663,24 @@ router.patch(
   }
 });
 
+/** Afficher / masquer un formateur dans Emploi et Édition (2026-11-02). */
+router.patch(
+  '/formateurs/affichage',
+  exigerDroitPage('formateurs', 'modifier'),
+  validate({ body: z.object({ matricule: z.string().trim().min(1).max(40), masque: z.boolean() }) }),
+  async (req, res, next) => {
+    try {
+      const resultat = await service.definirAffichageFormateur(
+        req.etablissementId,
+        req.body.matricule,
+        req.body.masque
+      );
+      res.json({ success: true, ...resultat });
+      annoncerModification(req, ['formateurs', 'emploi'], { action: 'affichage-formateur' });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 export default router;

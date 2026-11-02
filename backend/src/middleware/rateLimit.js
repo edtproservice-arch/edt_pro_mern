@@ -23,8 +23,9 @@ export const SEUILS = {
   // Plus strict que la validation : un renvoi déclenche un e-mail réel, donc
   // un abus remplit la boîte de la victime et brûle le quota d'envoi.
   renvoi: { fenetreMs: 15 * 60 * 1000, maximum: 5 },
-  // Chaque démo copie un établissement entier : six par heure et par adresse suffisent largement.
-  demo: { fenetreMs: 60 * 60 * 1000, maximum: 6 },
+  // 20 copies NOUVELLES par heure et par adresse : un établissement sort souvent par une seule
+  // adresse. Changer de rôle ne compte pas (même copie, `demo.routes`).
+  demo: { fenetreMs: 60 * 60 * 1000, maximum: 20 },
 };
 
 /**

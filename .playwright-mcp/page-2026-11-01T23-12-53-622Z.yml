@@ -1,0 +1,97 @@
+- generic [ref=f18e2]:
+  - generic [ref=f18e3]:
+    - generic [ref=f18e6]:
+      - generic [ref=f18e7]:
+        - generic [ref=f18e8]:
+          - link [ref=f18e9] [cursor=pointer]:
+            - /url: /app
+            - img "EDT Pro" [ref=f18e10]
+          - button "Épingler la barre latérale" [ref=f18e11] [cursor=pointer]
+        - list [ref=f18e13]:
+          - listitem [ref=f18e14]:
+            - button "EFP Démo 2026-2027" [ref=f18e15] [cursor=pointer]:
+              - generic [ref=f18e21]:
+                - generic [ref=f18e22]: EFP Démo
+                - generic [ref=f18e23]: 2026-2027
+      - generic [ref=f18e27]:
+        - list [ref=f18e29]:
+          - listitem [ref=f18e30]:
+            - link "Accueil" [ref=f18e31] [cursor=pointer]:
+              - /url: /app
+          - listitem [ref=f18e36]:
+            - link "Messagerie" [ref=f18e37] [cursor=pointer]:
+              - /url: /app/messagerie
+            - generic: "1"
+          - listitem [ref=f18e42]:
+            - link "Annonces" [ref=f18e43] [cursor=pointer]:
+              - /url: /app/annonces
+        - generic [ref=f18e48]:
+          - generic [ref=f18e49]: Navigation
+          - list [ref=f18e50]:
+            - listitem [ref=f18e51]:
+              - link "Emploi" [ref=f18e52] [cursor=pointer]:
+                - /url: /app/emploi
+            - listitem [ref=f18e56]:
+              - link "Édition" [ref=f18e57] [cursor=pointer]:
+                - /url: /app/edition
+            - listitem [ref=f18e66]:
+              - link "Avancement" [ref=f18e67] [cursor=pointer]:
+                - /url: /app/avancement
+            - listitem [ref=f18e72]:
+              - link "Absences" [ref=f18e73] [cursor=pointer]:
+                - /url: /app/absences
+            - listitem [ref=f18e80]:
+              - link "Documents" [ref=f18e81] [cursor=pointer]:
+                - /url: /app/documents
+        - generic [ref=f18e86]:
+          - generic [ref=f18e87]: Paramètres
+          - list [ref=f18e88]:
+            - listitem [ref=f18e89]:
+              - button "Paramètres" [ref=f18e90] [cursor=pointer]
+      - generic [ref=f18e97]:
+        - list [ref=f18e98]:
+          - listitem [ref=f18e99]:
+            - link "Application bureau Windows" [ref=f18e100] [cursor=pointer]:
+              - /url: https://edtpro.tech/telechargements/EDT-Pro_x64-setup.exe
+              - generic [ref=f18e104]: Application bureau
+              - generic [ref=f18e105]: Windows
+        - list [ref=f18e106]:
+          - listitem [ref=f18e107]:
+            - button "DD Direction de la démo directeur-1-f6b95e@demo.invalid" [ref=f18e108] [cursor=pointer]:
+              - generic [ref=f18e109]: DD
+              - generic [ref=f18e111]:
+                - generic [ref=f18e112]: Direction de la démo
+                - generic [ref=f18e113]: directeur-1-f6b95e@demo.invalid
+      - button "Toggle Sidebar" [ref=f18e117]
+    - main [ref=f18e118]:
+      - generic [ref=f18e120]:
+        - paragraph [ref=f18e121]:
+          - generic [ref=f18e124]:
+            - strong [ref=f18e125]: Démo
+            - text: "— établissement fictif : tout fonctionne, rien n’en sort, et cette copie est effacée dans les 24 heures."
+        - generic [ref=f18e126]:
+          - button "Quitter la démo" [ref=f18e127] [cursor=pointer]
+          - button "Inscrire mon établissement" [ref=f18e128] [cursor=pointer]
+      - generic [ref=f18e129]:
+        - button "Toggle Sidebar" [ref=f18e130] [cursor=pointer]
+        - navigation "breadcrumb" [ref=f18e132]:
+          - list [ref=f18e133]:
+            - listitem [ref=f18e134]:
+              - link "Absences" [disabled] [ref=f18e135]
+        - generic [ref=f18e136]:
+          - 'generic "Collaboration : Reconnexion…" [ref=f18e139]'
+          - button "Ajouter aux favoris" [ref=f18e141] [cursor=pointer]
+          - button "Actions de la page" [ref=f18e143] [cursor=pointer]
+      - region "Absences" [ref=f18e146]:
+        - generic [ref=f18e147]:
+          - group [ref=f18e148]:
+            - button "Formateurs" [pressed] [ref=f18e149] [cursor=pointer]
+            - button "Stagiaires" [ref=f18e150] [cursor=pointer]
+          - generic [ref=f18e151]:
+            - generic [ref=f18e152]:
+              - button "Toutes" [ref=f18e153] [cursor=pointer]
+              - button "Sans rattrapage" [ref=f18e154] [cursor=pointer]
+              - button "Rattrapées" [ref=f18e155] [cursor=pointer]
+              - generic [ref=f18e156]: 0 absence(s)
+            - paragraph [ref=f18e157]: Aucune absence marquée cette année scolaire.
+  - region "Notifications alt+T"

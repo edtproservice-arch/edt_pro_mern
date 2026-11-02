@@ -60,7 +60,8 @@ export async function construireExportIndividuel(etablissementId, anneeScolaire,
   let sujets;
   if (axe === 'salle') sujets = sallesDeLaSemaine(contexte.salles ?? [], seances);
   else if (axe === 'groupe') sujets = contexte.groupes ?? [];
-  else sujets = contexte.formateurs.map((f) => f.matricule);
+  // Un formateur masqué (page Formateurs) ne s'imprime pas — comme à l'écran.
+  else sujets = contexte.formateurs.filter((f) => !f.masque).map((f) => f.matricule);
 
   const parIdentite =
     axe === 'groupe'

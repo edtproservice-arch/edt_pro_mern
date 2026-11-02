@@ -10,6 +10,7 @@ describe('estPagePublique', () => {
       '/mot-de-passe-oublie',
       '/reinitialisation',
       '/essai',
+      '/',
     ]) {
       expect(estPagePublique(chemin)).toBe(true);
     }
@@ -27,7 +28,6 @@ describe('estPagePublique', () => {
     expect(estPagePublique('/admin')).toBe(false);
     // Un chemin qui COMMENCE comme une page publique n'en est pas une.
     expect(estPagePublique('/connexions-actives')).toBe(false);
-    expect(estPagePublique('/')).toBe(false);
     expect(estPagePublique(undefined)).toBe(false);
   });
 });

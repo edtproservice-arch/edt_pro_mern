@@ -183,6 +183,15 @@ export function corrigerFormateurs(corrections) {
 }
 
 /**
+ * Affiche ou masque un formateur dans Emploi et Édition (2026-11-02) — un
+ * formateur masqué n'y a plus de ligne, ni à l'écran ni à l'impression.
+ * Enregistré AUSSITÔT, sans passer par « Enregistrer ».
+ */
+export function definirAffichageFormateur(matricule, masque) {
+  return api.patch('/api/v2/base/formateurs/affichage', { matricule, masque });
+}
+
+/**
  * Ajoute, met à jour et retire des formateurs directement dans la base.
  *
  * @param {{ajouter?: Array<{nom: string, matricule?: string, email?: string, masseHoraire?: number}>,

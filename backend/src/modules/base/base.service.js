@@ -1,6 +1,7 @@
 import { emailDeduit, resoudreHomonymes } from 'shared/domain';
 import { Base } from '../../models/Base.js';
 import { EnoteImport } from '../../models/EnoteImport.js';
+import { Etablissement } from '../../models/Etablissement.js';
 import { notFound } from '../../lib/httpError.js';
 
 /**
@@ -16,7 +17,10 @@ import { notFound } from '../../lib/httpError.js';
  * console du navigateur d'erreurs sans qu'il se passe rien d'anormal.
  */
 export async function obtenir(etablissementId, anneeScolaire) {
-  const base = await Base.findOne({ etablissementId, anneeScolaire });
+  const [base, etablissement] = await Promise.all([
+    Base.findOne({ etablissementId, anneeScolaire }),
+    Etablissement.findById(etablissementId).select('formateursMasques').lean(),
+  ]);
   if (!base) return null;
 
   return {
@@ -30,6 +34,9 @@ export async function obtenir(etablissementId, anneeScolaire) {
       email: formateur.email,
       masseHoraire: formateur.masseHoraire,
     })),
+    // Les matricules masqués d'Emploi et d'Édition (2026-11-02) — à part de
+    // `formateurs`, que la carte relit pour se reconstruire.
+    formateursMasques: etablissement?.formateursMasques ?? [],
     groupes: base.groupes,
     fusionGroupes: base.fusionGroupes,
     groupeModes: Object.fromEntries(base.groupeModes ?? []),
@@ -295,4 +302,18 @@ export async function definirMasseHoraire(etablissementId, anneeScolaire, matric
   await base.save();
 
   return { matricule: formateur.matricule, masseHoraire: formateur.masseHoraire };
+}
+
+/**
+ * Affiche ou masque un formateur dans Emploi et Édition (2026-11-02). Un
+ * formateur masqué n'a plus de ligne à l'écran ni à l'impression ; ses séances
+ * restent en base et dans les vues par groupe et par salle.
+ */
+export async function definirAffichageFormateur(etablissementId, matricule, masque) {
+  const valeur = String(matricule).trim();
+  await Etablissement.updateOne(
+    { _id: etablissementId },
+    masque ? { $addToSet: { formateursMasques: valeur } } : { $pull: { formateursMasques: valeur } }
+  );
+  return { matricule: valeur, masque };
 }

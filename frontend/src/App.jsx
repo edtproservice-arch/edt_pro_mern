@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ROLES } from 'shared/constants';
 import CoquilleApp from '@/components/layout/CoquilleApp';
 import GardeRole from '@/components/layout/GardeRole';
@@ -36,6 +36,7 @@ import { queryClient } from '@/lib/queryClient';
 import { Toaster } from '@/components/ui/sonner';
 
 import LoginPage from '@/features/auth/LoginPage';
+import PageAccueil from '@/features/accueil/PageAccueil';
 import PageConnexionCarte from '@/features/auth/PageConnexionCarte';
 import RegisterPage from '@/features/auth/RegisterPage';
 import VerificationPage from '@/features/auth/VerificationPage';
@@ -115,7 +116,9 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Navigate to="/connexion" replace />} />
+          {/* La page d'accueil publique (2026-11-01) ; un compte connecté file vers son espace,
+              et les applications installées vers la connexion. */}
+          <Route path="/" element={<PageAccueil />} />
 
           {/* F1 — authentification */}
           <Route path="/connexion" element={<LoginPage />} />

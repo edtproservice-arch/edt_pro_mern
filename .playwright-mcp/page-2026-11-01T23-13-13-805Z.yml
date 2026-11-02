@@ -1,0 +1,112 @@
+- generic [ref=f20e2]:
+  - generic [ref=f20e3]:
+    - generic [ref=f20e6]:
+      - generic [ref=f20e7]:
+        - generic [ref=f20e8]:
+          - link [ref=f20e9] [cursor=pointer]:
+            - /url: /app
+            - img "EDT Pro" [ref=f20e10]
+          - button "Épingler la barre latérale" [ref=f20e11] [cursor=pointer]
+        - list [ref=f20e13]:
+          - listitem [ref=f20e14]:
+            - button "EFP Démo 2026-2027" [ref=f20e15] [cursor=pointer]:
+              - generic [ref=f20e21]:
+                - generic [ref=f20e22]: EFP Démo
+                - generic [ref=f20e23]: 2026-2027
+      - generic [ref=f20e27]:
+        - list [ref=f20e29]:
+          - listitem [ref=f20e30]:
+            - link "Accueil" [ref=f20e31] [cursor=pointer]:
+              - /url: /app
+          - listitem [ref=f20e36]:
+            - link "Messagerie" [ref=f20e37] [cursor=pointer]:
+              - /url: /app/messagerie
+            - generic: "1"
+          - listitem [ref=f20e42]:
+            - link "Annonces" [ref=f20e43] [cursor=pointer]:
+              - /url: /app/annonces
+        - generic [ref=f20e48]:
+          - generic [ref=f20e49]: Navigation
+          - list [ref=f20e50]:
+            - listitem [ref=f20e51]:
+              - link "Emploi" [ref=f20e52] [cursor=pointer]:
+                - /url: /app/emploi
+            - listitem [ref=f20e56]:
+              - link "Édition" [ref=f20e57] [cursor=pointer]:
+                - /url: /app/edition
+            - listitem [ref=f20e66]:
+              - link "Avancement" [ref=f20e67] [cursor=pointer]:
+                - /url: /app/avancement
+            - listitem [ref=f20e72]:
+              - link "Absences" [ref=f20e73] [cursor=pointer]:
+                - /url: /app/absences
+            - listitem [ref=f20e80]:
+              - link "Documents" [ref=f20e81] [cursor=pointer]:
+                - /url: /app/documents
+        - generic [ref=f20e86]:
+          - generic [ref=f20e87]: Paramètres
+          - list [ref=f20e88]:
+            - listitem [ref=f20e89]:
+              - button "Paramètres" [ref=f20e90] [cursor=pointer]
+      - generic [ref=f20e97]:
+        - list [ref=f20e98]:
+          - listitem [ref=f20e99]:
+            - link "Application bureau Windows" [ref=f20e100] [cursor=pointer]:
+              - /url: https://edtpro.tech/telechargements/EDT-Pro_x64-setup.exe
+              - generic [ref=f20e104]: Application bureau
+              - generic [ref=f20e105]: Windows
+        - list [ref=f20e106]:
+          - listitem [ref=f20e107]:
+            - button "DD Direction de la démo directeur-1-f6b95e@demo.invalid" [ref=f20e108] [cursor=pointer]:
+              - generic [ref=f20e109]: DD
+              - generic [ref=f20e111]:
+                - generic [ref=f20e112]: Direction de la démo
+                - generic [ref=f20e113]: directeur-1-f6b95e@demo.invalid
+      - button "Toggle Sidebar" [ref=f20e117]
+    - main [ref=f20e118]:
+      - generic [ref=f20e120]:
+        - paragraph [ref=f20e121]:
+          - generic [ref=f20e124]:
+            - strong [ref=f20e125]: Démo
+            - text: "— établissement fictif : tout fonctionne, rien n’en sort, et cette copie est effacée dans les 24 heures."
+        - generic [ref=f20e126]:
+          - button "Quitter la démo" [ref=f20e127] [cursor=pointer]
+          - button "Inscrire mon établissement" [ref=f20e128] [cursor=pointer]
+      - generic [ref=f20e129]:
+        - button "Toggle Sidebar" [ref=f20e130] [cursor=pointer]
+        - navigation "breadcrumb" [ref=f20e132]:
+          - list [ref=f20e133]:
+            - listitem [ref=f20e134]:
+              - link "Messagerie" [disabled] [ref=f20e135]
+        - generic [ref=f20e136]:
+          - button "Ajouter aux favoris" [ref=f20e137] [cursor=pointer]
+          - button "Actions de la page" [ref=f20e139] [cursor=pointer]
+      - generic [ref=f20e143]:
+        - navigation [ref=f20e146]:
+          - button "Écrire" [ref=f20e147] [cursor=pointer]
+          - button "Réception 1" [ref=f20e148] [cursor=pointer]:
+            - generic [ref=f20e152]: Réception
+            - generic [ref=f20e153]: "1"
+          - button "Brouillons" [ref=f20e154] [cursor=pointer]
+          - button "Envoyés" [ref=f20e159] [cursor=pointer]
+          - button "Archive" [ref=f20e164] [cursor=pointer]
+          - button "Corbeille" [ref=f20e169] [cursor=pointer]
+        - separator [ref=f20e174]
+        - generic [ref=f20e185]:
+          - generic [ref=f20e186]:
+            - heading "Réception" [level=2] [ref=f20e187]
+            - group [ref=f20e188]:
+              - button "Tous" [pressed] [ref=f20e189] [cursor=pointer]
+              - button "Non lus" [ref=f20e190] [cursor=pointer]
+          - textbox "Rechercher…" [ref=f20e196]
+          - list [ref=f20e197]:
+            - listitem [ref=f20e198]:
+              - 'button "Nadia Amrani à l’instant Re : Réunion pédagogique Bien noté, je serai présente. Le contrôle de M102 avec DEV101 est prêt." [ref=f20e199] [cursor=pointer]':
+                - generic [ref=f20e200]:
+                  - generic [ref=f20e201]: Nadia Amrani
+                  - generic [ref=f20e203]: à l’instant
+                - generic [ref=f20e204]: "Re : Réunion pédagogique"
+                - generic [ref=f20e206]: Bien noté, je serai présente. Le contrôle de M102 avec DEV101 est prêt.
+        - separator [ref=f20e207]
+        - paragraph [ref=f20e218]: Choisissez un message pour le lire.
+  - region "Notifications alt+T"

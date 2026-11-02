@@ -64,7 +64,8 @@ export async function construireExport(etablissementId, anneeScolaire, valeur, o
   else if (axe === 'groupe') {
     sujets = periode === PERIODES.SOIR ? groupesDuSoir(contexte.groupes ?? []) : (contexte.groupes ?? []);
   } else {
-    sujets = contexte.formateurs.map((f) => f.matricule);
+    // Un formateur masqué (page Formateurs) ne s'imprime pas — comme à l'écran.
+    sujets = contexte.formateurs.filter((f) => !f.masque).map((f) => f.matricule);
   }
 
   const parIdentite =

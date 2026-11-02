@@ -31,7 +31,7 @@ import { estApplicationTauri } from '@/lib/miseAJourDesktop';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { CloudShader } from '@/components/ui/cloud-shader';
+import CielAnime from './CielAnime';
 
 /**
  * ═══ LA PAGE D'ACCUEIL PUBLIQUE D'EDT PRO, À LA RACINE (2026-11-01, demande du porteur) ═══
@@ -50,7 +50,7 @@ import { CloudShader } from '@/components/ui/cloud-shader';
  * ⚠️ PAS DANS LES APPLICATIONS INSTALLÉES (bureau, Android) : elles s'ouvrent sur `/` et
  *    doivent mener droit à la connexion. Un compte connecté file vers son espace.
  * ═══ UN CIEL ANIMÉ (même jour : « le fond de Codex est naturel, réaliste et animé ») ═══ L'accroche
- * et le bandeau final sont posés sur `CloudShader` d'Aceternity (WebGL, 2026-11-02). Boutons, cartes et questions sont les
+ * et le bandeau final sont posés sur `CielAnime` (WebGL). Boutons, cartes et questions sont les
  * composants shadcn de l'application (`Button`, `Card`, `Collapsible`), arrondis en pilule.
  *
  * ⚠️ TOUJOURS EN CLAIR : couleurs écrites en dur, le thème sombre ne s'y applique pas.
@@ -202,18 +202,6 @@ function RangeeFonctions() {
           </div>
         );
       })}
-    </div>
-  );
-}
-
-/**
- * Le ciel de l'accroche et du bandeau final : le `CloudShader` d'Aceternity UI, tel quel
- * (demande du porteur, 2026-11-02 : « change le ciel complet par celui-là »). Décoratif.
- */
-function Ciel() {
-  return (
-    <div aria-hidden="true" className="pointer-events-none absolute inset-0">
-      <CloudShader />
     </div>
   );
 }
@@ -674,7 +662,7 @@ export default function PageAccueil() {
 
       {/* ── Accroche ─────────────────────────────────────────────────────────── */}
       <section className="relative overflow-hidden">
-        <Ciel />
+        <CielAnime />
         {/* Le ciel se fond dans le blanc de la page, sous la fenêtre d'application. */}
         <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-[38%] bg-gradient-to-b from-transparent to-white" />
         {/* ⚠️ TOUT DANS LE PREMIER ÉCRAN (demande du porteur) : icône, titre, texte ET boutons, sans défiler. */}
@@ -867,7 +855,7 @@ export default function PageAccueil() {
 
       {/* ── Bandeau final ────────────────────────────────────────────────────── */}
       <section className="relative overflow-hidden px-5 py-40 text-center">
-        <Ciel />
+        <CielAnime />
         <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-white to-transparent" />
         <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-white to-transparent" />
         <div className="relative">

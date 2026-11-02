@@ -11,6 +11,7 @@ describe('estPagePublique', () => {
       '/reinitialisation',
       '/essai',
       '/',
+      '/confidentialite',
     ]) {
       expect(estPagePublique(chemin)).toBe(true);
     }

@@ -19,6 +19,8 @@ export const PAGES_PUBLIQUES = [
   '/essai',
   // La connexion par le QR de la carte de stagiaire (2026-10-11) : aucune session à perdre ici.
   '/carte',
+  // Les règles de confidentialité (2026-11-02) : exigées par Google Play, lisibles sans compte.
+  '/confidentialite',
 ];
 
 /** Ce chemin est-il celui d'une page publique ? (`/verification?email=…` : le chemin seul.) */

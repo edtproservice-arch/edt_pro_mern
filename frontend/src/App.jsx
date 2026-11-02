@@ -37,6 +37,7 @@ import { Toaster } from '@/components/ui/sonner';
 
 import LoginPage from '@/features/auth/LoginPage';
 import PageAccueil from '@/features/accueil/PageAccueil';
+import PageConfidentialite from '@/features/legal/PageConfidentialite';
 import PageConnexionCarte from '@/features/auth/PageConnexionCarte';
 import RegisterPage from '@/features/auth/RegisterPage';
 import VerificationPage from '@/features/auth/VerificationPage';
@@ -119,6 +120,8 @@ export default function App() {
           {/* La page d'accueil publique (2026-11-01) ; un compte connecté file vers son espace,
               et les applications installées vers la connexion. */}
           <Route path="/" element={<PageAccueil />} />
+          {/* Règles de confidentialité, déclarées dans la Play Console (2026-11-02). */}
+          <Route path="/confidentialite" element={<PageConfidentialite />} />
 
           {/* F1 — authentification */}
           <Route path="/connexion" element={<LoginPage />} />

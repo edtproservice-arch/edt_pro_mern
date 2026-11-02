@@ -879,7 +879,7 @@ export default function PageAccueil() {
           {[
             ['Produit', [['Démo', '#demarrer'], ['Fonctionnalités', '#fonctionnalites'], ...(AFFICHER_TARIFS ? [['Tarifs', '#tarifs']] : []), ['Télécharger pour Windows', URL_INSTALLEUR_BUREAU]]],
             ['Établissements', [['Inscrire mon établissement', '/inscription'], ['Se connecter', '/connexion']]],
-            ['Assistance', [['Questions fréquentes', '#questions'], ['Nous écrire', `mailto:${CONTACT}`]]],
+            ['Assistance', [['Questions fréquentes', '#questions'], ['Nous écrire', `mailto:${CONTACT}`], ['Confidentialité', '/confidentialite']]],
             ['Applications', [['Windows', URL_INSTALLEUR_BUREAU], ['Android (bientôt)', '#partout']]],
           ].map(([titre, liens]) => (
             <div key={titre}>

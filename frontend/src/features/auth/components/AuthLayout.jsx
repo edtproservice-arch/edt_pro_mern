@@ -31,7 +31,9 @@ export default function AuthLayout({ titre, sousTitre, largeur = 'max-w-md', chi
         )}
 
         <p className="mt-8 text-center text-xs text-muted-foreground">
-          © 2026 eDTpro. Tous droits réservés.
+          © 2026 eDTpro. Tous droits réservés. ·{' '}
+          {/* Google Play exige ce lien DANS l'application aussi (2026-11-02). */}
+          <Link to="/confidentialite" className="hover:underline">Confidentialité</Link>
         </p>
       </div>
     </div>

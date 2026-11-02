@@ -392,6 +392,7 @@ const PAGES_DIRECTEUR = [
   },
   {
     image: 'avancement',
+    hauteur: 1153, // la page ENTIÈRE (demande du porteur) : courbe, bilan, modules, classement
     titre: 'L’avancement de chaque module',
     texte: 'Heures affectées et heures réalisées, module par module et groupe par groupe : le retard se voit avant de devenir un problème.',
   },
@@ -445,10 +446,10 @@ function TelephoneCodex({ src, alt }) {
 }
 
 /** Une capture d'écran d'ordinateur, posée comme une fenêtre sur le ciel de la rangée. */
-function Capture({ src, alt }) {
+function Capture({ src, alt, hauteur = 900 }) {
   return (
     <div className="overflow-hidden rounded-lg bg-white shadow-2xl shadow-[#0b1f3a]/20 ring-1 ring-black/10">
-      <img src={src} alt={alt} width={1440} height={900} className="block h-auto w-full" loading="lazy" />
+      <img src={src} alt={alt} width={1440} height={hauteur} className="block h-auto w-full" loading="lazy" />
     </div>
   );
 }
@@ -742,9 +743,9 @@ export default function PageAccueil() {
             La façon la plus simple de tenir l’emploi du temps
           </h2>
           <div className="mt-24 space-y-28">
-            {PAGES_DIRECTEUR.map(({ image, titre, texte }, i) => (
+            {PAGES_DIRECTEUR.map(({ image, titre, texte, hauteur }, i) => (
               <Rangee key={image} inverse={i % 2 === 1} titre={titre} texte={texte}>
-                <Capture src={`/accueil/directeur/${image}.webp`} alt={titre} />
+                <Capture src={`/accueil/directeur/${image}.webp`} alt={titre} hauteur={hauteur} />
               </Rangee>
             ))}
             {/* Un seul écran de téléphone (demande du porteur, 2026-11-02). */}

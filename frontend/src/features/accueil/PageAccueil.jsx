@@ -75,11 +75,13 @@ function CielFige() {
  * `SectionsAdmin`), demandé par le porteur : entrées blanches sur le ciel, foncées sur la barre
  * blanche, pastille de fond sur la section à l'écran et au survol.
  */
+const AFFICHER_TARIFS = false;
+
 const MENU = [
   ['demo-en-direct', 'Démo'],
   ['fonctionnalites', 'Fonctionnalités'],
   ['partout', 'Partout'],
-  ['tarifs', 'Tarifs'],
+  ...(AFFICHER_TARIFS ? [['tarifs', 'Tarifs']] : []),
   ['questions', 'Questions'],
 ];
 
@@ -803,41 +805,45 @@ export default function PageAccueil() {
         </div>
       </section>
 
-      {/* ── Tarifs ───────────────────────────────────────────────────────────── */}
-      <section id="tarifs" className="scroll-mt-20 px-5 py-28 sm:px-8">
-        <div className="mx-auto max-w-[1180px]">
-          <h2 className="text-center text-[42px] font-medium tracking-[-0.03em]">Tarifs</h2>
-          <p className="mt-4 text-center text-[17px] text-slate-600">Un mois pour essayer, puis l’abonnement qui vous convient.</p>
-          <div className="mt-14 grid gap-4 md:grid-cols-3">
-            {TARIFS.map(({ nom, prix, periode, texte, points, bouton, misEnAvant }) => (
-              <Card key={nom} className={`flex flex-col bg-white text-slate-900 shadow-none ${misEnAvant ? 'border-[#0071DB] ring-1 ring-[#0071DB]' : ''}`}>
-                <CardHeader className="space-y-0 p-7 pb-0">
-                  <CardTitle className="text-[21px] font-medium">{nom}</CardTitle>
-                  <p className="pt-5">
-                    <span className="text-[44px] font-medium tracking-[-0.03em]">{prix}</span>
-                    <span className="ml-2 text-[15px] text-slate-500">{periode}</span>
-                  </p>
-                  <CardDescription className="pt-3 text-[15px] leading-6 text-slate-600">{texte}</CardDescription>
-                </CardHeader>
-                <CardContent className="flex-1 p-7 pt-6">
-                  <ul className="space-y-3 text-[15px]">
-                    {points.map((point) => (
-                      <li key={point} className="flex items-center gap-2.5">
-                        <Check className="size-4 shrink-0 text-[#489C5A]" /> {point}
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-                <CardFooter className="p-7 pt-0">
-                  <Button asChild variant={misEnAvant ? 'default' : 'secondary'} className={`${PILULE} w-full`}>
-                    <Link to="/inscription">{bouton}</Link>
-                  </Button>
-                </CardFooter>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
+      {AFFICHER_TARIFS && (
+        <>
+          {/* ── Tarifs ───────────────────────────────────────────────────────── */}
+          <section id="tarifs" className="scroll-mt-20 px-5 py-28 sm:px-8">
+            <div className="mx-auto max-w-[1180px]">
+              <h2 className="text-center text-[42px] font-medium tracking-[-0.03em]">Tarifs</h2>
+              <p className="mt-4 text-center text-[17px] text-slate-600">Un mois pour essayer, puis l’abonnement qui vous convient.</p>
+              <div className="mt-14 grid gap-4 md:grid-cols-3">
+                {TARIFS.map(({ nom, prix, periode, texte, points, bouton, misEnAvant }) => (
+                  <Card key={nom} className={`flex flex-col bg-white text-slate-900 shadow-none ${misEnAvant ? 'border-[#0071DB] ring-1 ring-[#0071DB]' : ''}`}>
+                    <CardHeader className="space-y-0 p-7 pb-0">
+                      <CardTitle className="text-[21px] font-medium">{nom}</CardTitle>
+                      <p className="pt-5">
+                        <span className="text-[44px] font-medium tracking-[-0.03em]">{prix}</span>
+                        <span className="ml-2 text-[15px] text-slate-500">{periode}</span>
+                      </p>
+                      <CardDescription className="pt-3 text-[15px] leading-6 text-slate-600">{texte}</CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex-1 p-7 pt-6">
+                      <ul className="space-y-3 text-[15px]">
+                        {points.map((point) => (
+                          <li key={point} className="flex items-center gap-2.5">
+                            <Check className="size-4 shrink-0 text-[#489C5A]" /> {point}
+                          </li>
+                        ))}
+                      </ul>
+                    </CardContent>
+                    <CardFooter className="p-7 pt-0">
+                      <Button asChild variant={misEnAvant ? 'default' : 'secondary'} className={`${PILULE} w-full`}>
+                        <Link to="/inscription">{bouton}</Link>
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          </section>
+        </>
+      )}
 
       {/* ── Questions ────────────────────────────────────────────────────────── */}
       <section id="questions" className="scroll-mt-20 px-5 py-28 sm:px-8">
@@ -882,7 +888,7 @@ export default function PageAccueil() {
       <footer className="bg-white px-5 pb-10 pt-20 sm:px-8">
         <div className="mx-auto grid max-w-[1320px] gap-10 sm:grid-cols-2 lg:grid-cols-4">
           {[
-            ['Produit', [['Démo', '#demarrer'], ['Fonctionnalités', '#fonctionnalites'], ['Tarifs', '#tarifs'], ['Télécharger pour Windows', URL_INSTALLEUR_BUREAU]]],
+            ['Produit', [['Démo', '#demarrer'], ['Fonctionnalités', '#fonctionnalites'], ...(AFFICHER_TARIFS ? [['Tarifs', '#tarifs']] : []), ['Télécharger pour Windows', URL_INSTALLEUR_BUREAU]]],
             ['Établissements', [['Inscrire mon établissement', '/inscription'], ['Se connecter', '/connexion']]],
             ['Assistance', [['Questions fréquentes', '#questions'], ['Nous écrire', `mailto:${CONTACT}`]]],
             ['Applications', [['Windows', URL_INSTALLEUR_BUREAU], ['Android (bientôt)', '#partout']]],

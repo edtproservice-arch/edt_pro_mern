@@ -211,7 +211,14 @@ cd /opt/edtpro/app/backend
 sudo -u edtpro npm run verifier:db
 sudo -u edtpro npm run init:db
 sudo -u edtpro npm run creer:admin
+
+# Obligatoire pour « Essayer la démo » : crée les données fictives de référence
+sudo -u edtpro npm run creer:modele-demo
 ```
+
+Le modèle est créé dans la base indiquée par `backend/.env`. Après un déploiement sur un autre
+hébergeur, lancer également `node scripts/creer-modele-demo.js` depuis `backend/`, dans
+l'environnement du service API configuré avec l'URI MongoDB de production.
 
 ### 6.2 Build du frontend
 
@@ -329,6 +336,7 @@ certbot --nginx -d edtpro.ma -d www.edtpro.ma
 ## 9. Vérifications finales
 
 - [ ] `https://edtpro.ma` affiche l'application, connexion OK
+- [ ] « Essayer la démo » ouvre un bac à sable (le modèle de démo a été créé dans la base de production)
 - [ ] Un export **PDF** (emploi global, émargement, billet d'absence) se télécharge et le texte n'est pas « gras »
 - [ ] Une **génération automatique** avec recherche approfondie rend des séances (sinon : `pm2 logs edtpro-api`, chercher « Python introuvable » / `ortools_absent`)
 - [ ] Deux navigateurs ouverts sur le même emploi du temps → les modifications apparaissent en direct (WebSocket)

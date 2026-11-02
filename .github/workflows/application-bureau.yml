@@ -16,7 +16,9 @@
 #   4. génère le projet Android, compile l'APK (arm64 + armv7) et la SIGNE (secrets ANDROID_*) ;
 #   5. dépose sur le serveur l'APK (`EDT-Pro.apk`, bouton « Application mobile ») et
 #      `android.json`, que lit l'application Android pour proposer la mise à jour ;
-#   6. garde l'APK dans les artefacts de l'exécution (onglet Actions).
+#   6. garde l'APK dans les artefacts de l'exécution (onglet Actions) ;
+#   7. compile aussi l'AAB signé (même clé), gardé dans les artefacts : c'est lui qu'on téléverse dans
+#      la Play Console (2026-11-02).
 #
 # Secrets à créer UNE fois (Settings → Secrets and variables → Actions) :
 #   TAURI_SIGNING_PRIVATE_KEY          le contenu de ~/.tauri/edt-pro.key
@@ -212,9 +214,11 @@ jobs:
           # logo réduit, que le découpage du lanceur ne rogne pas (voir icons/source/icones.json).
           npx tauri icon src-tauri/icons/source/icones.json
 
-      - name: Compiler l'APK
+      # L'APK (téléchargée depuis edtpro.tech) ET l'AAB (2026-11-02) : Google Play n'accepte que des
+      # Android App Bundles pour une nouvelle application.
+      - name: Compiler l'APK et l'AAB
         working-directory: frontend
-        run: npx tauri android build --apk --target aarch64 --target armv7 --ci
+        run: npx tauri android build --apk --aab --target aarch64 --target armv7 --ci
 
       - name: Signer l'APK
         shell: bash
@@ -249,6 +253,16 @@ jobs:
           fi
           "$OUTILS/zipalign" -p -f 4 "$NON_SIGNEE" "$RUNNER_TEMP/alignee.apk"
           "$OUTILS/apksigner" sign --ks "$RUNNER_TEMP/cle.jks" --ks-pass env:ANDROID_KEYSTORE_MOT_DE_PASSE --ks-key-alias "$ALIAS" --out "EDT-Pro_$VERSION.apk" "$RUNNER_TEMP/alignee.apk"
+          # L'AAB pour Google Play, signé par la MÊME clé (2026-11-02) : celle déclarée comme clé
+          # d'importation, et qui garde à jour les APK déjà installées. ⚠️ Un AAB se signe comme un JAR
+          # (jarsigner), pas avec apksigner.
+          BUNDLE=$(find frontend/src-tauri/gen/android/app/build/outputs/bundle -name '*release*.aab' | head -n 1)
+          if [ -z "$BUNDLE" ]; then
+            echo "::error::AAB introuvable après la compilation."
+            exit 1
+          fi
+          jarsigner -keystore "$RUNNER_TEMP/cle.jks" -storepass:env ANDROID_KEYSTORE_MOT_DE_PASSE -sigalg SHA256withRSA -digestalg SHA-256 -signedjar "EDT-Pro_$VERSION.aab" "$BUNDLE" "$ALIAS"
+          jarsigner -verify "EDT-Pro_$VERSION.aab" > /dev/null
           rm -f "$RUNNER_TEMP/cle.jks"
           "$OUTILS/apksigner" verify "EDT-Pro_$VERSION.apk"
           cp "EDT-Pro_$VERSION.apk" EDT-Pro.apk
@@ -260,6 +274,13 @@ jobs:
         with:
           name: EDT-Pro_${{ env.VERSION }}.apk
           path: EDT-Pro_${{ env.VERSION }}.apk
+
+      # L'AAB n'est PAS déposé sur le serveur : il se téléverse à la main dans la Play Console.
+      - name: Garder l'AAB pour Google Play (onglet Actions)
+        uses: actions/upload-artifact@v4
+        with:
+          name: EDT-Pro_${{ env.VERSION }}.aab
+          path: EDT-Pro_${{ env.VERSION }}.aab
 
       - name: Déposer l'APK sur le serveur
         shell: bash

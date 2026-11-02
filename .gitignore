@@ -35,3 +35,8 @@ sauvegarde-*.json
 __pycache__/
 *.pyc
 .venv/
+
+# Captures de travail (visuels Play Store, navigateur de test) : jamais dans le dépôt —
+# les captures brutes peuvent montrer des données réelles.
+captures-play/
+.playwright-mcp/

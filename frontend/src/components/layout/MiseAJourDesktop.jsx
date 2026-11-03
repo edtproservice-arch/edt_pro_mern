@@ -19,8 +19,8 @@ import { estApplicationAndroid, estApplicationTauri, suiviMiseAJour, useMiseAJou
  *
  * ⚠️ DANS L'APPLICATION SEULEMENT (précision du porteur) : dans un navigateur, le site est à
  *    jour à chaque déploiement — ni icône ni fenêtre, quoi qu'il arrive.
- * ⚠️ SUR ANDROID (2026-10-30), « Mettre à jour » ouvre la nouvelle APK dans le navigateur :
- *    Android n'installe pas seul une application hors Play Store, l'utilisateur confirme.
+ * ⚠️ SUR ANDROID, « Ouvrir le Play Store » mène à la fiche eDTpro de Google Play (2026-11-03,
+ *    demande du porteur), qui installe la mise à jour — et non plus l'APK du site dans le navigateur.
  */
 
 /** L'icône de la barre du haut : invisible tant qu'aucune version n'attend. */
@@ -112,7 +112,7 @@ export function FenetreMiseAJour() {
         {!enCours && (
           <p className="text-xs text-muted-foreground">
             {android
-              ? 'La nouvelle version se télécharge dans votre navigateur : ouvrez le fichier pour l’installer. '
+              ? 'La mise à jour s’installe depuis le Play Store : appuyez sur « Mettre à jour » sur la fiche eDTpro. '
               : 'L’application redémarrera une fois la mise à jour installée. '}
             Vos données ne sont pas touchées : elles sont sur le serveur.
           </p>
@@ -127,7 +127,7 @@ export function FenetreMiseAJour() {
             {etat.etat === 'erreur'
               ? 'Réessayer'
               : android
-                ? 'Télécharger la nouvelle version'
+                ? 'Ouvrir le Play Store'
                 : 'Mettre à jour et redémarrer'}
           </Button>
         </DialogFooter>

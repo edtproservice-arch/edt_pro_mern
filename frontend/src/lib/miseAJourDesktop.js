@@ -40,6 +40,12 @@ export const estApplicationAndroid = () => estApplicationTauri() && estAndroid()
  * et propose d'ouvrir la nouvelle APK dans le navigateur — l'utilisateur l'installe.
  */
 export const MANIFESTE_ANDROID = 'https://edtpro.tech/telechargements/android.json';
+/**
+ * La fiche de l'application sur Google Play (2026-11-03, demande du porteur : « la mise à jour sur
+ * mobile doit me diriger vers le Play Store »). Un lien https : Android l'ouvre dans l'application
+ * Play Store elle-même, sur la fiche, avec son bouton « Mettre à jour ».
+ */
+export const FICHE_PLAY_STORE = 'https://play.google.com/store/apps/details?id=ma.edtpro.desktop';
 
 /** « 0.10.0 » plus récente que « 0.9.3 » : comparaison nombre par nombre. */
 export function plusRecente(candidate, actuelle) {
@@ -155,10 +161,10 @@ async function verifierAndroid() {
     currentVersion: actuelle,
     body: publiee.notes ?? '',
     date: publiee.date ?? null,
-    // Le navigateur du téléphone télécharge l'APK ; Android propose ensuite de l'installer.
+    // La fiche Google Play : c'est le Play Store qui installe la mise à jour (plus l'APK du site).
     downloadAndInstall: async () => {
       const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('plugin:opener|open_url', { url: publiee.url });
+      await invoke('plugin:opener|open_url', { url: FICHE_PLAY_STORE });
     },
   };
 }

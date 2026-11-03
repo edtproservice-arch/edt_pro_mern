@@ -186,6 +186,15 @@ describe('adresseDesLiens — où mène le QR', () => {
     expect(adresseDesLiens({ referent: 'https://edt.exemple.test/app' })).toBe('https://edt.exemple.test');
     expect(adresseDesLiens({})).toBe(appUrl);
   });
+
+  it('n’écrit jamais l’adresse interne de l’application de bureau (tauri.localhost, 2026-11-03)', async () => {
+    const { adresseDesLiens } = await charger();
+    const { env } = await import('../../src/config/env.js');
+    const appUrl = env.APP_URL.replace(/\/+$/, '');
+    const bureau = 'https://tauri.localhost';
+    expect(adresseDesLiens({ demandee: bureau, origine: bureau, referent: `${bureau}/app/documents` })).toBe(appUrl);
+    expect(adresseDesLiens({ demandee: bureau, origine: 'https://edt.exemple.test' })).toBe('https://edt.exemple.test');
+  });
 });
 
 describe('GET /absences-stagiaires/cartes/liens — le QR de la fiche stagiaire', () => {

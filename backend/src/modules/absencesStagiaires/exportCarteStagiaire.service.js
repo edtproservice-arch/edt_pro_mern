@@ -43,6 +43,14 @@ import { construireDocxCartes } from './exportCarteStagiaireDocx.js';
  * l'`Origin` seul, puis l'origine du `Referer`, puis `APP_URL`.
  */
 const ORIGINE_BIEN_FORMEE = /^https?:\/\/[^/\s?#]+$/;
+/*
+ * ⚠️ JAMAIS L'ADRESSE INTERNE D'UNE APPLICATION (2026-11-03, signalé par le porteur : « le scan ne
+ * marche pas ») : imprimées depuis l'application de bureau, les cartes portaient
+ * `https://tauri.localhost/carte/…` — `tauri.localhost` est une origine autorisée, mais ce n'est pas
+ * une adresse qu'un téléphone peut ouvrir. Une telle origine est écartée : on prend `APP_URL`.
+ */
+const ADRESSE_INTERNE = /^https?:\/\/([^/]+\.)?tauri\.localhost(:\d+)?$/i;
+const publique = (adresse) => ORIGINE_BIEN_FORMEE.test(adresse) && !ADRESSE_INTERNE.test(adresse);
 const nettoyer = (adresse) => String(adresse ?? '').trim().replace(/\/+$/, '');
 const origineDe = (url) => {
   try {
@@ -57,10 +65,10 @@ export function adresseDesLiens({ demandee, origine, referent } = {}) {
     .split(',')
     .map(nettoyer)
     .filter(Boolean);
-  const attestees = [nettoyer(origine), origineDe(referent)].filter((a) => ORIGINE_BIEN_FORMEE.test(a));
+  const attestees = [nettoyer(origine), origineDe(referent)].filter(publique);
 
   const voulue = nettoyer(demandee);
-  if (ORIGINE_BIEN_FORMEE.test(voulue) && (attestees.includes(voulue) || autorisees.includes(voulue))) return voulue;
+  if (publique(voulue) && (attestees.includes(voulue) || autorisees.includes(voulue))) return voulue;
   if (attestees.length > 0) return attestees[0];
   return nettoyer(env.APP_URL);
 }

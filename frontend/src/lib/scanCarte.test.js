@@ -9,6 +9,10 @@ describe('jetonDuQr (2026-10-31)', () => {
     expect(jetonDuQr('  https://www.edtpro.tech/carte/abc/  ', hotes)).toBe('abc');
   });
 
+  it('lit aussi les cartes imprimées depuis l’application de bureau (tauri.localhost, 2026-11-03)', () => {
+    expect(jetonDuQr('https://tauri.localhost/carte/abc.DEF')).toBe('abc.DEF');
+  });
+
   it('refuse un autre site, un autre chemin, ou un texte qui n’est pas un lien', () => {
     expect(jetonDuQr('https://pirate.example/carte/abc', hotes)).toBeNull();
     expect(jetonDuQr('https://edtpro.tech/app/accueil', hotes)).toBeNull();

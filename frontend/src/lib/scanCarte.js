@@ -17,9 +17,15 @@
  */
 import jsQR from 'jsqr';
 
-/** Les adresses dont un QR de carte peut venir : le site, et l'API visée par l'application. */
+/**
+ * Les adresses dont un QR de carte peut venir : le site, l'API visée par l'application, et
+ * `tauri.localhost`. ⚠️ CETTE DERNIÈRE (2026-11-03, signalé par le porteur : « le scan ne marche
+ * pas ») : les cartes imprimées DEPUIS L'APPLICATION DE BUREAU portaient l'adresse interne de
+ * celle-ci (`https://tauri.localhost/carte/…`). Le serveur ne la met plus dans les liens, mais les
+ * cartes déjà imprimées doivent rester lisibles — le jeton, signé, reste vérifié par le serveur.
+ */
 function hotesAdmis() {
-  const hotes = new Set(['edtpro.tech', 'www.edtpro.tech']);
+  const hotes = new Set(['edtpro.tech', 'www.edtpro.tech', 'tauri.localhost']);
   try {
     const api = import.meta.env?.VITE_API_URL;
     if (api) hotes.add(new URL(api).hostname);

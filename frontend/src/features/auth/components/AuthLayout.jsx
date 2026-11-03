@@ -1,6 +1,10 @@
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
+/* global __VERSION_APP__ */
+// Injectée au build par `vite.config.js` (le tag publié) ; absente des tests.
+const VERSION = typeof __VERSION_APP__ !== 'undefined' ? __VERSION_APP__ : '';
+
 /**
  * Coquille commune aux écrans d'authentification.
  *
@@ -34,6 +38,7 @@ export default function AuthLayout({ titre, sousTitre, largeur = 'max-w-md', chi
           © 2026 eDTpro. Tous droits réservés. ·{' '}
           {/* Google Play exige ce lien DANS l'application aussi (2026-11-02). */}
           <Link to="/confidentialite" className="hover:underline">Confidentialité</Link>
+          {VERSION && ` · v${VERSION}`}
         </p>
       </div>
     </div>

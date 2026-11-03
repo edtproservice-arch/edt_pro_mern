@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import http from 'node:http';
+import { execSync } from 'node:child_process';
 import { fileURLToPath, URL } from 'node:url';
 
 /**
@@ -27,6 +28,24 @@ import { fileURLToPath, URL } from 'node:url';
 const agentSansReutilisation = new http.Agent({ keepAlive: false });
 
 /**
+ * La version affichée au pied de la page de connexion (2026-11-03, demande du porteur) : le tag
+ * qui publie (`GITHUB_REF_NAME`, application de bureau et Android), sinon le dernier tag du
+ * dépôt (le site, construit par `deployer.sh`). Inconnue, rien ne s'affiche.
+ */
+function versionApplication() {
+  const tag = process.env.GITHUB_REF_NAME ?? '';
+  if (/^v\d+\.\d+\.\d+$/.test(tag)) return tag.slice(1);
+  try {
+    return execSync('git describe --tags --abbrev=0', { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim()
+      .replace(/^v/, '');
+  } catch {
+    return '';
+  }
+}
+
+/**
  * Le proxy de Vite rend une page d'erreur HTML quand il ne joint pas la cible.
  * Or `apiClient` attend du JSON — il lèverait `REPONSE_NON_JSON`, en accusant
  * l'URL alors que le serveur est simplement absent. On répond donc en JSON, au
@@ -51,6 +70,9 @@ function repondreEnJson(cible) {
 
 export default defineConfig({
   plugins: [react()],
+  define: {
+    __VERSION_APP__: JSON.stringify(versionApplication()),
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

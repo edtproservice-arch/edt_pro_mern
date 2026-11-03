@@ -19,8 +19,8 @@ import { estApplicationAndroid, estApplicationTauri, suiviMiseAJour, useMiseAJou
  *
  * ⚠️ DANS L'APPLICATION SEULEMENT (précision du porteur) : dans un navigateur, le site est à
  *    jour à chaque déploiement — ni icône ni fenêtre, quoi qu'il arrive.
- * ⚠️ SUR ANDROID, « Ouvrir le Play Store » mène à la fiche eDTpro de Google Play (2026-11-03,
- *    demande du porteur), qui installe la mise à jour — et non plus l'APK du site dans le navigateur.
+ * ⚠️ SUR ANDROID, installée depuis Google Play : c'est Play qui annonce la version, la télécharge et
+ *    l'installe (In-App Updates, 2026-11-03). Installée depuis le site : l'APK de edtpro.tech.
  */
 
 /** L'icône de la barre du haut : invisible tant qu'aucune version n'attend. */
@@ -56,6 +56,7 @@ export function FenetreMiseAJour() {
 
   const enCours = etat.etat === 'telechargement' || etat.etat === 'redemarrage';
   const android = estApplicationAndroid();
+  const play = android && etat.via === 'play';
 
   return (
     <Dialog open={etat.fenetreOuverte} onOpenChange={(ouvert) => !ouvert && suiviMiseAJour.fermer()}>
@@ -111,9 +112,11 @@ export function FenetreMiseAJour() {
 
         {!enCours && (
           <p className="text-xs text-muted-foreground">
-            {android
-              ? 'La mise à jour s’installe depuis le Play Store : appuyez sur « Mettre à jour » sur la fiche eDTpro. '
-              : 'L’application redémarrera une fois la mise à jour installée. '}
+            {play
+              ? 'Google Play télécharge la mise à jour, puis l’application redémarre. '
+              : android
+                ? 'La nouvelle version se télécharge depuis edtpro.tech : ouvrez le fichier pour l’installer. '
+                : 'L’application redémarrera une fois la mise à jour installée. '}
             Vos données ne sont pas touchées : elles sont sur le serveur.
           </p>
         )}
@@ -126,9 +129,11 @@ export function FenetreMiseAJour() {
             {enCours ? <Loader2 className="size-4 animate-spin" /> : <ArrowDownToLine className="size-4" />}
             {etat.etat === 'erreur'
               ? 'Réessayer'
-              : android
-                ? 'Ouvrir le Play Store'
-                : 'Mettre à jour et redémarrer'}
+              : play
+                ? 'Mettre à jour'
+                : android
+                  ? 'Télécharger'
+                  : 'Mettre à jour et redémarrer'}
           </Button>
         </DialogFooter>
       </DialogContent>

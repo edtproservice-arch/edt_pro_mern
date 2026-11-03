@@ -47,6 +47,72 @@ export const MANIFESTE_ANDROID = 'https://edtpro.tech/telechargements/android.js
  */
 export const FICHE_PLAY_STORE = 'https://play.google.com/store/apps/details?id=ma.edtpro.desktop';
 
+/*
+ * ═══ INSTALLÉE DEPUIS GOOGLE PLAY : C'EST PLAY QUI ANNONCE (2026-11-03, demande du porteur) ═══
+ * « Le message doit s'afficher tout seul quand la version est publiée sur le Play Store. » Un tag
+ * met à jour `android.json` tout de suite, bien avant la validation de Google : la fenêtre s'ouvrait
+ * alors que Play n'avait rien à installer. L'application demande donc à Google Play lui-même
+ * (In-App Updates), par le pont `window.EdtproPlay` que pose `MainActivity`
+ * (`scripts/preparer-android.mjs`) ; Google télécharge pendant qu'on continue, puis l'application
+ * redémarre. Installée HORS Play (l'APK du site), le pont répond « indisponible » : `android.json`.
+ */
+const pontPlay = () => (typeof window !== 'undefined' ? window.EdtproPlay : undefined);
+
+/** Le `versionCode` Android → « 0.2.21 » : Tauri le calcule ainsi (major × 1 000 000 + minor × 1 000 + patch). */
+export const versionDuCode = (code) => `${Math.floor(code / 1e6)}.${Math.floor(code / 1e3) % 1e3}.${code % 1e3}`;
+
+const attendre = (ms) => new Promise((fin) => setTimeout(fin, ms));
+
+function lirePlay(pont) {
+  try {
+    return JSON.parse(pont.lire());
+  } catch {
+    return { etat: 'erreur' };
+  }
+}
+
+/** Play répond après coup : on attend sa réponse, 15 s au plus. */
+export async function etatPlay(pont, { delai = 15000, pas = 300 } = {}) {
+  const fin = Date.now() + delai;
+  let lu = lirePlay(pont);
+  while (lu.etat === 'inconnu' && Date.now() < fin) {
+    await attendre(pas);
+    lu = lirePlay(pont);
+  }
+  return lu;
+}
+
+/** Ce que Google Play propose, ou `null` ; `undefined` si Play ne peut rien pour cette installation. */
+export async function verifierPlay(pont, actuelle, { pas = 500 } = {}) {
+  pont.verifier();
+  const lu = await etatPlay(pont);
+  if (lu.etat === 'indisponible') return undefined;
+  if (!['disponible', 'telechargement', 'telechargee'].includes(lu.etat) || !lu.versionCode) return null;
+  return {
+    version: versionDuCode(lu.versionCode),
+    currentVersion: actuelle,
+    body: '',
+    date: null,
+    via: 'play',
+    // La fenêtre de Google, puis le téléchargement suivi ici ; téléchargée, Play installe et relance.
+    downloadAndInstall: async (surProgression) => {
+      if (lirePlay(pont).etat === 'disponible') pont.lancer();
+      for (;;) {
+        await attendre(pas);
+        const suivi = lirePlay(pont);
+        if (suivi.etat === 'telechargee') {
+          pont.terminer();
+          return 'redemarrage';
+        }
+        // Refusée dans la fenêtre de Google : la proposition reste dans l'icône.
+        if (suivi.etat === 'disponible' || suivi.etat === 'aucune') return 'annulee';
+        if (suivi.etat === 'erreur') throw new Error('Google Play n’a pas pu télécharger la mise à jour');
+        surProgression?.(suivi.progression >= 0 ? suivi.progression : null);
+      }
+    },
+  };
+}
+
 /** « 0.10.0 » plus récente que « 0.9.3 » : comparaison nombre par nombre. */
 export function plusRecente(candidate, actuelle) {
   const a = String(candidate ?? '').split('.').map((n) => Number.parseInt(n, 10) || 0);
@@ -69,6 +135,7 @@ export const ETAT_INITIAL = Object.freeze({
   progression: null, // 0 → 100 pendant le téléchargement, null si la taille est inconnue
   erreur: null,
   fenetreOuverte: false,
+  via: null, // Android : 'play' (Google Play installe) | 'site' (l'APK de edtpro.tech)
 });
 
 /**
@@ -108,6 +175,7 @@ export function creerSuiviMiseAJour({ verifier, relancer, mobile = false }) {
           versionActuelle: trouvee.currentVersion ?? null,
           notes: String(trouvee.body ?? '').trim(),
           date: trouvee.date ?? null,
+          via: trouvee.via ?? null,
           // Une NOUVELLE version rouvre la fenêtre ; la même, revue 6 h plus tard, reste dans l'icône.
           fenetreOuverte: nouvelle ? true : etat.fenetreOuverte,
         });
@@ -128,7 +196,12 @@ export function creerSuiviMiseAJour({ verifier, relancer, mobile = false }) {
         let total = 0;
         let recu = 0;
         if (typeof mobile === 'function' ? mobile() : mobile) {
-          await miseAJour.downloadAndInstall();
+          // Google Play : suivi du téléchargement, puis redémarrage. Le site : l'APK s'ouvre, c'est tout.
+          const resultat = await miseAJour.downloadAndInstall((progression) => changer({ progression }));
+          if (resultat === 'redemarrage') {
+            changer({ etat: 'redemarrage', progression: 100 });
+            return;
+          }
           changer({ etat: 'disponible', progression: null, fenetreOuverte: false });
           return;
         }
@@ -148,23 +221,30 @@ export function creerSuiviMiseAJour({ verifier, relancer, mobile = false }) {
   };
 }
 
-/** Android : la version publiée sur edtpro.tech, si elle est plus récente que celle-ci. */
+/** Android : Google Play d'abord ; installée hors Play, la version publiée sur edtpro.tech. */
 async function verifierAndroid() {
+  const { getVersion } = await import('@tauri-apps/api/app');
+  const actuelle = await getVersion();
+  const pont = pontPlay();
+  if (pont) {
+    const play = await verifierPlay(pont, actuelle);
+    if (play !== undefined) return play;
+  }
+
   const reponse = await fetch(MANIFESTE_ANDROID, { cache: 'no-store' });
   if (!reponse.ok) return null;
   const publiee = await reponse.json();
-  const { getVersion } = await import('@tauri-apps/api/app');
-  const actuelle = await getVersion();
   if (!publiee?.version || !publiee?.url || !plusRecente(publiee.version, actuelle)) return null;
   return {
     version: publiee.version,
     currentVersion: actuelle,
     body: publiee.notes ?? '',
     date: publiee.date ?? null,
-    // La fiche Google Play : c'est le Play Store qui installe la mise à jour (plus l'APK du site).
+    via: 'site',
+    // L'APK du site, ouverte dans le navigateur : Play ne met pas à jour une application qu'il n'a pas signée.
     downloadAndInstall: async () => {
       const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('plugin:opener|open_url', { url: FICHE_PLAY_STORE });
+      await invoke('plugin:opener|open_url', { url: publiee.url });
     },
   };
 }

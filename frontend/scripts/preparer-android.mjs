@@ -13,6 +13,7 @@
  * 3. Si `gen/android/app/google-services.json` existe : Firebase Cloud Messaging (2026-11-01).
  * 4. Le thème : barre d'état blanche à icônes sombres, bleu de l'application au lieu du violet
  *    du modèle (2026-11-01).
+ * 5. La mise à jour par Google Play (In-App Updates, 2026-11-03) : voir plus bas.
  *
  * ⚠️ SANS (2), PAS DE CONNEXION : l'application sert ses écrans depuis
  *    `https://tauri.localhost` et appelle l'API sur `https://edtpro.tech` — un autre site. Sa
@@ -77,7 +78,7 @@ const avecFirebase = existsSync(join(dossierAndroid, 'app', 'google-services.jso
 function greffer(chemin, ancre, ajout, description) {
   const texte = readFileSync(chemin, 'utf8');
   if (texte.includes(ajout.trim())) return;
-  if (!ancre.test(texte)) arreter(`Firebase : ${description} introuvable dans ${chemin}`);
+  if (!ancre.test(texte)) arreter(`Gradle : ${description} introuvable dans ${chemin}`);
   writeFileSync(chemin, texte.replace(ancre, (trouve) => `${trouve}${ajout}`));
 }
 
@@ -98,7 +99,26 @@ if (avecFirebase) {
   );
 }
 
-const firebaseImports = avecFirebase ? '\nimport android.webkit.JavascriptInterface\nimport com.google.firebase.messaging.FirebaseMessaging' : '';
+// ── 5. Google Play In-App Updates (2026-11-03, demande du porteur) ─────────
+/*
+ * « Le message de mise à jour doit s'afficher tout seul quand la version est publiée sur le Play
+ * Store. » Une application installée DEPUIS Play ne lit plus `android.json` : elle demande à
+ * Google Play lui-même si une version plus récente existe POUR CE TÉLÉPHONE — une version encore en
+ * examen, en déploiement progressif ou sur un test dont la personne n'est pas membre n'est donc
+ * jamais annoncée. La page lit la réponse par `window.EdtproPlay` (`src/lib/miseAJourDesktop.js`).
+ * Mise à jour « flexible » : Google télécharge pendant qu'on continue, puis l'application redémarre.
+ *
+ * ⚠️ INSTALLÉE HORS PLAY (l'APK du site) : Play ne peut pas la mettre à jour (Google re-signe les
+ *    versions du Play Store) — `etat` vaut « indisponible », la page retombe sur `android.json`.
+ */
+greffer(
+  join(dossierAndroid, 'app', 'build.gradle.kts'),
+  /\ndependencies\s*\{/,
+  '\n    implementation("com.google.android.play:app-update:2.1.0")',
+  'le bloc dependencies'
+);
+
+const firebaseImports = avecFirebase ? '\nimport com.google.firebase.messaging.FirebaseMessaging' : '';
 const firebaseCode = avecFirebase
   ? `
 
@@ -122,17 +142,155 @@ writeFileSync(
   activite,
   `package ${paquet}
 
+import android.os.Build
+import android.os.Bundle
 import android.webkit.CookieManager
-import android.webkit.WebView${firebaseImports}
+import android.webkit.JavascriptInterface
+import android.webkit.WebView
+import androidx.activity.result.contract.ActivityResultContracts
+import com.google.android.play.core.appupdate.AppUpdateInfo
+import com.google.android.play.core.appupdate.AppUpdateManagerFactory
+import com.google.android.play.core.appupdate.AppUpdateOptions
+import com.google.android.play.core.install.InstallStateUpdatedListener
+import com.google.android.play.core.install.model.AppUpdateType
+import com.google.android.play.core.install.model.InstallStatus
+import com.google.android.play.core.install.model.UpdateAvailability
+import org.json.JSONObject${firebaseImports}
 
 // Écrit par scripts/preparer-android.mjs : les cookies de session de edtpro.tech, sans
-// lesquels la connexion échouerait (voir l'en-tête de ce script).
+// lesquels la connexion échouerait (voir l'en-tête de ce script), et la mise à jour par Google Play.
 class MainActivity : TauriActivity() {
+  val gestionnairePlay by lazy { AppUpdateManagerFactory.create(this) }
+  private var infoPlay: AppUpdateInfo? = null
+
+  // La fenêtre de Google refermée sans accepter : la proposition reste (l'info est à usage unique).
+  private val lanceurPlay = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { resultat ->
+    if (resultat.resultCode != android.app.Activity.RESULT_OK) {
+      PontPlay.etat = "disponible"
+      PontPlay.progression = -1
+      verifierPlay()
+    }
+  }
+
+  private val ecouteurPlay = InstallStateUpdatedListener { suivi ->
+    when (suivi.installStatus()) {
+      InstallStatus.PENDING, InstallStatus.DOWNLOADING -> {
+        PontPlay.etat = "telechargement"
+        val total = suivi.totalBytesToDownload()
+        PontPlay.progression = if (total > 0) (suivi.bytesDownloaded() * 100 / total).toInt() else -1
+      }
+      InstallStatus.DOWNLOADED -> {
+        PontPlay.etat = "telechargee"
+        PontPlay.progression = 100
+      }
+      InstallStatus.FAILED -> PontPlay.etat = "erreur"
+      InstallStatus.CANCELED -> PontPlay.etat = "disponible"
+      else -> {}
+    }
+  }
+
+  override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+    PontPlay.activite = this
+    gestionnairePlay.registerListener(ecouteurPlay)
+  }
+
+  override fun onResume() {
+    super.onResume()
+    verifierPlay()
+  }
+
+  override fun onDestroy() {
+    gestionnairePlay.unregisterListener(ecouteurPlay)
+    if (PontPlay.activite === this) PontPlay.activite = null
+    super.onDestroy()
+  }
+
   override fun onWebViewCreate(webView: WebView) {
     super.onWebViewCreate(webView)
     val cookies = CookieManager.getInstance()
     cookies.setAcceptCookie(true)
-    cookies.setAcceptThirdPartyCookies(webView, true)${firebaseCode}
+    cookies.setAcceptThirdPartyCookies(webView, true)
+    webView.addJavascriptInterface(PontPlay, "EdtproPlay")${firebaseCode}
+  }
+
+  /** Installée par le Play Store ? Sinon, Play ne peut pas la mettre à jour. */
+  private fun installeeDepuisPlay(): Boolean = try {
+    installateur() == "com.android.vending"
+  } catch (e: Exception) {
+    false
+  }
+
+  @Suppress("DEPRECATION")
+  private fun installateur(): String? =
+    if (Build.VERSION.SDK_INT >= 30) packageManager.getInstallSourceInfo(packageName).installingPackageName
+    else packageManager.getInstallerPackageName(packageName)
+
+  fun verifierPlay() {
+    if (!installeeDepuisPlay()) {
+      PontPlay.etat = "indisponible"
+      return
+    }
+    gestionnairePlay.appUpdateInfo
+      .addOnSuccessListener { info ->
+        infoPlay = info
+        PontPlay.versionCode = info.availableVersionCode()
+        PontPlay.etat = when {
+          info.installStatus() == InstallStatus.DOWNLOADED -> "telechargee"
+          info.installStatus() == InstallStatus.DOWNLOADING || info.installStatus() == InstallStatus.PENDING -> "telechargement"
+          info.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE -> "disponible"
+          else -> "aucune"
+        }
+      }
+      .addOnFailureListener { PontPlay.etat = "indisponible" }
+  }
+
+  fun lancerPlay() {
+    val info = infoPlay
+    if (info == null || info.updateAvailability() != UpdateAvailability.UPDATE_AVAILABLE) {
+      verifierPlay()
+      return
+    }
+    infoPlay = null
+    val type = if (info.isUpdateTypeAllowed(AppUpdateType.FLEXIBLE)) AppUpdateType.FLEXIBLE else AppUpdateType.IMMEDIATE
+    gestionnairePlay.startUpdateFlowForResult(info, lanceurPlay, AppUpdateOptions.newBuilder(type).build())
+  }
+}
+
+/**
+ * Ce que la page voit de Google Play. etat : inconnu (pas encore de réponse) | indisponible
+ * (installée hors Play) | aucune | disponible | telechargement | telechargee | erreur.
+ */
+object PontPlay {
+  @Volatile var etat: String = "inconnu"
+  @Volatile var versionCode: Int = 0
+  @Volatile var progression: Int = -1
+  @Volatile var activite: MainActivity? = null
+
+  @JavascriptInterface
+  fun lire(): String =
+    JSONObject().put("etat", etat).put("versionCode", versionCode).put("progression", progression).toString()
+
+  @JavascriptInterface
+  fun verifier() {
+    val activite = activite ?: return
+    etat = "inconnu"
+    activite.runOnUiThread { activite.verifierPlay() }
+  }
+
+  @JavascriptInterface
+  fun lancer() {
+    val activite = activite ?: return
+    etat = "telechargement"
+    progression = -1
+    activite.runOnUiThread { activite.lancerPlay() }
+  }
+
+  /** Installe la version téléchargée : l'application redémarre. */
+  @JavascriptInterface
+  fun terminer() {
+    val activite = activite ?: return
+    activite.runOnUiThread { activite.gestionnairePlay.completeUpdate() }
   }
 }${firebasePont}
 `
@@ -178,5 +336,6 @@ if (themes === 0) console.warn(`⚠ Aucun themes.xml sous ${dossierRes} : la bar
 console.log(
   `✔ Android prêt : version ${version}, ${activite.replace(racine, 'frontend')} (paquet ${paquet})` +
     (avecFirebase ? ', Firebase activé' : ', sans Firebase (pas de google-services.json)') +
+    ', mise à jour Google Play' +
     `, thème appliqué à ${themes} fichier(s).`
 );

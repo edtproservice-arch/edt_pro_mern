@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { ETAT_INITIAL, creerSuiviMiseAJour, plusRecente } from './miseAJourDesktop';
+import { ETAT_INITIAL, creerSuiviMiseAJour, plusRecente, verifierPlay, versionDuCode } from './miseAJourDesktop';
 
 /** Une mise à jour factice : `evenements` sont rejoués pendant le téléchargement. */
 const fausseMiseAJour = (version, { evenements = [], echec = null } = {}) => ({
@@ -112,5 +112,62 @@ describe('Android (2026-10-30)', () => {
     expect(miseAJour.downloadAndInstall).toHaveBeenCalledTimes(1);
     expect(relancer).not.toHaveBeenCalled();
     expect(suivi.lire()).toMatchObject({ etat: 'disponible', fenetreOuverte: false, version: '0.3.0' });
+  });
+});
+
+/** Le pont Kotlin `window.EdtproPlay`, factice : `etats` sont rendus l'un après l'autre par `lire`. */
+const fauxPont = (...etats) => {
+  let i = 0;
+  return {
+    lire: vi.fn(() => JSON.stringify(etats[Math.min(i++, etats.length - 1)])),
+    verifier: vi.fn(),
+    lancer: vi.fn(),
+    terminer: vi.fn(),
+  };
+};
+
+describe('Google Play In-App Updates (2026-11-03)', () => {
+  it('retrouve la version depuis le versionCode de Tauri', () => {
+    expect(versionDuCode(2021)).toBe('0.2.21');
+    expect(versionDuCode(1002003)).toBe('1.2.3');
+  });
+
+  it('attend la réponse de Play, puis annonce la version qu’il propose', async () => {
+    const pont = fauxPont({ etat: 'inconnu' }, { etat: 'disponible', versionCode: 2021, progression: -1 });
+    const trouvee = await verifierPlay(pont, '0.2.20', { pas: 1 });
+    expect(pont.verifier).toHaveBeenCalledTimes(1);
+    expect(trouvee).toMatchObject({ version: '0.2.21', currentVersion: '0.2.20', via: 'play' });
+  });
+
+  it('rien sur Play (version encore en examen) : aucune annonce', async () => {
+    expect(await verifierPlay(fauxPont({ etat: 'aucune', versionCode: 2020 }), '0.2.20')).toBeNull();
+  });
+
+  it('installée hors Play : `undefined`, la page retombe sur android.json', async () => {
+    expect(await verifierPlay(fauxPont({ etat: 'indisponible' }), '0.2.20')).toBeUndefined();
+  });
+
+  it('accepte, télécharge, puis installe : l’application redémarre', async () => {
+    const pont = fauxPont(
+      { etat: 'disponible', versionCode: 2021 },
+      { etat: 'disponible', versionCode: 2021 },
+      { etat: 'telechargement', versionCode: 2021, progression: 40 },
+      { etat: 'telechargee', versionCode: 2021, progression: 100 }
+    );
+    const suivi = creerSuiviMiseAJour({ verifier: () => verifierPlay(pont, '0.2.20', { pas: 1 }), relancer: vi.fn(), mobile: true });
+    await suivi.verifier();
+    await suivi.installer();
+    expect(pont.lancer).toHaveBeenCalledTimes(1);
+    expect(pont.terminer).toHaveBeenCalledTimes(1);
+    expect(suivi.lire()).toMatchObject({ etat: 'redemarrage', via: 'play' });
+  });
+
+  it('refusée dans la fenêtre de Google : la proposition reste dans l’icône', async () => {
+    const pont = fauxPont({ etat: 'disponible', versionCode: 2021 });
+    const suivi = creerSuiviMiseAJour({ verifier: () => verifierPlay(pont, '0.2.20', { pas: 1 }), relancer: vi.fn(), mobile: true });
+    await suivi.verifier();
+    await suivi.installer();
+    expect(pont.terminer).not.toHaveBeenCalled();
+    expect(suivi.lire()).toMatchObject({ etat: 'disponible', fenetreOuverte: false });
   });
 });

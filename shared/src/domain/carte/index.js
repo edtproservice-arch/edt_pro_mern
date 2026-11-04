@@ -22,5 +22,7 @@ export {
   filieresParGroupe,
   reconstruireFormateurs,
   reconstruireGroupes,
+  cleFusion,
+  sansSynchroneEnDouble,
   separerFusion,
 } from './reconstruction.js';

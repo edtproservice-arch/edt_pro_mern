@@ -3,7 +3,7 @@ import { nomBase } from '../formateurs/nomBase.js';
 import { resoudreHomonymes } from '../formateurs/homonymes.js';
 import { resoudreColonnes } from './colonnes.js';
 import { renommerGroupe, retirerSuffixe } from './suffixesGroupes.js';
-import { separerFusion } from '../carte/reconstruction.js';
+import { cleFusion, separerFusion } from '../carte/reconstruction.js';
 import { arrondir, massesHoraires } from './massesHoraires.js';
 
 /**
@@ -317,7 +317,10 @@ export function construireBase(lignes, options = {}) {
           ? fusionGroupe
           : renommerFusion(fusionGroupe, ligne[col.groupe], groupe, ligne[col.codeFiliere], filieresParGroupe)
         : groupe;
-      const cle = `${synchrone}|${groupeSynchrone}|${module}`;
+      // ⚠️ Le libellé comparé SANS SON ORDRE (2026-11-04) : « GEOCF202 GEOCF201 » et
+      //    « GEOCF201 GEOCF202 » sont la même séance — comparés tels quels, elle était
+      //    gardée deux fois et sa masse synchrone doublait partout.
+      const cle = `${synchrone}|${cleFusion(groupeSynchrone)}|${module}`;
 
       if (!synchronesVues.has(cle)) {
         synchronesVues.add(cle);

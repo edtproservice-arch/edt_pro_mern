@@ -10,6 +10,7 @@ import {
   cleReaffectation,
   heuresPoseesParSemaine,
   derniereSemaineDuGroupe,
+  sansSynchroneEnDouble,
   estGroupeDuSoir,
   estGroupePIE,
   estModuleMetierFormation,
@@ -204,7 +205,7 @@ export function construireProblemeChronogramme(anneeScolaire, donnees, { mode = 
   // ─── 1. Les tâches, tirées des affectations ───
   const taches = new Map();
   const groupesCds = new Set();
-  for (const affectation of base?.affectations ?? []) {
+  for (const affectation of sansSynchroneEnDouble(base?.affectations)) {
     const formateur = String(affectation.formateur ?? '').trim();
     const module = String(affectation.module ?? '').trim();
     if (formateur === '' || module === '') continue;

@@ -77,6 +77,48 @@ export const separerFusion = (nom) => {
 
 const estFusion = (nom) => separerFusion(nom).length > 1;
 
+/**
+ * La clé d'un libellé fusionné, INDÉPENDANTE DE L'ORDRE : « GEOCF202 GEOCF201 » et
+ * « GEOCF201 GEOCF202 » désignent les mêmes groupes, donc la même séance.
+ */
+export const cleFusion = (nom) =>
+  separerFusion(nom)
+    .map((groupe) => groupe.toUpperCase())
+    .sort()
+    .join(' ');
+
+/**
+ * Les affectations, une séance synchrone mutualisée comptée UNE SEULE FOIS
+ * (2026-11-04, retour du porteur : M204 de GEOCF201/GEOCF202, 15 h de synchrone
+ * affichées 30 h au chronogramme d'AYOUB FOULAL, et 25 h déjà posées).
+ *
+ * ═══ POURQUOI UN DOUBLON PEUT EXISTER ═══
+ * e-note décrit un cours synchrone fusionné sur CHAQUE ligne de groupe, avec la
+ * masse complète. L'import n'en garde qu'un, mais sa clé comparait le libellé
+ * TEL QU'ÉCRIT : deux écritures du même ensemble passaient pour deux cours, et
+ * tout ce qui additionne les affectations — masse du chronogramme, vue
+ * formateur, génération automatique — doublait la masse synchrone. La carte des
+ * affectations, elle, affichait juste : elle ne garde qu'une valeur par groupe.
+ *
+ * Même formateur, même module, mêmes groupes : c'est la même séance. La première
+ * rencontrée est gardée. Le présentiel n'est jamais touché — deux groupes en
+ * salle, ce sont deux cours.
+ */
+export function sansSynchroneEnDouble(affectations = []) {
+  const vues = new Set();
+  return (affectations ?? []).filter((affectation) => {
+    if (affectation?.type !== TYPES_COURS.SYNCHRONE) return true;
+    const cle = [
+      String(affectation.formateur ?? '').trim().toUpperCase(),
+      String(affectation.module ?? '').trim().toUpperCase(),
+      cleFusion(affectation.groupe),
+    ].join('|');
+    if (vues.has(cle)) return false;
+    vues.add(cle);
+    return true;
+  });
+}
+
 const cleModule = (code, nom) => `${String(code ?? '').trim()}||${String(nom ?? '').trim()}`;
 
 /**

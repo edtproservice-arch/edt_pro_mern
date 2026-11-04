@@ -11,6 +11,7 @@ import {
   massesDeLaLigne,
   planningDesLignes,
   scinderParReaffectation,
+  sansSynchroneEnDouble,
   partsDeCellule,
   chargesHebdomadaires,
   dateRentree,
@@ -184,7 +185,7 @@ export function modulesDuGroupe(base, groupe, intitules = new Map(), contexte = 
   const recherche = String(groupe).trim().toUpperCase();
   const parCode = new Map();
 
-  for (const affectation of base?.affectations ?? []) {
+  for (const affectation of sansSynchroneEnDouble(base?.affectations)) {
     /*
      * La colonne « Groupe » d'une affectation peut porter une FUSION
      * (« GM101 GM102 ») : le groupe cherché est l'un des noms qu'elle liste.
@@ -567,7 +568,7 @@ export async function listerFormateurs(etablissementId, anneeScolaire) {
 
   const comptes = new Map();
 
-  for (const affectation of base?.affectations ?? []) {
+  for (const affectation of sansSynchroneEnDouble(base?.affectations)) {
     const cle = String(affectation.formateur ?? '').trim();
     if (cle === '') continue;
     comptes.set(cle, (comptes.get(cle) ?? 0) + 1);
@@ -868,7 +869,7 @@ export async function obtenirParFormateur(etablissementId, anneeScolaire, format
   const autresFormateurs = new Map();
   // Et les TYPES qu'ils y assurent : voir `typeSeul` plus bas.
   const autresTypes = new Map();
-  for (const affectation of base.affectations ?? []) {
+  for (const affectation of sansSynchroneEnDouble(base.affectations)) {
     if (correspond(affectation.formateur)) continue;
     const code = String(affectation.module ?? '').trim();
     if (code === '') continue;
@@ -889,7 +890,7 @@ export async function obtenirParFormateur(etablissementId, anneeScolaire, format
     }
   }
 
-  for (const affectation of base.affectations ?? []) {
+  for (const affectation of sansSynchroneEnDouble(base.affectations)) {
     if (!correspond(affectation.formateur)) continue;
 
     const code = String(affectation.module ?? '').trim();

@@ -343,19 +343,31 @@ describe('Groupes FQ — un groupe virtuel occupe ses groupes réels', () => {
   });
 
   /*
-   * ⚠️ LE SUFFIXE NE DOIT PAS FAIRE RATER LE LIEN. La composition est saisie
-   * avec le nom complet (« APILC101 (FQ) »), mais une séance peut porter le nom
-   * sans suffixe — c'est déjà la règle de `groupesCompares`.
+   * ═══ ⚠️ LE NOM NU EST UN GROUPE RÉEL, PAS LE FQ (2026-11-04) ═══
+   * Retour du porteur : « MAE101 (FQ) n'a aucun groupe déclaré, et l'emploi fige
+   * MAE101 ». Le nom nu désignait jusqu'ici le FQ — or MAE101 est un vrai groupe,
+   * qui coexiste avec MAE101 (FQ). Il n'hérite plus ni de son nom, ni de sa
+   * composition.
    */
-  it('⚠️ le lien se fait aussi sur le nom sans suffixe', () => {
-    // « APILC101 » désigne le même FQ que « APILC101 (FQ) ».
+  it('⚠️ le nom nu n’hérite pas de la composition du FQ', () => {
     const conflits = detecterConflits(
       candidate({ groupe: 'APILC101', salle: 'A01' }),
       [posee({ groupe: 'EEM101', salle: 'B02' })],
       { groupesFq: composition }
     );
 
-    expect(conflits.map((c) => c.type)).toEqual(['groupe']);
+    expect(conflits).toEqual([]);
+  });
+
+  it('⚠️ un FQ sans composition ne fige pas le groupe réel homonyme (MAE101)', () => {
+    const fige = (a, b) =>
+      detecterConflits(candidate({ groupe: a, salle: 'A01' }), [posee({ groupe: b, salle: 'B02' })], {
+        groupesFq: [],
+      });
+    expect(fige('MAE101 (FQ)', 'MAE101')).toEqual([]);
+    expect(fige('MAE101', 'MAE101 (FQ)')).toEqual([]);
+    // Le FQ lui-même reste bien unique sur son créneau.
+    expect(fige('MAE101 (FQ)', 'MAE101 (FQ)').map((c) => c.type)).toEqual(['groupe']);
   });
 
   it('une FUSION qui contient un constituant heurte le FQ', () => {

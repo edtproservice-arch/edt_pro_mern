@@ -104,6 +104,19 @@ function decomposer(nom) {
 const inclus = (petit, grand) => [...petit].every((suffixe) => grand.has(suffixe));
 
 /**
+ * Le suffixe de NATURE : il ne s'ajoute pas après coup, l'import le pose
+ * d'emblée — et il désigne un AUTRE groupe que le nom nu (2026-11-04, signalé
+ * par le porteur : « MAE101 (FQ) n'a aucun groupe déclaré, et l'emploi fige MAE101 »).
+ * (FQ) est un groupe virtuel : ses stagiaires sont ceux de sa composition
+ * déclarée (page Groupes FQ), jamais ceux du groupe réel homonyme.
+ *
+ * ⚠️ (CDS) N'EN EST PAS, PAR DÉCISION ANTÉRIEURE : « GM101 (CDS) » reste
+ *    rapproché de « GM101 » (test « groupe MASQUÉ PAR SON SUFFIXE »).
+ */
+const SUFFIXES_DE_NATURE = ['FQ'];
+const memeNature = (x, y) => SUFFIXES_DE_NATURE.every((nature) => x.has(nature) === y.has(nature));
+
+/**
  * Deux noms désignent-ils la MÊME classe — donc les mêmes stagiaires ?
  *
  * ⚠️ « GE102 (GC) » ET « GE102 » SONT LA MÊME CLASSE. Le suffixe est ajouté
@@ -123,11 +136,15 @@ const inclus = (petit, grand) => [...petit].every((suffixe) => grand.has(suffixe
  *   GE102 ≡ GE102 (GC)           — {} ⊂ {GC}
  *   GE101 (CDS) ≡ GE101 (CDS) (GE) — {CDS} ⊂ {CDS, GE}
  *   GE101 (GC) ≢ GE101 (GE)      — ni l'un ni l'autre
+ *
+ * ⚠️ SAUF LE SUFFIXE DE NATURE (FQ), qui doit être le même des deux côtés
+ *    (2026-11-04) : MAE101 ≢ MAE101 (FQ).
  */
 export function memeGroupe(a, b) {
   const x = decomposer(a);
   const y = decomposer(b);
   if (!x.base || x.base !== y.base) return false;
+  if (!memeNature(x.suffixes, y.suffixes)) return false;
   return inclus(x.suffixes, y.suffixes) || inclus(y.suffixes, x.suffixes);
 }
 
@@ -144,17 +161,15 @@ export function groupesSeCroisent(valeurA, valeurB, groupesFq = []) {
 const croisement = (a, b) => [...a].some((x) => [...b].some((y) => memeGroupe(x, y)));
 
 /**
- * Les deux écritures sous lesquelles un groupe FQ peut être désigné par une
- * séance : « APILC101 (FQ) », et le nom nu « APILC101 ».
+ * L'écriture sous laquelle un groupe FQ est désigné par une séance : son nom
+ * complet, « APILC101 (FQ) ».
  *
- * ⚠️ POUR LE PARENT SEULEMENT. Les constituants, eux, entrent ENTIERS dans
- * l'ensemble : y ajouter leur nom nu ferait croiser « GE101 (GC) » avec
- * « GE101 (GE) » par ce détour — le défaut que `memeGroupe` vient de fermer.
+ * ⚠️ PLUS LE NOM NU (2026-11-04). « MAE101 » est un groupe RÉEL, qui coexiste
+ *    avec « MAE101 (FQ) » : indexer la composition du FQ sous le nom nu aurait
+ *    donné à MAE101 les constituants du FQ — et l'aurait figé à chacun de leurs
+ *    cours. C'est la règle de `memeGroupe` : (FQ) est un suffixe de NATURE.
  */
-const clesDe = (nom) => {
-  const brut = normaliserNom(nom);
-  return [brut, sansSuffixe(brut)].filter(Boolean);
-};
+const clesDe = (nom) => [normaliserNom(nom)].filter(Boolean);
 
 /*
  * ⚠️ L'INDEX EST MÉMORISÉ SUR LE TABLEAU REÇU. La grille interroge cette

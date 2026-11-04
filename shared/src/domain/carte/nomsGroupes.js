@@ -62,6 +62,17 @@ export function estCoursDuSoir(codeFiliere) {
   return /_RCDS$/i.test(String(codeFiliere ?? '').trim());
 }
 
+/**
+ * Filière de formation qualifiante ? Son code se termine par « FQ » (GC_PIE_FQ).
+ *
+ * ⚠️ LA MÊME RÈGLE QUE L'IMPORT E-NOTE (`enote/suffixesGroupes.js` → « NOM (FQ) »), 2026-11-04 :
+ *    la carte créait PIE101 là où l'import écrit PIE101 (FQ) — deux noms pour le même groupe
+ *    selon son origine, donc deux groupes pour l'emploi du temps.
+ */
+export function estFormationQualifiante(codeFiliere) {
+  return /FQ$/i.test(String(codeFiliere ?? '').trim());
+}
+
 /** Nom sans ses suffixes entre parenthèses. « BECM101 (CDS) (GM) » → « BECM101 ». */
 export function sansSuffixe(nom) {
   return String(nom ?? '')
@@ -85,6 +96,12 @@ export function prefixeDuNom(nom) {
  * « GE » — trois filières de secteurs différents, un seul nom de groupe.
  */
 export function suffixeGroupe(codeFiliere, { desambiguiser = false } = {}) {
+  /*
+   * « (FQ) » pour une formation qualifiante (2026-11-04), et RIEN d'autre : comme à l'import,
+   * ce suffixe suffit à la distinguer — l'import ne compte pas les filières FQ dans ses
+   * homonymes, la carte n'y ajoute donc pas non plus de code secteur.
+   */
+  if (estFormationQualifiante(codeFiliere)) return ' (FQ)';
   let suffixe = estCoursDuSoir(codeFiliere) ? ' (CDS)' : '';
   if (desambiguiser) {
     const secteur = codeSecteur(codeFiliere);
@@ -140,7 +157,14 @@ export function genererNomsGroupes({
   }
 
   const prefixe = prefixeNomGroupe(codeFiliere);
-  const conflits = conflitsDePrefixe(prefixe, codeFiliere, groupesExistants);
+  /*
+   * ⚠️ UNE FORMATION QUALIFIANTE N'EST EN CONFLIT AVEC PERSONNE (2026-11-04) : son « (FQ) » la
+   *    distingue déjà. Annoncer un conflit ferait renommer les groupes de l'autre filière
+   *    (`renommagesDesambiguisation`) sans raison.
+   */
+  const conflits = estFormationQualifiante(codeFiliere)
+    ? new Map()
+    : conflitsDePrefixe(prefixe, codeFiliere, groupesExistants);
   /*
    * ⚠️ UN GROUPE AJOUTÉ GARDE LE SUFFIXE DE SA FILIÈRE (2026-09-19, demande du porteur).
    * Le suffixe se déduit du code filière — « (CDS) » — ou d'une désambiguïsation ;

@@ -3,6 +3,7 @@ import {
   prefixeNomGroupe,
   codeSecteur,
   estCoursDuSoir,
+  estFormationQualifiante,
   sansSuffixe,
   prefixeDuNom,
   suffixeGroupe,
@@ -305,6 +306,29 @@ describe('genererNomsGroupes — le suffixe des groupes existants se garde', () 
       groupesExistants: [{ nom: 'DEV301', codeFiliere: 'GE_DEV_TS_RCDS' }],
     });
     expect(noms).toEqual(['DEV302 (CDS)']);
+  });
+});
+
+describe('genererNomsGroupes — la formation qualifiante porte « (FQ) » (2026-11-04)', () => {
+  it('un premier groupe PIE créé dans la carte reçoit « (FQ) », comme à l’import', () => {
+    const { noms } = genererNomsGroupes({ codeFiliere: 'GC_PIE_FQ', anneeFormation: 1, nombre: 4 });
+    expect(noms).toEqual(['PIE101 (FQ)', 'PIE102 (FQ)', 'PIE103 (FQ)', 'PIE104 (FQ)']);
+  });
+
+  it('« (FQ) » seul : ni code secteur, ni conflit annoncé à l’autre filière du préfixe', () => {
+    const { noms, conflits } = genererNomsGroupes({
+      codeFiliere: 'GC_PIE_FQ',
+      anneeFormation: 1,
+      groupesExistants: [{ nom: 'PIE101', codeFiliere: 'GE_PIE_TS' }],
+    });
+    expect(noms).toEqual(['PIE101 (FQ)']);
+    expect(conflits.size).toBe(0);
+  });
+
+  it('estFormationQualifiante suit la règle de l’import (code terminé par FQ)', () => {
+    expect(estFormationQualifiante('GC_PIE_FQ')).toBe(true);
+    expect(estFormationQualifiante('gc_pie_fq')).toBe(true);
+    expect(estFormationQualifiante('GE_DEV_TS')).toBe(false);
   });
 });
 

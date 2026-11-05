@@ -287,14 +287,16 @@ const pageDemo = (utilisateur) =>
  *    dans une page de 390 px ne se manipule pas.
  * ⚠️ PAS DE BARRE DE TITRE (même jour, « pour gagner l'espace ») : la fenêtre n'est que l'application.
  */
-function FenetreDemo({ demo, sessionDemo }) {
+function FenetreDemo({ demo, sessionDemo, sessionConnue }) {
   const adresse = sessionDemo ? pageDemo(sessionDemo) : null;
   const [role, setRole] = useState('directeur');
   const cadre = useRef(null);
   const lancee = useRef(false);
 
   useEffect(() => {
-    if (adresse || lancee.current || !window.matchMedia('(min-width: 768px)').matches) return undefined;
+    // ⚠️ PAS AVANT DE SAVOIR QUI EST LÀ (2026-11-05) : lancée pendant la vérification de session,
+    //    la démo remplaçait les cookies d'un directeur connecté — il se retrouvait dans la démo.
+    if (!sessionConnue || adresse || lancee.current || !window.matchMedia('(min-width: 768px)').matches) return undefined;
     const observateur = new IntersectionObserver(([entree]) => {
       if (!entree.isIntersecting || lancee.current) return;
       lancee.current = true;
@@ -303,7 +305,7 @@ function FenetreDemo({ demo, sessionDemo }) {
     }, { rootMargin: '0px 0px 200px 0px' }); // juste sous le bas de l'écran : prête quand on y arrive
     observateur.observe(cadre.current);
     return () => observateur.disconnect();
-  }, [adresse, demo]);
+  }, [sessionConnue, adresse, demo]);
 
   return (
     // Un cadre de VERRE autour de la fenêtre (demande du porteur, 2026-11-02) : translucide, il
@@ -616,6 +618,10 @@ export default function PageAccueil() {
         window.location.assign(pageDemo(reponse.utilisateur));
       }
     },
+    // Un vrai compte est ouvert dans ce navigateur (le serveur refuse la démo) : vers son espace.
+    onError: (erreur) => {
+      if (erreur?.code === 'SESSION_REELLE') queryClient.invalidateQueries({ queryKey: ['session'] });
+    },
   });
   const utilisateur = session.data?.utilisateur;
 
@@ -691,7 +697,7 @@ export default function PageAccueil() {
 
         {/* La fenêtre : l'application elle-même, à cheval sur la fin du ciel */}
         <div id="demo-en-direct" className="relative mx-auto max-w-[1180px] scroll-mt-24 px-5 pb-28 pt-14 sm:px-8">
-          <FenetreDemo demo={demo} sessionDemo={utilisateur?.demo ? utilisateur : null} />
+          <FenetreDemo demo={demo} sessionDemo={utilisateur?.demo ? utilisateur : null} sessionConnue={!session.isPending} />
         </div>
       </section>
 

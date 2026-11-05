@@ -148,6 +148,29 @@ describe('POST /api/v2/demo', () => {
     expect((await essayer(ROLES.ADMIN)).status).toBe(400);
   });
 
+  it('n’écrase jamais la session d’un vrai compte, même au jeton d’accès expiré (2026-11-05)', async () => {
+    await User.create({
+      nomComplet: 'Directeur Réel',
+      email: 'reel@edtpro.ma',
+      motDePasse: 'MotDePasse2026',
+      role: ROLES.DIRECTEUR,
+      statut: STATUTS_COMPTE.APPROUVE,
+      estVerifie: true,
+    });
+    const connexion = await request(app).post('/api/v2/auth/connexion').send({ identifiant: 'reel@edtpro.ma', motDePasse: 'MotDePasse2026' });
+    expect(connexion.status).toBe(200);
+    const cookies = cookiesDe(connexion);
+
+    const refus = await request(app).post('/api/v2/demo').set('Cookie', cookies).send({ role: ROLES.DIRECTEUR });
+    expect(refus.status).toBe(409);
+    expect(refus.body.code).toBe('SESSION_REELLE');
+    expect(refus.headers['set-cookie']).toBeUndefined();
+
+    // Seul le jeton de rafraîchissement reste (l'accès a expiré) : toujours un vrai compte ouvert.
+    const rafraichissement = cookies.filter((c) => c.startsWith('edt_refresh='));
+    expect((await request(app).post('/api/v2/demo').set('Cookie', rafraichissement).send({ role: ROLES.DIRECTEUR })).status).toBe(409);
+  });
+
   it('décale les semaines du modèle sur la semaine en cours', async () => {
     const numero = Math.max(1, semaineDansAnnee(ANNEE, new Date()).numero);
     // Le modèle aurait été construit deux semaines plus tôt.

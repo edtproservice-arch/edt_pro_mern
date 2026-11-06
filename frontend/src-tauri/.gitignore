@@ -1,2 +1,5 @@
 /target/
 /gen/schemas
+# Le projet Android : régénéré par `tauri android init` à chaque publication et à chaque essai
+# local (`npm run android:dev`) — jamais versionné (2026-11-06).
+/gen/android

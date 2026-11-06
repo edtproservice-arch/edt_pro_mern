@@ -1,7 +1,8 @@
 /**
  * Prépare le projet Android généré par `tauri android init` (2026-10-30).
  *
- *   node scripts/preparer-android.mjs 0.3.0
+ *   node scripts/preparer-android.mjs 0.3.0   (publication : la version est écrite)
+ *   node scripts/preparer-android.mjs         (essai local : la version ne bouge pas)
  *
  * Lancé par `.github/workflows/application-bureau.yml`, entre `tauri android init` et
  * `tauri android build` : le projet Android (`src-tauri/gen/android`) est régénéré à chaque
@@ -33,14 +34,22 @@ const arreter = (message) => {
 };
 
 // ── 1. Version ────────────────────────────────────────────────────────────
+/*
+ * ⚠️ SANS VERSION, ON N'Y TOUCHE PAS (2026-11-06) : c'est le lancement LOCAL
+ *    (`npm run android:dev`, `scripts/android-dev.mjs`) — réécrire `tauri.conf.json` et
+ *    `Cargo.toml` laisserait deux fichiers modifiés dans le dépôt à chaque essai. La publication
+ *    passe toujours la version.
+ */
 const version = process.argv[2];
-if (!/^\d+\.\d+\.\d+$/.test(version ?? '')) arreter(`Version invalide : « ${version} » (attendu : 1.2.3).`);
-const cheminConf = join(dossierTauri, 'tauri.conf.json');
-const conf = JSON.parse(readFileSync(cheminConf, 'utf8'));
-conf.version = version;
-writeFileSync(cheminConf, `${JSON.stringify(conf, null, 2)}\n`);
-const cheminCargo = join(dossierTauri, 'Cargo.toml');
-writeFileSync(cheminCargo, readFileSync(cheminCargo, 'utf8').replace(/^version = ".*"$/m, `version = "${version}"`));
+if (version !== undefined) {
+  if (!/^\d+\.\d+\.\d+$/.test(version)) arreter(`Version invalide : « ${version} » (attendu : 1.2.3).`);
+  const cheminConf = join(dossierTauri, 'tauri.conf.json');
+  const conf = JSON.parse(readFileSync(cheminConf, 'utf8'));
+  conf.version = version;
+  writeFileSync(cheminConf, `${JSON.stringify(conf, null, 2)}\n`);
+  const cheminCargo = join(dossierTauri, 'Cargo.toml');
+  writeFileSync(cheminCargo, readFileSync(cheminCargo, 'utf8').replace(/^version = ".*"$/m, `version = "${version}"`));
+}
 
 // ── 2. MainActivity.kt ────────────────────────────────────────────────────
 function chercher(dossier, nom) {
@@ -155,16 +164,22 @@ writeFileSync(
   activite,
   `package ${paquet}
 
+import android.Manifest
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.ContentValues
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Base64
+import android.webkit.MimeTypeMap
+import android.widget.Toast
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -346,6 +361,30 @@ object PontPlay {
 object PontFichiers {
   @Volatile var activite: MainActivity? = null
 
+  /** Le canal des avis « Téléchargement terminé » — distinct des alertes. */
+  private const val CANAL_TELECHARGEMENTS = "edtpro_telechargements"
+  private var prochainAvis = 3000
+
+  /**
+   * Le TYPE d'un fichier, d'après son extension (2026-11-06, retour du porteur : « Ouvrir ne
+   * marche pas »). Celui que donne la page peut porter un suffixe (« ; charset=utf-8 ») ou être
+   * vide : Android ne trouvait alors aucune application pour l'ouvrir, et rien ne se passait.
+   */
+  private fun typeDe(nom: String, recu: String): String {
+    val extension = nom.substringAfterLast('.', "").lowercase()
+    return MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
+      ?: recu.substringBefore(';').trim().ifEmpty { "application/octet-stream" }
+  }
+
+  /** « Ouvrir avec… » ; le droit de lecture accordé à l'application choisie. */
+  private fun intentionOuvrir(adresse: Uri, type: String): Intent {
+    val voir = Intent(Intent.ACTION_VIEW).apply {
+      setDataAndType(adresse, type)
+      addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    return Intent.createChooser(voir, "Ouvrir avec").apply { addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+  }
+
   /** Écrit le fichier ; rend son adresse (content://…), ou "" si l'écriture échoue. */
   @JavascriptInterface
   fun enregistrer(nom: String, mime: String, base64: String): String {
@@ -353,16 +392,18 @@ object PontFichiers {
     // Avant Android 10, le dossier partagé demande une permission que l'application n'a pas.
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return ""
     return try {
+      val type = typeDe(nom, mime)
       val octets = Base64.decode(base64, Base64.DEFAULT)
       val valeurs = ContentValues().apply {
         put(MediaStore.MediaColumns.DISPLAY_NAME, nom)
-        put(MediaStore.MediaColumns.MIME_TYPE, mime)
+        put(MediaStore.MediaColumns.MIME_TYPE, type)
         put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
       }
       val resolveur = activite.contentResolver
       val adresse = resolveur.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, valeurs) ?: return ""
       val flux = resolveur.openOutputStream(adresse) ?: return ""
       flux.use { it.write(octets) }
+      avertir(activite, nom, adresse, type)
       adresse.toString()
     } catch (e: Exception) {
       ""
@@ -373,17 +414,46 @@ object PontFichiers {
   @JavascriptInterface
   fun ouvrir(adresse: String, mime: String): Boolean {
     val activite = activite ?: return false
-    val intention = Intent(Intent.ACTION_VIEW).apply {
-      setDataAndType(Uri.parse(adresse), mime)
-      addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }
+    val uri = Uri.parse(adresse)
+    // Le type ENREGISTRÉ par le MediaStore — celui que l'extension a donné à l'écriture.
+    val type = activite.contentResolver.getType(uri) ?: typeDe("", mime)
     activite.runOnUiThread {
       try {
-        activite.startActivity(Intent.createChooser(intention, "Ouvrir avec"))
+        activite.startActivity(intentionOuvrir(uri, type))
       } catch (e: Exception) {
+        Toast.makeText(activite, "Aucune application de ce téléphone ne peut ouvrir ce fichier.", Toast.LENGTH_LONG).show()
       }
     }
     return true
+  }
+
+  /**
+   * L'avis « Téléchargement terminé » dans le volet des notifications, comme un navigateur
+   * (2026-11-06, demande du porteur) — le toucher ouvre le fichier. Rien si la personne a refusé
+   * les notifications : le fichier est enregistré quand même, et la page l'annonce.
+   */
+  @android.annotation.TargetApi(Build.VERSION_CODES.Q) // appelée seulement par enregistrer(), Android 10+
+  private fun avertir(activite: MainActivity, nom: String, adresse: Uri, type: String) {
+    if (Build.VERSION.SDK_INT >= 33 &&
+      activite.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+    ) return
+    val gestionnaire = activite.getSystemService(NotificationManager::class.java) ?: return
+    gestionnaire.createNotificationChannel(
+      NotificationChannel(CANAL_TELECHARGEMENTS, "Téléchargements", NotificationManager.IMPORTANCE_DEFAULT)
+    )
+    val numero = prochainAvis++
+    val toucher = PendingIntent.getActivity(
+      activite, numero, intentionOuvrir(adresse, type),
+      PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+    )
+    val avis = Notification.Builder(activite, CANAL_TELECHARGEMENTS)
+      .setSmallIcon(android.R.drawable.stat_sys_download_done)
+      .setContentTitle("Téléchargement terminé")
+      .setContentText(nom)
+      .setContentIntent(toucher)
+      .setAutoCancel(true)
+      .build()
+    gestionnaire.notify(numero, avis)
   }
 }${firebasePont}
 `
@@ -427,7 +497,7 @@ for (const entree of existsSync(dossierRes) ? readdirSync(dossierRes) : []) {
 if (themes === 0) console.warn(`⚠ Aucun themes.xml sous ${dossierRes} : la barre d'état garde les couleurs du modèle.`);
 
 console.log(
-  `✔ Android prêt : version ${version}, ${activite.replace(racine, 'frontend')} (paquet ${paquet})` +
+  `✔ Android prêt : version ${version ?? 'inchangée (essai local)'}, ${activite.replace(racine, 'frontend')} (paquet ${paquet})` +
     (avecFirebase ? ', Firebase activé' : ', sans Firebase (pas de google-services.json)') +
     ', mise à jour Google Play' +
     `, thème appliqué à ${themes} fichier(s).`

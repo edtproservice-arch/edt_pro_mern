@@ -12,7 +12,8 @@
     "tauri": "tauri",
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build",
-    "desktop:release": "node scripts/publier-desktop.mjs"
+    "desktop:release": "node scripts/publier-desktop.mjs",
+    "android:dev": "node scripts/android-dev.mjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",

@@ -80,6 +80,19 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    /*
+     * ═══ L'APPLICATION ANDROID EN LOCAL (2026-11-06, `npm run android:dev`) ═══
+     * Le téléphone charge les pages depuis CE serveur : il doit l'atteindre par le réseau, pas
+     * par `localhost` — qui, sur le téléphone, désigne le téléphone. `tauri android dev` donne
+     * l'adresse du PC dans `TAURI_DEV_HOST`. Hors de ce cas, rien ne change : `localhost` seul.
+     * `strictPort` : un second Vite ne doit pas se glisser sur 5174 pendant que l'application
+     * attend 5173.
+     */
+    host: process.env.TAURI_DEV_HOST || false,
+    strictPort: Boolean(process.env.TAURI_DEV_HOST),
+    hmr: process.env.TAURI_DEV_HOST
+      ? { protocol: 'ws', host: process.env.TAURI_DEV_HOST, port: 1421 }
+      : undefined,
     proxy: {
       // Modules déjà migrés → API Express locale
       '/api/v2': {

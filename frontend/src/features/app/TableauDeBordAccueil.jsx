@@ -14,7 +14,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { AlertTriangle, ArrowUpRight, ChevronLeft, ChevronRight } from 'lucide-react';
+import { AlertTriangle, ArrowUpRight, ChevronLeft, ChevronRight, UserRound } from 'lucide-react';
 import { agregerAvancement, dureeSeance } from 'shared/domain';
 import { Button } from '@/components/ui/button';
 import { chargerContexte, chargerSemaines } from '@/features/emploi/api';
@@ -1017,6 +1017,12 @@ function CarteModuleTimeline({ module, courante }) {
       <span className="mt-1 block truncate text-[0.65rem] text-muted-foreground">
         {module.groupe} · {module.module}
       </span>
+      {module.formateurs?.length > 0 && (
+        <span className="mt-0.5 flex items-center gap-1 text-[0.65rem] text-muted-foreground">
+          <UserRound className="size-3 shrink-0" aria-hidden="true" />
+          <span className="truncate">{module.formateurs.join(' · ')}</span>
+        </span>
+      )}
 
       <span className="mt-2 flex items-center justify-between gap-2">
         <span className="flex items-center gap-1.5">
@@ -1334,6 +1340,17 @@ function statutsDesGroupes(lignes, regional) {
 function modulesARisque(lignes, plages, courante, intitules, intitulesParGroupe) {
   if (!plages || courante === null) return [];
 
+  /* Les formateurs de chaque (groupe, module), présentiel et distance (2026-11-06, demande du
+     porteur : « ajouter aussi le nom du formateur »). */
+  const formateurs = new Map();
+  for (const ligne of lignes) {
+    const cle = `${ligne.groupe}||${ligne.module}`;
+    if (!formateurs.has(cle)) formateurs.set(cle, new Set());
+    for (const nom of [ligne.formateurPresentiel, ligne.formateurSynchrone]) {
+      if (typeof nom === 'string' && nom.trim() !== '') formateurs.get(cle).add(nom.trim());
+    }
+  }
+
   /* ⚠️ VENTILÉ PAR GROUPE : un module n'est achevé que POUR UN GROUPE. */
   return agregerAvancement(lignes, 'module', 'groupes')
     .map((entree) => {
@@ -1351,6 +1368,7 @@ function modulesARisque(lignes, plages, courante, intitules, intitulesParGroupe)
           (intitules && typeof intitules[entree.sujet] === 'string' && intitules[entree.sujet]) ||
           entree.sujet,
         estRegional: entree.estRegional,
+        formateurs: [...(formateurs.get(`${entree.ventilation}||${entree.sujet}`) ?? [])],
         taux: entree.taux,
         realise: entree.realise,
         prevu: entree.prevu,

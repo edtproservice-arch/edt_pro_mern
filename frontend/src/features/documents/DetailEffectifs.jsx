@@ -19,6 +19,8 @@ import { Input } from '@/components/ui/input';
 import Alerte from '@/components/common/Alerte';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import { estApplicationTauri } from '@/lib/miseAJourDesktop';
+import { enregistrerDansLApplication } from '@/lib/telechargementApplication';
 import { chargerStagiaires } from './api';
 import { useEtatPartage } from '@/features/guidage/useEtatPartage';
 
@@ -509,7 +511,21 @@ function DialogueQr({ qr, onFermer }) {
                 Copier le lien
               </Button>
               <Button asChild size="sm" className="gap-1.5">
-                <a href={qr.qr} download={`QR_${qr.stagiaire.matricule}.png`}>
+                <a
+                  href={qr.qr}
+                  download={`QR_${qr.stagiaire.matricule}.png`}
+                  /*
+                   * Dans les applications, le lien « download » ne fait rien (Android) ou rien de
+                   * visible (bureau) : l'application enregistre et l'annonce (2026-11-06). Le
+                   * navigateur, lui, suit le lien.
+                   */
+                  onClick={async (evenement) => {
+                    if (!estApplicationTauri()) return;
+                    evenement.preventDefault();
+                    const image = await (await fetch(qr.qr)).blob();
+                    await enregistrerDansLApplication(image, `QR_${qr.stagiaire.matricule}.png`);
+                  }}
+                >
                   <Download className="size-3.5" />
                   Télécharger le QR
                 </a>

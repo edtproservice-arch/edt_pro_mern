@@ -3,6 +3,7 @@ import { lireEtablissementActif } from './etablissementActif';
 import { lireConnexionId } from './identiteConnexion';
 import { estPagePublique } from './pagesPubliques';
 import { queryClient } from './queryClient';
+import { enregistrerDansLApplication } from './telechargementApplication';
 
 let redirectionEnCours = false;
 
@@ -364,11 +365,23 @@ async function telecharger(path, body, { nomParDefaut = 'export.xlsx' } = {}) {
   }
 
   const tampon = await response.blob();
+  const nom = nomDepuisEntete(response.headers.get('Content-Disposition')) ?? nomParDefaut;
+
+  /*
+   * ⚠️ DANS LES APPLICATIONS, L'APPLICATION ENREGISTRE (2026-11-06) : la WebView d'Android ignore
+   *    le lien ci-dessous, celle de Windows enregistre sans rien dire. Voir
+   *    `telechargementApplication.js`. Le navigateur, lui, garde son lien.
+   */
+  if (await enregistrerDansLApplication(tampon, nom)) {
+    const resume = response.headers.get('X-Resume-Bilan');
+    return resume ? JSON.parse(resume) : null;
+  }
+
   const url = URL.createObjectURL(tampon);
   const lien = document.createElement('a');
 
   lien.href = url;
-  lien.download = nomDepuisEntete(response.headers.get('Content-Disposition')) ?? nomParDefaut;
+  lien.download = nom;
   document.body.append(lien);
   lien.click();
   lien.remove();

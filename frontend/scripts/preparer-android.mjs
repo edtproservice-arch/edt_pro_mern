@@ -157,8 +157,14 @@ writeFileSync(
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.ContentValues
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
+import android.util.Base64
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -208,6 +214,7 @@ class MainActivity : TauriActivity() {
     super.onCreate(savedInstanceState)
     creerCanalAlertes()
     PontPlay.activite = this
+    PontFichiers.activite = this
     gestionnairePlay.registerListener(ecouteurPlay)
   }
 
@@ -235,6 +242,7 @@ class MainActivity : TauriActivity() {
   override fun onDestroy() {
     gestionnairePlay.unregisterListener(ecouteurPlay)
     if (PontPlay.activite === this) PontPlay.activite = null
+    if (PontFichiers.activite === this) PontFichiers.activite = null
     super.onDestroy()
   }
 
@@ -243,7 +251,9 @@ class MainActivity : TauriActivity() {
     val cookies = CookieManager.getInstance()
     cookies.setAcceptCookie(true)
     cookies.setAcceptThirdPartyCookies(webView, true)
-    webView.addJavascriptInterface(PontPlay, "EdtproPlay")${firebaseCode}
+    webView.addJavascriptInterface(PontPlay, "EdtproPlay")
+    // Les documents téléchargés : la WebView ignore les liens « download » (2026-11-06).
+    webView.addJavascriptInterface(PontFichiers, "EdtproFichiers")${firebaseCode}
   }
 
   /** Installée par le Play Store ? Sinon, Play ne peut pas la mettre à jour. */
@@ -323,6 +333,57 @@ object PontPlay {
   fun terminer() {
     val activite = activite ?: return
     activite.runOnUiThread { activite.gestionnairePlay.completeUpdate() }
+  }
+}
+
+/**
+ * Les documents téléchargés (2026-11-06, retour du porteur : « en mobile, les documents ne se
+ * téléchargent pas »). La WebView ignore le lien « download » de la page : la page passe ici le
+ * contenu (base64), et le fichier est écrit dans Téléchargements par le MediaStore — sans
+ * permission de stockage depuis Android 10. Visible ensuite dans « Fichiers », comme tout
+ * téléchargement. La page lit \`window.EdtproFichiers\` (\`src/lib/telechargementApplication.js\`).
+ */
+object PontFichiers {
+  @Volatile var activite: MainActivity? = null
+
+  /** Écrit le fichier ; rend son adresse (content://…), ou "" si l'écriture échoue. */
+  @JavascriptInterface
+  fun enregistrer(nom: String, mime: String, base64: String): String {
+    val activite = activite ?: return ""
+    // Avant Android 10, le dossier partagé demande une permission que l'application n'a pas.
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return ""
+    return try {
+      val octets = Base64.decode(base64, Base64.DEFAULT)
+      val valeurs = ContentValues().apply {
+        put(MediaStore.MediaColumns.DISPLAY_NAME, nom)
+        put(MediaStore.MediaColumns.MIME_TYPE, mime)
+        put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+      }
+      val resolveur = activite.contentResolver
+      val adresse = resolveur.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, valeurs) ?: return ""
+      val flux = resolveur.openOutputStream(adresse) ?: return ""
+      flux.use { it.write(octets) }
+      adresse.toString()
+    } catch (e: Exception) {
+      ""
+    }
+  }
+
+  /** Ouvre le fichier avec l'application choisie par la personne (tableur, lecteur PDF…). */
+  @JavascriptInterface
+  fun ouvrir(adresse: String, mime: String): Boolean {
+    val activite = activite ?: return false
+    val intention = Intent(Intent.ACTION_VIEW).apply {
+      setDataAndType(Uri.parse(adresse), mime)
+      addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    activite.runOnUiThread {
+      try {
+        activite.startActivity(Intent.createChooser(intention, "Ouvrir avec"))
+      } catch (e: Exception) {
+      }
+    }
+    return true
   }
 }${firebasePont}
 `

@@ -24,11 +24,11 @@ mod bureau {
 
     pub fn installer(app: &mut App) -> tauri::Result<()> {
         // L'icône de la zone de notification : clic → la fenêtre ; menu → Ouvrir / Quitter.
-        let ouvrir = MenuItem::with_id(app, "ouvrir", "Ouvrir EDT Pro", true, None::<&str>)?;
-        let quitter = MenuItem::with_id(app, "quitter", "Quitter EDT Pro", true, None::<&str>)?;
+        let ouvrir = MenuItem::with_id(app, "ouvrir", "Ouvrir eDTpro", true, None::<&str>)?;
+        let quitter = MenuItem::with_id(app, "quitter", "Quitter eDTpro", true, None::<&str>)?;
         let menu = Menu::with_items(app, &[&ouvrir, &quitter])?;
         let mut icone = TrayIconBuilder::with_id("principale")
-            .tooltip("EDT Pro")
+            .tooltip("eDTpro")
             .menu(&menu)
             .show_menu_on_left_click(false)
             .on_menu_event(|app, evenement| match evenement.id.as_ref() {
@@ -76,7 +76,9 @@ mod bureau {
                 r"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run",
                 KEY_READ,
             )
-            .and_then(|cle| cle.get_raw_value("EDT Pro"))
+            // ⚠️ LE NOM DE L'APPLICATION (productName) : c'est sous lui que le lancement automatique
+            //    s'inscrit — « eDTpro » depuis le 2026-11-06, « EDT Pro » avant.
+            .and_then(|cle| cle.get_raw_value("eDTpro"))
             .map(|valeur| valeur.bytes.len() >= 8 && valeur.bytes.iter().rev().take(8).any(|octet| *octet != 0))
             .unwrap_or(false)
     }
@@ -84,6 +86,87 @@ mod bureau {
     #[cfg(not(windows))]
     fn demarrage_refuse() -> bool {
         false
+    }
+}
+
+#[cfg(desktop)]
+mod telechargement {
+    //! ═══ LES DOCUMENTS TÉLÉCHARGÉS, ENREGISTRÉS PAR L'APPLICATION (2026-11-06) ═══
+    //! Retour du porteur : « en desktop, ni notification ni signe que le document est
+    //! téléchargé ». Le lien `download` de la page laissait WebView2 enregistrer en silence, sans
+    //! dire où. L'application écrit donc elle-même le fichier dans Téléchargements et rend son
+    //! chemin : la page l'annonce, avec « Ouvrir » et « Dossier » (`src/lib/telechargementApplication.js`).
+    use std::path::{Path, PathBuf};
+    use tauri::ipc::{InvokeBody, Request};
+    use tauri::{AppHandle, Manager};
+
+    /// Le fichier arrive EN BINAIRE (pas en JSON : un tableur de 4 Mo y pèserait le quadruple) ;
+    /// son nom, dans l'en-tête `x-nom`, encodé comme une URL (les accents ne passent pas tels quels).
+    #[tauri::command]
+    pub fn enregistrer_telechargement(app: AppHandle, requete: Request<'_>) -> Result<String, String> {
+        let InvokeBody::Raw(contenu) = requete.body() else {
+            return Err("Le document doit arriver en binaire.".into());
+        };
+        let nom = requete
+            .headers()
+            .get("x-nom")
+            .and_then(|valeur| valeur.to_str().ok())
+            .map(decoder_url)
+            .map(|nom| nettoyer(&nom))
+            .filter(|nom| !nom.is_empty())
+            .unwrap_or_else(|| "document".into());
+        let dossier = app.path().download_dir().map_err(|erreur| erreur.to_string())?;
+        std::fs::create_dir_all(&dossier).map_err(|erreur| erreur.to_string())?;
+        let chemin = chemin_libre(&dossier, &nom);
+        std::fs::write(&chemin, contenu).map_err(|erreur| erreur.to_string())?;
+        Ok(chemin.to_string_lossy().into_owned())
+    }
+
+    /// « %C3%A9 » → « é ». Un octet mal formé est gardé tel quel.
+    fn decoder_url(texte: &str) -> String {
+        let octets = texte.as_bytes();
+        let mut sortie = Vec::with_capacity(octets.len());
+        let mut i = 0;
+        while i < octets.len() {
+            if octets[i] == b'%' && i + 2 < octets.len() {
+                if let Ok(valeur) = u8::from_str_radix(&texte[i + 1..i + 3], 16) {
+                    sortie.push(valeur);
+                    i += 3;
+                    continue;
+                }
+            }
+            sortie.push(octets[i]);
+            i += 1;
+        }
+        String::from_utf8_lossy(&sortie).into_owned()
+    }
+
+    /// Un NOM, jamais un chemin : ni dossier, ni caractère interdit par Windows.
+    fn nettoyer(nom: &str) -> String {
+        let feuille = nom.rsplit(['/', '\\']).next().unwrap_or(nom);
+        feuille
+            .chars()
+            .map(|c| if "<>:\"|?*".contains(c) || c.is_control() { '_' } else { c })
+            .collect::<String>()
+            .trim()
+            .trim_matches('.')
+            .to_string()
+    }
+
+    /// « Bilan.xlsx » déjà là → « Bilan (1).xlsx » : un téléchargement n'écrase jamais l'autre.
+    fn chemin_libre(dossier: &Path, nom: &str) -> PathBuf {
+        let chemin = dossier.join(nom);
+        if !chemin.exists() {
+            return chemin;
+        }
+        let (base, extension) = match nom.rfind('.') {
+            Some(position) if position > 0 => (&nom[..position], &nom[position..]),
+            _ => (nom, ""),
+        };
+        (1..)
+            .map(|rang| dossier.join(format!("{base} ({rang}){extension}")))
+            .find(|candidat| !candidat.exists())
+            .expect("un nom libre finit toujours par se trouver")
     }
 }
 
@@ -104,6 +187,8 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
+        // Les documents téléchargés, enregistrés dans Téléchargements (2026-11-06).
+        .invoke_handler(gestionnaire_commandes())
         // Message, annonce, emploi du temps : la notification du système (2026-10-31).
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
@@ -128,5 +213,17 @@ pub fn run() {
             }
         })
         .run(tauri::generate_context!())
-        .expect("erreur au lancement d'EDT Pro");
+        .expect("erreur au lancement d'eDTpro");
+}
+
+/// Les commandes de l'application. Sur Android, l'enregistrement passe par le pont natif de
+/// `MainActivity` (`scripts/preparer-android.mjs`) : le stockage partagé y a ses propres règles.
+#[cfg(desktop)]
+fn gestionnaire_commandes() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
+    tauri::generate_handler![telechargement::enregistrer_telechargement]
+}
+
+#[cfg(mobile)]
+fn gestionnaire_commandes() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
+    tauri::generate_handler![]
 }

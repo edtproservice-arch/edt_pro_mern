@@ -75,7 +75,7 @@ export async function construireClasseur({ mode, anneeScolaire, feuilles }) {
   }
 
   const classeur = new ExcelJS.Workbook();
-  classeur.creator = 'EDT Pro';
+  classeur.creator = 'eDTpro';
   classeur.created = new Date();
 
   ajouterFeuilleValeurs(classeur);

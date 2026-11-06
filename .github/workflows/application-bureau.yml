@@ -111,7 +111,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: EDT Pro ${{ env.VERSION }}
+          name: eDTpro ${{ env.VERSION }}
           make_latest: 'true'
           files: |
             release/desktop-v${{ env.VERSION }}/EDT-Pro_${{ env.VERSION }}_x64-setup.exe
@@ -267,7 +267,7 @@ jobs:
           "$OUTILS/apksigner" verify "EDT-Pro_$VERSION.apk"
           cp "EDT-Pro_$VERSION.apk" EDT-Pro.apk
           # Ce que lit l'application Android pour proposer la mise à jour.
-          node -e 'const v = process.env.VERSION; process.stdout.write(JSON.stringify({ version: v, notes: `EDT Pro ${v}`, date: new Date().toISOString(), url: "https://edtpro.tech/telechargements/EDT-Pro.apk" }))' > android.json
+          node -e 'const v = process.env.VERSION; process.stdout.write(JSON.stringify({ version: v, notes: `eDTpro ${v}`, date: new Date().toISOString(), url: "https://edtpro.tech/telechargements/EDT-Pro.apk" }))' > android.json
 
       - name: Garder l'APK (onglet Actions)
         uses: actions/upload-artifact@v4

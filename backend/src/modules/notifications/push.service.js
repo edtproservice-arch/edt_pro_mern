@@ -99,7 +99,12 @@ export async function envoyerPush(utilisateurIds, notification) {
         tokens: lot,
         notification: { title: notification.titre, body: notification.corps ?? '' },
         data: { lien: notification.lien ?? '/app', genre: notification.genre ?? '' },
-        android: { priority: 'high', notification: { sound: 'default' } },
+        /*
+         * Le canal en importance HAUTE que crée l'application (2026-11-06) : c'est lui qui fait
+         * surgir la notification en popup, application fermée — comme WhatsApp. Même identifiant
+         * que `frontend/scripts/preparer-android.mjs`.
+         */
+        android: { priority: 'high', notification: { sound: 'default', channelId: 'edtpro_alertes' } },
       });
       reponse.responses.forEach((r, index) => {
         const code = r.error?.code ?? '';

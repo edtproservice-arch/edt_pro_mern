@@ -122,7 +122,7 @@ export default function BoutonScannerCarte() {
     setEtat('repos');
     const jeton = jetonDuQr(contenu);
     if (!jeton) {
-      setErreur({ message: 'Ce QR code n’est pas celui d’une carte EDT Pro.' });
+      setErreur({ message: 'Ce QR code n’est pas celui d’une carte eDTpro.' });
       return;
     }
     navigate(`/carte/${encodeURIComponent(jeton)}`);

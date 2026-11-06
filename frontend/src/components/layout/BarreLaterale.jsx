@@ -122,7 +122,7 @@ export default function BarreLaterale(proprietes) {
         */}
         <div className="flex items-center justify-between gap-1 px-2 py-1 group-data-[collapsible=icon]:hidden">
           <NavLink to="/app" className="flex items-center">
-            <img src="/logo_edtpro.png" alt="EDT Pro" className="h-7 w-auto" />
+            <img src="/logo_edtpro.png" alt="eDTpro" className="h-7 w-auto" />
           </NavLink>
 
           <BoutonEpingle />

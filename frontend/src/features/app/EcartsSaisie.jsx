@@ -353,7 +353,7 @@ function EnvoyerATous({ semaine, nombre: combien }) {
         <AlertDialogHeader>
           <AlertDialogTitle>Envoyer à tous les formateurs en manque de S{semaine} ?</AlertDialogTitle>
           <AlertDialogDescription>
-            {combien} formateur(s) recevront par la messagerie EDT Pro l’état de leur écart de saisie
+            {combien} formateur(s) recevront par la messagerie eDTpro l’état de leur écart de saisie
             e-note, avec les modules et les séances à vérifier. Ceux qui n’ont pas de compte actif
             seront signalés.
           </AlertDialogDescription>

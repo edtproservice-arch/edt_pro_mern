@@ -463,7 +463,7 @@ export async function envoyer(
   // elle part par ici, programmée ou non.
   notifierMessage(
     envoyes.map((envoi) => envoi.destinataireId),
-    { expediteurNom: expediteur.nomComplet || 'EDT Pro', sujet, annonce: Boolean(annonce) }
+    { expediteurNom: expediteur.nomComplet || 'eDTpro', sujet, annonce: Boolean(annonce) }
   );
 
   // `ids` : le service des propositions retrouve ainsi le message qu'il vient de poser.

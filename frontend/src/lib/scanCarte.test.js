@@ -4,7 +4,7 @@ import { jetonDuQr } from './scanCarte';
 const hotes = new Set(['edtpro.tech', 'www.edtpro.tech']);
 
 describe('jetonDuQr (2026-10-31)', () => {
-  it('lit le jeton d’un QR de carte EDT Pro', () => {
+  it('lit le jeton d’un QR de carte eDTpro', () => {
     expect(jetonDuQr('https://edtpro.tech/carte/abc.DEF-123_x', hotes)).toBe('abc.DEF-123_x');
     expect(jetonDuQr('  https://www.edtpro.tech/carte/abc/  ', hotes)).toBe('abc');
   });

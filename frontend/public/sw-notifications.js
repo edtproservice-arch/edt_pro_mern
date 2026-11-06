@@ -17,14 +17,14 @@ self.addEventListener('push', (evenement) => {
   try {
     donnees = evenement.data ? evenement.data.json() : {};
   } catch {
-    donnees = { titre: 'EDT Pro', corps: evenement.data ? evenement.data.text() : '' };
+    donnees = { titre: 'eDTpro', corps: evenement.data ? evenement.data.text() : '' };
   }
 
   evenement.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((fenetres) => {
       const auPremierPlan = fenetres.some((fenetre) => fenetre.visibilityState === 'visible' && fenetre.focused);
       if (auPremierPlan) return undefined;
-      return self.registration.showNotification(donnees.titre || 'EDT Pro', {
+      return self.registration.showNotification(donnees.titre || 'eDTpro', {
         body: donnees.corps || '',
         icon: '/favicon.png',
         badge: '/favicon.png',

@@ -75,6 +75,9 @@ if (!paquet) arreter(`Paquet introuvable dans ${activite}`);
  */
 const avecFirebase = existsSync(join(dossierAndroid, 'app', 'google-services.json'));
 
+/** Le canal des notifications — le MÊME identifiant que `backend/.../push.service.js`. */
+const CANAL_ALERTES = 'edtpro_alertes';
+
 function greffer(chemin, ancre, ajout, description) {
   const texte = readFileSync(chemin, 'utf8');
   if (texte.includes(ajout.trim())) return;
@@ -96,6 +99,16 @@ if (avecFirebase) {
     /\ndependencies\s*\{/,
     '\n    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))\n    implementation("com.google.firebase:firebase-messaging")',
     'le bloc dependencies'
+  );
+  /*
+   * Le canal des notifications reçues application fermée (2026-11-06) : celui, en importance
+   * haute, que crée `MainActivity` — pour qu'elles surgissent en popup, comme sur WhatsApp.
+   */
+  greffer(
+    join(dossierAndroid, 'app', 'src', 'main', 'AndroidManifest.xml'),
+    /<application\b[^>]*>/,
+    `\n        <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="${CANAL_ALERTES}" />`,
+    'la balise <application> du manifeste'
   );
 }
 
@@ -142,6 +155,8 @@ writeFileSync(
   activite,
   `package ${paquet}
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.os.Build
 import android.os.Bundle
 import android.webkit.CookieManager
@@ -191,8 +206,25 @@ class MainActivity : TauriActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    creerCanalAlertes()
     PontPlay.activite = this
     gestionnairePlay.registerListener(ecouteurPlay)
+  }
+
+  /**
+   * Le canal des notifications eDTpro, en importance HAUTE (2026-11-06, demande du porteur :
+   * « un popup sur le téléphone même si l'application est fermée, comme Facebook ou WhatsApp »).
+   * C'est l'importance du CANAL — pas la priorité du message — qui fait surgir la notification
+   * en haut de l'écran. Sans canal à soi, Android rangeait tout dans « Divers », sans popup.
+   * Le serveur l'envoie sur ce canal (\`push.service.js\`) ; Firebase le prend aussi par défaut
+   * (méta-donnée du manifeste). Recréer un canal existant ne change rien : l'appel est sans risque.
+   */
+  private fun creerCanalAlertes() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+    val canal = NotificationChannel("${CANAL_ALERTES}", "Alertes eDTpro", NotificationManager.IMPORTANCE_HIGH)
+    canal.description = "Emploi du temps publié ou modifié, absences à saisir, messages"
+    canal.enableVibration(true)
+    getSystemService(NotificationManager::class.java)?.createNotificationChannel(canal)
   }
 
   override fun onResume() {

@@ -425,10 +425,10 @@ export async function changerStatut(utilisateurId, { statut, essaiJours }, admin
 async function notifier(utilisateur, statut, essaiJours) {
   const messages = {
     [STATUTS_COMPTE.APPROUVE]: essaiJours
-      ? `Votre compte EDT Pro est activé pour une période d'essai de ${essaiJours} jours.`
-      : 'Votre compte EDT Pro a été approuvé. Vous pouvez vous connecter.',
-    [STATUTS_COMPTE.REJETE]: "Votre demande d'accès à EDT Pro n'a pas été retenue.",
-    [STATUTS_COMPTE.BLOQUE]: 'Votre accès à EDT Pro a été suspendu.',
+      ? `Votre compte eDTpro est activé pour une période d'essai de ${essaiJours} jours.`
+      : 'Votre compte eDTpro a été approuvé. Vous pouvez vous connecter.',
+    [STATUTS_COMPTE.REJETE]: "Votre demande d'accès à eDTpro n'a pas été retenue.",
+    [STATUTS_COMPTE.BLOQUE]: 'Votre accès à eDTpro a été suspendu.',
   };
 
   const texte = messages[statut];
@@ -436,8 +436,8 @@ async function notifier(utilisateur, statut, essaiJours) {
 
   await envoyerEmail({
     destinataire: utilisateur.email,
-    sujet: 'EDT Pro — Statut de votre compte',
-    texte: `Bonjour ${utilisateur.nomComplet},\n\n${texte}\n\nL'équipe EDT Pro`,
+    sujet: 'eDTpro — Statut de votre compte',
+    texte: `Bonjour ${utilisateur.nomComplet},\n\n${texte}\n\nL'équipe eDTpro`,
   });
 }
 
@@ -472,7 +472,7 @@ export async function reinitialiserMotDePasse(utilisateurId, motDePasse) {
 
   await envoyerEmail({
     destinataire: utilisateur.email,
-    sujet: 'EDT Pro — Nouveau mot de passe',
+    sujet: 'eDTpro — Nouveau mot de passe',
     texte:
       `Bonjour ${utilisateur.nomComplet},\n\n` +
       `Votre mot de passe a été réinitialisé par un administrateur. ` +
@@ -481,7 +481,7 @@ export async function reinitialiserMotDePasse(utilisateurId, motDePasse) {
       // gabarit HTML, et ce qui le rend sélectionnable d'un geste en texte brut.
       // Collé à la phrase, il se recopiait avec la ponctuation qui le suit.
       `${motDePasse}\n\n` +
-      `Changez-le dès votre prochaine connexion.\n\nL'équipe EDT Pro`,
+      `Changez-le dès votre prochaine connexion.\n\nL'équipe eDTpro`,
   });
 
   return { aTransmettre: false };

@@ -185,14 +185,14 @@ export async function reinitialiserMotDePasse(etablissementId, compteId, motDePa
 
   await envoyerEmail({
     destinataire: compte.email,
-    sujet: 'Votre mot de passe EDT Pro a été réinitialisé',
+    sujet: 'Votre mot de passe eDTpro a été réinitialisé',
     raison:
       'Vous recevez ce message parce que le directeur de votre établissement a réinitialisé votre mot de passe.',
     texte:
       `Bonjour ${compte.nomComplet},\n\n` +
       `Le directeur de votre établissement vient de réinitialiser votre mot de passe.\n\n` +
       `${motDePasse}\n\n` +
-      `Changez-le dès votre prochaine connexion.\n\nL'équipe EDT Pro`,
+      `Changez-le dès votre prochaine connexion.\n\nL'équipe eDTpro`,
   });
 
   return { aTransmettre: false };

@@ -33,7 +33,7 @@ const schema = z.object({
   // Expéditeur affiché. Séparé de SMTP_USER pour pouvoir authentifier avec un
   // compte et écrire au nom d'un autre (alias vérifié) sans toucher au code.
   SMTP_FROM: z.string().optional(),
-  SMTP_FROM_NAME: z.string().default('EDT Pro'),
+  SMTP_FROM_NAME: z.string().default('eDTpro'),
 
   // Adresse de réponse réelle. Un message transactionnel auquel on ne peut pas
   // répondre est un signal négatif pour les filtres anti-spam.

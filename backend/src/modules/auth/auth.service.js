@@ -90,7 +90,7 @@ export async function inscrire(donnees) {
   const directeurEnPlace = await etablissementDejaInscrit(donnees);
   if (directeurEnPlace) {
     throw conflict(
-      `Cet établissement est déjà inscrit sur EDT Pro, avec le compte ${masquerEmail(directeurEnPlace.email)}. ` +
+      `Cet établissement est déjà inscrit sur eDTpro, avec le compte ${masquerEmail(directeurEnPlace.email)}. ` +
         'Connectez-vous avec ce compte — « Mot de passe oublié » si besoin —, ou contactez l’administrateur.',
       { code: 'ETABLISSEMENT_DEJA_INSCRIT' }
     );
@@ -174,7 +174,7 @@ export async function connecter({ identifiant, motDePasse, appareil, ip }) {
     throw forbidden(
       utilisateur.statut === STATUTS_COMPTE.EN_ATTENTE
         ? "Votre compte est en attente d'approbation."
-        : 'Votre compte a expiré. Contactez le service EDT Pro.',
+        : 'Votre compte a expiré. Contactez le service eDTpro.',
       { code: 'COMPTE_NON_APPROUVE' }
     );
   }
@@ -278,25 +278,25 @@ async function emettreCode(utilisateur, type, contexte = {}) {
   // passer, ce que le destinataire doit faire, et quoi faire si ce n'est pas lui.
   const modeles = {
     [TYPES_CODE.EMAIL]: {
-      sujet: 'Confirmez votre adresse e-mail EDT Pro',
+      sujet: 'Confirmez votre adresse e-mail eDTpro',
       intro:
-        "Votre compte directeur vient d'être créé sur EDT Pro. Pour l'activer, saisissez le code ci-dessous dans la page de vérification.",
+        "Votre compte directeur vient d'être créé sur eDTpro. Pour l'activer, saisissez le code ci-dessous dans la page de vérification.",
       cloture:
         "Si vous n'avez pas créé de compte, ignorez ce message : aucune donnée ne sera conservée.",
       raison:
-        'Vous recevez ce message parce que cette adresse a été utilisée pour créer un compte sur EDT Pro.',
+        'Vous recevez ce message parce que cette adresse a été utilisée pour créer un compte sur eDTpro.',
     },
     [TYPES_CODE.APPAREIL]: {
-      sujet: 'Nouvelle connexion à votre compte EDT Pro',
+      sujet: 'Nouvelle connexion à votre compte eDTpro',
       intro:
         "Une connexion à votre compte vient d'être tentée depuis un appareil que nous ne reconnaissons pas. Saisissez ce code pour l'autoriser.",
       cloture:
         "Si ce n'est pas vous, ne communiquez ce code à personne et changez votre mot de passe sans attendre.",
       raison:
-        'Vous recevez ce message parce que quelqu\'un tente de se connecter à votre compte EDT Pro.',
+        'Vous recevez ce message parce que quelqu\'un tente de se connecter à votre compte eDTpro.',
     },
     [TYPES_CODE.MOT_DE_PASSE]: {
-      sujet: 'Réinitialisation de votre mot de passe EDT Pro',
+      sujet: 'Réinitialisation de votre mot de passe eDTpro',
       intro:
         'Vous avez demandé à changer votre mot de passe. Saisissez ce code pour définir le nouveau.',
       cloture:
@@ -318,7 +318,7 @@ async function emettreCode(utilisateur, type, contexte = {}) {
       `${code}\n\n` +
       `Ce code est valable 15 minutes et ne fonctionne qu'une seule fois.\n\n` +
       `${modele.cloture}\n\n` +
-      `L'équipe EDT Pro`,
+      `L'équipe eDTpro`,
   });
 
   return code;

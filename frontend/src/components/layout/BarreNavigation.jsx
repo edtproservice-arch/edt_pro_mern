@@ -189,7 +189,7 @@ export default function BarreNavigation({
           )}
 
           <Link to="/" className="shrink-0">
-            <img src="/logo_edtpro.png" alt="EDT Pro" className="h-9 w-auto" />
+            <img src="/logo_edtpro.png" alt="eDTpro" className="h-9 w-auto" />
           </Link>
 
           {/*

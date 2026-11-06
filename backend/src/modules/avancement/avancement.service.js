@@ -969,7 +969,7 @@ export async function envoyerEcartSaisie(
    */
   const corps =
     `Bonjour ${nom}, sur la semaine S${semaine} (séances du ${periode}), vos heures saisies dans ` +
-    `e-note ne couvrent pas les séances réalisées dans EDT Pro. Le détail est ci-dessous : merci de ` +
+    `e-note ne couvrent pas les séances réalisées dans eDTpro. Le détail est ci-dessous : merci de ` +
     `compléter votre saisie dans e-note.\n\n${directeur.nomComplet}`;
 
   await envoyerMessage(directeur.id, {

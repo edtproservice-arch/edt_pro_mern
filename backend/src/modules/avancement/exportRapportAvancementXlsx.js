@@ -32,7 +32,7 @@ const BORDURES = { top: BORDURE, left: BORDURE, bottom: BORDURE, right: BORDURE 
 
 export async function construireXlsxRapport({ etablissement, type, libelles, informations, rapports }) {
   const classeur = new ExcelJS.Workbook();
-  classeur.creator = 'EDT Pro';
+  classeur.creator = 'eDTpro';
   const graphes = []; // { feuille: rang 1…, nom, grille, entete, colonnes, largeur }
   const noms = new Set();
 

@@ -32,7 +32,7 @@ describe('enveloppeHtml', () => {
   });
 
   it('donne un texte de remplacement au logo, pour une image bloquée', () => {
-    expect(rendre('Bonjour.')).toContain('alt="EDT Pro"');
+    expect(rendre('Bonjour.')).toContain('alt="eDTpro"');
   });
 
   /*
@@ -75,10 +75,10 @@ describe('enveloppeHtml', () => {
    * pas de pied.
    */
   it('retire la signature du HTML, que le pied remplace', () => {
-    const html = rendre("Bonjour.\n\nUn message.\n\nL'équipe EDT Pro");
+    const html = rendre("Bonjour.\n\nUn message.\n\nL'équipe eDTpro");
 
     expect(html).toContain('Un message.');
-    expect(html).not.toContain("L'équipe EDT Pro");
+    expect(html).not.toContain("L'équipe eDTpro");
     // Le pied prend sa place : la raison, l'adresse de réponse, le copyright.
     expect(html).toContain('Une raison.');
     expect(html).toContain('Tous droits réservés');

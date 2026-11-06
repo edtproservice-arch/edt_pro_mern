@@ -56,7 +56,7 @@ if (!env.TAURI_SIGNING_PRIVATE_KEY) {
 }
 env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD ??= '';
 
-console.log(`\n▶ Compilation d'EDT Pro ${version}…\n`);
+console.log(`\n▶ Compilation d'eDTpro ${version}…\n`);
 execSync('npx tauri build', { cwd: racineFrontend, env, stdio: 'inherit' });
 
 // ── 3. Fichiers de la release ─────────────────────────────────────────────
@@ -90,7 +90,7 @@ const plateforme = {
 };
 const latest = {
   version,
-  notes: `EDT Pro ${version}`,
+  notes: `eDTpro ${version}`,
   pub_date: new Date().toISOString(),
   platforms: { 'windows-x86_64': plateforme, 'windows-x86_64-nsis': plateforme },
 };

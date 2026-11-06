@@ -70,7 +70,7 @@ export function FenetreMiseAJour() {
           <div className="mb-1 flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary">
             <RefreshCw className={enCours ? 'size-5 animate-spin' : 'size-5'} />
           </div>
-          <DialogTitle>Nouvelle version d’EDT Pro</DialogTitle>
+          <DialogTitle>Nouvelle version d’eDTpro</DialogTitle>
           <DialogDescription>
             {etat.versionActuelle ? (
               <>

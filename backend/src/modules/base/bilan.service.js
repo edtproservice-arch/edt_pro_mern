@@ -179,7 +179,7 @@ export function feuillesBilan(bilan) {
 export function nouveauClasseur() {
   const classeur = new ExcelJS.Workbook();
 
-  classeur.creator = 'EDT Pro';
+  classeur.creator = 'eDTpro';
   classeur.created = new Date();
 
   return classeur;

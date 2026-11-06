@@ -91,7 +91,7 @@ export function enveloppeHtml({ texte, titre, raison }) {
   const paragraphes = texte.split('\n\n').filter((bloc) => bloc.trim() !== '');
 
   /*
-   * ⚠️ « L'équipe EDT Pro » N'EST PAS RENDUE EN HTML : le gabarit Slack n'a pas
+   * ⚠️ « L'équipe eDTpro » N'EST PAS RENDUE EN HTML : le gabarit Slack n'a pas
    * de signature, et le pied dit déjà de qui vient le message. Elle RESTE dans
    * la version texte, qui n'a pas de pied.
    */
@@ -246,7 +246,7 @@ function rendreValeur(valeur) {
  * plusieurs clients — doit encore dire de qui vient le message.
  */
 const enTete = (haut) =>
-  `<img src="${URL_LOGO}" alt="EDT Pro" width="120" height="55"
+  `<img src="${URL_LOGO}" alt="eDTpro" width="120" height="55"
         style="display:block;width:120px;height:55px;margin:${haut} 0 0;border:0;outline:none;text-decoration:none;">`;
 
 /*
@@ -279,7 +279,7 @@ export async function envoyerEmail({ destinataire, sujet, texte, raison, html })
     return { envoye: false };
   }
 
-  const motif = raison ?? 'Vous recevez ce message suite à une action sur votre compte EDT Pro.';
+  const motif = raison ?? 'Vous recevez ce message suite à une action sur votre compte eDTpro.';
 
   try {
     const info = await transport.sendMail({

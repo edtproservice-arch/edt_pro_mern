@@ -1,9 +1,12 @@
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { estApplicationTauri } from '@/lib/miseAJourDesktop';
 
 /* global __VERSION_APP__ */
 // Injectée au build par `vite.config.js` (le tag publié) ; absente des tests.
-const VERSION = typeof __VERSION_APP__ !== 'undefined' ? __VERSION_APP__ : '';
+// ⚠️ SEULEMENT DANS LES APPLICATIONS — bureau et Android (2026-11-06, demande du porteur) :
+//    le site, lui, est toujours à jour, et un numéro de version n'y dit rien à l'utilisateur.
+const VERSION = typeof __VERSION_APP__ !== 'undefined' && estApplicationTauri() ? __VERSION_APP__ : '';
 
 /**
  * Coquille commune aux écrans d'authentification.
@@ -18,7 +21,7 @@ export default function AuthLayout({ titre, sousTitre, largeur = 'max-w-md', chi
       <div className={`w-full ${largeur}`}>
         <div className="mb-6 flex justify-center">
           <Link to="/">
-            <img src="/logo_edtpro.png" alt="EDT Pro" className="h-12 w-auto" />
+            <img src="/logo_edtpro.png" alt="eDTpro" className="h-12 w-auto" />
           </Link>
         </div>
 

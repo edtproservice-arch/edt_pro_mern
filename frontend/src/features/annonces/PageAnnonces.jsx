@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import ConfirmationAction from '@/components/common/ConfirmationAction';
 import SelecteurDate from '@/components/common/SelecteurDate';
 import CadreReglage from '@/features/parametres/CadreReglage';
 import ChoixMultiple from '@/features/parametres/ChoixMultiple';
@@ -202,11 +203,16 @@ export default function PageAnnonces({ admin = false }) {
   const retrait = useMutation({
     mutationFn: retirerAnnonce,
     onSuccess: () => {
-      toast.success('Annonce retirée du bandeau');
+      toast.success('Annonce supprimée', { description: 'Elle a quitté le bandeau et les messageries de ses destinataires.' });
       client.invalidateQueries({ queryKey: ['annonces-publiees'] });
+      client.invalidateQueries({ queryKey: ['mes-annonces'] });
+      client.invalidateQueries({ queryKey: ['messages'] });
     },
     onError: (erreur) => toast.error('Retrait impossible', { description: erreur.message }),
   });
+
+  // Retirer SUPPRIME l'annonce et ses messages remis (2026-11-06) : on confirme d'abord.
+  const [aRetirer, setARetirer] = useState(null);
 
   const aujourdhui = enTexte(new Date());
   const programmee = debut > aujourdhui;
@@ -360,9 +366,8 @@ export default function PageAnnonces({ admin = false }) {
             <ul className="divide-y rounded-lg border">
               {publiees.data.annonces.map((annonce) => {
                 const { libelle, icone: Icone, classes } = IMPORTANCES[annonce.importance] ?? IMPORTANCES.info;
-                const etat = annonce.retiree
-                  ? 'Retirée'
-                  : annonce.fin < aujourdhui
+                // Une annonce retirée est supprimée : elle n'apparaît plus ici.
+                const etat = annonce.fin < aujourdhui
                     ? 'Expirée'
                     : annonce.debut > aujourdhui
                       ? 'Programmée'
@@ -393,11 +398,11 @@ export default function PageAnnonces({ admin = false }) {
                         size="sm"
                         className="text-muted-foreground hover:text-destructive"
                         disabled={retrait.isPending}
-                        onClick={() => retrait.mutate(annonce.id)}
+                        onClick={() => setARetirer({ ...annonce, etat })}
                         title={
                           etat === 'Programmée'
                             ? 'Annuler — elle ne s’affichera pas et aucun message ne partira'
-                            : 'Retirer du bandeau — les messages déjà remis restent'
+                            : 'Retirer — l’annonce et les messages remis sont supprimés'
                         }
                       >
                         <Trash2 className="size-4" />
@@ -411,6 +416,22 @@ export default function PageAnnonces({ admin = false }) {
           )}
         </section>
       </div>
+      <ConfirmationAction
+        ouvert={Boolean(aRetirer)}
+        onOpenChange={(ouvert) => !ouvert && setARetirer(null)}
+        titre={aRetirer?.etat === 'Programmée' ? 'Annuler cette annonce ?' : 'Retirer cette annonce ?'}
+        description={
+          aRetirer?.etat === 'Programmée'
+            ? 'Elle est supprimée définitivement : elle ne s’affichera pas et aucun message ne partira.'
+            : `Elle est supprimée définitivement : du bandeau, et des messageries de ses ${aRetirer?.destinataires ?? 0} destinataire(s). Cette action est irréversible.`
+        }
+        libelleConfirmation={aRetirer?.etat === 'Programmée' ? 'Annuler l’annonce' : 'Retirer et supprimer'}
+        destructive
+        onConfirmer={() => {
+          retrait.mutate(aRetirer.id);
+          setARetirer(null);
+        }}
+      />
     </CadreReglage>
   );
 }

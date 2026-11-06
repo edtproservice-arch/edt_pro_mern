@@ -12,8 +12,9 @@ import { ROLES } from 'shared/constants';
  *   - gestionnaire   → stagiaires de son établissement.
  *
  * ⚠️ UNE DURÉE DE VIE : `debut` → `fin`. Un bandeau qui garderait toutes les
- * annonces passées finirait par n'être plus lu. Retirée (`retireeLe`), elle
- * quitte le bandeau sans effacer le message déjà remis.
+ * annonces passées finirait par n'être plus lu. RETIRÉE, elle est supprimée
+ * avec ses copies en messagerie (2026-11-06, `annonces.service.js#retirer`) ;
+ * `retireeLe` ne subsiste que sur les anciennes, en attente du nettoyage.
  */
 export const IMPORTANCES = ['info', 'importante', 'urgente'];
 export const CIBLES = [ROLES.DIRECTEUR, ROLES.FORMATEUR, ROLES.STAGIAIRE];
@@ -50,6 +51,7 @@ const annonceSchema = new mongoose.Schema(
     // « AAAA-MM-JJ », bornes comprises — comme les stages.
     debut: { type: String, required: true },
     fin: { type: String, required: true },
+    // Ancien retrait « doux » (avant 2026-11-06) — plus posé, voir `retirer`.
     retireeLe: { type: Date, default: null },
     destinataires: { type: Number, default: 0 },
     /*

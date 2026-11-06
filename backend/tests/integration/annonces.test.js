@@ -6,7 +6,8 @@ import { Etablissement } from '../../src/models/Etablissement.js';
 import { Message } from '../../src/models/Message.js';
 import { User } from '../../src/models/User.js';
 import { Stagiaire } from '../../src/models/Stagiaire.js';
-import { remettreAnnoncesProgrammees } from '../../src/modules/annonces/annonces.service.js';
+import { Annonce } from '../../src/models/Annonce.js';
+import { nettoyerAnnoncesRetirees, remettreAnnoncesProgrammees } from '../../src/modules/annonces/annonces.service.js';
 
 /** Annonces du bandeau passant, doublées en messagerie (2026-10-10). */
 const app = createApp();
@@ -137,15 +138,65 @@ describe('annonces', () => {
     }
   });
 
-  it('retirer l’ôte du bandeau, sans effacer le message remis', async () => {
+  it('retirer la SUPPRIME : de la base, du bandeau et de toutes les messageries', async () => {
     const { body } = await request(app)
       .post('/api/v2/annonces')
       .set('Cookie', cookies.directeur)
       .send({ texte: 'À retirer', fin: FIN });
+    const gardee = await request(app)
+      .post('/api/v2/annonces')
+      .set('Cookie', cookies.directeur)
+      .send({ texte: 'À garder', fin: FIN });
+    expect(await Message.countDocuments({ 'annonce.id': body.annonce.id })).toBe(1);
 
     const retrait = await request(app).delete(`/api/v2/annonces/${body.annonce.id}`).set('Cookie', cookies.directeur);
     expect(retrait.status).toBe(200);
-    expect(await mes('formateur')).toEqual([]);
+    expect(retrait.body.annonce.messagesSupprimes).toBe(1);
+
+    expect(await Annonce.exists({ _id: body.annonce.id })).toBeNull();
+    expect(await Message.countDocuments({ 'annonce.id': body.annonce.id })).toBe(0);
+    // L'autre annonce, et son message, ne bougent pas.
+    expect((await mes('formateur')).map((a) => a.texte)).toEqual(['À garder']);
+    expect(await Message.countDocuments({ 'annonce.id': gardee.body.annonce.id })).toBe(1);
+
+    // La liste de l'auteur n'a plus de ligne « Retirée ».
+    const publiees = await request(app).get('/api/v2/annonces/publiees').set('Cookie', cookies.directeur);
+    expect(publiees.body.annonces.map((a) => a.texte)).toEqual(['À garder']);
+
+    // Un second retrait : elle n'existe plus.
+    const encore = await request(app).delete(`/api/v2/annonces/${body.annonce.id}`).set('Cookie', cookies.directeur);
+    expect(encore.status).toBe(404);
+  });
+
+  it('retirer : seul l’auteur le peut', async () => {
+    const { body } = await request(app)
+      .post('/api/v2/annonces')
+      .set('Cookie', cookies.directeur)
+      .send({ texte: 'Pas à toi', fin: FIN });
+    const retrait = await request(app).delete(`/api/v2/annonces/${body.annonce.id}`).set('Cookie', cookies.directeurAutre);
+    expect(retrait.status).toBe(404);
+    expect(await Message.countDocuments({ 'annonce.id': body.annonce.id })).toBe(1);
+  });
+
+  it('nettoyage : les annonces retirées AVANT efface aussi leurs messages', async () => {
+    const { body } = await request(app)
+      .post('/api/v2/annonces')
+      .set('Cookie', cookies.directeur)
+      .send({ texte: 'Ancien retrait', fin: FIN });
+    await request(app).post('/api/v2/annonces').set('Cookie', cookies.directeur).send({ texte: 'En cours', fin: FIN });
+    // L'ancien retrait « doux » : `retireeLe` posé, messages laissés.
+    await Annonce.updateOne({ _id: body.annonce.id }, { $set: { retireeLe: new Date() } });
+
+    // Déjà absente de la liste de l'auteur, avant même le nettoyage.
+    const publiees = await request(app).get('/api/v2/annonces/publiees').set('Cookie', cookies.directeur);
+    expect(publiees.body.annonces.map((a) => a.texte)).toEqual(['En cours']);
+
+    expect(await nettoyerAnnoncesRetirees()).toEqual({ annonces: 1, messages: 1, applique: false });
+    expect(await Annonce.countDocuments()).toBe(2);
+
+    expect(await nettoyerAnnoncesRetirees({ appliquer: true })).toEqual({ annonces: 1, messages: 1, applique: true });
+    expect(await Annonce.exists({ _id: body.annonce.id })).toBeNull();
+    expect(await Message.countDocuments({ 'annonce.id': body.annonce.id })).toBe(0);
     expect(await Message.countDocuments({ destinataireId: comptes.formateur._id })).toBe(1);
   });
 
@@ -173,6 +224,7 @@ describe('annonces', () => {
       .send({ texte: 'Annulée', debut: '2099-01-10', fin: '2099-01-20' });
     await request(app).delete(`/api/v2/annonces/${body.annonce.id}`).set('Cookie', cookies.directeur);
 
+    expect(await Annonce.exists({ _id: body.annonce.id })).toBeNull();
     expect((await remettreAnnoncesProgrammees(new Date('2099-01-10T12:00:00'))).remis).toBe(0);
     expect(await Message.countDocuments({ destinataireId: comptes.formateur._id })).toBe(0);
   });

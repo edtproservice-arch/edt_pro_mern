@@ -1,6 +1,7 @@
 import { ROLES } from 'shared/constants';
 import { Annonce } from '../../models/Annonce.js';
 import { Etablissement } from '../../models/Etablissement.js';
+import { Message } from '../../models/Message.js';
 import { User } from '../../models/User.js';
 import { Base } from '../../models/Base.js';
 import { Stagiaire } from '../../models/Stagiaire.js';
@@ -151,6 +152,11 @@ async function remettre(annonce) {
       // Lot refusé (aucun destinataire autorisé) : les autres partent quand même.
     }
   }
+  // ⚠️ RETIRÉE PENDANT LA REMISE : `retirer` a effacé les lots déjà partis, pas ceux d'après.
+  if (!(await Annonce.exists({ _id: marquee._id }))) {
+    await Message.deleteMany({ 'annonce.id': String(marquee._id) });
+    return 0;
+  }
   return remis;
 }
 
@@ -213,22 +219,57 @@ const CIBLES_LECTRICES = [ROLES.DIRECTEUR, ROLES.FORMATEUR, ROLES.STAGIAIRE];
 
 /** Les annonces que J'AI publiées, les plus récentes d'abord. */
 export async function mesPublications(auteurId) {
-  const annonces = await Annonce.find({ auteurId }).sort({ createdAt: -1 }).limit(100).lean();
+  // Les anciennes annonces « retirées » (avant leur suppression) ne s'affichent plus.
+  const annonces = await Annonce.find({ auteurId, retireeLe: null }).sort({ createdAt: -1 }).limit(100).lean();
   return annonces.map((annonce) => presenter(annonce));
 }
 
 /**
- * Retire une annonce du bandeau. ⚠️ Les messages déjà remis RESTENT : retirer
- * une annonce ne doit pas effacer ce que quelqu'un a déjà reçu et peut-être lu.
+ * Retire une annonce : elle est SUPPRIMÉE DÉFINITIVEMENT, avec toutes les
+ * copies qu'elle a remises en messagerie (2026-11-06, demande du porteur :
+ * « les annonces retirées doivent disparaître complètement, de la base et de
+ * la messagerie »). Elle ne laisse donc plus de ligne « Retirée » dans la
+ * liste de l'auteur.
+ *
+ * ⚠️ LES MESSAGES SONT EFFACÉS AVANT L'ANNONCE : si la seconde écriture
+ * échouait, l'auteur verrait encore l'annonce et pourrait relancer le retrait
+ * — l'inverse laisserait des copies orphelines que plus rien ne retrouve.
+ *
+ * ⚠️ Les RÉPONSES qu'un destinataire a pu écrire à la copie RESTENT : ce sont
+ * ses propres mots, pas l'annonce.
  */
 export async function retirer(auteurId, id) {
-  const annonce = await Annonce.findOne({ _id: id, auteurId });
+  const annonce = await Annonce.findOne({ _id: id, auteurId }).lean();
   if (!annonce) throw notFound('Annonce introuvable', { code: 'ANNONCE_INTROUVABLE' });
-  if (!annonce.retireeLe) {
-    annonce.retireeLe = new Date();
-    await annonce.save();
-  }
-  return presenter(annonce);
+  const { messagesSupprimes } = await effacerAnnonces([annonce._id]);
+  return { ...presenter(annonce), retiree: true, messagesSupprimes };
+}
+
+/**
+ * Efface des annonces ET leurs copies en messagerie (`Message.annonce.id`,
+ * posé par `remettre`). Partagé par le retrait et par le nettoyage des
+ * annonces retirées avant ce changement (`scripts/migrations/…`).
+ */
+export async function effacerAnnonces(ids) {
+  const cles = ids.map(String);
+  if (cles.length === 0) return { annoncesSupprimees: 0, messagesSupprimes: 0 };
+  const messages = await Message.deleteMany({ 'annonce.id': { $in: cles } });
+  const annonces = await Annonce.deleteMany({ _id: { $in: ids } });
+  return { annoncesSupprimees: annonces.deletedCount, messagesSupprimes: messages.deletedCount };
+}
+
+/**
+ * Le nettoyage des annonces RETIRÉES avant le 2026-11-06 — quand le retrait
+ * ne faisait que poser `retireeLe` et laissait les messages remis.
+ * `appliquer: false` ne fait que compter.
+ */
+export async function nettoyerAnnoncesRetirees({ appliquer = false } = {}) {
+  const retirees = await Annonce.find({ retireeLe: { $ne: null } }).select('_id').lean();
+  const ids = retirees.map((a) => a._id);
+  const messages = await Message.countDocuments({ 'annonce.id': { $in: ids.map(String) } });
+  if (!appliquer) return { annonces: ids.length, messages, applique: false };
+  const bilan = await effacerAnnonces(ids);
+  return { annonces: bilan.annoncesSupprimees, messages: bilan.messagesSupprimes, applique: true };
 }
 
 /**

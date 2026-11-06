@@ -132,6 +132,13 @@ jobs:
           # La commande est FORCÉE côté serveur : l'installeur part sur l'entrée standard, rien d'autre.
           ssh -i "$RUNNER_TEMP/cle" -o UserKnownHostsFile="$RUNNER_TEMP/hotes" -o StrictHostKeyChecking=yes \
             -o IdentitiesOnly=yes edtpro@187.7.30.89 < "release/desktop-v$VERSION/EDT-Pro_x64-setup.exe"
+          # Le manifeste APRÈS l'installeur (2026-11-06) : les applications de bureau le lisent sur
+          # edtpro.tech avant GitHub — il n'annonce la version qu'une fois son fichier en place.
+          # ⚠️ Refusé par un serveur dont le script n'a pas encore « desktop-json »
+          #    (outils/serveur/recevoir-installeur.sh) : un avertissement, pas un échec.
+          ssh -i "$RUNNER_TEMP/cle" -o UserKnownHostsFile="$RUNNER_TEMP/hotes" -o StrictHostKeyChecking=yes \
+            -o IdentitiesOnly=yes edtpro@187.7.30.89 desktop-json < "release/desktop-v$VERSION/latest.json" \
+            || echo "::warning::latest.json refusé par le serveur : mettez à jour /opt/edtpro/recevoir-installeur.sh."
           rm -f "$RUNNER_TEMP/cle"
 
   android:

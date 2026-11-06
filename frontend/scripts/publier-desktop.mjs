@@ -84,9 +84,16 @@ copyFileSync(join(dossierNsis, installeur), join(sortie, nomPublie));
 const nomStable = 'EDT-Pro_x64-setup.exe';
 copyFileSync(join(dossierNsis, installeur), join(sortie, nomStable));
 
+/*
+ * ═══ L'INSTALLEUR SE TÉLÉCHARGE SUR NOTRE SERVEUR, PLUS SUR GITHUB (2026-11-06) ═══
+ * Le dépôt passe sur GitLab, et GitHub sera supprimé : une application installée qui irait
+ * encore chercher l'installeur sur GitHub ne se mettrait plus jamais à jour. Le nom STABLE,
+ * déposé par la publication à chaque version (voir plus haut) ; la signature de `latest.json`
+ * garantit que c'est bien le bon fichier.
+ */
 const plateforme = {
   signature: readFileSync(join(dossierNsis, `${installeur}.sig`), 'utf8').trim(),
-  url: `https://github.com/${DEPOT}/releases/download/v${version}/${nomPublie}`,
+  url: `https://edtpro.tech/telechargements/${nomStable}`,
 };
 const latest = {
   version,
